@@ -1,0 +1,67 @@
+:root {
+  --c-primary: #1f4e79;
+  --c-primary-dark: #163a5a;
+  --c-text: #1f2933;
+  --c-text-muted: #6b7785;
+  --c-border: #e3e8ee;
+  --c-bg: #f7f9fc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  color: var(--c-text);
+  background: var(--c-bg);
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+}
+
+.container {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: 0.55rem 1.1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.btn--lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1.05rem;
+}
+.btn--primary {
+  background: var(--c-primary);
+  color: #fff;
+}
+.btn--primary:hover {
+  background: var(--c-primary-dark);
+}
+.btn--ghost {
+  background: transparent;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
