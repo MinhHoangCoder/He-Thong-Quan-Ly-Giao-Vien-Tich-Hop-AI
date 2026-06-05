@@ -5,6 +5,14 @@
   --c-text-muted: #6b7785;
   --c-border: #e3e8ee;
   --c-bg: #f7f9fc;
+
+  /* Theme khu vực quản trị (admin) */
+  --a-bg: #f4f6fb;
+  --a-sidebar: #1b2238;
+  --a-text: #1f2733;
+  --a-text-muted: #7a8699;
+  --a-border: #e8ecf3;
+  --a-shadow: 0 4px 16px rgba(31, 45, 80, 0.06);
 }
 
 * {

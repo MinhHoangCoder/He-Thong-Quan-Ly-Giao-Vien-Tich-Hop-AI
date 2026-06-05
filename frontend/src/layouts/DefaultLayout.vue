@@ -16,10 +16,11 @@ const year = new Date().getFullYear()
         <nav class="nav">
           <RouterLink to="/" class="nav__link">Trang chủ</RouterLink>
           <a href="#features" class="nav__link">Tính năng</a>
+          <RouterLink to="/dashboard" class="nav__link">Dashboard</RouterLink>
           <a href="#contact" class="nav__link">Liên hệ</a>
         </nav>
 
-        <RouterLink to="/" class="btn btn--primary">Đăng nhập</RouterLink>
+        <RouterLink to="/dashboard" class="btn btn--primary">Vào hệ thống</RouterLink>
       </div>
     </header>
 

@@ -37,6 +37,8 @@ frontend/node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/coverage/
+frontend/*.png
+frontend/test-results/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -47,3 +49,9 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 *.env
+
+### Claude — folder ngữ cảnh cá nhân (chỉ ở máy bạn, không đẩy lên git) ###
+# Mọi thứ bạn bỏ vào claude-context/ đều bị bỏ qua, TRỪ README.md hướng dẫn.
+claude-context/*
+!claude-context/README.md
+!claude-context/.gitkeep
