@@ -1,10 +1,22 @@
 <script setup>
 // Trang chủ — nhóm cắt giao diện vào đây.
 const features = [
-  { icon: '🧑‍🏫', title: 'Quản lý giáo viên', desc: 'Hồ sơ, môn dạy, bằng cấp, hợp đồng và trạng thái.' },
+  {
+    icon: '🧑‍🏫',
+    title: 'Quản lý giáo viên',
+    desc: 'Hồ sơ, môn dạy, bằng cấp, hợp đồng và trạng thái.',
+  },
   { icon: '🏫', title: 'Trường khách hàng', desc: 'Thông tin trường, phòng học, lớp và học sinh.' },
-  { icon: '🗓️', title: 'Điều phối & xếp lịch', desc: 'Yêu cầu → phân công → lịch dạy với quy trình duyệt.' },
-  { icon: '🤖', title: 'Tích hợp AI', desc: 'Tự xếp lịch, cảnh báo trùng, gợi ý ghép giáo viên, chatbot.' },
+  {
+    icon: '🗓️',
+    title: 'Điều phối & xếp lịch',
+    desc: 'Yêu cầu → phân công → lịch dạy với quy trình duyệt.',
+  },
+  {
+    icon: '🤖',
+    title: 'Tích hợp AI',
+    desc: 'Tự xếp lịch, cảnh báo trùng, gợi ý ghép giáo viên, chatbot.',
+  },
 ]
 </script>
 
@@ -16,8 +28,8 @@ const features = [
         Hệ thống quản lý &amp; điều phối giáo viên <span>tích hợp AI</span>
       </h1>
       <p class="hero__desc">
-        Số hóa toàn bộ quy trình từ tiếp nhận yêu cầu, ghép giáo viên, xếp lịch dạy
-        đến chấm công và tính lương cho trung tâm giáo dục.
+        Số hóa toàn bộ quy trình từ tiếp nhận yêu cầu, ghép giáo viên, xếp lịch dạy đến chấm công và
+        tính lương cho trung tâm giáo dục.
       </p>
       <div class="hero__actions">
         <a href="#features" class="btn btn--primary btn--lg">Khám phá tính năng</a>
@@ -87,7 +99,9 @@ const features = [
   border-radius: 12px;
   padding: 1.5rem;
   background: #fff;
-  transition: box-shadow 0.2s, transform 0.2s;
+  transition:
+    box-shadow 0.2s,
+    transform 0.2s;
 }
 .card:hover {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);

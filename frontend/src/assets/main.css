@@ -44,7 +44,10 @@ a {
   text-decoration: none;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    border-color 0.2s;
 }
 .btn--lg {
   padding: 0.75rem 1.5rem;

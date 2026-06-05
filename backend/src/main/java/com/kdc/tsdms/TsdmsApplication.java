@@ -9,5 +9,4 @@ public class TsdmsApplication {
     public static void main(String[] args) {
         SpringApplication.run(TsdmsApplication.class, args);
     }
-
 }
