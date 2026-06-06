@@ -51,7 +51,5 @@ pnpm-debug.log*
 *.env
 
 ### Claude — folder ngữ cảnh cá nhân (chỉ ở máy bạn, không đẩy lên git) ###
-# Mọi thứ bạn bỏ vào claude-context/ đều bị bỏ qua, TRỪ README.md hướng dẫn.
-claude-context/*
-!claude-context/README.md
-!claude-context/.gitkeep
+# Toàn bộ folder claude-context/ chỉ tồn tại local — KHÔNG track gì, kể cả README.
+claude-context/
