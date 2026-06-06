@@ -4,7 +4,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   data: { type: Array, required: true },
-  color: { type: String, default: '#3b6fd4' },
+  color: { type: String, default: '#0d9488' },
 })
 
 const max = computed(() => Math.max(1, ...props.data))
@@ -32,10 +32,14 @@ const max = computed(() => Math.max(1, ...props.data))
   flex: 1;
   min-width: 4px;
   border-radius: 3px 3px 0 0;
-  opacity: 0.85;
-  transition: height 0.3s;
+  opacity: 0.55;
+  transition: height var(--t-slow), opacity var(--t-fast);
 }
 .bars__bar:last-child {
+  opacity: 1;
+}
+/* rê chuột vào cụm cột → tất cả sáng lên */
+.bars:hover .bars__bar {
   opacity: 1;
 }
 </style>

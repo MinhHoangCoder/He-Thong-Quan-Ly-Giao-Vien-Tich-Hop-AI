@@ -196,4 +196,12 @@ const points = computed(() =>
   height: 10px;
   border-radius: 50%;
 }
+/* điểm dữ liệu phình to khi rê chuột (r = bán kính, đổi mượt) */
+.chart__svg circle {
+  transition: r var(--t-fast);
+  cursor: pointer;
+}
+.chart__svg circle:hover {
+  r: 5.5;
+}
 </style>

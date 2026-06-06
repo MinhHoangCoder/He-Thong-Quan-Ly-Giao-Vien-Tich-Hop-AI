@@ -1,18 +1,44 @@
-:root {
-  --c-primary: #1f4e79;
-  --c-primary-dark: #163a5a;
-  --c-text: #1f2933;
-  --c-text-muted: #6b7785;
-  --c-border: #e3e8ee;
-  --c-bg: #f7f9fc;
+/* ============================================================================
+   ⭐ BIẾN MÀU & CHUYỂN ĐỘNG DÙNG CHUNG (design tokens)
+   Sửa màu/hiệu ứng cả web CHỈ cần sửa ở đây — các component đọc lại qua var().
 
-  /* Theme khu vực quản trị (admin) */
-  --a-bg: #f4f6fb;
-  --a-sidebar: #1b2238;
-  --a-text: #1f2733;
-  --a-text-muted: #7a8699;
-  --a-border: #e8ecf3;
-  --a-shadow: 0 4px 16px rgba(31, 45, 80, 0.06);
+   Bảng màu: "Xanh ngọc + Xanh lá" (giáo dục) — teal chủ đạo, xanh lá nhấn,
+   amber/sky làm màu phụ cho biểu đồ & badge.
+   ============================================================================ */
+:root {
+  /* --- Màu thương hiệu --- */
+  --c-primary: #0d9488; /* teal chủ đạo */
+  --c-primary-dark: #0b7a70; /* teal đậm (hover nút) */
+  --c-primary-light: #14b8a6; /* teal sáng */
+  --c-accent: #22c55e; /* xanh lá nhấn */
+  --c-amber: #f59e0b; /* màu phụ (cảnh báo nhẹ) */
+  --c-sky: #0ea5e9; /* màu phụ (biểu đồ) */
+  --c-danger: #ef4444;
+
+  /* gradient chủ đạo — dùng lại cho logo, nút chính, link active... */
+  --grad-primary: linear-gradient(135deg, #0d9488 0%, #16a34a 100%);
+
+  /* --- Nền & chữ (tông xanh ấm) --- */
+  --c-text: #14302c;
+  --c-text-muted: #5f7a74;
+  --c-border: #e2efeb;
+  --c-bg: #f3faf8;
+
+  /* --- Khu vực quản trị (admin) --- */
+  --a-bg: #f3faf8;
+  --a-sidebar: #0f2e2c; /* xanh than ngả ngọc */
+  --a-sidebar-2: #0a201e;
+  --a-text: #14302c;
+  --a-text-muted: #6b857f;
+  --a-border: #e4efec;
+  --a-shadow: 0 4px 16px rgba(13, 60, 54, 0.06);
+  --a-shadow-lg: 0 14px 32px rgba(13, 60, 54, 0.14);
+
+  /* --- Chuyển động dùng chung --- */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --t-fast: 0.15s var(--ease);
+  --t: 0.22s var(--ease);
+  --t-slow: 0.35s var(--ease);
 }
 
 * {
@@ -43,7 +69,9 @@ a {
   padding: 0 1.25rem;
 }
 
-/* Buttons */
+/* ============================================================================
+   NÚT (buttons)
+   ============================================================================ */
 .btn {
   display: inline-block;
   padding: 0.55rem 1.1rem;
@@ -52,10 +80,16 @@ a {
   text-decoration: none;
   cursor: pointer;
   border: 1px solid transparent;
+  /* transform để nút "nhấc" lên khi hover */
   transition:
-    background 0.2s,
-    color 0.2s,
-    border-color 0.2s;
+    background var(--t),
+    color var(--t),
+    border-color var(--t),
+    box-shadow var(--t),
+    transform var(--t-fast);
+}
+.btn:active {
+  transform: translateY(1px);
 }
 .btn--lg {
   padding: 0.75rem 1.5rem;
@@ -64,9 +98,12 @@ a {
 .btn--primary {
   background: var(--c-primary);
   color: #fff;
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.28);
 }
 .btn--primary:hover {
   background: var(--c-primary-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(13, 148, 136, 0.38);
 }
 .btn--ghost {
   background: transparent;
@@ -74,5 +111,35 @@ a {
   border-color: rgba(255, 255, 255, 0.6);
 }
 .btn--ghost:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: #fff;
+  transform: translateY(-2px);
+}
+
+/* ============================================================================
+   ANIMATION DÙNG CHUNG
+   ============================================================================ */
+/* Thẻ mờ + trượt nhẹ lên khi vào trang (đặt class .fade-up lên phần tử) */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-up {
+  animation: fade-up 0.45s var(--ease) both;
+}
+
+/* Tôn trọng người dùng tắt hiệu ứng (accessibility) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

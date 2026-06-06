@@ -25,11 +25,11 @@
      SchoolClass ── ClassEnrollment ── Student    (1 lớp có nhiều học sinh)
 
      LUỒNG ĐIỀU PHỐI (quan trọng nhất):
-        School tạo  TeacherRequest  (yêu cầu cần GV cho 1 môn/lớp)
-            → Employee tạo  Assignment  (gán GV ↔ trường ↔ môn ↔ lớp ↔ giai đoạn)
-                → từ Assignment sinh ra nhiều  Schedule  (từng BUỔI dạy cụ thể)
-                    → mỗi buổi có thể có  Attendance  (chấm công)
+        Employee (TRUNG TÂM) tạo  Assignment  (gán GV ↔ trường ↔ môn ↔ lớp ↔ giai đoạn)
+            → từ Assignment sinh ra nhiều  Schedule  (từng BUỔI dạy cụ thể)
+                → mỗi buổi có thể có  Attendance  (chấm công)
         Schedule đổi trạng thái → tự ghi  ScheduleStatusLog  (qua trigger)
+        (Trung tâm TOÀN QUYỀN phân công; TRƯỜNG chỉ XEM thống kê/báo cáo.)
 
      VẬN HÀNH KHÁC: Payroll (lương), TeacherEvaluation (đánh giá),
                     Feedback (phản hồi), Notification (thông báo),
@@ -191,7 +191,7 @@ CREATE INDEX IX_Employee_Branch ON Employee(BranchId);  -- lọc nhân viên the
 
 /* ========== Bảng 9: Subject — MÔN HỌC ==========
    Ý nghĩa : Danh mục môn (STEM, Công dân số...).
-   QUAN HỆ : Nối với Teacher qua TeacherSubject; được TeacherRequest/Assignment tham chiếu. */
+   QUAN HỆ : Nối với Teacher qua TeacherSubject; được Assignment tham chiếu.        */
 CREATE TABLE Subject (
     SubjectId    INT IDENTITY PRIMARY KEY,
     Code         VARCHAR(20)   NOT NULL UNIQUE,      -- mã môn, vd: STEM01, CDS01
@@ -319,7 +319,7 @@ CREATE INDEX IX_Contract_Teacher ON Contract(TeacherId);
 /* ========== Bảng 14: School — TRƯỜNG (khách hàng) ==========
    Ý nghĩa : Trường thuê giáo viên của trung tâm. Có thể có 1 tài khoản đăng nhập riêng.
    QUAN HỆ : BranchId → Branch (chi nhánh phụ trách),  AppUserId → AppUser (1-1, tùy chọn).
-             Sở hữu Room/SchoolClass/Student; tạo TeacherRequest.            */
+             Sở hữu Room/SchoolClass/Student.                                */
 CREATE TABLE School (
     SchoolId          INT IDENTITY PRIMARY KEY,
     BranchId          INT           NOT NULL,         -- → Branch (chi nhánh phụ trách trường)
@@ -431,50 +431,15 @@ CREATE INDEX IX_Enrollment_Student ON ClassEnrollment(StudentId);
 
 
 /* #####################################################################
-   NHÓM 5 — ĐIỀU PHỐI (LÕI): YÊU CẦU → PHÂN CÔNG → LỊCH DẠY
+   NHÓM 5 — ĐIỀU PHỐI (LÕI): PHÂN CÔNG → LỊCH DẠY
    ##################################################################### */
 
-/* ========== Bảng 19: TeacherRequest — YÊU CẦU GIÁO VIÊN ==========
-   Ý nghĩa : TRƯỜNG gửi yêu cầu cần giáo viên cho một môn/lớp. Nhân viên xử lý.
-   QUAN HỆ : SchoolId → School,  SubjectId → Subject,  ClassId → SchoolClass,
-             HandledByEmployeeId → Employee (nhân viên xử lý).
-             Là điểm BẮT ĐẦU của luồng điều phối → dẫn tới Assignment.        */
-CREATE TABLE TeacherRequest (
-    RequestId           INT IDENTITY PRIMARY KEY,
-    SchoolId            INT           NOT NULL,       -- → School (trường gửi yêu cầu)
-    SubjectId           INT           NOT NULL,       -- → Subject (môn cần dạy)
-    ClassId             INT           NULL,           -- → SchoolClass (lớp cần dạy, nếu có)
-    RequestedQuantity   INT           NOT NULL DEFAULT 1,  -- số giáo viên cần
-    DesiredStartDate    DATE          NULL,           -- mong muốn bắt đầu
-    DesiredEndDate      DATE          NULL,
-    PreferredTimeNote   NVARCHAR(255) NULL,           -- khung giờ mong muốn (ghi chú text)
-    Note                NVARCHAR(500) NULL,
-    Status              VARCHAR(20)   NOT NULL DEFAULT 'NEW'  -- xem chú thích dưới
-                        CONSTRAINT CK_Request_Status
-                        CHECK (Status IN ('NEW','IN_REVIEW','MATCHED','FULFILLED','REJECTED','CANCELLED')),
-    -- NEW=mới gửi · IN_REVIEW=đang xử lý · MATCHED=đã ghép GV · FULFILLED=đã đáp ứng
-    -- REJECTED=từ chối · CANCELLED=hủy
-    HandledByEmployeeId INT           NULL,           -- → Employee (nhân viên phụ trách)
-    IsDeleted           BIT           NOT NULL DEFAULT 0,
-    DeletedAt           DATETIME2(3)  NULL,
-    DeletedBy           INT           NULL,
-    CreatedAt           DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
-    CreatedBy           INT           NULL,
-    UpdatedAt           DATETIME2(3)  NULL,
-    UpdatedBy           INT           NULL,
-    FOREIGN KEY (SchoolId)            REFERENCES School(SchoolId),
-    FOREIGN KEY (SubjectId)           REFERENCES Subject(SubjectId),
-    FOREIGN KEY (ClassId)             REFERENCES SchoolClass(ClassId),
-    FOREIGN KEY (HandledByEmployeeId) REFERENCES Employee(EmployeeId)
-);
-CREATE INDEX IX_Request_School ON TeacherRequest(SchoolId);
-CREATE INDEX IX_Request_Status ON TeacherRequest(Status);
-
-/* ========== Bảng 20: Assignment — PHÂN CÔNG ==========
-   Ý nghĩa : Nhân viên gán một GIÁO VIÊN cho một TRƯỜNG/MÔN/LỚP trong một giai đoạn.
+/* ========== Bảng 19: Assignment — PHÂN CÔNG ==========
+   Ý nghĩa : Nhân viên TRUNG TÂM gán một GIÁO VIÊN cho một TRƯỜNG/MÔN/LỚP trong một giai đoạn.
+             Trung tâm TOÀN QUYỀN quyết định (KHÔNG xuất phát từ yêu cầu của trường).
              LƯU Ý: một GV CÓ THỂ được phân công cho NHIỀU trường (mô hình điều phối).
    QUAN HỆ : TeacherId → Teacher,  SchoolId → School,  SubjectId → Subject,
-             ClassId → SchoolClass,  RequestId → TeacherRequest (yêu cầu gốc),
+             ClassId → SchoolClass,
              AssignedByEmployeeId → Employee.  Sinh ra nhiều Schedule.        */
 CREATE TABLE Assignment (
     AssignmentId         INT IDENTITY PRIMARY KEY,
@@ -482,7 +447,6 @@ CREATE TABLE Assignment (
     SchoolId             INT           NOT NULL,      -- → School
     SubjectId            INT           NOT NULL,      -- → Subject
     ClassId              INT           NULL,          -- → SchoolClass (nếu gắn lớp cụ thể)
-    RequestId            INT           NULL,          -- → TeacherRequest (yêu cầu khởi nguồn)
     AssignedByEmployeeId INT           NULL,          -- → Employee (ai phân công)
     StartDate            DATE          NOT NULL,      -- giai đoạn bắt đầu
     EndDate              DATE          NULL,
@@ -499,14 +463,13 @@ CREATE TABLE Assignment (
     FOREIGN KEY (SchoolId)             REFERENCES School(SchoolId),
     FOREIGN KEY (SubjectId)            REFERENCES Subject(SubjectId),
     FOREIGN KEY (ClassId)              REFERENCES SchoolClass(ClassId),
-    FOREIGN KEY (RequestId)            REFERENCES TeacherRequest(RequestId),
     FOREIGN KEY (AssignedByEmployeeId) REFERENCES Employee(EmployeeId),
     CONSTRAINT CK_Assignment_Dates CHECK (EndDate IS NULL OR EndDate >= StartDate)
 );
 CREATE INDEX IX_Assignment_Teacher ON Assignment(TeacherId);
 CREATE INDEX IX_Assignment_School  ON Assignment(SchoolId);
 
-/* ========== Bảng 21: Schedule — LỊCH DẠY (bảng TRUNG TÂM) ==========
+/* ========== Bảng 20: Schedule — LỊCH DẠY (bảng TRUNG TÂM) ==========
    Ý nghĩa : Từng BUỔI dạy cụ thể (ngày-giờ-phòng) sinh ra từ một Assignment,
              kèm quy trình duyệt PENDING → APPROVED/REJECTED/CANCELLED.
    QUAN HỆ : AssignmentId → Assignment,  TeacherId → Teacher (lưu kèm để dò
@@ -550,7 +513,7 @@ CREATE INDEX IX_Schedule_Status       ON Schedule(Status);
    nên quy tắc không trùng lịch được kiểm tra ở tầng Service (Java) bằng truy vấn dùng
    các index ở trên. */
 
-/* ========== Bảng 22: ScheduleStatusLog — NHẬT KÝ ĐỔI TRẠNG THÁI LỊCH ==========
+/* ========== Bảng 21: ScheduleStatusLog — NHẬT KÝ ĐỔI TRẠNG THÁI LỊCH ==========
    Ý nghĩa : Tự động ghi lại mỗi lần Schedule đổi trạng thái (qua trigger ở cuối file).
    QUAN HỆ : ScheduleId → Schedule.  Khóa BIGINT vì số dòng lớn.             */
 CREATE TABLE ScheduleStatusLog (
@@ -570,7 +533,7 @@ CREATE INDEX IX_StatusLog_Schedule ON ScheduleStatusLog(ScheduleId);
    NHÓM 6 — VẬN HÀNH: CHẤM CÔNG, LƯƠNG, ĐÁNH GIÁ, PHẢN HỒI, THÔNG BÁO, AUDIT
    ##################################################################### */
 
-/* ========== Bảng 23: Attendance — CHẤM CÔNG ==========
+/* ========== Bảng 22: Attendance — CHẤM CÔNG ==========
    Ý nghĩa : Ghi nhận giáo viên có dạy buổi đó không, giờ vào/ra.
    PHƯƠNG ÁN chống gian lận (gợi ý): GV tự check-in + TRƯỜNG xác nhận
              (CheckInMethod='SELF', ConfirmedByUserId = tài khoản trường).
@@ -599,7 +562,7 @@ CREATE TABLE Attendance (
 );
 CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
 
-/* ========== Bảng 24: Payroll — BẢNG LƯƠNG (theo tháng) ==========
+/* ========== Bảng 23: Payroll — BẢNG LƯƠNG (theo tháng) ==========
    Ý nghĩa : Lưu đủ thành phần lương để linh hoạt công thức. NetAmount tự tính.
    QUAN HỆ : TeacherId → Teacher. Mỗi GV mỗi tháng chỉ 1 dòng (ràng buộc UNIQUE). */
 CREATE TABLE Payroll (
@@ -625,7 +588,7 @@ CREATE TABLE Payroll (
     CONSTRAINT UX_Payroll_Period UNIQUE (TeacherId, PeriodYear, PeriodMonth)
 );
 
-/* ========== Bảng 25: TeacherEvaluation — ĐÁNH GIÁ GIÁO VIÊN ==========
+/* ========== Bảng 24: TeacherEvaluation — ĐÁNH GIÁ GIÁO VIÊN ==========
    Ý nghĩa : Trường hoặc nhân viên chấm điểm/nhận xét giáo viên.
    QUAN HỆ : TeacherId → Teacher,  EvaluatorUserId → AppUser (người đánh giá),
              SchoolId → School (nếu do trường đánh giá).                      */
@@ -650,7 +613,7 @@ CREATE TABLE TeacherEvaluation (
 );
 CREATE INDEX IX_Eval_Teacher ON TeacherEvaluation(TeacherId);
 
-/* ========== Bảng 26: Feedback — PHẢN HỒI ==========
+/* ========== Bảng 25: Feedback — PHẢN HỒI ==========
    Ý nghĩa : Người dùng (thường là GV) gửi phản hồi; nhân viên xử lý & trả lời.
    QUAN HỆ : SenderUserId → AppUser (người gửi),  HandledByEmployeeId → Employee. */
 CREATE TABLE Feedback (
@@ -671,15 +634,15 @@ CREATE TABLE Feedback (
 );
 CREATE INDEX IX_Feedback_Status ON Feedback(Status);
 
-/* ========== Bảng 27: Notification — THÔNG BÁO ==========
-   Ý nghĩa : Thông báo gửi tới một người dùng (vd: lịch được duyệt, có yêu cầu mới).
+/* ========== Bảng 26: Notification — THÔNG BÁO ==========
+   Ý nghĩa : Thông báo gửi tới một người dùng (vd: lịch được duyệt, có phân công mới).
    QUAN HỆ : RecipientUserId → AppUser (người nhận).  Khóa BIGINT vì rất nhiều. */
 CREATE TABLE Notification (
     NotificationId  BIGINT IDENTITY PRIMARY KEY,
     RecipientUserId INT            NOT NULL,          -- → AppUser (người nhận)
     Title           NVARCHAR(200)  NOT NULL,
     Content         NVARCHAR(1000) NULL,
-    Type            VARCHAR(30)    NULL,              -- SCHEDULE | ASSIGNMENT | REQUEST | SYSTEM...
+    Type            VARCHAR(30)    NULL,              -- SCHEDULE | ASSIGNMENT | SYSTEM...
     RefEntity       VARCHAR(30)    NULL,              -- tên bảng liên quan (để bấm vào xem)
     RefId           BIGINT         NULL,              -- id bản ghi liên quan
     IsRead          BIT            NOT NULL DEFAULT 0,-- đã đọc chưa
@@ -689,7 +652,7 @@ CREATE TABLE Notification (
 );
 CREATE INDEX IX_Notification_Recipient ON Notification(RecipientUserId, IsRead);
 
-/* ========== Bảng 28: AuditLog — NHẬT KÝ HỆ THỐNG ==========
+/* ========== Bảng 27: AuditLog — NHẬT KÝ HỆ THỐNG ==========
    Ý nghĩa : Ghi lại ai làm gì (tạo/sửa/xóa/đăng nhập) trên toàn hệ thống.
    QUAN HỆ : ActorUserId → AppUser (người thực hiện).  Khóa BIGINT.          */
 CREATE TABLE AuditLog (

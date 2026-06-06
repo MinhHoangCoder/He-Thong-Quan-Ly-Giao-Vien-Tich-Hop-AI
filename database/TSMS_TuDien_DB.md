@@ -2,7 +2,7 @@
 # TSMS — Từ điển & Hướng dẫn đọc Database (tiếng Việt)
 
 > Tài liệu dành cho cả nhóm, kể cả thành viên chưa quen thuật ngữ tiếng Anh chuyên ngành.
-> Đọc kèm hai file: `TSMS_Schema.sql` (lõi, 28 bảng) và `TSMS_Schema_AI.sql` (6 bảng AI, làm sau).
+> Đọc kèm hai file: `TSMS_Schema.sql` (lõi, 27 bảng) và `TSMS_Schema_AI.sql` (6 bảng AI, làm sau).
 
 ---
 
@@ -69,7 +69,6 @@
 | SchoolClass | Lớp học |
 | Student | Học sinh |
 | Enrollment | Ghi danh (vào lớp) |
-| TeacherRequest | Yêu cầu giáo viên (trường gửi) |
 | Assignment | Phân công |
 | Schedule | Lịch dạy (từng buổi) |
 | Attendance | Chấm công |
@@ -94,13 +93,13 @@
 **5. Luồng điều phối — phần quan trọng nhất:**
 
 ```
-School  ──gửi──►  TeacherRequest  ──nhân viên xử lý──►  Assignment  ──sinh ra──►  Schedule
-(trường)         (yêu cầu cần GV)                       (phân công)             (từng buổi dạy)
+Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──►  Schedule
+(toàn quyền phân công)          (phân công)               (từng buổi dạy)
 ```
 
-- `TeacherRequest`: trường nêu cần giáo viên cho môn/lớp nào.
-- `Assignment`: nhân viên chốt **giáo viên nào** dạy **trường/môn/lớp nào** trong **giai đoạn nào**. Một giáo viên có thể được phân công cho **nhiều trường**.
+- `Assignment`: nhân viên **trung tâm** chốt **giáo viên nào** dạy **trường/môn/lớp nào** trong **giai đoạn nào**. Trung tâm **toàn quyền** quyết định — trường KHÔNG gửi yêu cầu. Một giáo viên có thể được phân công cho **nhiều trường**.
 - `Schedule`: từ một phân công, tạo ra **các buổi dạy cụ thể** (ngày, giờ, phòng) với trạng thái duyệt `PENDING → APPROVED/REJECTED/CANCELLED`.
+- **Trường** (School) chỉ **xem thống kê & báo cáo**, không tạo dữ liệu điều phối.
 
 **6. Sau buổi dạy.** Mỗi buổi `Schedule` có thể gắn một `Attendance` (chấm công). Mỗi lần `Schedule` đổi trạng thái, hệ thống tự ghi vào `ScheduleStatusLog` (qua trigger).
 
@@ -130,22 +129,21 @@ School  ──gửi──►  TeacherRequest  ──nhân viên xử lý──�
 16. **SchoolClass** — lớp học (thuộc trường).
 17. **Student** — học sinh (không điểm/học phí).
 18. **ClassEnrollment** — nối lớp ⇄ học sinh.
-19. **TeacherRequest** — yêu cầu giáo viên do trường gửi.
-20. **Assignment** — phân công giáo viên.
-21. **Schedule** — lịch dạy từng buổi (bảng trung tâm).
-22. **ScheduleStatusLog** — nhật ký đổi trạng thái lịch.
-23. **Attendance** — chấm công.
-24. **Payroll** — bảng lương theo tháng.
-25. **TeacherEvaluation** — đánh giá giáo viên.
-26. **Feedback** — phản hồi.
-27. **Notification** — thông báo.
-28. **AuditLog** — nhật ký hệ thống.
+19. **Assignment** — phân công giáo viên.
+20. **Schedule** — lịch dạy từng buổi (bảng trung tâm).
+21. **ScheduleStatusLog** — nhật ký đổi trạng thái lịch.
+22. **Attendance** — chấm công.
+23. **Payroll** — bảng lương theo tháng.
+24. **TeacherEvaluation** — đánh giá giáo viên.
+25. **Feedback** — phản hồi.
+26. **Notification** — thông báo.
+27. **AuditLog** — nhật ký hệ thống.
 
 **AI (TSMS_Schema_AI.sql) — làm ở giai đoạn cuối:**
 
-29. **AiSchedulingJob** — một lần chạy AI xếp lịch.
-30. **AiScheduleProposal** — các buổi do AI đề xuất.
-31. **AiMatchSuggestion** — gợi ý ghép giáo viên ⇄ yêu cầu.
-32. **AiConflictAlert** — cảnh báo trùng lịch / quá tải.
-33. **AiConversation** — phiên chatbot.
-34. **AiMessage** — từng tin nhắn trong phiên chat.
+28. **AiSchedulingJob** — một lần chạy AI xếp lịch.
+29. **AiScheduleProposal** — các buổi do AI đề xuất.
+30. **AiMatchSuggestion** — gợi ý ghép giáo viên ⇄ nhu cầu phân công (trung tâm chọn).
+31. **AiConflictAlert** — cảnh báo trùng lịch / quá tải.
+32. **AiConversation** — phiên chatbot.
+33. **AiMessage** — từng tin nhắn trong phiên chat.

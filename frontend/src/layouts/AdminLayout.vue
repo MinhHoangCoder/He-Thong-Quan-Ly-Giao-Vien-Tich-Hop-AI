@@ -31,7 +31,6 @@ const nav = [
   {
     title: 'Điều phối',
     items: [
-      { label: 'Yêu cầu', icon: 'assignment', to: '#', badge: '6' },
       { label: 'Phân công', icon: 'assignment', to: '#' },
       { label: 'Lịch dạy', icon: 'schedule', to: '#' },
       { label: 'Chấm công', icon: 'clock', to: '#' },
@@ -126,15 +125,16 @@ const nav = [
 .sidebar {
   width: var(--sidebar-w);
   flex: 0 0 var(--sidebar-w);
-  background: var(--a-sidebar);
-  color: #c7d2e4;
+  /* nền dốc nhẹ cho có chiều sâu thay vì 1 màu phẳng */
+  background: linear-gradient(180deg, var(--a-sidebar) 0%, var(--a-sidebar-2) 100%);
+  color: #b8ccc7;
   display: flex;
   flex-direction: column;
   position: sticky;
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  transition: width 0.22s, flex-basis 0.22s;
+  transition: width var(--t), flex-basis var(--t);
 }
 .sidebar__brand {
   display: flex;
@@ -152,8 +152,9 @@ const nav = [
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  background: linear-gradient(135deg, #4f8cff, #6f5bff);
+  background: var(--grad-primary);
   color: #fff;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.45);
 }
 .sidebar__nav {
   padding: 0.5rem 0.75rem 1.5rem;
@@ -167,35 +168,54 @@ const nav = [
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #6b7a94;
+  color: #5f7d77;
   white-space: nowrap;
 }
 .navlink {
+  position: relative; /* để vẽ thanh chỉ báo bên trái khi active */
   display: flex;
   align-items: center;
   gap: 0.75rem;
   padding: 0.6rem 0.7rem;
   border-radius: 9px;
-  color: #c7d2e4;
+  color: #b8ccc7;
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: 2px;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
 }
 .navlink:hover {
-  background: #ffffff10;
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
+  transform: translateX(3px); /* nhích nhẹ sang phải khi rê chuột */
+}
+/* icon to nhẹ khi rê chuột */
+.navlink:hover .navlink__icon {
+  transform: scale(1.12);
 }
 .navlink.is-active {
-  background: linear-gradient(135deg, #4f8cff, #6f5bff);
+  background: var(--grad-primary);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(79, 140, 255, 0.35);
+  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.4);
+}
+/* thanh sáng nhỏ bên trái link đang chọn */
+.navlink.is-active::before {
+  content: '';
+  position: absolute;
+  left: -0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 22px;
+  border-radius: 0 4px 4px 0;
+  background: var(--c-accent);
 }
 .navlink__icon {
   flex: 0 0 auto;
   display: grid;
   place-items: center;
+  transition: transform var(--t-fast);
 }
 .navlink__label {
   flex: 1;
@@ -204,8 +224,8 @@ const nav = [
 .navlink__badge {
   font-size: 0.7rem;
   font-weight: 700;
-  background: #ff5b7f;
-  color: #fff;
+  background: var(--c-amber);
+  color: #3a2400;
   padding: 0.05rem 0.4rem;
   border-radius: 20px;
 }
@@ -255,11 +275,12 @@ const nav = [
   background: transparent;
   color: var(--a-text-muted);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
 }
 .iconbtn:hover {
   background: var(--a-bg);
-  color: var(--a-text);
+  color: var(--c-primary);
+  transform: translateY(-1px);
 }
 .iconbtn.has-dot::after {
   content: '';
@@ -269,7 +290,7 @@ const nav = [
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #ff5b7f;
+  background: var(--c-amber);
   border: 2px solid #fff;
 }
 .topbar__menu--mobile {
@@ -287,6 +308,14 @@ const nav = [
   border: 1px solid var(--a-border);
   border-radius: 10px;
   color: var(--a-text-muted);
+  transition: border-color var(--t), box-shadow var(--t), background var(--t);
+}
+/* sáng viền teal khi đang gõ tìm kiếm */
+.topbar__search:focus-within {
+  border-color: var(--c-primary);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+  color: var(--c-primary);
 }
 .topbar__search input {
   border: none;
@@ -310,6 +339,7 @@ const nav = [
   border-radius: 12px;
   cursor: pointer;
   color: var(--a-text-muted);
+  transition: background var(--t-fast);
 }
 .topbar__user:hover {
   background: var(--a-bg);

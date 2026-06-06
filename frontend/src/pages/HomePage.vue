@@ -10,7 +10,7 @@ const features = [
   {
     icon: '🗓️',
     title: 'Điều phối & xếp lịch',
-    desc: 'Yêu cầu → phân công → lịch dạy với quy trình duyệt.',
+    desc: 'Trung tâm phân công → lịch dạy với quy trình duyệt.',
   },
   {
     icon: '🤖',
@@ -28,7 +28,7 @@ const features = [
         Hệ thống quản lý &amp; điều phối giáo viên <span>tích hợp AI</span>
       </h1>
       <p class="hero__desc">
-        Số hóa toàn bộ quy trình từ tiếp nhận yêu cầu, ghép giáo viên, xếp lịch dạy đến chấm công và
+        Số hóa toàn bộ quy trình từ phân công giáo viên, xếp lịch dạy đến chấm công và
         tính lương cho trung tâm giáo dục.
       </p>
       <div class="hero__actions">
@@ -68,11 +68,11 @@ const features = [
   margin: 0 0 1rem;
 }
 .hero__title span {
-  color: #7fd1ff;
+  color: #a7f3d0; /* xanh ngọc nhạt nổi trên nền teal */
 }
 .hero__desc {
   font-size: 1.1rem;
-  color: #dbe6f3;
+  color: #d4f0ea;
   margin: 0 0 2rem;
 }
 .hero__actions {
@@ -100,15 +100,22 @@ const features = [
   padding: 1.5rem;
   background: #fff;
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+    box-shadow var(--t),
+    transform var(--t),
+    border-color var(--t);
 }
 .card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(13, 60, 54, 0.12);
+  transform: translateY(-4px);
+  border-color: var(--c-primary-light);
 }
 .card__icon {
   font-size: 2rem;
+  transition: transform var(--t);
+}
+/* icon nảy nhẹ khi rê chuột vào thẻ */
+.card:hover .card__icon {
+  transform: scale(1.15) rotate(-4deg);
 }
 .card__title {
   margin: 0.75rem 0 0.5rem;
