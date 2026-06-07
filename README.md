@@ -46,10 +46,10 @@ repo-root/
 │       └── utils/        # Helper
 │
 ├── database/       # Schema gốc, migration nguồn, seed, từ điển DB
-│   ├── schema/TSMS_Schema.sql
+│   ├── schema/TSDMS_Schema.sql
 │   ├── migrations/
 │   ├── seed/
-│   └── TSMS_TuDien_DB.md
+│   └── TSDMS_TuDien_DB.md
 │
 ├── docs/           # Tài liệu dự án (spec, sơ đồ...)
 ├── .github/        # CI workflows, template

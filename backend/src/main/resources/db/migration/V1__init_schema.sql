@@ -1,11 +1,11 @@
 /* =====================================================================
-   TSMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
+   TSDMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
    ---------------------------------------------------------------------
    MÔ HÌNH: Trung tâm giáo dục ĐIỀU PHỐI giáo viên đi dạy cho các trường
             khách hàng (chuyên STEM & Công dân số).
    4 ACTOR: ADMIN · EMPLOYEE (nhân viên trung tâm) · SCHOOL (trường) · TEACHER
    DBMS   : Microsoft SQL Server 2019+
-   GHI CHÚ: Phần AI nằm ở file riêng "TSMS_Schema_AI.sql" — chạy SAU file này.
+   GHI CHÚ: Phần AI nằm ở file riêng "TSDMS_Schema_AI.sql" — chạy SAU file này.
    ---------------------------------------------------------------------
    BẢN ĐỒ QUAN HỆ (đọc nhanh):
 
@@ -46,9 +46,9 @@
      - Trạng thái  : VARCHAR ngắn + ràng buộc CHECK (khớp 1-1 với Enum trong Java)
    ===================================================================== */
 
--- CREATE DATABASE TSMS COLLATE Vietnamese_CI_AS;
+-- CREATE DATABASE TSDMS COLLATE Vietnamese_CI_AS;
 -- GO
--- USE TSMS;
+-- USE TSDMS;
 -- GO
 
 

@@ -24,7 +24,7 @@ chưa có entity/service nào đụng tới — nên gần như chỉ sửa tài
   Assignment đã có thể tồn tại không cần request. Bỏ bảng chỉ là dọn cột FK đó đi.
 
 ## 3. Thay đổi ở DATABASE
-File `database/schema/TSMS_Schema.sql` **và** bản sao `backend/.../db/migration/
+File `database/schema/TSDMS_Schema.sql` **và** bản sao `backend/.../db/migration/
 V1__init_schema.sql` (hai file giống hệt nhau — sửa schema xong copy sang migration):
 - **Xóa hẳn** bảng `TeacherRequest` (Bảng 19 cũ) + 2 index `IX_Request_*`.
 - Bảng `Assignment`: bỏ cột `RequestId` + FK `REFERENCES TeacherRequest`.
@@ -33,7 +33,7 @@ V1__init_schema.sql` (hai file giống hệt nhau — sửa schema xong copy san
 - Sửa comment luồng điều phối, header NHÓM 5, comment bảng Subject/School/Notification
   (bỏ chỗ nhắc TeacherRequest). `Notification.Type` bỏ giá trị `REQUEST`.
 
-Từ điển `database/TSMS_TuDien_DB.md`: bỏ mục TeacherRequest, sửa sơ đồ luồng, đánh số
+Từ điển `database/TSDMS_TuDien_DB.md`: bỏ mục TeacherRequest, sửa sơ đồ luồng, đánh số
 lại danh sách (lõi 1–27, AI 28–33), đổi `AiMatchSuggestion` từ "ghép GV ⇄ yêu cầu"
 thành "ghép GV ⇄ **nhu cầu phân công** (trung tâm chọn)".
 
