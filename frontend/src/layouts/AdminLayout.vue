@@ -1,11 +1,23 @@
 <script setup>
 // Layout quản trị: sidebar điều hướng + topbar. Nội dung trang render qua <slot />.
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useLogout } from '@/composables/useLogout'
 
 const collapsed = ref(false) // thu gọn sidebar
 const mobileOpen = ref(false) // mở sidebar trên màn nhỏ
+
+const auth = useAuthStore()
+const onLogout = useLogout()
+const roleLabels = {
+  ADMIN: 'Quản trị viên',
+  EMPLOYEE: 'Nhân viên',
+  SCHOOL: 'Trường',
+  TEACHER: 'Giáo viên',
+}
+const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng')
 
 // Nhóm menu theo nghiệp vụ TSDMS. (to: '#' = chưa làm trang, vẫn hiển thị.)
 const nav = [
@@ -98,11 +110,13 @@ const nav = [
           <div class="topbar__user">
             <img src="https://i.pravatar.cc/64?img=12" alt="avatar" />
             <div class="topbar__user-info">
-              <strong>Prof. Anderson</strong>
-              <small>Quản trị viên</small>
+              <strong>{{ auth.user?.fullName || 'Người dùng' }}</strong>
+              <small>{{ roleLabel }}</small>
             </div>
-            <SvgIcon name="chevron" :size="16" />
           </div>
+          <button class="iconbtn" title="Đăng xuất" @click="onLogout">
+            <SvgIcon name="logout" :size="20" />
+          </button>
         </div>
       </header>
 
@@ -134,7 +148,9 @@ const nav = [
   top: 0;
   height: 100vh;
   overflow-y: auto;
-  transition: width var(--t), flex-basis var(--t);
+  transition:
+    width var(--t),
+    flex-basis var(--t);
 }
 .sidebar__brand {
   display: flex;
@@ -183,7 +199,10 @@ const nav = [
   font-size: 0.9rem;
   font-weight: 500;
   margin-bottom: 2px;
-  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+  transition:
+    background var(--t-fast),
+    color var(--t-fast),
+    transform var(--t-fast);
 }
 .navlink:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -275,7 +294,10 @@ const nav = [
   background: transparent;
   color: var(--a-text-muted);
   cursor: pointer;
-  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+  transition:
+    background var(--t-fast),
+    color var(--t-fast),
+    transform var(--t-fast);
 }
 .iconbtn:hover {
   background: var(--a-bg);
@@ -308,7 +330,10 @@ const nav = [
   border: 1px solid var(--a-border);
   border-radius: 10px;
   color: var(--a-text-muted);
-  transition: border-color var(--t), box-shadow var(--t), background var(--t);
+  transition:
+    border-color var(--t),
+    box-shadow var(--t),
+    background var(--t);
 }
 /* sáng viền teal khi đang gõ tìm kiếm */
 .topbar__search:focus-within {

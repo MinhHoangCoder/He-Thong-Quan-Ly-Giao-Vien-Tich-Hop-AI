@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import HomePage from '@/pages/HomePage.vue'
 import { useAuthStore } from '@/stores/auth'
+import { roleHome } from '@/router/roleHome'
 
 const routes = [
   {
@@ -20,8 +21,20 @@ const routes = [
     path: '/dashboard',
     name: 'dashboard',
     component: () => import('@/pages/DashboardPage.vue'),
-    // Bỏ public -> cần đăng nhập (route guard bên dưới kiểm tra).
-    meta: { layout: 'admin' },
+    // Khu quản trị: chỉ ADMIN & EMPLOYEE.
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/school',
+    name: 'school-home',
+    component: () => import('@/pages/SchoolPage.vue'),
+    meta: { layout: 'blank', roles: ['SCHOOL'] },
+  },
+  {
+    path: '/teacher',
+    name: 'teacher-home',
+    component: () => import('@/pages/TeacherPage.vue'),
+    meta: { layout: 'blank', roles: ['TEACHER'] },
   },
 ]
 
@@ -30,14 +43,21 @@ const router = createRouter({
   routes,
 })
 
-// Route guard: chặn trang cần đăng nhập khi chưa có phiên; đã đăng nhập thì không cho vào /login.
+// Route guard: 3 lớp kiểm tra.
 router.beforeEach((to) => {
   const auth = useAuthStore()
+
+  // 1) Trang cần đăng nhập mà chưa đăng nhập -> đẩy về /login (nhớ trang muốn vào).
   if (!to.meta.public && !auth.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
+  // 2) Đã đăng nhập mà vào /login -> về thẳng "nhà" theo vai trò.
   if (to.name === 'login' && auth.isLoggedIn) {
-    return { name: 'dashboard' }
+    return roleHome(auth.roles)
+  }
+  // 3) Vào trang không thuộc vai trò của mình -> chuyển về "nhà" của vai trò.
+  if (to.meta.roles && auth.isLoggedIn && !to.meta.roles.some((r) => auth.roles.includes(r))) {
+    return roleHome(auth.roles)
   }
   return true
 })

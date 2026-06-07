@@ -5,6 +5,8 @@ import { ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { roleHome } from '@/router/roleHome'
+import SvgIcon from '@/components/ui/SvgIcon.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -33,8 +35,9 @@ async function onLogin() {
       refreshToken: data.refreshToken,
       user: data.user,
     })
-    const redirect = route.query.redirect || '/dashboard'
-    router.push(redirect)
+    // Ưu tiên trang bị chặn trước đó (?redirect=), nếu không thì về "nhà" theo vai trò.
+    const target = route.query.redirect || roleHome(data.user.roles)
+    router.push(target)
   } catch (e) {
     error.value = e.response?.data?.message || 'Đăng nhập thất bại, vui lòng thử lại.'
   } finally {
@@ -81,17 +84,23 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
       </label>
       <label class="field">
         <span>Mật khẩu</span>
-        <input
-          v-model="password"
-          :type="showPassword ? 'text' : 'password'"
-          autocomplete="current-password"
-          required
-        />
-      </label>
-
-      <label class="checkbox">
-        <input v-model="showPassword" type="checkbox" />
-        <span>Hiện mật khẩu</span>
+        <div class="pwd">
+          <input
+            v-model="password"
+            :type="showPassword ? 'text' : 'password'"
+            autocomplete="current-password"
+            required
+          />
+          <button
+            type="button"
+            class="pwd__toggle"
+            :title="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            @click="showPassword = !showPassword"
+          >
+            <SvgIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+          </button>
+        </div>
       </label>
 
       <p v-if="error" class="msg msg--error">{{ error }}</p>
@@ -201,20 +210,34 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
   opacity: 0.6;
   cursor: not-allowed;
 }
-.checkbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #475569;
-  cursor: pointer;
-  margin-top: -4px;
+.pwd {
+  position: relative;
 }
-.checkbox input {
-  width: 15px;
-  height: 15px;
+.pwd input {
+  width: 100%;
+  padding-right: 42px; /* chừa chỗ cho nút con mắt */
+}
+.pwd__toggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
   cursor: pointer;
-  accent-color: var(--c-primary, #0d9488);
+  border-radius: 8px;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.pwd__toggle:hover {
+  color: var(--c-primary, #0d9488);
+  background: rgba(13, 148, 136, 0.08);
 }
 .link {
   background: none;
