@@ -15,6 +15,7 @@ const mode = ref('login') // 'login' | 'forgot'
 // --- Đăng nhập ---
 const username = ref('')
 const password = ref('')
+const showPassword = ref(false) // bật/tắt hiện mật khẩu
 const loading = ref(false)
 const error = ref('')
 
@@ -80,7 +81,17 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
       </label>
       <label class="field">
         <span>Mật khẩu</span>
-        <input v-model="password" type="password" autocomplete="current-password" required />
+        <input
+          v-model="password"
+          :type="showPassword ? 'text' : 'password'"
+          autocomplete="current-password"
+          required
+        />
+      </label>
+
+      <label class="checkbox">
+        <input v-model="showPassword" type="checkbox" />
+        <span>Hiện mật khẩu</span>
       </label>
 
       <p v-if="error" class="msg msg--error">{{ error }}</p>
@@ -189,6 +200,21 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  margin-top: -4px;
+}
+.checkbox input {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--c-primary, #0d9488);
 }
 .link {
   background: none;
