@@ -1,6 +1,6 @@
 import http from './http'
 
-// Mỗi resource một file. Đây là ví dụ cho nhóm Authentication (§9.2).
+// Nhóm API Authentication. baseURL '/api/v1' đã gắn sẵn trong http.js.
 export const authApi = {
   login(payload) {
     // payload: { username, password }
@@ -9,7 +9,22 @@ export const authApi = {
   refresh(refreshToken) {
     return http.post('/auth/refresh', { refreshToken })
   },
-  logout() {
-    return http.post('/auth/logout')
+  logout(refreshToken) {
+    return http.post('/auth/logout', { refreshToken })
+  },
+  // Tạo tài khoản GV/trường (chỉ ADMIN & EMPLOYEE).
+  register(payload) {
+    // payload: { role, username, email, fullName, password, phone, branchId }
+    return http.post('/auth/register', payload)
+  },
+  forgotPassword(email) {
+    return http.post('/auth/forgot-password', { email })
+  },
+  resetPassword(payload) {
+    // payload: { token, newPassword }
+    return http.post('/auth/reset-password', payload)
+  },
+  me() {
+    return http.get('/auth/me')
   },
 }

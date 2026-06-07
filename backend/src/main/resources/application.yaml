@@ -12,6 +12,10 @@ spring:
     hibernate:
       # Flyway quản lý schema -> Hibernate không tự tạo/sửa bảng
       ddl-auto: none
+      naming:
+        # Giữ NGUYÊN tên bảng/cột trong @Table/@Column (PascalCase khớp SQL Server).
+        # Mặc định Spring đổi sang snake_case -> sẽ sai với schema hiện tại.
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
     properties:
       hibernate:
         dialect: org.hibernate.dialect.SQLServerDialect
