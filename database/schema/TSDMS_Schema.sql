@@ -1,11 +1,11 @@
 /* =====================================================================
-   TSMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
+   TSDMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
    ---------------------------------------------------------------------
    MÔ HÌNH: Trung tâm giáo dục ĐIỀU PHỐI giáo viên đi dạy cho các trường
             khách hàng (chuyên STEM & Công dân số).
    4 ACTOR: ADMIN · EMPLOYEE (nhân viên trung tâm) · SCHOOL (trường) · TEACHER
    DBMS   : Microsoft SQL Server 2019+
-   GHI CHÚ: Phần AI nằm ở file riêng "TSMS_Schema_AI.sql" — chạy SAU file này.
+   GHI CHÚ: Phần AI nằm ở file riêng "TSDMS_Schema_AI.sql" — chạy SAU file này.
    ---------------------------------------------------------------------
    BẢN ĐỒ QUAN HỆ (đọc nhanh):
 
@@ -46,10 +46,13 @@
      - Trạng thái  : VARCHAR ngắn + ràng buộc CHECK (khớp 1-1 với Enum trong Java)
    ===================================================================== */
 
--- CREATE DATABASE TSMS COLLATE Vietnamese_CI_AS;
--- GO
--- USE TSMS;
--- GO
+/* Bấm Execute là chạy trọn gói: tạo DB (nếu chưa có) -> chuyển sang dùng DB
+   -> tạo bảng theo đúng thứ tự phụ thuộc -> seed. Các 'GO' tách BATCH cho SQL Server. */
+IF DB_ID('TSDMS') IS NULL
+    CREATE DATABASE TSDMS COLLATE Vietnamese_CI_AS;
+GO
+USE TSDMS;
+GO
 
 
 /* #####################################################################
@@ -160,6 +163,23 @@ CREATE TABLE RefreshToken (
 );
 CREATE INDEX IX_RefreshToken_AppUser ON RefreshToken(AppUserId);  -- tra token theo user
 CREATE INDEX IX_RefreshToken_Hash    ON RefreshToken(TokenHash);  -- tra theo token
+
+/* ========== Bảng 7b: PasswordResetToken — TOKEN đặt lại mật khẩu (QUÊN MẬT KHẨU) ==========
+   Ý nghĩa : Khi user bấm "quên mật khẩu", hệ thống sinh 1 token, gửi link qua email.
+             Ở DB chỉ lưu HASH của token (không lưu token thô), có hạn dùng NGẮN và cột
+             UsedAt để token chỉ dùng được MỘT lần.
+   QUAN HỆ : AppUserId → AppUser.                                                          */
+CREATE TABLE PasswordResetToken (
+    PasswordResetTokenId BIGINT IDENTITY PRIMARY KEY,
+    AppUserId   INT          NOT NULL,                -- → AppUser.AppUserId
+    TokenHash   VARCHAR(255) NOT NULL,               -- HASH của token reset (SHA-256)
+    ExpiresAt   DATETIME2(3) NOT NULL,               -- hạn dùng (vd 30 phút)
+    UsedAt      DATETIME2(3) NULL,                   -- đã dùng lúc nào (NULL = chưa dùng)
+    CreatedAt   DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId)
+);
+CREATE INDEX IX_PwdReset_Hash    ON PasswordResetToken(TokenHash);  -- tra theo token
+CREATE INDEX IX_PwdReset_AppUser ON PasswordResetToken(AppUserId);  -- tra theo user
 
 
 /* #####################################################################
@@ -698,4 +718,53 @@ INSERT INTO Role (Name, Description) VALUES
  ('EMPLOYEE', N'Nhân viên trung tâm (giới hạn theo chi nhánh)'),
  ('SCHOOL',   N'Tài khoản trường khách hàng'),
  ('TEACHER',  N'Giáo viên');
+GO
+
+/* #####################################################################
+   SEED — 4 tài khoản mẫu đại diện 4 ACTOR  (mật khẩu chung: Tsdms@123)
+   Quy ước: gán quan hệ theo Username/Name (KHÔNG hard-code Id tự tăng).
+   ##################################################################### */
+
+-- 1 chi nhánh gốc để gắn nhân viên/giáo viên/trường
+INSERT INTO Branch (Name, Address, Phone) VALUES
+ (N'Chi nhánh trung tâm', N'Hà Nội', '0240000000');
+GO
+
+-- 4 tài khoản đăng nhập. PasswordHash = BCrypt('Tsdms@123').
+INSERT INTO AppUser (Username, PasswordHash, Email, FullName, Phone) VALUES
+ ('admin',    '$2b$10$ohMPL3S6/wcDn/t4v17ASuo1v6vfwB.ZVVH/g/OpNWahstMRKt20m', 'admin@tsdms.local',    N'Quản trị viên',       '0900000001'),
+ ('employee', '$2b$10$O419OLGJ23IaXz9oT9DYL.Xhk/uMJDpbHr8SKQgjgEysVakGT1NkO', 'employee@tsdms.local', N'Nhân viên trung tâm', '0900000002'),
+ ('school',   '$2b$10$bj4N5E1LwiGBEZIkgfAFmuCZgE2unPmyQr9kjwBrOeradCNmKAvWm', 'school@tsdms.local',   N'Trường THPT Demo',    '0900000003'),
+ ('teacher',  '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK', 'teacher@tsdms.local',  N'Giáo viên Demo',      '0900000004');
+GO
+
+-- Gán vai trò cho từng tài khoản (tra theo tên, không phụ thuộc Id)
+INSERT INTO UserRole (AppUserId, RoleId)
+SELECT u.AppUserId, r.RoleId
+FROM AppUser u
+JOIN Role r ON (u.Username = 'admin'    AND r.Name = 'ADMIN')
+            OR (u.Username = 'employee' AND r.Name = 'EMPLOYEE')
+            OR (u.Username = 'school'   AND r.Name = 'SCHOOL')
+            OR (u.Username = 'teacher'  AND r.Name = 'TEACHER');
+GO
+
+-- Hồ sơ Nhân viên (1-1 với AppUser 'employee', gắn chi nhánh)
+INSERT INTO Employee (AppUserId, BranchId, Position)
+SELECT u.AppUserId, b.BranchId, N'Điều phối viên'
+FROM AppUser u CROSS JOIN Branch b
+WHERE u.Username = 'employee' AND b.Name = N'Chi nhánh trung tâm';
+GO
+
+-- Hồ sơ Giáo viên (1-1 với AppUser 'teacher')
+INSERT INTO Teacher (AppUserId, BranchId, FullName, EmploymentType)
+SELECT u.AppUserId, b.BranchId, N'Giáo viên Demo', 'FULL_TIME'
+FROM AppUser u CROSS JOIN Branch b
+WHERE u.Username = 'teacher' AND b.Name = N'Chi nhánh trung tâm';
+GO
+
+-- Hồ sơ Trường (1-1 với AppUser 'school')
+INSERT INTO School (BranchId, Name, AppUserId, ContactPerson)
+SELECT b.BranchId, N'Trường THPT Demo', u.AppUserId, N'Thầy Hiệu trưởng'
+FROM AppUser u CROSS JOIN Branch b
+WHERE u.Username = 'school' AND b.Name = N'Chi nhánh trung tâm';
 GO

@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import HomePage from '@/pages/HomePage.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const routes = [
   {
@@ -10,23 +11,18 @@ const routes = [
     meta: { layout: 'default', public: true },
   },
   {
+    path: '/login',
+    name: 'login',
+    component: () => import('@/pages/LoginPage.vue'),
+    meta: { layout: 'blank', public: true },
+  },
+  {
     path: '/dashboard',
     name: 'dashboard',
-    // () => import(...) = LAZY LOAD: file trang chỉ tải về trình duyệt KHI vào
-    // /dashboard, không tải sẵn lúc mở app → app nhẹ hơn. (HomePage import thẳng
-    // ở đầu file vì là trang chủ, cần ngay.)
     component: () => import('@/pages/DashboardPage.vue'),
-    // meta = dữ liệu phụ tự gắn cho route. 'layout' là QUY ƯỚC RIÊNG của dự án:
-    // App.vue đọc nó để chọn khung (xem App.vue). public:true = chưa cần đăng nhập.
-    meta: { layout: 'admin', public: true },
+    // Bỏ public -> cần đăng nhập (route guard bên dưới kiểm tra).
+    meta: { layout: 'admin' },
   },
-  // Ví dụ trang dùng layout trống (cho login sau này):
-  // {
-  //   path: '/login',
-  //   name: 'login',
-  //   component: () => import('@/pages/LoginPage.vue'),
-  //   meta: { layout: 'blank', public: true },
-  // },
 ]
 
 const router = createRouter({
@@ -34,13 +30,15 @@ const router = createRouter({
   routes,
 })
 
-// Route guard: kiểm tra đăng nhập/role.
-// Hiện tại mọi route đang public; khi làm phần login thì bật phần kiểm tra bên dưới.
+// Route guard: chặn trang cần đăng nhập khi chưa có phiên; đã đăng nhập thì không cho vào /login.
 router.beforeEach((to) => {
-  // const auth = useAuthStore()
-  // if (!to.meta.public && !auth.isLoggedIn) {
-  //   return { name: 'login' }
-  // }
+  const auth = useAuthStore()
+  if (!to.meta.public && !auth.isLoggedIn) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.name === 'login' && auth.isLoggedIn) {
+    return { name: 'dashboard' }
+  }
   return true
 })
 

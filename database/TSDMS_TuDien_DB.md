@@ -1,8 +1,7 @@
-[TSMS_TuDien_DB.md](https://github.com/user-attachments/files/28629495/TSMS_TuDien_DB.md)
-# TSMS — Từ điển & Hướng dẫn đọc Database (tiếng Việt)
+# TSDMS — Từ điển & Hướng dẫn đọc Database (tiếng Việt)
 
 > Tài liệu dành cho cả nhóm, kể cả thành viên chưa quen thuật ngữ tiếng Anh chuyên ngành.
-> Đọc kèm hai file: `TSMS_Schema.sql` (lõi, 27 bảng) và `TSMS_Schema_AI.sql` (6 bảng AI, làm sau).
+> Đọc kèm hai file: `TSDMS_Schema.sql` (lõi, 27 bảng) và `TSDMS_Schema_AI.sql` (6 bảng AI, làm sau).
 
 ---
 
@@ -109,7 +108,7 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 
 ## Phần C — Mục đích từng bảng (1 dòng)
 
-**Lõi (TSMS_Schema.sql):**
+**Lõi (TSDMS_Schema.sql):**
 
 1. **Branch** — chi nhánh của trung tâm.
 2. **AppUser** — tài khoản đăng nhập của mọi người dùng.
@@ -139,7 +138,7 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 26. **Notification** — thông báo.
 27. **AuditLog** — nhật ký hệ thống.
 
-**AI (TSMS_Schema_AI.sql) — làm ở giai đoạn cuối:**
+**AI (TSDMS_Schema_AI.sql) — làm ở giai đoạn cuối:**
 
 28. **AiSchedulingJob** — một lần chạy AI xếp lịch.
 29. **AiScheduleProposal** — các buổi do AI đề xuất.
