@@ -97,6 +97,12 @@
             <artifactId>spring-boot-starter-webservices-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Umbrella test starter: đảm bảo JUnit 5 + Mockito + AssertJ cho unit test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
