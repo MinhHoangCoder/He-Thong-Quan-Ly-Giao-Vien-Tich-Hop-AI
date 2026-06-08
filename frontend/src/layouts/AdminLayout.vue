@@ -28,6 +28,7 @@ const nav = [
   {
     title: 'Nhân sự',
     items: [
+      { label: 'Tạo tài khoản', icon: 'plus', to: '/users/new' },
       { label: 'Giáo viên', icon: 'teacher', to: '#', badge: '128' },
       { label: 'Môn học', icon: 'subject', to: '#' },
       { label: 'Đánh giá', icon: 'evaluation', to: '#' },

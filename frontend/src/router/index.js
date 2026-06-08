@@ -36,6 +36,19 @@ const routes = [
     component: () => import('@/pages/TeacherPage.vue'),
     meta: { layout: 'blank', roles: ['TEACHER'] },
   },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: () => import('@/pages/ResetPasswordPage.vue'),
+    meta: { layout: 'blank', public: true },
+  },
+  {
+    // Tạo tài khoản GV/Trường — chỉ ADMIN & EMPLOYEE.
+    path: '/users/new',
+    name: 'user-create',
+    component: () => import('@/pages/RegisterUserPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]
 
 const router = createRouter({
