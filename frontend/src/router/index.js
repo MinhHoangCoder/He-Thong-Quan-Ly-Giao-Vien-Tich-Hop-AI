@@ -27,14 +27,14 @@ const routes = [
   {
     path: '/school',
     name: 'school-home',
-    component: () => import('@/pages/SchoolPage.vue'),
-    meta: { layout: 'blank', roles: ['SCHOOL'] },
+    component: () => import('@/pages/SchoolDashboardPage.vue'),
+    meta: { layout: 'school', roles: ['SCHOOL'] },
   },
   {
     path: '/teacher',
     name: 'teacher-home',
-    component: () => import('@/pages/TeacherPage.vue'),
-    meta: { layout: 'blank', roles: ['TEACHER'] },
+    component: () => import('@/pages/TeacherDashboardPage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
   },
   {
     path: '/reset-password',
