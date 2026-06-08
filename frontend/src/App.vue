@@ -17,11 +17,19 @@ import { useRoute } from 'vue-router'
 import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import BlankLayout from '@/layouts/BlankLayout.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
+import TeacherLayout from '@/layouts/TeacherLayout.vue'
+import SchoolLayout from '@/layouts/SchoolLayout.vue'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
 // Bảng tra: chữ trong meta.layout  →  component layout tương ứng.
-const layouts = { default: DefaultLayout, blank: BlankLayout, admin: AdminLayout }
+const layouts = {
+  default: DefaultLayout,
+  blank: BlankLayout,
+  admin: AdminLayout,
+  teacher: TeacherLayout,
+  school: SchoolLayout,
+}
 
 // computed = tự tính lại mỗi khi route đổi. Lấy layout theo nhãn; không có thì
 // mặc định DefaultLayout (nhờ '|| DefaultLayout').
