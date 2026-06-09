@@ -44,13 +44,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parse(token).getPayload();
                 String username = claims.getSubject();
                 List<String> roles = claims.get("roles", List.class);
+                Object uidClaim = claims.get("uid");
+                Integer userId = (uidClaim instanceof Number num) ? num.intValue() : null;
 
                 // Spring quy ước quyền vai trò bắt đầu bằng "ROLE_" để hasRole(...) nhận diện.
                 var authorities = roles.stream()
                         .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
                         .toList();
 
-                var authentication = new UsernamePasswordAuthenticationToken(username, null, authorities);
+                // Principal mang theo userId -> tầng service kiểm tra quyền SỞ HỮU dữ liệu
+                // (chống IDOR) mà không phải truy vấn DB lại. getName() vẫn trả về username.
+                var principal = new AuthPrincipal(userId, username);
+                var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (JwtException | IllegalArgumentException ex) {
                 // Token không hợp lệ -> không set authentication (coi như ẩn danh).

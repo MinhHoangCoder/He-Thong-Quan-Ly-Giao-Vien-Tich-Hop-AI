@@ -29,9 +29,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final RateLimitingFilter rateLimitingFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitingFilter rateLimitingFilter) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.rateLimitingFilter = rateLimitingFilter;
     }
 
     /** Mã hóa mật khẩu bằng BCrypt (khớp hash $2b$ đã seed trong DB). */
@@ -60,7 +62,9 @@ public class SecurityConfig {
                         // Mọi request khác phải đăng nhập
                         .anyRequest()
                         .authenticated())
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // Rate limit chạy TRƯỚC cả filter JWT để chặn brute-force ngay từ sớm.
+                .addFilterBefore(rateLimitingFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 
