@@ -9,7 +9,7 @@ const props = defineProps({
   value: { type: [String, Number], required: true },
   hint: { type: String, default: '' },
   trend: { type: Number, default: null }, // % tăng/giảm; >0 xanh, <0 đỏ
-  color: { type: String, default: '#0d9488' }, // màu nhấn của icon
+  color: { type: String, default: '#f97316' }, // màu nhấn của icon
 })
 
 // ⭐ HIỆU ỨNG ĐẾM SỐ (count-up): khi thẻ vừa hiện, số nhảy từ 0 → giá trị thật.
@@ -46,11 +46,7 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
       <p class="stat__label">{{ label }}</p>
       <p class="stat__value">{{ display }}</p>
       <p v-if="hint || trend !== null" class="stat__meta">
-        <span
-          v-if="trend !== null"
-          class="stat__trend"
-          :class="trend >= 0 ? 'is-up' : 'is-down'"
-        >
+        <span v-if="trend !== null" class="stat__trend" :class="trend >= 0 ? 'is-up' : 'is-down'">
           <SvgIcon :name="trend >= 0 ? 'up' : 'down'" :size="13" />
           {{ Math.abs(trend) }}%
         </span>
@@ -72,7 +68,9 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
   padding: 1.15rem 1.25rem;
   box-shadow: var(--a-shadow);
   overflow: hidden;
-  transition: transform var(--t), box-shadow var(--t);
+  transition:
+    transform var(--t),
+    box-shadow var(--t);
 }
 /* vạch màu nhấn bên trái, hiện ra khi rê chuột */
 .stat::before {

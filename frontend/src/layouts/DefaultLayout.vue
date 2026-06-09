@@ -1,5 +1,6 @@
 <script setup>
 import { RouterLink } from 'vue-router'
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 
 const year = new Date().getFullYear()
 </script>
@@ -9,8 +10,8 @@ const year = new Date().getFullYear()
     <header class="layout__header">
       <div class="container layout__bar">
         <RouterLink to="/" class="brand">
-          <span class="brand__logo">TSDMS</span>
-          <span class="brand__sub">Điều phối giáo viên</span>
+          <BrandLogo :size="34" />
+          <span class="brand__sub">Điều phối giáo viên · tích hợp AI</span>
         </RouterLink>
 
         <nav class="nav">
@@ -31,7 +32,7 @@ const year = new Date().getFullYear()
 
     <footer id="contact" class="layout__footer">
       <div class="container">
-        <p>© {{ year }} TSDMS — Teacher Schedule &amp; Dispatch Management System.</p>
+        <p>© {{ year }} KDC EduOps AI — Hệ thống quản lý &amp; điều phối giáo viên.</p>
       </div>
     </footer>
   </div>
@@ -89,9 +90,12 @@ const year = new Date().getFullYear()
   flex: 1;
 }
 .layout__footer {
-  background: var(--c-primary-dark);
+  background: var(--a-sidebar);
   color: #cdd7e5;
   padding: 1.25rem 0;
   font-size: 0.9rem;
+}
+.brand__sub {
+  margin-top: 2px;
 }
 </style>

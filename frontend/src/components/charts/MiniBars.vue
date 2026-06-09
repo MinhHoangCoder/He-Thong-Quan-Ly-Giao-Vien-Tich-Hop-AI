@@ -4,7 +4,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   data: { type: Array, required: true },
-  color: { type: String, default: '#0d9488' },
+  color: { type: String, default: '#f97316' },
 })
 
 const max = computed(() => Math.max(1, ...props.data))
@@ -33,7 +33,9 @@ const max = computed(() => Math.max(1, ...props.data))
   min-width: 4px;
   border-radius: 3px 3px 0 0;
   opacity: 0.55;
-  transition: height var(--t-slow), opacity var(--t-fast);
+  transition:
+    height var(--t-slow),
+    opacity var(--t-fast);
 }
 .bars__bar:last-child {
   opacity: 1;

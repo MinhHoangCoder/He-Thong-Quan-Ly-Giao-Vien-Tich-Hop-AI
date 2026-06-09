@@ -10,7 +10,7 @@ const auth = useAuthStore()
 const schoolName = computed(() => auth.user?.fullName || 'Trường')
 
 const stats = [
-  { icon: 'teacher', label: 'Giáo viên đang dạy', value: 12, hint: 'tại trường', color: '#0d9488' },
+  { icon: 'teacher', label: 'Giáo viên đang dạy', value: 12, hint: 'tại trường', color: '#f97316' },
   {
     icon: 'attendance',
     label: 'Lớp đang học',
@@ -32,7 +32,7 @@ const stats = [
     label: 'Môn triển khai',
     value: 6,
     hint: 'STEM & Công dân số',
-    color: '#22c55e',
+    color: '#2563eb',
   },
 ]
 
@@ -47,9 +47,9 @@ const statusClass = (s) => (s === 'Đang dạy' ? 'is-ok' : s === 'Sắp bắt �
 
 // Lịch dạy hôm nay tại trường
 const todaySchedule = [
-  { time: '08:00', subject: 'Robotics', teacher: 'Nguyễn Minh', room: 'P.A1', color: '#0d9488' },
+  { time: '08:00', subject: 'Robotics', teacher: 'Nguyễn Minh', room: 'P.A1', color: '#f97316' },
   { time: '09:30', subject: 'Scratch', teacher: 'Trần Lan', room: 'P.A2', color: '#0ea5e9' },
-  { time: '14:00', subject: 'Tiếng Anh STEM', teacher: 'Lê Hoa', room: 'P.B3', color: '#22c55e' },
+  { time: '14:00', subject: 'Tiếng Anh STEM', teacher: 'Lê Hoa', room: 'P.B3', color: '#2563eb' },
 ]
 </script>
 
@@ -151,14 +151,14 @@ const todaySchedule = [
   font-size: 0.9rem;
   color: #fff;
   background: var(--grad-primary);
-  box-shadow: 0 8px 18px rgba(13, 148, 136, 0.32);
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.32);
   transition:
     transform var(--t-fast),
     box-shadow var(--t-fast);
 }
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(13, 148, 136, 0.42);
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.42);
 }
 .stat-grid {
   display: grid;

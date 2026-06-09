@@ -2,37 +2,43 @@
    ⭐ BIẾN MÀU & CHUYỂN ĐỘNG DÙNG CHUNG (design tokens)
    Sửa màu/hiệu ứng cả web CHỈ cần sửa ở đây — các component đọc lại qua var().
 
-   Bảng màu: "Xanh ngọc + Xanh lá" (giáo dục) — teal chủ đạo, xanh lá nhấn,
-   amber/sky làm màu phụ cho biểu đồ & badge.
+   Bảng màu KDC EduOps AI: TRẮNG · CAM · XANH LAM.
+   - Cam (#f97316) = màu chính / nút CTA / trạng thái active.
+   - Xanh lam (#2563eb) = màu phụ / cấu trúc; navy (#0b2a4a) cho sidebar.
+   - Nền trắng ngả xanh nhạt cho vùng làm việc.
    ============================================================================ */
 :root {
   /* --- Màu thương hiệu --- */
-  --c-primary: #0d9488; /* teal chủ đạo */
-  --c-primary-dark: #0b7a70; /* teal đậm (hover nút) */
-  --c-primary-light: #14b8a6; /* teal sáng */
-  --c-accent: #22c55e; /* xanh lá nhấn */
-  --c-amber: #f59e0b; /* màu phụ (cảnh báo nhẹ) */
+  --c-primary: #f97316; /* cam chủ đạo */
+  --c-primary-dark: #ea580c; /* cam đậm (hover nút) */
+  --c-primary-light: #fb923c; /* cam sáng */
+  --c-accent: #2563eb; /* xanh lam nhấn */
+  --c-accent-dark: #1d4ed8; /* xanh lam đậm */
+  --c-amber: #f59e0b; /* màu phụ (badge/cảnh báo nhẹ) */
   --c-sky: #0ea5e9; /* màu phụ (biểu đồ) */
+  --c-success: #22c55e; /* xanh lá: trạng thái tốt/tăng */
   --c-danger: #ef4444;
 
-  /* gradient chủ đạo — dùng lại cho logo, nút chính, link active... */
-  --grad-primary: linear-gradient(135deg, #0d9488 0%, #16a34a 100%);
+  /* gradient chủ đạo (cam) — nút chính, link active, logo chip... */
+  --grad-primary: linear-gradient(135deg, #fb923c 0%, #f97316 100%);
+  /* gradient thương hiệu (xanh→cam) — hero đăng nhập, mảng nhận diện lớn */
+  --grad-hero: linear-gradient(135deg, #1d4ed8 0%, #0b2a4a 55%, #f97316 135%);
 
-  /* --- Nền & chữ (tông xanh ấm) --- */
-  --c-text: #14302c;
-  --c-text-muted: #5f7a74;
-  --c-border: #e2efeb;
-  --c-bg: #f3faf8;
+  /* --- Nền & chữ (tông trung tính ngả xanh) --- */
+  --c-text: #0f172a;
+  --c-text-muted: #64748b;
+  --c-border: #e6ebf2;
+  --c-bg: #f5f8fc;
 
   /* --- Khu vực quản trị (admin) --- */
-  --a-bg: #f3faf8;
-  --a-sidebar: #0f2e2c; /* xanh than ngả ngọc */
-  --a-sidebar-2: #0a201e;
-  --a-text: #14302c;
-  --a-text-muted: #6b857f;
-  --a-border: #e4efec;
-  --a-shadow: 0 4px 16px rgba(13, 60, 54, 0.06);
-  --a-shadow-lg: 0 14px 32px rgba(13, 60, 54, 0.14);
+  --a-bg: #f5f8fc;
+  --a-sidebar: #0b2a4a; /* navy xanh lam */
+  --a-sidebar-2: #07203b;
+  --a-text: #0f172a;
+  --a-text-muted: #6b7a90;
+  --a-border: #e6ebf2;
+  --a-shadow: 0 4px 16px rgba(15, 40, 80, 0.07);
+  --a-shadow-lg: 0 14px 32px rgba(15, 40, 80, 0.14);
 
   /* --- Chuyển động dùng chung --- */
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
@@ -98,12 +104,12 @@ a {
 .btn--primary {
   background: var(--c-primary);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.28);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.3);
 }
 .btn--primary:hover {
   background: var(--c-primary-dark);
   transform: translateY(-2px);
-  box-shadow: 0 10px 22px rgba(13, 148, 136, 0.38);
+  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.4);
 }
 .btn--ghost {
   background: transparent;

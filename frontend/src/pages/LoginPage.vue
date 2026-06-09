@@ -7,6 +7,7 @@ import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { roleHome } from '@/router/roleHome'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -69,103 +70,257 @@ function fillDemo(u) {
   password.value = 'Tsdms@123'
 }
 const demoAccounts = ['admin', 'employee', 'school', 'teacher']
+
+// Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
+const features = [
+  { icon: 'assignment', label: 'Phân công & điều phối' },
+  { icon: 'schedule', label: 'Lịch dạy trực quan' },
+  { icon: 'ai', label: 'Trợ lý AI hỗ trợ' },
+  { icon: 'evaluation', label: 'Báo cáo & đánh giá' },
+]
 </script>
 
 <template>
-  <div class="login-card">
-    <h1 class="login-title">TSDMS</h1>
-    <p class="login-sub">Hệ thống quản lý &amp; điều phối giáo viên</p>
-
-    <!-- CHẾ ĐỘ ĐĂNG NHẬP -->
-    <form v-if="mode === 'login'" @submit.prevent="onLogin" class="form">
-      <label class="field">
-        <span>Tên đăng nhập</span>
-        <input v-model="username" type="text" autocomplete="username" required />
-      </label>
-      <label class="field">
-        <span>Mật khẩu</span>
-        <div class="pwd">
-          <input
-            v-model="password"
-            :type="showPassword ? 'text' : 'password'"
-            autocomplete="current-password"
-            required
-          />
-          <button
-            type="button"
-            class="pwd__toggle"
-            :title="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-            :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-            @click="showPassword = !showPassword"
-          >
-            <SvgIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
-          </button>
-        </div>
-      </label>
-
-      <p v-if="error" class="msg msg--error">{{ error }}</p>
-
-      <button class="btn" type="submit" :disabled="loading">
-        {{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}
-      </button>
-
-      <button type="button" class="link" @click="mode = 'forgot'">Quên mật khẩu?</button>
-
-      <div class="demo">
-        <p class="demo__title">Tài khoản demo (mật khẩu: <code>Tsdms@123</code>)</p>
-        <div class="demo__chips">
-          <button
-            v-for="u in demoAccounts"
-            :key="u"
-            type="button"
-            class="chip"
-            @click="fillDemo(u)"
-          >
-            {{ u }}
-          </button>
-        </div>
+  <div class="auth">
+    <!-- ===== HERO (trái) ===== -->
+    <aside class="auth__hero">
+      <div class="auth__glow auth__glow--1" />
+      <div class="auth__glow auth__glow--2" />
+      <div class="auth__hero-inner fade-up">
+        <BrandLogo :size="48" variant="light" class="auth__brand" />
+        <h2 class="auth__headline">
+          Vận hành & điều phối giáo viên
+          <span class="auth__headline-accent">tích hợp AI</span>
+        </h2>
+        <p class="auth__tagline">
+          Phân công thông minh · Lịch dạy · Chấm công · Báo cáo — tất cả trong một nền tảng.
+        </p>
+        <ul class="auth__features">
+          <li v-for="f in features" :key="f.label">
+            <span class="hexchip"><SvgIcon :name="f.icon" :size="20" /></span>
+            {{ f.label }}
+          </li>
+        </ul>
       </div>
-    </form>
+    </aside>
 
-    <!-- CHẾ ĐỘ QUÊN MẬT KHẨU -->
-    <form v-else @submit.prevent="onForgot" class="form">
-      <p class="login-sub">Nhập email tài khoản, hệ thống sẽ gửi liên kết đặt lại mật khẩu.</p>
-      <label class="field">
-        <span>Email</span>
-        <input v-model="forgotEmail" type="email" required />
-      </label>
+    <!-- ===== PANEL ĐĂNG NHẬP (phải) ===== -->
+    <main class="auth__panel">
+      <div class="login-card fade-up">
+        <BrandLogo :size="44" :show-text="false" class="login-mark" />
+        <h1 class="login-title">KDC EduOps AI</h1>
+        <p class="login-sub">Hệ thống quản lý &amp; điều phối giáo viên</p>
 
-      <p v-if="forgotMsg" class="msg msg--ok">{{ forgotMsg }}</p>
+        <!-- CHẾ ĐỘ ĐĂNG NHẬP -->
+        <form v-if="mode === 'login'" @submit.prevent="onLogin" class="form">
+          <label class="field">
+            <span>Tên đăng nhập</span>
+            <input v-model="username" type="text" autocomplete="username" required />
+          </label>
+          <label class="field">
+            <span>Mật khẩu</span>
+            <div class="pwd">
+              <input
+                v-model="password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                class="pwd__toggle"
+                :title="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                @click="showPassword = !showPassword"
+              >
+                <SvgIcon :name="showPassword ? 'eye-off' : 'eye'" :size="18" />
+              </button>
+            </div>
+          </label>
 
-      <button class="btn" type="submit" :disabled="forgotLoading">
-        {{ forgotLoading ? 'Đang gửi…' : 'Gửi liên kết đặt lại' }}
-      </button>
-      <button type="button" class="link" @click="mode = 'login'">← Quay lại đăng nhập</button>
-    </form>
+          <p v-if="error" class="msg msg--error">{{ error }}</p>
+
+          <button class="btn" type="submit" :disabled="loading">
+            {{ loading ? 'Đang đăng nhập…' : 'Đăng nhập' }}
+          </button>
+
+          <button type="button" class="link" @click="mode = 'forgot'">Quên mật khẩu?</button>
+
+          <div class="demo">
+            <p class="demo__title">Tài khoản demo (mật khẩu: <code>Tsdms@123</code>)</p>
+            <div class="demo__chips">
+              <button
+                v-for="u in demoAccounts"
+                :key="u"
+                type="button"
+                class="chip"
+                @click="fillDemo(u)"
+              >
+                {{ u }}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- CHẾ ĐỘ QUÊN MẬT KHẨU -->
+        <form v-else @submit.prevent="onForgot" class="form">
+          <p class="login-sub">Nhập email tài khoản, hệ thống sẽ gửi liên kết đặt lại mật khẩu.</p>
+          <label class="field">
+            <span>Email</span>
+            <input v-model="forgotEmail" type="email" required />
+          </label>
+
+          <p v-if="forgotMsg" class="msg msg--ok">{{ forgotMsg }}</p>
+
+          <button class="btn" type="submit" :disabled="forgotLoading">
+            {{ forgotLoading ? 'Đang gửi…' : 'Gửi liên kết đặt lại' }}
+          </button>
+          <button type="button" class="link" @click="mode = 'login'">← Quay lại đăng nhập</button>
+        </form>
+      </div>
+    </main>
   </div>
 </template>
 
 <style scoped>
+.auth {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* ===== HERO ===== */
+.auth__hero {
+  position: relative;
+  flex: 1.05;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 3rem;
+  color: #fff;
+  background: var(--grad-hero);
+}
+/* lưới mạch điện mờ tạo chiều sâu công nghệ (như ảnh bìa) */
+.auth__hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(circle at 30% 40%, #000 0%, transparent 75%);
+}
+.auth__glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.auth__glow--1 {
+  width: 320px;
+  height: 320px;
+  top: -80px;
+  right: -60px;
+  background: #f97316;
+}
+.auth__glow--2 {
+  width: 280px;
+  height: 280px;
+  bottom: -90px;
+  left: -40px;
+  background: #2563eb;
+}
+.auth__hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 440px;
+}
+.auth__brand {
+  margin-bottom: 1.75rem;
+}
+.auth__brand :deep(.brandlogo__text) {
+  font-size: 1.35rem;
+}
+.auth__headline {
+  margin: 0 0 0.85rem;
+  font-size: 2.05rem;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+.auth__headline-accent {
+  display: inline-block;
+  color: #ffb877;
+}
+.auth__tagline {
+  margin: 0 0 2rem;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+}
+.auth__features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+.auth__features li {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-weight: 600;
+  font-size: 0.97rem;
+}
+.hexchip {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  box-shadow: 0 0 18px rgba(37, 99, 235, 0.25);
+}
+
+/* ===== PANEL ===== */
+.auth__panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.25rem;
+  background: var(--c-bg);
+}
 .login-card {
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
   padding: 32px;
-  border-radius: 16px;
+  border-radius: 18px;
   background: #fff;
-  box-shadow: 0 10px 40px rgba(13, 148, 136, 0.12);
-  border: 1px solid rgba(13, 148, 136, 0.1);
+  box-shadow: 0 18px 50px rgba(15, 40, 80, 0.12);
+  border: 1px solid var(--c-border);
+}
+.login-mark {
+  display: block;
+  margin: 0 auto 10px;
+  width: fit-content;
 }
 .login-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 800;
   text-align: center;
-  color: var(--c-primary, #0d9488);
+  color: var(--c-text);
 }
 .login-sub {
   margin: 4px 0 20px;
   text-align: center;
-  color: #64748b;
+  color: var(--c-text-muted);
   font-size: 14px;
 }
 .form {
@@ -186,25 +341,34 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
   border-radius: 10px;
   font-size: 15px;
   outline: none;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .field input:focus {
-  border-color: var(--c-primary, #0d9488);
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
 }
 .btn {
   margin-top: 4px;
   padding: 11px;
   border: none;
   border-radius: 10px;
-  background: var(--c-primary, #0d9488);
+  background: var(--c-primary);
   color: #fff;
   font-weight: 600;
   font-size: 15px;
   cursor: pointer;
-  transition: filter 0.15s;
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.28);
+  transition:
+    filter 0.15s,
+    transform var(--t-fast),
+    box-shadow var(--t);
 }
 .btn:hover:not(:disabled) {
-  filter: brightness(1.05);
+  filter: brightness(1.04);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(249, 115, 22, 0.38);
 }
 .btn:disabled {
   opacity: 0.6;
@@ -236,13 +400,13 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
     background 0.15s;
 }
 .pwd__toggle:hover {
-  color: var(--c-primary, #0d9488);
-  background: rgba(13, 148, 136, 0.08);
+  color: var(--c-primary);
+  background: rgba(249, 115, 22, 0.08);
 }
 .link {
   background: none;
   border: none;
-  color: var(--c-primary, #0d9488);
+  color: var(--c-primary);
   font-size: 13px;
   cursor: pointer;
   align-self: center;
@@ -278,19 +442,33 @@ const demoAccounts = ['admin', 'employee', 'school', 'teacher']
 }
 .chip {
   padding: 4px 12px;
-  border: 1px solid rgba(13, 148, 136, 0.3);
-  background: rgba(13, 148, 136, 0.06);
-  color: var(--c-primary, #0d9488);
+  border: 1px solid rgba(249, 115, 22, 0.35);
+  background: rgba(249, 115, 22, 0.07);
+  color: var(--c-primary-dark);
   border-radius: 999px;
   font-size: 13px;
   cursor: pointer;
+  transition:
+    background var(--t-fast),
+    transform var(--t-fast);
 }
 .chip:hover {
-  background: rgba(13, 148, 136, 0.14);
+  background: rgba(249, 115, 22, 0.16);
+  transform: translateY(-1px);
 }
 code {
   background: #f1f5f9;
   padding: 1px 5px;
   border-radius: 4px;
+}
+
+/* ===== Responsive: ẩn hero, chỉ còn form trên màn nhỏ ===== */
+@media (max-width: 880px) {
+  .auth__hero {
+    display: none;
+  }
+  .auth__panel {
+    flex: 1;
+  }
 }
 </style>
