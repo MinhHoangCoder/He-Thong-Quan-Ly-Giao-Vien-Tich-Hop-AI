@@ -52,5 +52,9 @@ tsdms:
   reset:
     token-ttl: 30m             # link đặt lại mật khẩu hết hạn sau 30 phút
     base-url: ${APP_BASE_URL:http://localhost:5173}   # FE base url để ghép link reset
+  rate-limit:
+    enabled: true
+    capacity: 5                # tối đa 5 lần thử dồn dập / IP / endpoint (login, forgot-password)
+    refill-period: 1m          # hồi đầy lại sau 1 phút → ~5 request/phút/IP
   mail:
     from: ${MAIL_FROM:no-reply@tsdms.local}
