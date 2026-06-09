@@ -5,6 +5,7 @@
 import { computed, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useLogout } from '@/composables/useLogout'
 
@@ -32,8 +33,8 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <span class="sidebar__logo"><SvgIcon name="ai" :size="22" /></span>
-        <span class="sidebar__name">TSDMS</span>
+        <BrandLogo :size="34" :show-text="false" />
+        <span class="sidebar__name">KDC EduOps AI</span>
       </div>
 
       <nav class="sidebar__nav">
@@ -108,7 +109,7 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
   width: var(--sidebar-w);
   flex: 0 0 var(--sidebar-w);
   background: linear-gradient(180deg, var(--a-sidebar) 0%, var(--a-sidebar-2) 100%);
-  color: #b8ccc7;
+  color: #9fb2cf;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -122,22 +123,12 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
 .sidebar__brand {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 1.15rem 1.3rem;
+  gap: 0.6rem;
+  padding: 1.15rem 1.2rem;
   font-weight: 800;
-  font-size: 1.25rem;
+  font-size: 1.05rem;
   color: #fff;
-  letter-spacing: 0.5px;
-}
-.sidebar__logo {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
-  background: var(--grad-primary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.45);
+  letter-spacing: 0.3px;
 }
 .sidebar__nav {
   padding: 0.5rem 0.75rem 1.5rem;
@@ -151,7 +142,7 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  color: #5f7d77;
+  color: #5f7693;
   white-space: nowrap;
 }
 .navlink {
@@ -161,7 +152,7 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
   gap: 0.75rem;
   padding: 0.6rem 0.7rem;
   border-radius: 9px;
-  color: #b8ccc7;
+  color: #9fb2cf;
   text-decoration: none;
   font-size: 0.9rem;
   font-weight: 500;
@@ -182,7 +173,7 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
 .navlink.is-active {
   background: var(--grad-primary);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(13, 148, 136, 0.4);
+  box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4);
 }
 .navlink.is-active::before {
   content: '';
@@ -303,7 +294,7 @@ const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng
 .topbar__search:focus-within {
   border-color: var(--c-primary);
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
   color: var(--c-primary);
 }
 .topbar__search input {

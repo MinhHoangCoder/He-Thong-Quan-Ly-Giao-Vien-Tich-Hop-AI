@@ -33,6 +33,7 @@ public class EmailService {
                 + "\n\nNếu bạn không yêu cầu, hãy bỏ qua email này.");
         try {
             mailSender.send(message);
+            log.info("Đã gửi email đặt lại mật khẩu tới {}", to);
         } catch (Exception ex) {
             // Không để lỗi gửi mail làm hỏng request. Log link để dev test khi chưa cấu hình SMTP.
             log.warn("Gửi email reset thất bại ({}). Link (DEV) cho {}: {}", ex.getMessage(), to, resetLink);

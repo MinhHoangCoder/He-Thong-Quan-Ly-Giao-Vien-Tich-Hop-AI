@@ -17,5 +17,6 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-07 | fullstack | Đăng nhập/Đăng ký/Đăng xuất/Quên mật khẩu (JWT + Spring Security) | [2026-06-07-auth-jwt-spring-security.md](2026-06-07-auth-jwt-spring-security.md) |
 | 2026-06-08 | frontend | Portal Giáo viên & Trường | [2026-06-08-portal-teacher-school.md](2026-06-08-portal-teacher-school.md) |
 | 2026-06-09 | backend | Bảo mật: IDOR, Rate limit & Row-Level Security | [2026-06-09-backend-security-idor-ratelimit-rls.md](2026-06-09-backend-security-idor-ratelimit-rls.md) |
+| 2026-06-09 | frontend | Rebrand "KDC EduOps AI" + theme Trắng/Cam/Xanh lam + login hero | [2026-06-09-frontend-rebrand-kdc-eduops-ai.md](2026-06-09-frontend-rebrand-kdc-eduops-ai.md) |
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.

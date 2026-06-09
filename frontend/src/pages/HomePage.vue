@@ -28,8 +28,8 @@ const features = [
         Hệ thống quản lý &amp; điều phối giáo viên <span>tích hợp AI</span>
       </h1>
       <p class="hero__desc">
-        Số hóa toàn bộ quy trình từ phân công giáo viên, xếp lịch dạy đến chấm công và
-        tính lương cho trung tâm giáo dục.
+        Số hóa toàn bộ quy trình từ phân công giáo viên, xếp lịch dạy đến chấm công và tính lương
+        cho trung tâm giáo dục.
       </p>
       <div class="hero__actions">
         <a href="#features" class="btn btn--primary btn--lg">Khám phá tính năng</a>
@@ -55,7 +55,7 @@ const features = [
 
 <style scoped>
 .hero {
-  background: linear-gradient(135deg, var(--c-primary) 0%, var(--c-primary-dark) 100%);
+  background: var(--grad-hero);
   color: #fff;
   padding: 5rem 0;
 }
@@ -68,11 +68,11 @@ const features = [
   margin: 0 0 1rem;
 }
 .hero__title span {
-  color: #a7f3d0; /* xanh ngọc nhạt nổi trên nền teal */
+  color: #ffb877; /* cam sáng nổi trên nền gradient */
 }
 .hero__desc {
   font-size: 1.1rem;
-  color: #d4f0ea;
+  color: rgba(255, 255, 255, 0.85);
   margin: 0 0 2rem;
 }
 .hero__actions {
@@ -105,7 +105,7 @@ const features = [
     border-color var(--t);
 }
 .card:hover {
-  box-shadow: 0 14px 30px rgba(13, 60, 54, 0.12);
+  box-shadow: 0 14px 30px rgba(15, 40, 80, 0.12);
   transform: translateY(-4px);
   border-color: var(--c-primary-light);
 }

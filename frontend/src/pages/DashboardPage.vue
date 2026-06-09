@@ -6,45 +6,150 @@ import LineChart from '@/components/charts/LineChart.vue'
 import MiniBars from '@/components/charts/MiniBars.vue'
 
 const stats = [
-  { icon: 'teacher', label: 'Giáo viên đang dạy', value: 128, hint: 'so với tháng trước', trend: 8, color: '#0d9488' },
-  { icon: 'school', label: 'Trường khách hàng', value: 42, hint: 'so với tháng trước', trend: 5, color: '#22c55e' },
-  { icon: 'assignment', label: 'Phân công đang chạy', value: 96, hint: 'so với tháng trước', trend: 6, color: '#f59e0b' },
-  { icon: 'schedule', label: 'Buổi dạy tuần này', value: 318, hint: 'so với tuần trước', trend: 14, color: '#0ea5e9' },
+  {
+    icon: 'teacher',
+    label: 'Giáo viên đang dạy',
+    value: 128,
+    hint: 'so với tháng trước',
+    trend: 8,
+    color: '#f97316',
+  },
+  {
+    icon: 'school',
+    label: 'Trường khách hàng',
+    value: 42,
+    hint: 'so với tháng trước',
+    trend: 5,
+    color: '#2563eb',
+  },
+  {
+    icon: 'assignment',
+    label: 'Phân công đang chạy',
+    value: 96,
+    hint: 'so với tháng trước',
+    trend: 6,
+    color: '#f59e0b',
+  },
+  {
+    icon: 'schedule',
+    label: 'Buổi dạy tuần này',
+    value: 318,
+    hint: 'so với tuần trước',
+    trend: 14,
+    color: '#0ea5e9',
+  },
 ]
 
 // Biểu đồ: số buổi dạy theo tháng cho 3 mảng môn.
 const chartLabels = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8']
 const chartSeries = [
-  { name: 'STEM', color: '#0d9488', data: [120, 145, 138, 170, 162, 190, 210, 235] },
+  { name: 'STEM', color: '#f97316', data: [120, 145, 138, 170, 162, 190, 210, 235] },
   { name: 'Công dân số', color: '#0ea5e9', data: [80, 92, 110, 138, 150, 142, 168, 180] },
-  { name: 'Ngoại ngữ', color: '#22c55e', data: [60, 72, 85, 90, 120, 132, 128, 150] },
+  { name: 'Ngoại ngữ', color: '#2563eb', data: [60, 72, 85, 90, 120, 132, 128, 150] },
 ]
 
 const sideStats = [
-  { label: 'Giờ dạy tháng này', value: '4.820', data: [4, 6, 5, 8, 7, 9, 11], color: '#0d9488', trend: 12 },
-  { label: 'Tỉ lệ chấm công đúng giờ', value: '96%', data: [7, 8, 6, 9, 8, 9, 10], color: '#22c55e', trend: 3 },
-  { label: 'Điểm đánh giá trung bình', value: '4.6/5', data: [6, 7, 7, 8, 9, 8, 9], color: '#0ea5e9', trend: 2 },
-  { label: 'Buổi dạy chờ duyệt', value: '8', data: [9, 7, 8, 5, 6, 4, 3], color: '#f59e0b', trend: -18 },
+  {
+    label: 'Giờ dạy tháng này',
+    value: '4.820',
+    data: [4, 6, 5, 8, 7, 9, 11],
+    color: '#f97316',
+    trend: 12,
+  },
+  {
+    label: 'Tỉ lệ chấm công đúng giờ',
+    value: '96%',
+    data: [7, 8, 6, 9, 8, 9, 10],
+    color: '#2563eb',
+    trend: 3,
+  },
+  {
+    label: 'Điểm đánh giá trung bình',
+    value: '4.6/5',
+    data: [6, 7, 7, 8, 9, 8, 9],
+    color: '#0ea5e9',
+    trend: 2,
+  },
+  {
+    label: 'Buổi dạy chờ duyệt',
+    value: '8',
+    data: [9, 7, 8, 5, 6, 4, 3],
+    color: '#f59e0b',
+    trend: -18,
+  },
 ]
 
 // Phân công gần đây (trung tâm tự tạo — không còn yêu cầu từ trường).
 const assignments = [
-  { teacher: 'Nguyễn Minh', school: 'THCS Lê Quý Đôn', subject: 'Robotics', date: '06/06', status: 'Đang dạy' },
-  { teacher: 'Trần Lan', school: 'TH Nguyễn Du', subject: 'Scratch', date: '05/06', status: 'Đang dạy' },
-  { teacher: 'Phạm Hùng', school: 'THPT Trần Phú', subject: 'AI cơ bản', date: '05/06', status: 'Sắp bắt đầu' },
-  { teacher: 'Lê Hoa', school: 'TH Kim Đồng', subject: 'Tiếng Anh STEM', date: '04/06', status: 'Đang dạy' },
-  { teacher: 'Võ Nam', school: 'THCS Chu Văn An', subject: 'Lập trình Python', date: '03/06', status: 'Đã hủy' },
+  {
+    teacher: 'Nguyễn Minh',
+    school: 'THCS Lê Quý Đôn',
+    subject: 'Robotics',
+    date: '06/06',
+    status: 'Đang dạy',
+  },
+  {
+    teacher: 'Trần Lan',
+    school: 'TH Nguyễn Du',
+    subject: 'Scratch',
+    date: '05/06',
+    status: 'Đang dạy',
+  },
+  {
+    teacher: 'Phạm Hùng',
+    school: 'THPT Trần Phú',
+    subject: 'AI cơ bản',
+    date: '05/06',
+    status: 'Sắp bắt đầu',
+  },
+  {
+    teacher: 'Lê Hoa',
+    school: 'TH Kim Đồng',
+    subject: 'Tiếng Anh STEM',
+    date: '04/06',
+    status: 'Đang dạy',
+  },
+  {
+    teacher: 'Võ Nam',
+    school: 'THCS Chu Văn An',
+    subject: 'Lập trình Python',
+    date: '03/06',
+    status: 'Đã hủy',
+  },
 ]
 
-const statusClass = (s) =>
-  s === 'Đang dạy' ? 'is-ok' : s === 'Sắp bắt đầu' ? 'is-wait' : 'is-no'
+const statusClass = (s) => (s === 'Đang dạy' ? 'is-ok' : s === 'Sắp bắt đầu' ? 'is-wait' : 'is-no')
 
 // Lịch dạy hôm nay (mẫu).
 const todaySchedule = [
-  { time: '08:00', teacher: 'Nguyễn Minh', subject: 'Robotics', school: 'THCS Lê Quý Đôn', color: '#0d9488' },
-  { time: '09:30', teacher: 'Trần Lan', subject: 'Scratch', school: 'TH Nguyễn Du', color: '#0ea5e9' },
-  { time: '13:00', teacher: 'Phạm Hùng', subject: 'AI cơ bản', school: 'THPT Trần Phú', color: '#22c55e' },
-  { time: '15:00', teacher: 'Lê Hoa', subject: 'Python', school: 'THCS Chu Văn An', color: '#f59e0b' },
+  {
+    time: '08:00',
+    teacher: 'Nguyễn Minh',
+    subject: 'Robotics',
+    school: 'THCS Lê Quý Đôn',
+    color: '#f97316',
+  },
+  {
+    time: '09:30',
+    teacher: 'Trần Lan',
+    subject: 'Scratch',
+    school: 'TH Nguyễn Du',
+    color: '#0ea5e9',
+  },
+  {
+    time: '13:00',
+    teacher: 'Phạm Hùng',
+    subject: 'AI cơ bản',
+    school: 'THPT Trần Phú',
+    color: '#2563eb',
+  },
+  {
+    time: '15:00',
+    teacher: 'Lê Hoa',
+    subject: 'Python',
+    school: 'THCS Chu Văn An',
+    color: '#f59e0b',
+  },
 ]
 
 // Top giáo viên theo giờ dạy.
@@ -63,9 +168,7 @@ const topTeachers = [
       <h1 class="page-head__title">Bảng điều khiển</h1>
       <p class="page-head__crumb">Tổng quan / Dashboard</p>
     </div>
-    <button class="btn-primary">
-      <SvgIcon name="plus" :size="18" /> Tạo phân công
-    </button>
+    <button class="btn-primary"><SvgIcon name="plus" :size="18" /> Tạo phân công</button>
   </div>
 
   <!-- Thẻ thống kê -->
@@ -207,12 +310,15 @@ const topTeachers = [
   font-size: 0.9rem;
   color: #fff;
   background: var(--grad-primary);
-  box-shadow: 0 8px 18px rgba(13, 148, 136, 0.32);
-  transition: transform var(--t-fast), box-shadow var(--t-fast), filter var(--t-fast);
+  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.32);
+  transition:
+    transform var(--t-fast),
+    box-shadow var(--t-fast),
+    filter var(--t-fast);
 }
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(13, 148, 136, 0.42);
+  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.42);
   filter: brightness(1.05);
 }
 .btn-primary:active {
@@ -239,7 +345,10 @@ const topTeachers = [
   border-radius: 16px;
   padding: 1.3rem;
   box-shadow: var(--a-shadow);
-  transition: transform var(--t), box-shadow var(--t), border-color var(--t);
+  transition:
+    transform var(--t),
+    box-shadow var(--t),
+    border-color var(--t);
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
@@ -295,7 +404,9 @@ const topTeachers = [
   color: var(--a-text);
   background: #fff;
   cursor: pointer;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+  transition:
+    border-color var(--t-fast),
+    box-shadow var(--t-fast);
 }
 .select:hover {
   border-color: var(--c-primary-light);
@@ -303,7 +414,7 @@ const topTeachers = [
 .select:focus {
   outline: none;
   border-color: var(--c-primary);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
 }
 
 /* Lưới biểu đồ */
@@ -485,7 +596,10 @@ const topTeachers = [
   border: 1px solid var(--a-border);
   border-radius: 12px;
   position: relative;
-  transition: box-shadow var(--t), transform var(--t), border-color var(--t);
+  transition:
+    box-shadow var(--t),
+    transform var(--t),
+    border-color var(--t);
 }
 .teacher:hover {
   transform: translateY(-3px);

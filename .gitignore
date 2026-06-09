@@ -49,6 +49,7 @@ pnpm-debug.log*
 .env.local
 .env.*.local
 *.env
+*.local.ps1
 
 ### Claude — folder ngữ cảnh cá nhân (chỉ ở máy bạn, không đẩy lên git) ###
 # Toàn bộ folder claude-context/ chỉ tồn tại local — KHÔNG track gì, kể cả README.

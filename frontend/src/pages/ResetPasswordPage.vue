@@ -113,15 +113,15 @@ async function onSubmit() {
   padding: 32px;
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 10px 40px rgba(13, 148, 136, 0.12);
-  border: 1px solid rgba(13, 148, 136, 0.1);
+  box-shadow: 0 18px 50px rgba(15, 40, 80, 0.12);
+  border: 1px solid var(--c-border);
 }
 .title {
   margin: 0 0 4px;
   font-size: 22px;
   font-weight: 800;
   text-align: center;
-  color: var(--c-primary, #0d9488);
+  color: var(--c-primary, #f97316);
 }
 .sub {
   margin: 0 0 16px;
@@ -150,7 +150,7 @@ async function onSubmit() {
   transition: border-color 0.15s;
 }
 .field input:focus {
-  border-color: var(--c-primary, #0d9488);
+  border-color: var(--c-primary, #f97316);
 }
 .pwd {
   position: relative;
@@ -175,15 +175,15 @@ async function onSubmit() {
   border-radius: 8px;
 }
 .pwd__toggle:hover {
-  color: var(--c-primary, #0d9488);
-  background: rgba(13, 148, 136, 0.08);
+  color: var(--c-primary, #f97316);
+  background: rgba(249, 115, 22, 0.08);
 }
 .btn {
   margin-top: 4px;
   padding: 11px;
   border: none;
   border-radius: 10px;
-  background: var(--c-primary, #0d9488);
+  background: var(--c-primary, #f97316);
   color: #fff;
   font-weight: 600;
   font-size: 15px;
@@ -202,7 +202,7 @@ async function onSubmit() {
 .link {
   display: inline-block;
   margin-top: 4px;
-  color: var(--c-primary, #0d9488);
+  color: var(--c-primary, #f97316);
   font-size: 13px;
   text-align: center;
   text-decoration: none;

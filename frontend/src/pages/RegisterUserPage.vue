@@ -168,14 +168,14 @@ async function onSubmit() {
 }
 .field input:focus,
 .field select:focus {
-  border-color: var(--c-primary, #0d9488);
+  border-color: var(--c-primary, #f97316);
 }
 .btn {
   margin-top: 18px;
   padding: 11px 22px;
   border: none;
   border-radius: 10px;
-  background: var(--c-primary, #0d9488);
+  background: var(--c-primary, #f97316);
   color: #fff;
   font-weight: 600;
   font-size: 15px;
