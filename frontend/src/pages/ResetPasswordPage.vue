@@ -5,6 +5,7 @@
 import { ref, computed } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { authApi } from '@/api/auth'
+import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 
 const route = useRoute()
@@ -18,13 +19,13 @@ const error = ref('')
 const done = ref(false)
 
 const canSubmit = computed(
-  () => newPassword.value.length >= 8 && newPassword.value === confirm.value,
+  () => isStrongPassword(newPassword.value) && newPassword.value === confirm.value,
 )
 
 async function onSubmit() {
   error.value = ''
-  if (newPassword.value.length < 8) {
-    error.value = 'Mật khẩu tối thiểu 8 ký tự.'
+  if (!isStrongPassword(newPassword.value)) {
+    error.value = `Mật khẩu chưa đủ mạnh: ${PASSWORD_HINT}.`
     return
   }
   if (newPassword.value !== confirm.value) {
@@ -63,7 +64,7 @@ async function onSubmit() {
 
     <!-- Form đặt lại -->
     <form v-else class="form" @submit.prevent="onSubmit">
-      <p class="sub">Nhập mật khẩu mới cho tài khoản của bạn.</p>
+      <p class="sub">Nhập mật khẩu mới cho tài khoản của bạn ({{ PASSWORD_HINT }}).</p>
 
       <label class="field">
         <span>Mật khẩu mới</span>

@@ -5,6 +5,7 @@ import com.kdc.tsdms.entity.PasswordResetToken;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.PasswordResetTokenRepository;
+import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.security.JwtService;
 import com.kdc.tsdms.security.ResetProperties;
 import java.time.Instant;
@@ -19,6 +20,7 @@ public class PasswordResetService {
 
     private final AppUserRepository appUserRepo;
     private final PasswordResetTokenRepository resetRepo;
+    private final RefreshTokenRepository refreshTokenRepo;
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
@@ -27,12 +29,14 @@ public class PasswordResetService {
     public PasswordResetService(
             AppUserRepository appUserRepo,
             PasswordResetTokenRepository resetRepo,
+            RefreshTokenRepository refreshTokenRepo,
             JwtService jwtService,
             PasswordEncoder passwordEncoder,
             EmailService emailService,
             ResetProperties resetProps) {
         this.appUserRepo = appUserRepo;
         this.resetRepo = resetRepo;
+        this.refreshTokenRepo = refreshTokenRepo;
         this.jwtService = jwtService;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
@@ -72,5 +76,9 @@ public class PasswordResetService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         prt.setUsedAt(Instant.now()); // đánh dấu token đã dùng -> không tái sử dụng
+
+        // Đổi mật khẩu thường vì NGHI BỊ LỘ tài khoản -> thu hồi mọi refresh token đang
+        // sống, đăng xuất mọi thiết bị. Kẻ đã chiếm phiên không thể tiếp tục dùng.
+        refreshTokenRepo.revokeAllActiveByAppUserId(user.getId(), Instant.now());
     }
 }

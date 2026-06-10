@@ -3,7 +3,7 @@ package com.kdc.tsdms.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Pattern;
 
 /**
  * Body cho POST /api/auth/register. Admin/Nhân viên tạo tài khoản cho GV/trường.
@@ -17,7 +17,11 @@ public record RegisterRequest(
         @NotBlank @Email(message = "Email không hợp lệ") String email,
         @NotBlank(message = "Thiếu họ tên / tên trường") String fullName,
 
-        @NotBlank @Size(min = 8, message = "Mật khẩu tối thiểu 8 ký tự") String password,
+        // Lookahead (?=...) = "phải chứa ít nhất 1 ký tự loại này". Max 72: BCrypt chỉ băm 72 byte đầu.
+        @NotBlank @Pattern(
+                regexp = "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,72}$",
+                message = "Mật khẩu 8–72 ký tự, phải có chữ hoa, chữ thường và chữ số")
+        String password,
 
         String phone,
         @NotNull(message = "Thiếu chi nhánh") Integer branchId) {}

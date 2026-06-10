@@ -31,7 +31,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitingFilter extends OncePerRequestFilter {
 
     /** Chỉ chặn đúng các endpoint tốn kém/nhạy cảm; phần còn lại không đụng tới. */
-    private static final Set<String> LIMITED_PATHS = Set.of("/api/v1/auth/login", "/api/v1/auth/forgot-password");
+    private static final Set<String> LIMITED_PATHS =
+            Set.of("/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password");
 
     /** Chặn rò rỉ bộ nhớ: khi vượt số khoá này thì dọn bớt các xô đã đầy (idle). */
     private static final int MAX_TRACKED_KEYS = 50_000;
@@ -77,11 +78,17 @@ public class RateLimitingFilter extends OncePerRequestFilter {
         }
     }
 
-    /** Ưu tiên IP thật từ X-Forwarded-For (chỉ ý nghĩa khi sau proxy); fallback remoteAddr. */
+    /**
+     * Mặc định dùng remoteAddr (IP kết nối TCP thật — không giả mạo được). Chỉ đọc
+     * X-Forwarded-For khi cấu hình {@code trust-forwarded-header=true} (đã đứng sau
+     * reverse-proxy tin cậy); tin vô điều kiện thì client tự bịa header là né được limit.
+     */
     private String clientIp(HttpServletRequest request) {
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
+        if (props.isTrustForwardedHeader()) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) {
+                return forwarded.split(",")[0].trim();
+            }
         }
         return request.getRemoteAddr();
     }

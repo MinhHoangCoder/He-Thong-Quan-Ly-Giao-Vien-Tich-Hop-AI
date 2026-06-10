@@ -4,6 +4,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { authApi } from '@/api/auth'
 import { branchApi } from '@/api/branches'
+import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
 
 const form = ref({
   role: 'TEACHER',
@@ -38,8 +39,8 @@ onMounted(async () => {
 async function onSubmit() {
   error.value = ''
   success.value = ''
-  if (form.value.password.length < 8) {
-    error.value = 'Mật khẩu tối thiểu 8 ký tự.'
+  if (!isStrongPassword(form.value.password)) {
+    error.value = `Mật khẩu chưa đủ mạnh: ${PASSWORD_HINT}.`
     return
   }
   loading.value = true
@@ -101,7 +102,7 @@ async function onSubmit() {
         </label>
 
         <label class="field">
-          <span>Mật khẩu (≥ 8 ký tự)</span>
+          <span>Mật khẩu ({{ PASSWORD_HINT }})</span>
           <input v-model="form.password" type="text" autocomplete="off" required />
         </label>
 
