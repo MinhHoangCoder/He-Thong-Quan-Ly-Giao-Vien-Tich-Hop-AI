@@ -21,4 +21,11 @@ public class RateLimitProperties {
 
     /** Chu kỳ hồi đầy token. capacity=5 + refillPeriod=1m → ~5 request/phút/IP. */
     private Duration refillPeriod = Duration.ofMinutes(1);
+
+    /**
+     * Chỉ bật khi backend đứng SAU reverse-proxy tin cậy (nginx...) có gắn X-Forwarded-For.
+     * Mặc định FALSE: client gọi thẳng backend có thể tự bịa header này để né rate limit
+     * (mỗi request một "IP" giả → mỗi lần một bucket mới → giới hạn vô tác dụng).
+     */
+    private boolean trustForwardedHeader = false;
 }

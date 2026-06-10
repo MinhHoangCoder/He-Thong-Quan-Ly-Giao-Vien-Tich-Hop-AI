@@ -120,10 +120,24 @@ class AuthServiceTest {
     void login_inactiveAccount_throws403() {
         activeUser.setStatus("LOCKED");
         when(appUserRepo.findByUsernameAndDeletedFalse("admin")).thenReturn(Optional.of(activeUser));
+        // Mật khẩu ĐÚNG mới được biết tài khoản bị khóa (status kiểm tra SAU mật khẩu).
+        when(passwordEncoder.matches("secret", "$2b$hash")).thenReturn(true);
 
         assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "secret")))
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN));
+    }
+
+    /** Chống dò username: tài khoản bị khóa + mật khẩu SAI phải trả 401 (như user không tồn tại), không lộ 403. */
+    @Test
+    void login_lockedAccountWrongPassword_throws401NotForbidden() {
+        activeUser.setStatus("LOCKED");
+        when(appUserRepo.findByUsernameAndDeletedFalse("admin")).thenReturn(Optional.of(activeUser));
+        when(passwordEncoder.matches("wrong", "$2b$hash")).thenReturn(false);
+
+        assertThatThrownBy(() -> authService.login(new LoginRequest("admin", "wrong")))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
     }
 
     @Test
@@ -163,6 +177,23 @@ class AuthServiceTest {
         assertThat(old.getRevokedAt()).isNotNull(); // token cũ bị thu hồi (rotation)
         assertThat(res.refreshToken()).isEqualTo("raw-refresh"); // cấp token mới
         verify(refreshTokenRepo).save(any(RefreshToken.class));
+    }
+
+    /** REUSE DETECTION: token đã rotate mà bị dùng lại = nghi bị đánh cắp → thu hồi MỌI phiên của user. */
+    @Test
+    void refresh_revokedTokenReplay_revokesAllSessions() {
+        RefreshToken replayed = new RefreshToken();
+        replayed.setAppUserId(1);
+        replayed.setExpiresAt(Instant.now().plusSeconds(3600));
+        replayed.setRevokedAt(Instant.now().minusSeconds(60)); // đã bị thu hồi từ trước
+        when(jwtService.sha256("stolen")).thenReturn("stolen-hash");
+        when(refreshTokenRepo.findByTokenHash("stolen-hash")).thenReturn(Optional.of(replayed));
+
+        assertThatThrownBy(() -> authService.refresh("stolen"))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED));
+        verify(refreshTokenRepo).revokeAllActiveByAppUserId(any(Integer.class), any(Instant.class));
+        verify(refreshTokenRepo, never()).save(any()); // không cấp token mới
     }
 
     @Test

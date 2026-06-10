@@ -48,11 +48,13 @@ public class AuthService {
                 .findByUsernameAndDeletedFalse(req.username())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Sai tài khoản hoặc mật khẩu"));
 
-        if (!"ACTIVE".equals(user.getStatus())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Tài khoản đang bị khóa hoặc ngừng hoạt động");
-        }
+        // Kiểm tra MẬT KHẨU trước, STATUS sau. Nếu báo "bị khóa" trước khi xác minh mật
+        // khẩu, kẻ tấn công gửi mật khẩu rác cũng biết được username tồn tại (403 ≠ 401).
         if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Sai tài khoản hoặc mật khẩu");
+        }
+        if (!"ACTIVE".equals(user.getStatus())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Tài khoản đang bị khóa hoặc ngừng hoạt động");
         }
 
         user.setLastLoginAt(Instant.now()); // dirty checking sẽ tự UPDATE khi commit
@@ -60,12 +62,21 @@ public class AuthService {
         return issueTokens(user, roles);
     }
 
-    @Transactional
+    // noRollbackFor: ở nhánh "replay token đã thu hồi" ta CHỦ ĐỘNG revoke toàn bộ phiên
+    // rồi mới ném 401 — nếu để mặc định, RuntimeException sẽ rollback và xóa luôn lệnh revoke.
+    @Transactional(noRollbackFor = ApiException.class)
     public AuthResponse refresh(String rawRefreshToken) {
         RefreshToken stored = refreshTokenRepo
                 .findByTokenHash(jwtService.sha256(rawRefreshToken))
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Refresh token không hợp lệ"));
 
+        // REUSE DETECTION: token ĐÃ BỊ THU HỒI (đã rotate) mà vẫn được gửi lên = nhiều
+        // khả năng token bị đánh cắp (kẻ trộm hoặc chủ thật đang xài bản cũ). Không thể
+        // biết ai là ai -> thu hồi TOÀN BỘ phiên của user, buộc đăng nhập lại bằng mật khẩu.
+        if (stored.getRevokedAt() != null) {
+            refreshTokenRepo.revokeAllActiveByAppUserId(stored.getAppUserId(), Instant.now());
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Refresh token đã hết hạn hoặc bị thu hồi");
+        }
         if (!stored.isActive()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Refresh token đã hết hạn hoặc bị thu hồi");
         }
