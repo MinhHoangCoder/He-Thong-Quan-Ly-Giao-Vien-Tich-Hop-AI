@@ -1,55 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-import HomePage from '@/pages/HomePage.vue'
 import { useAuthStore } from '@/stores/auth'
 import { roleHome } from '@/router/roleHome'
+// Routes tách theo KHU VỰC để mỗi người làm feature chỉ sửa file của khu mình
+// (hạn chế merge conflict). File này chỉ GHÉP lại + giữ route guard — ít khi phải sửa.
+import { publicRoutes } from '@/router/public.routes'
+import { adminRoutes } from '@/router/admin.routes'
+import { schoolRoutes } from '@/router/school.routes'
+import { teacherRoutes } from '@/router/teacher.routes'
 
-const routes = [
-  {
-    path: '/',
-    name: 'home',
-    component: HomePage,
-    meta: { layout: 'default', public: true },
-  },
-  {
-    path: '/login',
-    name: 'login',
-    component: () => import('@/pages/LoginPage.vue'),
-    meta: { layout: 'blank', public: true },
-  },
-  {
-    path: '/dashboard',
-    name: 'dashboard',
-    component: () => import('@/pages/DashboardPage.vue'),
-    // Khu quản trị: chỉ ADMIN & EMPLOYEE.
-    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
-  },
-  {
-    path: '/school',
-    name: 'school-home',
-    component: () => import('@/pages/SchoolDashboardPage.vue'),
-    meta: { layout: 'school', roles: ['SCHOOL'] },
-  },
-  {
-    path: '/teacher',
-    name: 'teacher-home',
-    component: () => import('@/pages/TeacherDashboardPage.vue'),
-    meta: { layout: 'teacher', roles: ['TEACHER'] },
-  },
-  {
-    path: '/reset-password',
-    name: 'reset-password',
-    component: () => import('@/pages/ResetPasswordPage.vue'),
-    meta: { layout: 'blank', public: true },
-  },
-  {
-    // Tạo tài khoản GV/Trường — chỉ ADMIN & EMPLOYEE.
-    path: '/users/new',
-    name: 'user-create',
-    component: () => import('@/pages/RegisterUserPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
-  },
-]
+const routes = [...publicRoutes, ...adminRoutes, ...schoolRoutes, ...teacherRoutes]
 
 const router = createRouter({
   history: createWebHistory(),
