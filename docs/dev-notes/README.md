@@ -19,5 +19,6 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-09 | backend | Bảo mật: IDOR, Rate limit & Row-Level Security | [2026-06-09-backend-security-idor-ratelimit-rls.md](2026-06-09-backend-security-idor-ratelimit-rls.md) |
 | 2026-06-09 | frontend | Rebrand "KDC EduOps AI" + theme Trắng/Cam/Xanh lam + login hero | [2026-06-09-frontend-rebrand-kdc-eduops-ai.md](2026-06-09-frontend-rebrand-kdc-eduops-ai.md) |
 | 2026-06-10 | fullstack | Gia cố bảo mật auth (bản vá tạm trước Cookie + Bucket4j/Redis) | [2026-06-10-fullstack-auth-security-hardening.md](2026-06-10-fullstack-auth-security-hardening.md) |
+| 2026-06-11 | backend | Đóng băng tầng Entity: map FULL 28 bảng (chống conflict nhóm) | [2026-06-11-backend-entity-layer-full-mapping.md](2026-06-11-backend-entity-layer-full-mapping.md) |
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.
