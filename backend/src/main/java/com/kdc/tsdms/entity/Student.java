@@ -1,0 +1,41 @@
+package com.kdc.tsdms.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.time.LocalDate;
+import lombok.Getter;
+import lombok.Setter;
+
+/** Học sinh (bảng Student) — chỉ lưu danh sách (KHÔNG điểm, KHÔNG học phí). */
+@Entity
+@Table(name = "Student")
+@Getter
+@Setter
+public class Student extends SoftDeletableEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "StudentId")
+    private Integer id;
+
+    @Column(name = "SchoolId", nullable = false)
+    private Integer schoolId;
+
+    @Column(name = "FullName", nullable = false)
+    private String fullName;
+
+    @Column(name = "DateOfBirth")
+    private LocalDate dateOfBirth;
+
+    /** true = Nam, false = Nữ (BIT nullable → Boolean). */
+    @Column(name = "Gender")
+    private Boolean gender;
+
+    /** ACTIVE | INACTIVE */
+    @Column(name = "Status", nullable = false)
+    private String status = "ACTIVE";
+}
