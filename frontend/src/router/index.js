@@ -49,6 +49,11 @@ const routes = [
     component: () => import('@/pages/RegisterUserPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
+  {
+    path: '/lessons',
+    component: () => import('@/pages/LessonManagement.vue'),
+    meta: { requiresAuth: true, roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]
 
 const router = createRouter({
