@@ -18,7 +18,7 @@ import lombok.Setter;
 @Table(name = "AppUser")
 @Getter
 @Setter
-public class AppUser {
+public class AppUser extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY) // SQL Server IDENTITY
@@ -47,14 +47,4 @@ public class AppUser {
 
     @Column(name = "LastLoginAt")
     private Instant lastLoginAt;
-
-    @Column(name = "IsDeleted", nullable = false)
-    private boolean deleted = false;
-
-    /** DB tự set bằng SYSUTCDATETIME() -> không cho Hibernate ghi. */
-    @Column(name = "CreatedAt", insertable = false, updatable = false)
-    private Instant createdAt;
-
-    @Column(name = "CreatedBy")
-    private Integer createdBy;
 }
