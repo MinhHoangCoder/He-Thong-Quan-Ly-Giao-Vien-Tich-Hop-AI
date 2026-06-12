@@ -9,12 +9,12 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Chi nhánh (bảng Branch). Tối thiểu cho việc kiểm tra branch tồn tại khi tạo GV/trường. */
+/** Chi nhánh (bảng Branch) — gốc tổ chức: Employee/Teacher/School đều gắn về 1 chi nhánh. */
 @Entity
 @Table(name = "Branch")
 @Getter
 @Setter
-public class Branch {
+public class Branch extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,4 +23,14 @@ public class Branch {
 
     @Column(name = "Name", nullable = false)
     private String name;
+
+    @Column(name = "Address")
+    private String address;
+
+    @Column(name = "Phone")
+    private String phone;
+
+    /** ACTIVE | INACTIVE */
+    @Column(name = "Status", nullable = false)
+    private String status = "ACTIVE";
 }

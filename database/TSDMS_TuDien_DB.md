@@ -76,6 +76,7 @@
 | Feedback | Phản hồi |
 | Notification | Thông báo |
 | AuditLog | Nhật ký hệ thống |
+| Lesson / LessonFile | Bài giảng / File đính kèm bài giảng |
 
 ---
 
@@ -104,6 +105,8 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 
 **7. Vận hành khác.** `Payroll` (lương theo tháng, mỗi giáo viên), `TeacherEvaluation` (đánh giá giáo viên), `Feedback` (phản hồi), `Notification` (thông báo), `AuditLog` (nhật ký toàn hệ thống).
 
+**8. Bài giảng (module V2).** `Lesson` thuộc một `Subject` + một `Branch`, có thể gắn `Teacher` phụ trách soạn. Nhân viên trung tâm tạo/sửa; trường & giáo viên chỉ XEM bài đã `PUBLISHED` (vòng đời `DRAFT → PUBLISHED → ARCHIVED`). Một bài giảng có nhiều `LessonFile` (file đính kèm: PDF, PPTX, link video...).
+
 ---
 
 ## Phần C — Mục đích từng bảng (1 dòng)
@@ -117,6 +120,7 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 5. **RolePermission** — nối vai trò ⇄ quyền.
 6. **UserRole** — nối tài khoản ⇄ vai trò.
 7. **RefreshToken** — token làm mới phiên đăng nhập (JWT).
+   - **7b. PasswordResetToken** — token đặt lại mật khẩu (luồng quên mật khẩu), dùng 1 lần.
 8. **Employee** — hồ sơ nhân viên trung tâm.
 9. **Subject** — danh mục môn học.
 10. **Teacher** — hồ sơ giáo viên.
@@ -137,6 +141,11 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 25. **Feedback** — phản hồi.
 26. **Notification** — thông báo.
 27. **AuditLog** — nhật ký hệ thống.
+
+**Module Bài giảng (Flyway V2):**
+
+- **Lesson** — bài giảng (thuộc môn + chi nhánh, trạng thái DRAFT/PUBLISHED/ARCHIVED).
+- **LessonFile** — file đính kèm bài giảng.
 
 **AI (TSDMS_Schema_AI.sql) — làm ở giai đoạn cuối:**
 

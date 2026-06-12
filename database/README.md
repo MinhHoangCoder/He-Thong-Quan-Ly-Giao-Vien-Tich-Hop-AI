@@ -1,6 +1,6 @@
 # TSDMS — Database
 
-Microsoft SQL Server 2019+. Schema gồm **34 bảng** chia 7 nhóm (28 bảng lõi + 6 bảng AI).
+Microsoft SQL Server 2019+. Schema gồm **36 bảng** (30 bảng lõi + 6 bảng AI). Bảng lõi = 28 bảng V1 + 2 bảng module Bài giảng (V2).
 
 ## Cấu trúc thư mục
 
@@ -8,15 +8,16 @@ Microsoft SQL Server 2019+. Schema gồm **34 bảng** chia 7 nhóm (28 bảng l
 |---|---|
 | `schema/TSDMS_Schema.sql` | Schema lõi (bản thiết kế, để đọc & tham chiếu) |
 | `migrations/` | Nơi đặt migration nguồn trước khi đưa vào Flyway (tùy chọn) |
-| `seed/` | Script dữ liệu mẫu (roles, branch demo...) |
+| `seed/TSDMS_Seed_Demo.sql` | Bộ dữ liệu demo toàn hệ thống (~5 dòng/bảng) — chạy TAY trong SSMS, KHÔNG đưa vào Flyway |
 | `TSDMS_TuDien_DB.md` | Từ điển thuật ngữ & hướng dẫn đọc database (tiếng Việt) |
 
 ## Flyway (chạy migration tự động)
 
 Migration thực thi nằm trong backend: `backend/src/main/resources/db/migration/`.
 
-- `V1__init_schema.sql` — bản sao của `schema/TSDMS_Schema.sql`, Flyway chạy khi backend khởi động.
-- Thêm thay đổi schema sau này bằng file mới: `V2__<mô_tả>.sql`, `V3__...` (KHÔNG sửa file đã chạy).
+- `V1__init_schema.sql` — 28 bảng lõi ban đầu, Flyway chạy khi backend khởi động.
+- `V2__lesson_module.sql` — module Bài giảng (Lesson + LessonFile), có chốt `IF OBJECT_ID(...) IS NULL` để tương thích DB dựng tay từ schema.
+- Thêm thay đổi schema sau này bằng file mới: `V3__<mô_tả>.sql`, `V4__...` (KHÔNG sửa file đã chạy). Nhớ "xí số" version trong nhóm trước khi tạo (xem quy ước làm việc nhóm).
 
 > **Giữ đồng bộ:** `schema/TSDMS_Schema.sql` là bản thiết kế để đọc; `db/migration/V1__init_schema.sql` là bản Flyway thực thi. Khi đổi schema, cập nhật cả hai (hoặc coi migration là nguồn chính).
 
