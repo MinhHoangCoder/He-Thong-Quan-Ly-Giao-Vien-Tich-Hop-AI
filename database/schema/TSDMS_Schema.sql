@@ -34,6 +34,9 @@
      VẬN HÀNH KHÁC: Payroll (lương), TeacherEvaluation (đánh giá),
                     Feedback (phản hồi), Notification (thông báo),
                     AuditLog (nhật ký toàn hệ thống).
+
+     BÀI GIẢNG    : Lesson (nhân viên trung tâm soạn/quản lý) ── LessonFile
+                    (file đính kèm). Gắn Subject/Branch/Teacher; trường & GV chỉ XEM.
    ---------------------------------------------------------------------
    QUY ƯỚC KIỂU DỮ LIỆU:
      - INT   : khóa của bảng master/danh mục (User, Teacher, School... ≤ 2,1 tỷ là thừa đủ)
@@ -689,6 +692,74 @@ CREATE TABLE AuditLog (
 );
 CREATE INDEX IX_Audit_Entity ON AuditLog(Entity, EntityId);
 CREATE INDEX IX_Audit_Actor  ON AuditLog(ActorUserId, CreatedAt);
+
+
+/* #####################################################################
+   NHÓM 7 — BÀI GIẢNG (LESSON MANAGEMENT)
+   ##################################################################### */
+
+/* ========== Bảng 28: Lesson — BÀI GIẢNG ==========
+   Ý nghĩa : Nhân viên trung tâm tạo/sửa/xóa bài giảng, gắn với môn học,
+             chi nhánh và (tùy chọn) giáo viên phụ trách soạn bài.
+             Trường và giáo viên chỉ được XEM bài giảng đã PUBLISHED.
+   QUAN HỆ : SubjectId → Subject (bài giảng thuộc môn nào),
+             TeacherId → Teacher (GV phụ trách soạn, có thể NULL),
+             BranchId  → Branch  (chi nhánh quản lý).
+             Một bài giảng có nhiều LessonFile (file đính kèm).             */
+CREATE TABLE Lesson (
+    LessonId        INT IDENTITY PRIMARY KEY,
+    SubjectId       INT            NOT NULL,          -- → Subject
+    TeacherId       INT            NULL,              -- → Teacher (GV phụ trách, nếu có)
+    BranchId        INT            NOT NULL,          -- → Branch (chi nhánh quản lý)
+    Title           NVARCHAR(300)  NOT NULL,          -- tiêu đề bài giảng
+    Description     NVARCHAR(2000) NULL,              -- mô tả / tóm tắt
+    Content         NVARCHAR(MAX)  NULL,              -- nội dung chi tiết (rich text / markdown)
+    GradeLevel      NVARCHAR(50)   NULL,              -- khối lớp áp dụng (vd: Lớp 6, Lớp 10)
+    Duration        INT            NULL               -- thời lượng dạy dự kiến (PHÚT)
+                    CONSTRAINT CK_Lesson_Duration CHECK (Duration IS NULL OR Duration > 0),
+    DifficultyLevel VARCHAR(20)    NULL               -- BASIC / INTERMEDIATE / ADVANCED
+                    CONSTRAINT CK_Lesson_Difficulty CHECK (DifficultyLevel IN ('BASIC','INTERMEDIATE','ADVANCED')),
+    Status          VARCHAR(20)    NOT NULL DEFAULT 'DRAFT'  -- DRAFT(nháp) / PUBLISHED(đã đăng) / ARCHIVED(lưu kho)
+                    CONSTRAINT CK_Lesson_Status CHECK (Status IN ('DRAFT','PUBLISHED','ARCHIVED')),
+    IsDeleted       BIT            NOT NULL DEFAULT 0,
+    DeletedAt       DATETIME2(3)   NULL,
+    DeletedBy       INT            NULL,
+    CreatedAt       DATETIME2(3)   NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy       INT            NULL,
+    UpdatedAt       DATETIME2(3)   NULL,
+    UpdatedBy       INT            NULL,
+    FOREIGN KEY (SubjectId) REFERENCES Subject(SubjectId),
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
+    FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId)
+);
+CREATE INDEX IX_Lesson_Subject ON Lesson(SubjectId);   -- lọc bài giảng theo môn
+CREATE INDEX IX_Lesson_Teacher ON Lesson(TeacherId);   -- lọc theo GV phụ trách
+-- Gộp (BranchId, Status) vào MỘT index: phục vụ cả "lọc theo chi nhánh"
+-- lẫn "lọc theo chi nhánh + trạng thái" (màn danh sách bài giảng hay dùng nhất).
+CREATE INDEX IX_Lesson_Branch_Status ON Lesson(BranchId, Status) WHERE IsDeleted = 0;
+CREATE INDEX IX_Lesson_Title ON Lesson(Title) WHERE IsDeleted = 0;  -- tìm theo tiêu đề
+
+/* ========== Bảng 29: LessonFile — FILE ĐÍNH KÈM của bài giảng ==========
+   Ý nghĩa : Một bài giảng có thể có nhiều file (PDF, PPTX, link video...).
+   QUAN HỆ : LessonId → Lesson (nhiều-1).                                   */
+CREATE TABLE LessonFile (
+    LessonFileId INT IDENTITY PRIMARY KEY,
+    LessonId     INT           NOT NULL,              -- → Lesson
+    FileName     NVARCHAR(255) NOT NULL,              -- tên file hiển thị
+    FileUrl      VARCHAR(500)  NOT NULL,              -- đường dẫn / URL lưu trữ
+    FileType     VARCHAR(50)   NULL,                  -- pdf / pptx / mp4 / link ...
+    FileSizeKb   INT           NULL                   -- kích thước (KB)
+                 CONSTRAINT CK_LessonFile_Size CHECK (FileSizeKb IS NULL OR FileSizeKb > 0),
+    IsDeleted    BIT           NOT NULL DEFAULT 0,
+    DeletedAt    DATETIME2(3)  NULL,
+    DeletedBy    INT           NULL,
+    CreatedAt    DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy    INT           NULL,
+    UpdatedAt    DATETIME2(3)  NULL,
+    UpdatedBy    INT           NULL,
+    FOREIGN KEY (LessonId) REFERENCES Lesson(LessonId)
+);
+CREATE INDEX IX_LessonFile_Lesson ON LessonFile(LessonId) WHERE IsDeleted = 0;
 
 
 /* #####################################################################
