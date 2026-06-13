@@ -23,8 +23,21 @@
         </div>
       </div>
       <!-- Chỉ EMPLOYEE/ADMIN mới thấy nút Tạo bài giảng -->
-      <button v-if="isEmployee" class="btn-primary" @click="openCreate">
-        <span class="btn-icon">＋</span> Tạo bài giảng
+      <button v-if="isEmployee" class="btn-create" @click="openCreate">
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2.5"
+          stroke-linecap="round"
+        >
+          <line x1="12" y1="5" x2="12" y2="19" />
+          <line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        Tạo bài giảng
       </button>
       <!-- TEACHER: banner nhắc nhở -->
       <div v-else class="role-badge role-badge--teacher">👁 Chế độ xem — Giáo viên</div>
@@ -81,12 +94,53 @@
         <option v-for="s in subjects" :key="s.subjectId" :value="s.subjectId">{{ s.name }}</option>
       </select>
 
-      <select v-model="filter.difficultyLevel" class="filter-select" @change="fetchLessons">
-        <option value="">Tất cả mức độ</option>
-        <option value="BASIC">Cơ bản</option>
-        <option value="INTERMEDIATE">Trung cấp</option>
-        <option value="ADVANCED">Nâng cao</option>
-      </select>
+      <!-- Dropdown khối hover -->
+      <div class="grade-dropdown" @mouseleave="closeGradeMenu">
+        <button
+          class="filter-select grade-trigger"
+          @mouseenter="openGradeMenu"
+          @click="openGradeMenu"
+        >
+          <span>{{ gradeTriggerLabel }}</span>
+          <span class="grade-arrow">▾</span>
+        </button>
+        <div v-if="gradeMenuOpen" class="grade-menu" @mouseenter="gradeMenuOpen = true">
+          <div
+            v-for="level in educationLevels"
+            :key="level.key"
+            class="grade-level-item"
+            @mouseenter="hoveredLevel = level.key"
+            @mouseleave="hoveredLevel = null"
+          >
+            <div class="grade-level-label">
+              <span class="level-icon">{{ level.icon }}</span>
+              {{ level.name }}
+              <span class="grade-chevron">›</span>
+            </div>
+            <div v-if="hoveredLevel === level.key" class="grade-submenu">
+              <button
+                class="grade-option"
+                :class="{ active: filter.gradeLevel === '' && filter.educationLevel === level.key }"
+                @click="selectGrade(level.key, '', level.name + ' — Tất cả')"
+              >
+                Tất cả {{ level.name }}
+              </button>
+              <button
+                v-for="grade in level.grades"
+                :key="grade.value"
+                class="grade-option"
+                :class="{ active: filter.gradeLevel === grade.value }"
+                @click="selectGrade(level.key, grade.value, grade.label)"
+              >
+                {{ grade.label }}
+              </button>
+            </div>
+          </div>
+          <button class="grade-option grade-option--reset" @click="selectGrade('', '', '')">
+            ✕ Xóa lọc khối
+          </button>
+        </div>
+      </div>
 
       <select v-model="filter.sortBy" class="filter-select" @change="fetchLessons">
         <option value="createdAt">Mới nhất</option>
@@ -125,8 +179,7 @@
           <tr>
             <th>Tiêu đề</th>
             <th>Môn học</th>
-            <th>Khối</th>
-            <th>Mức độ</th>
+            <th>Cấp học / Khối</th>
             <th>Thời lượng</th>
             <th>File</th>
             <th>Trạng thái</th>
@@ -151,15 +204,14 @@
             <td>
               <span class="subject-tag">{{ lesson.subjectName || '—' }}</span>
             </td>
-            <td>{{ lesson.gradeLevel || '—' }}</td>
             <td>
-              <span
-                v-if="lesson.difficultyLevel"
-                :class="['badge-diff', 'diff--' + lesson.difficultyLevel.toLowerCase()]"
-              >
-                {{ diffLabel(lesson.difficultyLevel) }}
-              </span>
-              <span v-else>—</span>
+              <div v-if="lesson.gradeLevel" class="grade-cell">
+                <span class="level-badge" :class="getLevelClass(lesson.gradeLevel)">
+                  {{ getLevelName(lesson.gradeLevel) }}
+                </span>
+                <span class="grade-label">{{ lesson.gradeLevel }}</span>
+              </div>
+              <span v-else class="text-muted">—</span>
             </td>
             <td>{{ lesson.duration ? lesson.duration + ' phút' : '—' }}</td>
             <td>
@@ -293,13 +345,43 @@
               </div>
 
               <div class="form-group">
+                <label class="form-label">Cấp học</label>
+                <select
+                  v-model="form.educationLevel"
+                  class="form-input"
+                  @change="form.gradeLevel = ''"
+                >
+                  <option value="">-- Chọn cấp học --</option>
+                  <option value="TIEU_HOC">Tiểu học</option>
+                  <option value="THCS">Trung học cơ sở</option>
+                  <option value="THPT">Trung học phổ thông</option>
+                </select>
+              </div>
+
+              <div class="form-group">
                 <label class="form-label">Khối lớp</label>
-                <input
+                <select
                   v-model="form.gradeLevel"
                   class="form-input"
-                  placeholder="Vd: Lớp 6, THPT…"
-                  maxlength="50"
-                />
+                  :disabled="!form.educationLevel"
+                >
+                  <option value="">-- Chọn khối --</option>
+                  <template v-if="form.educationLevel === 'TIEU_HOC'">
+                    <option v-for="g in gradeLevels.TIEU_HOC" :key="g.value" :value="g.value">
+                      {{ g.label }}
+                    </option>
+                  </template>
+                  <template v-else-if="form.educationLevel === 'THCS'">
+                    <option v-for="g in gradeLevels.THCS" :key="g.value" :value="g.value">
+                      {{ g.label }}
+                    </option>
+                  </template>
+                  <template v-else-if="form.educationLevel === 'THPT'">
+                    <option v-for="g in gradeLevels.THPT" :key="g.value" :value="g.value">
+                      {{ g.label }}
+                    </option>
+                  </template>
+                </select>
               </div>
 
               <div class="form-group">
@@ -311,16 +393,6 @@
                   class="form-input"
                   placeholder="45"
                 />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">Mức độ khó</label>
-                <select v-model="form.difficultyLevel" class="form-input">
-                  <option value="">-- Không xác định --</option>
-                  <option value="BASIC">Cơ bản</option>
-                  <option value="INTERMEDIATE">Trung cấp</option>
-                  <option value="ADVANCED">Nâng cao</option>
-                </select>
               </div>
 
               <div class="form-group">
@@ -362,74 +434,62 @@
 
           <!-- Tab: File đính kèm -->
           <div v-show="activeTab === 'files'" class="modal-body">
-            <div class="file-add-form">
-              <h4 class="file-section-title">Thêm file / liên kết</h4>
-              <div class="form-grid">
-                <div class="form-group">
-                  <label class="form-label required">Tên file</label>
-                  <input
-                    v-model="newFile.fileName"
-                    class="form-input"
-                    placeholder="Slide bài 1.pptx"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="form-label required">URL / Đường dẫn</label>
-                  <input
-                    v-model="newFile.fileUrl"
-                    class="form-input"
-                    placeholder="https://… hoặc /uploads/…"
-                  />
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Loại file</label>
-                  <select v-model="newFile.fileType" class="form-input">
-                    <option value="">-- Chọn loại --</option>
-                    <option value="pdf">PDF</option>
-                    <option value="pptx">PowerPoint</option>
-                    <option value="mp4">Video (MP4)</option>
-                    <option value="link">Liên kết web</option>
-                    <option value="docx">Word</option>
-                    <option value="other">Khác</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Kích thước (KB)</label>
-                  <input
-                    v-model.number="newFile.fileSizeKb"
-                    type="number"
-                    class="form-input"
-                    placeholder="1024"
-                  />
-                </div>
+            <!-- Upload zone -->
+            <div
+              class="upload-zone"
+              :class="{ 'upload-zone--drag': isDragging, 'upload-zone--uploading': isUploading }"
+              @dragover.prevent="isDragging = true"
+              @dragleave.prevent="isDragging = false"
+              @drop.prevent="handleDrop"
+              @click="$refs.fileInput.click()"
+            >
+              <input
+                ref="fileInput"
+                type="file"
+                accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                multiple
+                style="display: none"
+                @change="handleFileSelect"
+              />
+              <div v-if="!isUploading" class="upload-zone-content">
+                <div class="upload-icon">📊</div>
+                <p class="upload-title">Kéo thả hoặc nhấn để chọn file PowerPoint</p>
+                <p class="upload-hint">
+                  Chỉ nhận file <strong>.ppt</strong> và <strong>.pptx</strong> — không giới hạn
+                  dung lượng
+                </p>
               </div>
-              <button
-                class="btn-outline"
-                @click="addFileToForm"
-                :disabled="!newFile.fileName || !newFile.fileUrl"
-              >
-                ＋ Thêm vào danh sách
-              </button>
+              <div v-else class="upload-zone-content">
+                <div class="upload-spinner"></div>
+                <p class="upload-title">Đang xử lý file…</p>
+                <p class="upload-hint">{{ uploadingFileName }}</p>
+              </div>
             </div>
 
-            <div v-if="form.files.length > 0" class="file-list">
+            <!-- File error -->
+            <div v-if="fileError" class="file-error-banner">⚠️ {{ fileError }}</div>
+
+            <!-- File list -->
+            <div v-if="form.files.length > 0" class="file-list" style="margin-top: 16px">
               <h4 class="file-section-title">Danh sách file đính kèm ({{ form.files.length }})</h4>
               <div v-for="(f, idx) in form.files" :key="idx" class="file-item">
-                <div class="file-type-icon">{{ fileIcon(f.fileType) }}</div>
+                <div class="file-type-icon">📊</div>
                 <div class="file-info">
                   <span class="file-name">{{ f.fileName }}</span>
                   <span class="file-url">{{ f.fileUrl }}</span>
                   <div class="file-meta">
-                    <span v-if="f.fileType" class="file-tag">{{ f.fileType }}</span>
+                    <span class="file-tag">pptx</span>
                     <span v-if="f.fileSizeKb" class="file-size">{{
                       formatSize(f.fileSizeKb)
                     }}</span>
                   </div>
                 </div>
-                <button class="icon-btn delete" @click="removeFileFromForm(idx)">✕</button>
+                <button class="icon-btn delete" title="Xóa" @click="removeFileFromForm(idx)">
+                  ✕
+                </button>
               </div>
             </div>
-            <div v-else class="empty-files">
+            <div v-else class="empty-files" style="margin-top: 16px">
               <span>📂</span>
               <p>Chưa có file đính kèm nào</p>
             </div>
@@ -486,25 +546,21 @@
               </div>
               <div class="detail-row">
                 <span class="detail-key">Khối lớp</span>
-                <span class="detail-val">{{ currentLesson.gradeLevel || '—' }}</span>
+                <span class="detail-val">
+                  <div v-if="currentLesson.gradeLevel" class="grade-cell">
+                    <span class="level-badge" :class="getLevelClass(currentLesson.gradeLevel)">
+                      {{ getLevelName(currentLesson.gradeLevel) }}
+                    </span>
+                    <span class="grade-label">{{ currentLesson.gradeLevel }}</span>
+                  </div>
+                  <span v-else>—</span>
+                </span>
               </div>
               <div class="detail-row">
                 <span class="detail-key">Thời lượng</span>
                 <span class="detail-val">{{
                   currentLesson.duration ? currentLesson.duration + ' phút' : '—'
                 }}</span>
-              </div>
-              <div class="detail-row">
-                <span class="detail-key">Mức độ</span>
-                <span class="detail-val">
-                  <span
-                    v-if="currentLesson.difficultyLevel"
-                    :class="['badge-diff', 'diff--' + currentLesson.difficultyLevel.toLowerCase()]"
-                  >
-                    {{ diffLabel(currentLesson.difficultyLevel) }}
-                  </span>
-                  <span v-else>—</span>
-                </span>
               </div>
               <div class="detail-row">
                 <span class="detail-key">Trạng thái</span>
@@ -623,6 +679,59 @@ const deleteTarget = ref(null)
 
 const toasts = ref([])
 
+// ── Cấu trúc cấp học / khối ──────────────────────────────────────
+const gradeLevels = {
+  TIEU_HOC: [
+    { value: 'Khối 1', label: 'Khối 1' },
+    { value: 'Khối 2', label: 'Khối 2' },
+    { value: 'Khối 3', label: 'Khối 3' },
+    { value: 'Khối 4', label: 'Khối 4' },
+    { value: 'Khối 5', label: 'Khối 5' },
+  ],
+  THCS: [
+    { value: 'Khối 6', label: 'Khối 6' },
+    { value: 'Khối 7', label: 'Khối 7' },
+    { value: 'Khối 8', label: 'Khối 8' },
+    { value: 'Khối 9', label: 'Khối 9' },
+  ],
+  THPT: [
+    { value: 'Khối 10', label: 'Khối 10' },
+    { value: 'Khối 11', label: 'Khối 11' },
+    { value: 'Khối 12', label: 'Khối 12' },
+  ],
+}
+
+const educationLevels = [
+  { key: 'TIEU_HOC', name: 'Tiểu học', icon: '🏫', grades: gradeLevels.TIEU_HOC },
+  { key: 'THCS', name: 'Trung học cơ sở', icon: '📚', grades: gradeLevels.THCS },
+  { key: 'THPT', name: 'Trung học phổ thông', icon: '🎓', grades: gradeLevels.THPT },
+]
+
+// Dropdown state
+const gradeMenuOpen = ref(false)
+const hoveredLevel = ref(null)
+const selectedGradeLabel = ref('')
+
+const gradeTriggerLabel = computed(() => selectedGradeLabel.value || 'Tất cả khối')
+
+function openGradeMenu() {
+  gradeMenuOpen.value = true
+}
+function closeGradeMenu() {
+  gradeMenuOpen.value = false
+  hoveredLevel.value = null
+}
+
+function selectGrade(educationLevel, gradeLevel, label) {
+  filter.educationLevel = educationLevel
+  filter.gradeLevel = gradeLevel
+  selectedGradeLabel.value = label
+  filter.page = 0
+  gradeMenuOpen.value = false
+  hoveredLevel.value = null
+  fetchLessons()
+}
+
 const tabs = [
   { key: 'info', label: 'Thông tin cơ bản' },
   { key: 'content', label: 'Nội dung' },
@@ -638,7 +747,8 @@ const statsCards = [
 const filter = reactive({
   keyword: '',
   subjectId: '',
-  difficultyLevel: '',
+  educationLevel: '',
+  gradeLevel: '',
   status: null,
   page: 0,
   size: 10,
@@ -652,9 +762,9 @@ const emptyForm = () => ({
   subjectId: '',
   teacherId: '',
   branchId: 1,
+  educationLevel: '',
   gradeLevel: '',
   duration: null,
-  difficultyLevel: '',
   status: 'DRAFT',
   description: '',
   content: '',
@@ -662,7 +772,13 @@ const emptyForm = () => ({
 })
 const form = reactive(emptyForm())
 const errors = reactive({})
-const newFile = reactive({ fileName: '', fileUrl: '', fileType: '', fileSizeKb: null })
+
+// ── Upload state ──────────────────────────────────────────────────
+const isDragging = ref(false)
+const isUploading = ref(false)
+const uploadingFileName = ref('')
+const fileError = ref('')
+const fileInput = ref(null)
 
 // ── Computed ──────────────────────────────────────────────────────
 const pageNumbers = computed(() => {
@@ -743,21 +859,30 @@ async function fetchTeachers() {
 function openCreate() {
   Object.assign(form, emptyForm())
   Object.keys(errors).forEach((k) => delete errors[k])
+  fileError.value = ''
   editMode.value = false
   activeTab.value = 'info'
   showModal.value = true
 }
 
 function openEdit(lesson) {
+  // Detect education level from gradeLevel string
+  let eduLevel = ''
+  if (lesson.gradeLevel) {
+    const g = lesson.gradeLevel
+    if (['Khối 1', 'Khối 2', 'Khối 3', 'Khối 4', 'Khối 5'].includes(g)) eduLevel = 'TIEU_HOC'
+    else if (['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9'].includes(g)) eduLevel = 'THCS'
+    else if (['Khối 10', 'Khối 11', 'Khối 12'].includes(g)) eduLevel = 'THPT'
+  }
   Object.assign(form, {
     lessonId: lesson.lessonId,
     title: lesson.title || '',
     subjectId: lesson.subjectId || '',
     teacherId: lesson.teacherId || '',
     branchId: lesson.branchId || 1,
+    educationLevel: eduLevel,
     gradeLevel: lesson.gradeLevel || '',
     duration: lesson.duration || null,
-    difficultyLevel: lesson.difficultyLevel || '',
     status: lesson.status || 'DRAFT',
     description: lesson.description || '',
     content: lesson.content || '',
@@ -785,6 +910,7 @@ function openEditFromDetail() {
 
 function closeModal() {
   showModal.value = false
+  fileError.value = ''
 }
 
 function validateForm() {
@@ -808,7 +934,6 @@ async function save() {
       branchId: Number(form.branchId),
       gradeLevel: form.gradeLevel || null,
       duration: form.duration || null,
-      difficultyLevel: form.difficultyLevel || null,
       status: form.status,
       description: form.description || null,
       content: form.content || null,
@@ -872,11 +997,71 @@ async function quickChangeStatus(lesson, newStatus) {
   }
 }
 
-// ── File helpers ──────────────────────────────────────────────────
-function addFileToForm() {
-  if (!newFile.fileName || !newFile.fileUrl) return
-  form.files.push({ ...newFile })
-  Object.assign(newFile, { fileName: '', fileUrl: '', fileType: '', fileSizeKb: null })
+// ── File upload helpers ────────────────────────────────────────────
+const ALLOWED_PPTX = [
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+]
+
+function isPptxFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase()
+  return ALLOWED_PPTX.includes(file.type) || ext === 'pptx' || ext === 'ppt'
+}
+
+async function processFiles(fileList) {
+  fileError.value = ''
+  const files = Array.from(fileList)
+  const invalid = files.filter((f) => !isPptxFile(f))
+  if (invalid.length) {
+    fileError.value = `Chỉ chấp nhận file PowerPoint (.ppt, .pptx). File không hợp lệ: ${invalid.map((f) => f.name).join(', ')}`
+    return
+  }
+  for (const file of files) {
+    isUploading.value = true
+    uploadingFileName.value = file.name
+    try {
+      const uploadedUrl = await uploadFile(file)
+      form.files.push({
+        fileName: file.name,
+        fileUrl: uploadedUrl,
+        fileType: 'pptx',
+        fileSizeKb: Math.round(file.size / 1024),
+      })
+    } catch (e) {
+      fileError.value = `Lỗi khi tải lên "${file.name}": ${e.message}`
+    } finally {
+      isUploading.value = false
+      uploadingFileName.value = ''
+    }
+  }
+}
+
+async function uploadFile(file) {
+  const token = localStorage.getItem('access_token') ?? ''
+  const fd = new FormData()
+  fd.append('file', file)
+  const res = await fetch(`${API_BASE}/files/upload`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: fd,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.message || `Lỗi HTTP ${res.status}`)
+  }
+  const data = await res.json()
+  // Backend trả về { url: '...' } hoặc { fileUrl: '...' }
+  return data.url || data.fileUrl || data.path || ''
+}
+
+function handleFileSelect(e) {
+  if (e.target.files?.length) processFiles(e.target.files)
+  e.target.value = ''
+}
+
+function handleDrop(e) {
+  isDragging.value = false
+  if (e.dataTransfer.files?.length) processFiles(e.dataTransfer.files)
 }
 
 function removeFileFromForm(idx) {
@@ -894,12 +1079,14 @@ function resetFilter() {
   Object.assign(filter, {
     keyword: '',
     subjectId: '',
-    difficultyLevel: '',
+    educationLevel: '',
+    gradeLevel: '',
     status: null,
     page: 0,
     sortBy: 'createdAt',
     sortDir: 'desc',
   })
+  selectedGradeLabel.value = ''
   fetchLessons()
 }
 
@@ -935,8 +1122,20 @@ function formatDate(iso) {
     year: 'numeric',
   })
 }
-function diffLabel(d) {
-  return { BASIC: 'Cơ bản', INTERMEDIATE: 'Trung cấp', ADVANCED: 'Nâng cao' }[d] || d
+function getLevelName(gradeLevel) {
+  if (!gradeLevel) return ''
+  const g = gradeLevel
+  if (['Khối 1', 'Khối 2', 'Khối 3', 'Khối 4', 'Khối 5'].includes(g)) return 'Tiểu học'
+  if (['Khối 6', 'Khối 7', 'Khối 8', 'Khối 9'].includes(g)) return 'THCS'
+  if (['Khối 10', 'Khối 11', 'Khối 12'].includes(g)) return 'THPT'
+  return ''
+}
+function getLevelClass(gradeLevel) {
+  const name = getLevelName(gradeLevel)
+  if (name === 'Tiểu học') return 'level--tieuhoc'
+  if (name === 'THCS') return 'level--thcs'
+  if (name === 'THPT') return 'level--thpt'
+  return ''
 }
 function statusLabel(s) {
   return { DRAFT: 'Bản nháp', PUBLISHED: 'Đã xuất bản', ARCHIVED: 'Lưu trữ' }[s] || s
@@ -1298,25 +1497,139 @@ onMounted(() => {
   font-weight: 600;
 }
 
-/* Difficulty badges */
-.badge-diff {
-  display: inline-block;
-  padding: 3px 8px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 600;
+/* ── Grade level dropdown ──────────────────────────────────────── */
+.grade-dropdown {
+  position: relative;
 }
-.diff--basic {
+.grade-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 120px;
+  justify-content: space-between;
+}
+.grade-arrow {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.grade-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 200;
+  min-width: 200px;
+  padding: 6px;
+  animation: fadeIn 0.15s ease;
+}
+.grade-level-item {
+  position: relative;
+}
+.grade-level-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  transition: background 0.12s;
+}
+.grade-level-label:hover {
+  background: #f1f5ff;
+}
+.level-icon {
+  font-size: 1rem;
+}
+.grade-chevron {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.grade-submenu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 4px);
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  min-width: 150px;
+  padding: 6px;
+  z-index: 201;
+  animation: fadeIn 0.12s ease;
+}
+.grade-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.grade-option:hover {
+  background: #eff6ff;
+  color: var(--primary);
+}
+.grade-option.active {
+  background: #eff6ff;
+  color: var(--primary);
+  font-weight: 700;
+}
+.grade-option--reset {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 6px 6px;
+}
+.grade-option--reset:hover {
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+/* ── Grade cell in table ─────────────────────────────────────────── */
+.grade-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.grade-label {
+  font-size: 0.82rem;
+  color: var(--text);
+  font-weight: 500;
+}
+.level-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  width: fit-content;
+}
+.level--tieuhoc {
+  background: #dbeafe;
+  color: #1e40af;
+}
+.level--thcs {
   background: #d1fae5;
   color: #065f46;
 }
-.diff--intermediate {
-  background: #fef3c7;
-  color: #92400e;
-}
-.diff--advanced {
-  background: #fee2e2;
-  color: #991b1b;
+.level--thpt {
+  background: #ede9fe;
+  color: #5b21b6;
 }
 
 /* Inline status select */
@@ -1717,24 +2030,104 @@ onMounted(() => {
   text-align: right;
 }
 
-/* Files section in modal */
-.file-add-form {
-  background: var(--surface);
+/* ── Create button (prominent) ──────────────────────────────────── */
+.btn-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 22px;
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: #fff;
+  border: none;
   border-radius: 10px;
-  padding: 16px;
-  border: 1px dashed var(--border);
-  margin-bottom: 20px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+.btn-create:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55);
+}
+.btn-create:active {
+  transform: translateY(0);
+}
+.btn-create svg {
+  flex-shrink: 0;
+}
+
+/* ── Upload zone ─────────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed #c7d2fe;
+  border-radius: 12px;
+  background: #f5f7ff;
+  padding: 36px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    border-color 0.18s,
+    background 0.18s;
+  text-align: center;
+}
+.upload-zone:hover,
+.upload-zone--drag {
+  border-color: #6366f1;
+  background: #eef0ff;
+}
+.upload-zone--uploading {
+  cursor: wait;
+  pointer-events: none;
+}
+.upload-zone-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.upload-icon {
+  font-size: 2.8rem;
+  line-height: 1;
+}
+.upload-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #3730a3;
+  margin: 0;
+}
+.upload-hint {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin: 0;
+}
+.upload-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid #c7d2fe;
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.file-error-banner {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 0.85rem;
 }
 .file-section-title {
   font-size: 0.875rem;
   font-weight: 700;
   margin: 0 0 12px;
   color: var(--text);
-}
-.file-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 .file-item {
   display: flex;
