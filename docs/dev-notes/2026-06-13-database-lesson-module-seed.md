@@ -1,4 +1,4 @@
-# 2026-06-12 — database: Module Bài giảng (Lesson) + Seed demo toàn hệ thống
+# 2026-06-13 — database: Module Bài giảng (Lesson) + Seed demo toàn hệ thống
 
 ## 1. Làm gì trong đợt này?
 
