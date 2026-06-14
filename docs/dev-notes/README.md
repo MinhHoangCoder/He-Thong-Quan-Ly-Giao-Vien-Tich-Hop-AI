@@ -22,5 +22,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-12 | backend | Đóng băng tầng Entity: map FULL 28 bảng (chống conflict nhóm) | [2026-06-12-backend-entity-layer-full-mapping.md](2026-06-12-backend-entity-layer-full-mapping.md) |
 | 2026-06-12 | fullstack | ⭐ Quy ước làm việc nhóm — chống merge conflict (gửi mọi thành viên) | [quy-uoc-lam-viec-nhom.md](quy-uoc-lam-viec-nhom.md) |
 | 2026-06-13 | database | Module Bài giảng (Lesson) + Flyway V2 + Seed demo toàn hệ thống | [2026-06-13-database-lesson-module-seed.md](2026-06-13-database-lesson-module-seed.md) |
+| 2026-06-14 | backend | ⭐ Phân quyền RBAC theo permission — Ma trận quyền & quy ước nhóm | [2026-06-14-backend-rbac-permission-matrix.md](2026-06-14-backend-rbac-permission-matrix.md) |
+| 2026-06-14 | database | Bảng ServiceContract — HĐ dịch vụ trường↔trung tâm (nguồn doanh thu) | [2026-06-14-database-service-contract.md](2026-06-14-database-service-contract.md) |
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.
