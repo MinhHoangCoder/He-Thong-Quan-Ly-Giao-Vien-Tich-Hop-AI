@@ -101,6 +101,8 @@ public class RegistrationService {
             schoolRepo.save(s);
         }
 
-        return new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), List.of(role));
+        // perms để rỗng ở đây — user mới đăng ký sẽ nhận đủ quyền theo role khi đăng nhập.
+        return new UserInfo(
+                user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), List.of(role), List.of());
     }
 }

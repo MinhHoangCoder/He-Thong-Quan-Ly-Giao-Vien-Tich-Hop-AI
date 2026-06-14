@@ -71,7 +71,9 @@ class AuthServiceTest {
     /** Gom các stub cần cho việc cấp cặp token (dùng ở login & refresh thành công). */
     private void stubTokenIssuing() {
         when(userRoleRepo.findRoleNamesByAppUserId(1)).thenReturn(List.of("ADMIN"));
-        when(jwtService.generateAccessToken(any(AppUser.class), anyList())).thenReturn("access.jwt");
+        when(userRoleRepo.findPermissionCodesByAppUserId(1)).thenReturn(List.of("USER_VIEW"));
+        when(jwtService.generateAccessToken(any(AppUser.class), anyList(), anyList()))
+                .thenReturn("access.jwt");
         when(jwtService.generateOpaqueToken()).thenReturn("raw-refresh");
         when(jwtService.sha256("raw-refresh")).thenReturn("hash-refresh");
         when(jwtService.refreshTokenExpiry()).thenReturn(Instant.now().plusSeconds(3600));
@@ -92,6 +94,7 @@ class AuthServiceTest {
         assertThat(res.expiresIn()).isEqualTo(900L);
         assertThat(res.user().username()).isEqualTo("admin");
         assertThat(res.user().roles()).containsExactly("ADMIN");
+        assertThat(res.user().perms()).containsExactly("USER_VIEW"); // token/UserInfo mang quyền chi tiết
         assertThat(activeUser.getLastLoginAt()).isNotNull(); // có cập nhật lần đăng nhập
         verify(refreshTokenRepo).save(any(RefreshToken.class)); // có lưu refresh token
     }
@@ -210,14 +213,16 @@ class AuthServiceTest {
     }
 
     @Test
-    void me_returnsUserInfoWithRoles() {
+    void me_returnsUserInfoWithRolesAndPerms() {
         when(appUserRepo.findByUsernameAndDeletedFalse("admin")).thenReturn(Optional.of(activeUser));
         when(userRoleRepo.findRoleNamesByAppUserId(1)).thenReturn(List.of("ADMIN"));
+        when(userRoleRepo.findPermissionCodesByAppUserId(1)).thenReturn(List.of("USER_VIEW"));
 
         UserInfo info = authService.me("admin");
 
         assertThat(info.username()).isEqualTo("admin");
         assertThat(info.email()).isEqualTo("admin@tsdms.local");
         assertThat(info.roles()).containsExactly("ADMIN");
+        assertThat(info.perms()).containsExactly("USER_VIEW");
     }
 }

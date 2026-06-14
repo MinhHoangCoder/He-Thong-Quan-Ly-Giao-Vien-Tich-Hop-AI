@@ -59,7 +59,8 @@ public class AuthService {
 
         user.setLastLoginAt(Instant.now()); // dirty checking sẽ tự UPDATE khi commit
         List<String> roles = userRoleRepo.findRoleNamesByAppUserId(user.getId());
-        return issueTokens(user, roles);
+        List<String> perms = userRoleRepo.findPermissionCodesByAppUserId(user.getId());
+        return issueTokens(user, roles, perms);
     }
 
     // noRollbackFor: ở nhánh "replay token đã thu hồi" ta CHỦ ĐỘNG revoke toàn bộ phiên
@@ -88,7 +89,8 @@ public class AuthService {
         // và dùng lại sau khi đã refresh, nó sẽ vô hiệu.
         stored.setRevokedAt(Instant.now());
         List<String> roles = userRoleRepo.findRoleNamesByAppUserId(user.getId());
-        return issueTokens(user, roles);
+        List<String> perms = userRoleRepo.findPermissionCodesByAppUserId(user.getId());
+        return issueTokens(user, roles, perms);
     }
 
     @Transactional
@@ -108,12 +110,13 @@ public class AuthService {
                 .findByUsernameAndDeletedFalse(username)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Phiên không hợp lệ"));
         List<String> roles = userRoleRepo.findRoleNamesByAppUserId(user.getId());
-        return new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles);
+        List<String> perms = userRoleRepo.findPermissionCodesByAppUserId(user.getId());
+        return new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles, perms);
     }
 
     /** Cấp access token (JWT) + refresh token (opaque, lưu hash). */
-    private AuthResponse issueTokens(AppUser user, List<String> roles) {
-        String accessToken = jwtService.generateAccessToken(user, roles);
+    private AuthResponse issueTokens(AppUser user, List<String> roles, List<String> perms) {
+        String accessToken = jwtService.generateAccessToken(user, roles, perms);
 
         String rawRefresh = jwtService.generateOpaqueToken();
         RefreshToken rt = new RefreshToken();
@@ -122,7 +125,8 @@ public class AuthService {
         rt.setExpiresAt(jwtService.refreshTokenExpiry());
         refreshTokenRepo.save(rt);
 
-        UserInfo info = new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles);
+        UserInfo info =
+                new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles, perms);
         return new AuthResponse(accessToken, rawRefresh, "Bearer", jwtService.accessTokenTtlSeconds(), info);
     }
 }

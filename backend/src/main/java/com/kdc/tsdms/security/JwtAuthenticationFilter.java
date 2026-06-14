@@ -7,9 +7,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -44,13 +46,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 Claims claims = jwtService.parse(token).getPayload();
                 String username = claims.getSubject();
                 List<String> roles = claims.get("roles", List.class);
+                List<String> perms = claims.get("perms", List.class);
                 Object uidClaim = claims.get("uid");
                 Integer userId = (uidClaim instanceof Number num) ? num.intValue() : null;
 
-                // Spring quy ước quyền vai trò bắt đầu bằng "ROLE_" để hasRole(...) nhận diện.
-                var authorities = roles.stream()
-                        .map(r -> new SimpleGrantedAuthority("ROLE_" + r))
-                        .toList();
+                // Gộp 2 loại quyền vào SecurityContext:
+                //  - roles -> thêm tiền tố "ROLE_" để hasRole('ADMIN') nhận diện.
+                //  - perms -> GIỮ NGUYÊN mã (KHÔNG tiền tố) để hasAuthority('ATTENDANCE_VIEW') nhận diện.
+                // null-check perms vì token cũ (phát trước khi có RBAC) sẽ không có claim này.
+                var authorities = new ArrayList<GrantedAuthority>();
+                if (roles != null) {
+                    roles.forEach(r -> authorities.add(new SimpleGrantedAuthority("ROLE_" + r)));
+                }
+                if (perms != null) {
+                    perms.forEach(p -> authorities.add(new SimpleGrantedAuthority(p)));
+                }
 
                 // Principal mang theo userId -> tầng service kiểm tra quyền SỞ HỮU dữ liệu
                 // (chống IDOR) mà không phải truy vấn DB lại. getName() vẫn trả về username.
