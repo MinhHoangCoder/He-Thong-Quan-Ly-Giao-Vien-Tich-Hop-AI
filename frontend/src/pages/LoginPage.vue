@@ -69,7 +69,17 @@ function fillDemo(u) {
   username.value = u
   password.value = 'Tsdms@123'
 }
-const demoAccounts = ['admin', 'employee', 'school', 'teacher']
+// 4 actor gốc + 4 phòng ban nội bộ (seed ở Flyway V3) — tất cả mật khẩu Tsdms@123.
+const demoAccounts = [
+  'admin',
+  'employee',
+  'school',
+  'teacher',
+  'ketoan',
+  'nhansu',
+  'daotao',
+  'tuyensinh',
+]
 
 // Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
 const features = [

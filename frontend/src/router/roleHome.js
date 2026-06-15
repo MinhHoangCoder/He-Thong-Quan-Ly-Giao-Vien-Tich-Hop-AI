@@ -4,6 +4,10 @@ export function roleHome(roles = []) {
   if (roles.includes('ADMIN') || roles.includes('EMPLOYEE')) {
     return { name: 'dashboard' }
   }
+  // Nhân viên phòng ban nội bộ → portal nhân viên (menu tự lọc theo quyền).
+  if (['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'].some((r) => roles.includes(r))) {
+    return { name: 'staff-home' }
+  }
   if (roles.includes('SCHOOL')) {
     return { name: 'school-home' }
   }

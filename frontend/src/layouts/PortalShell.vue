@@ -24,6 +24,10 @@ const roleLabels = {
   EMPLOYEE: 'Nhân viên',
   SCHOOL: 'Trường',
   TEACHER: 'Giáo viên',
+  ACCOUNTANT: 'Kế toán',
+  HR: 'Nhân sự',
+  ACADEMIC: 'Đào tạo',
+  SALES: 'Tuyển sinh',
 }
 const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng')
 </script>
