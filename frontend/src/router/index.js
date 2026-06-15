@@ -49,6 +49,31 @@ const routes = [
     component: () => import('@/pages/RegisterUserPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
+   // Quản lý giáo viên — chỉ ADMIN & EMPLOYEE
+ {
+    path: '/dashboard/teachers',
+    name: 'teacher-list',
+    component: () => import('@/pages/teacher/TeacherListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/dashboard/teachers/new',
+    name: 'teacher-create',
+    component: () => import('@/pages/teacher/TeacherCreatePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/dashboard/teachers/:id',
+    name: 'teacher-detail',
+    component: () => import('@/pages/teacher/TeacherDetailPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/dashboard/teachers/:id/edit',
+    name: 'teacher-update',
+    component: () => import('@/pages/teacher/TeacherUpdatePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]
 
 const router = createRouter({
