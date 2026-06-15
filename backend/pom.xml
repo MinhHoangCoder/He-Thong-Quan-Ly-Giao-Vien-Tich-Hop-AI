@@ -118,9 +118,12 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>0.12.3</version>
         </dependency>
+        <!-- Spring Boot 4.0 module-hoá autoconfigure: PHẢI dùng starter này thì Flyway mới
+             tự chạy lúc khởi động. Chỉ flyway-core (như Boot 3.x) là KHÔNG còn đủ nữa.
+             Starter đã kéo theo flyway-core; flyway-sqlserver là module riêng cho SQL Server. -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
