@@ -106,48 +106,14 @@ SELECT u.AppUserId, r.RoleId FROM AppUser u JOIN Role r ON r.Name = 'SCHOOL'
 WHERE u.Username IN ('school2','school3','school4','school5');
 
 /* =====================================================================
-   4) Permission + RolePermission — danh mục quyền & gán cho vai trò
+   4) Permission + RolePermission — ĐÃ CHUYỂN SANG FLYWAY (V3)
+   ---------------------------------------------------------------------
+   RBAC (danh mục quyền + gán quyền cho vai trò + 4 role phòng ban) GIỜ DO
+   migration V3__rbac_permissions.sql quản lý DUY NHẤT, theo ma trận chuẩn ở
+   docs/dev-notes/2026-06-14-backend-rbac-permission-matrix.md.
+   KHÔNG seed Permission/RolePermission ở đây nữa — tránh trùng khóa & lệch
+   bộ quyền với V3 (file seed này chỉ còn lo DỮ LIỆU DEMO).
    ===================================================================== */
-INSERT INTO Permission (Code, Description) VALUES
- ('TEACHER_VIEW',      N'Xem danh sách & hồ sơ giáo viên'),
- ('TEACHER_CREATE',    N'Tạo hồ sơ giáo viên'),
- ('TEACHER_UPDATE',    N'Cập nhật hồ sơ giáo viên'),
- ('TEACHER_DELETE',    N'Xóa (mềm) hồ sơ giáo viên'),
- ('SCHOOL_VIEW',       N'Xem danh sách trường khách hàng'),
- ('SCHOOL_MANAGE',     N'Tạo/sửa/xóa trường khách hàng'),
- ('ASSIGNMENT_VIEW',   N'Xem phân công giảng dạy'),
- ('ASSIGNMENT_MANAGE', N'Tạo/sửa/hủy phân công giảng dạy'),
- ('SCHEDULE_VIEW',     N'Xem lịch dạy'),
- ('SCHEDULE_CREATE',   N'Tạo lịch dạy'),
- ('SCHEDULE_APPROVE',  N'Duyệt / từ chối lịch dạy'),
- ('LESSON_VIEW',       N'Xem bài giảng'),
- ('LESSON_MANAGE',     N'Tạo/sửa/xóa bài giảng'),
- ('PAYROLL_VIEW',      N'Xem bảng lương'),
- ('PAYROLL_MANAGE',    N'Lập / chốt bảng lương'),
- ('REPORT_VIEW',       N'Xem thống kê & báo cáo');
-
--- ADMIN: toàn bộ quyền
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r CROSS JOIN Permission p
-WHERE r.Name = 'ADMIN';
-
--- EMPLOYEE: mọi quyền vận hành, trừ xóa giáo viên
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code NOT IN ('TEACHER_DELETE')
-WHERE r.Name = 'EMPLOYEE';
-
--- SCHOOL: chỉ XEM (đúng mô hình: trường không can thiệp điều phối)
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code IN ('TEACHER_VIEW','SCHEDULE_VIEW','LESSON_VIEW','REPORT_VIEW')
-WHERE r.Name = 'SCHOOL';
-
--- TEACHER: xem lịch của mình + xem bài giảng
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code IN ('SCHEDULE_VIEW','LESSON_VIEW')
-WHERE r.Name = 'TEACHER';
 
 /* =====================================================================
    5) Employee — 4 hồ sơ nhân viên mới, mỗi người 1 chi nhánh (tổng 5)

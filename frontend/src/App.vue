@@ -19,6 +19,7 @@ import BlankLayout from '@/layouts/BlankLayout.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import TeacherLayout from '@/layouts/TeacherLayout.vue'
 import SchoolLayout from '@/layouts/SchoolLayout.vue'
+import StaffLayout from '@/layouts/StaffLayout.vue'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
@@ -29,6 +30,7 @@ const layouts = {
   admin: AdminLayout,
   teacher: TeacherLayout,
   school: SchoolLayout,
+  staff: StaffLayout,
 }
 
 // computed = tự tính lại mỗi khi route đổi. Lấy layout theo nhãn; không có thì
