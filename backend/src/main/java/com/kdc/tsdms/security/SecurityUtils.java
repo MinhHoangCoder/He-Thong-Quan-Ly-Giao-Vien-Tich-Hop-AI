@@ -48,4 +48,18 @@ public final class SecurityUtils {
         String target = "ROLE_" + role;
         return auth.getAuthorities().stream().anyMatch(a -> target.equals(a.getAuthority()));
     }
+
+    /**
+     * {@code true} nếu người dùng có QUYỀN (permission) chỉ định. Khác {@link #hasRole(String)}:
+     * perms nằm trong authority KHÔNG kèm tiền tố {@code ROLE_} (vd {@code TEACHER_MANAGE}).
+     * Dùng khi cần kiểm tra quyền ở tầng service (ngoài {@code @PreAuthorize} của controller),
+     * vd /register phân biệt tạo GV (TEACHER_MANAGE) hay tạo trường (SCHOOL_MANAGE).
+     */
+    public static boolean hasAuthority(String authority) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null) {
+            return false;
+        }
+        return auth.getAuthorities().stream().anyMatch(a -> authority.equals(a.getAuthority()));
+    }
 }
