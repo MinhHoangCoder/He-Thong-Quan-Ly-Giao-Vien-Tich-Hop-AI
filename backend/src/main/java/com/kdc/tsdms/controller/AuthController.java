@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import java.security.Principal;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -58,7 +59,13 @@ public class AuthController {
         return new MessageResponse("Đã đăng xuất");
     }
 
-    /** Tạo tài khoản GV/trường — chỉ ADMIN & EMPLOYEE (chặn ở SecurityConfig). */
+    /**
+     * Tạo tài khoản GV/trường. Chặn theo QUYỀN (không theo role):
+     * tạo GV cần {@code TEACHER_MANAGE} (HR), tạo trường cần {@code SCHOOL_MANAGE} (SALES),
+     * ADMIN đi tắt. @PreAuthorize lọc thô (có ÍT NHẤT một trong hai quyền) — phân biệt
+     * chính xác theo loại tài khoản do RegistrationService kiểm tra tiếp.
+     */
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE') or hasAuthority('SCHOOL_MANAGE')")
     @PostMapping("/register")
     public ResponseEntity<UserInfo> register(@Valid @RequestBody RegisterRequest request) {
         UserInfo created = registrationService.register(request);

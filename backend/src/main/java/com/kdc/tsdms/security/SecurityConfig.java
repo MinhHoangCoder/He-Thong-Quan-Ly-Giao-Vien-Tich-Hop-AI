@@ -56,9 +56,10 @@ public class SecurityConfig {
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password")
                         .permitAll()
-                        // Đăng ký tài khoản (GV/trường) chỉ dành cho ADMIN & EMPLOYEE
-                        .requestMatchers("/api/v1/auth/register")
-                        .hasAnyRole("ADMIN", "EMPLOYEE")
+                        // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
+                        // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
+                        // ADMIN đi tắt) do @PreAuthorize trên AuthController.register + kiểm tra
+                        // trong RegistrationService lo — đúng mô hình permission-based (Cách B).
                         // Mọi request khác phải đăng nhập
                         .anyRequest()
                         .authenticated())

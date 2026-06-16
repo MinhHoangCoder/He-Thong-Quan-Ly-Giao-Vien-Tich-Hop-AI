@@ -9,10 +9,12 @@ export const adminRoutes = [
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
   {
-    // Tạo tài khoản GV/Trường — chỉ ADMIN & EMPLOYEE.
+    // Tạo tài khoản GV/Trường. Backend chặn theo QUYỀN: HR (TEACHER_MANAGE) tạo GV,
+    // SALES (SCHOOL_MANAGE) tạo trường, ADMIN tạo cả hai (employee gộp 4 phòng nên cũng vào được).
+    // meta.roles ở FE chỉ để HIỆN trang — chốt chặn thật nằm ở @PreAuthorize + RegistrationService.
     path: '/users/new',
     name: 'user-create',
     component: () => import('@/pages/RegisterUserPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE', 'HR', 'SALES'] },
   },
 ]
