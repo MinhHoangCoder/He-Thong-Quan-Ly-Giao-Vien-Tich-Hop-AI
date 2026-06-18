@@ -21,7 +21,7 @@
 
 - **`entity/` đã ĐÓNG BĂNG** (map đủ 28 bảng, đủ cột — xem note 2026-06-11): không sửa, trừ khi schema đổi.
 - **Repository**: chỉ THÊM method vào cuối interface có sẵn. Không đổi method người khác đã viết.
-- **Phân quyền cho endpoint mới**: dùng `@PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")` ngay trên controller/method của mình (đã bật `@EnableMethodSecurity`). **KHÔNG thêm rule vào `SecurityConfig.filterChain()`** — file đó chỉ giữ các endpoint auth công khai + `anyRequest().authenticated()`.
+- **Phân quyền cho endpoint mới**: chặn theo PERMISSION — dùng `@PreAuthorize("hasRole('ADMIN') or hasAuthority('<MÃ_QUYỀN>')")` ngay trên controller/method của mình (đã bật `@EnableMethodSecurity`). Lấy đúng mã quyền từ ma trận `docs/dev-notes/2026-06-14-backend-rbac-permission-matrix.md`, **đừng tự chế mã mới** (thiếu thì báo người làm nền seed thêm). **KHÔNG thêm rule vào `SecurityConfig.filterChain()`** — file đó chỉ giữ các endpoint auth công khai + `anyRequest().authenticated()`.
 - Lỗi nghiệp vụ: ném `ApiException(status, message)` — **không** tạo exception class mới, không sửa `GlobalExceptionHandler`.
 - `application.yaml`: cấu hình của feature mới đặt thành block riêng dưới `tsdms:`, thêm vào cuối.
 - Thêm dependency vào `pom.xml`: **báo nhóm trước**, một người thêm.
