@@ -6,15 +6,16 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Hồ sơ trường khách hàng (bảng School) — có thể nối 1-1 với AppUser (tài khoản trường). */
+/** Trường khách hàng (bảng School) — có thể nối 1-1 với AppUser (tài khoản trường, tùy chọn). */
 @Entity
 @Table(name = "School")
 @Getter
 @Setter
-public class School {
+public class School extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -27,15 +28,31 @@ public class School {
     @Column(name = "Name", nullable = false)
     private String name;
 
-    @Column(name = "AppUserId")
-    private Integer appUserId;
+    @Column(name = "Address")
+    private String address;
 
+    @Column(name = "Phone")
+    private String phone;
+
+    @Column(name = "Email")
+    private String email;
+
+    /** Người liên hệ phía trường. */
     @Column(name = "ContactPerson")
     private String contactPerson;
 
+    /** Tài khoản đăng nhập của trường (nullable — trường có thể chưa có tài khoản). */
+    @Column(name = "AppUserId")
+    private Integer appUserId;
+
+    @Column(name = "ContractStartDate")
+    private LocalDate contractStartDate;
+
+    /** Ngày hết hạn hợp đồng dịch vụ — dùng để cảnh báo/khóa. */
+    @Column(name = "ContractEndDate")
+    private LocalDate contractEndDate;
+
+    /** ACTIVE | INACTIVE | EXPIRED */
     @Column(name = "Status", nullable = false)
     private String status = "ACTIVE";
-
-    @Column(name = "IsDeleted", nullable = false)
-    private boolean deleted = false;
 }
