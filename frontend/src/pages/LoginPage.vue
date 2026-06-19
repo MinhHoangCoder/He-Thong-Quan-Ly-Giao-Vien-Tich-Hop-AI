@@ -69,17 +69,10 @@ function fillDemo(u) {
   username.value = u
   password.value = 'Tsdms@123'
 }
-// 4 actor gốc + 4 phòng ban nội bộ (seed ở Flyway V3) — tất cả mật khẩu Tsdms@123.
-const demoAccounts = [
-  'admin',
-  'employee',
-  'school',
-  'teacher',
-  'ketoan',
-  'nhansu',
-  'daotao',
-  'tuyensinh',
-]
+// Chip đăng nhập nhanh — tất cả mật khẩu Tsdms@123.
+// 'employee' CỐ TÌNH không liệt kê: nó là tài khoản TEST gộp 4 phòng ban (Flyway V5),
+// để dành test nội bộ (gõ tay 'employee'), không bày ra màn đăng nhập demo cho gọn.
+const demoAccounts = ['admin', 'school', 'teacher', 'ketoan', 'nhansu', 'daotao', 'tuyensinh']
 
 // Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
 const features = [

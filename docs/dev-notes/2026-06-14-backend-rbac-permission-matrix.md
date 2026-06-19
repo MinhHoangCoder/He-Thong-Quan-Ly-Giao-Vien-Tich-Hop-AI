@@ -75,9 +75,23 @@ RBAC **không** lo được vế hai. Cơ chế cho vế hai đã có: `userId` 
 | `TEACHER` | Giáo viên | ngoài |
 | `SCHOOL` | Trường khách hàng | ngoài |
 
-> Role cũ `EMPLOYEE` được giữ lại như "umbrella" tương thích ngược (tài khoản demo `employee`),
-> nhưng **không seed permission nào cho nó** — nhân viên thật sẽ được gán role phòng ban cụ thể.
-> Một user có thể giữ **nhiều role** (qua `UserRole`); token gộp quyền của tất cả.
+> Role `EMPLOYEE` (từ V1) **bản thân nó không được seed permission nào** — nhân viên thật sẽ
+> được gán role phòng ban cụ thể. Một user có thể giữ **nhiều role** (qua `UserRole`); token
+> gộp (union) quyền của tất cả.
+>
+> **Tài khoản test `employee` (Flyway V5):** account `employee` được gán **cả 4 role phòng ban**
+> (HR + ACCOUNTANT + ACADEMIC + SALES) → token có đủ quyền 4 phòng để test mọi chức năng trong
+> 1 lần đăng nhập, nhưng **vẫn bị giới hạn chi nhánh** (vì không phải ADMIN). Đây là tài khoản
+> tiện ích cho dev/demo, **đã ẩn khỏi chip đăng nhập nhanh** (gõ tay `employee`/`Tsdms@123`).
+> Cặp đôi test: `admin` = full, không giới hạn chi nhánh · `employee` = full, scoped 1 chi nhánh.
+
+### ⚠️ Quy ước GIỚI HẠN CHI NHÁNH (branch-scope) — cho người làm tính năng
+
+Tách bạch với RBAC/ownership: nhiều màn danh sách (GV, lịch, lương…) phải lọc theo **chi nhánh**
+của người đang đăng nhập. Quy ước: **chỉ `ADMIN` được thấy toàn bộ chi nhánh**; mọi role khác
+(kể cả tài khoản test `employee`) **đều bị lọc theo `BranchId` của nhân viên** ở tầng service —
+ví dụ `if (!SecurityUtils.hasRole("ADMIN")) query.filterByBranch(currentBranchId)`. Nhờ đó
+`employee` test được đủ chức năng mà vẫn đúng hành vi scoped như nhân viên phòng ban thật.
 
 ## 4. Danh mục quyền (Permission) — quy ước đặt tên `MODULE_ACTION`
 
@@ -168,6 +182,12 @@ cho ADMIN đi tắt:
    `principal.userId()` trong service (ownership) — xem mục 2 ⚠️.
 4. Đổi việc "phòng X được làm gì" = sửa **dữ liệu** `RolePermission` (qua migration mới),
    KHÔNG sửa code controller.
+5. **Endpoint phục vụ NHIỀU loại đối tượng** (vd `POST /api/v1/auth/register` tạo *cả* GV lẫn
+   trường): `@PreAuthorize` chỉ lọc **thô** "có ít nhất 1 trong các quyền liên quan"
+   (`hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE') or hasAuthority('SCHOOL_MANAGE')`),
+   rồi **kiểm tra CHI TIẾT trong service** theo dữ liệu request bằng `SecurityUtils.hasAuthority(...)`
+   (HR chỉ tạo được GV, SALES chỉ tạo được trường). Đây là chỗ duy nhất được phép kiểm quyền
+   trong service — vì annotation tĩnh không "nhìn" được nội dung request.
 
 ## 7. Phần còn thiếu để Cách B chạy (TODO triển khai)
 

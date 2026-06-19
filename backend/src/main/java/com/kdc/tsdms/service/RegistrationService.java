@@ -14,6 +14,7 @@ import com.kdc.tsdms.repository.RoleRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.repository.UserRoleRepository;
+import com.kdc.tsdms.security.SecurityUtils;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -21,7 +22,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Tạo tài khoản cho GIÁO VIÊN và TRƯỜNG. Chỉ ADMIN/EMPLOYEE được gọi (chặn ở SecurityConfig).
+ * Tạo tài khoản cho GIÁO VIÊN và TRƯỜNG. Chặn theo QUYỀN (không theo role): tạo GV cần
+ * {@code TEACHER_MANAGE} (HR), tạo trường cần {@code SCHOOL_MANAGE} (SALES), ADMIN đi tắt —
+ * lọc thô ở {@code @PreAuthorize} của controller, kiểm tra chi tiết theo loại tài khoản ngay dưới.
  * Một thao tác tạo gồm: AppUser + UserRole + hồ sơ (Teacher hoặc School) -> bọc trong 1 transaction.
  */
 @Service
@@ -57,6 +60,20 @@ public class RegistrationService {
         String role = req.role().trim().toUpperCase();
         if (!role.equals("TEACHER") && !role.equals("SCHOOL")) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ được tạo tài khoản vai trò TEACHER hoặc SCHOOL");
+        }
+
+        // Phân quyền CHI TIẾT theo loại tài khoản tạo (ADMIN đi tắt mọi thứ):
+        //   - tạo GIÁO VIÊN  -> cần TEACHER_MANAGE (phòng Nhân sự / HR)
+        //   - tạo TRƯỜNG     -> cần SCHOOL_MANAGE  (phòng Tuyển sinh / SALES)
+        // @PreAuthorize ở controller chỉ lọc thô "có ÍT NHẤT một trong hai quyền"; chốt
+        // chặn ở đây để HR không tạo nhầm tài khoản trường và SALES không tạo nhầm GV.
+        boolean isAdmin = SecurityUtils.hasRole("ADMIN");
+        if (role.equals("TEACHER") && !isAdmin && !SecurityUtils.hasAuthority("TEACHER_MANAGE")) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN, "Bạn không có quyền tạo tài khoản giáo viên (cần TEACHER_MANAGE)");
+        }
+        if (role.equals("SCHOOL") && !isAdmin && !SecurityUtils.hasAuthority("SCHOOL_MANAGE")) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền tạo tài khoản trường (cần SCHOOL_MANAGE)");
         }
         if (appUserRepo.existsByUsernameAndDeletedFalse(req.username())) {
             throw new ApiException(HttpStatus.CONFLICT, "Username đã tồn tại");
