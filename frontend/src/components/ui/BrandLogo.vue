@@ -15,7 +15,13 @@ defineProps({
 
 <template>
   <span class="brandlogo" :class="`brandlogo--${variant}`">
-    <img class="brandlogo__mark" :width="size" :height="size" :src="logoUrl" alt="KDC EduOps AI" />
+    <img
+      class="brandlogo__mark"
+      :width="size"
+      :height="size"
+      :src="logoUrl"
+      alt="KDC EduOps AI"
+    />
     <span v-if="showText" class="brandlogo__text">{{ text }}</span>
   </span>
 </template>

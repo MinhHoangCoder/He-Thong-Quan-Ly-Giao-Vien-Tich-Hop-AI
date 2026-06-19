@@ -20,9 +20,6 @@ import AdminLayout from '@/layouts/AdminLayout.vue'
 import TeacherLayout from '@/layouts/TeacherLayout.vue'
 import SchoolLayout from '@/layouts/SchoolLayout.vue'
 import StaffLayout from '@/layouts/StaffLayout.vue'
-import { onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/api/auth'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
@@ -39,24 +36,6 @@ const layouts = {
 // computed = tự tính lại mỗi khi route đổi. Lấy layout theo nhãn; không có thì
 // mặc định DefaultLayout (nhờ '|| DefaultLayout').
 const layout = computed(() => layouts[route.meta.layout] || DefaultLayout)
-const auth = useAuthStore()
-
-onMounted(async () => {
-  // Có refreshToken nhưng mất accessToken (do F5) → xin lại
-  if (auth.refreshToken && !auth.accessToken) {
-    try {
-      const { data } = await authApi.refresh(auth.refreshToken)
-      auth.setSession({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        user: data.user,
-      })
-    } catch {
-      // refreshToken hết hạn → clear, về login
-      auth.clear()
-    }
-  }
-})
 </script>
 
 <template>
