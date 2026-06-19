@@ -10,7 +10,9 @@ const form = ref({
   role: 'TEACHER',
   username: '',
   email: '',
-  fullName: '',
+  firstName: '', // tên gọi (GV)
+  lastName: '', // họ và tên đệm (GV)
+  fullName: '', // tên trường (TRƯỜNG)
   password: '',
   phone: '',
   branchId: '',
@@ -21,10 +23,8 @@ const loading = ref(false)
 const error = ref('')
 const success = ref('')
 
-// Nhãn đổi theo vai trò: GV thì "Họ tên", trường thì "Tên trường".
-const fullNameLabel = computed(() =>
-  form.value.role === 'SCHOOL' ? 'Tên trường' : 'Họ tên giáo viên',
-)
+// GV tách Họ-đệm + Tên; TRƯỜNG dùng một ô tên trường.
+const isTeacher = computed(() => form.value.role === 'TEACHER')
 
 onMounted(async () => {
   try {
@@ -53,6 +53,8 @@ async function onSubmit() {
     // Giữ lại role + branch để tạo tiếp nhanh; xóa các field còn lại.
     form.value.username = ''
     form.value.email = ''
+    form.value.firstName = ''
+    form.value.lastName = ''
     form.value.fullName = ''
     form.value.password = ''
     form.value.phone = ''
@@ -96,8 +98,19 @@ async function onSubmit() {
           <input v-model="form.email" type="email" required />
         </label>
 
-        <label class="field field--full">
-          <span>{{ fullNameLabel }}</span>
+        <!-- GV: tách "Họ và tên đệm" + "Tên gọi" (theo yêu cầu GVHD). TRƯỜNG: một ô tên trường. -->
+        <template v-if="isTeacher">
+          <label class="field">
+            <span>Họ và tên đệm</span>
+            <input v-model="form.lastName" type="text" placeholder="VD: Trần Nguyễn Văn" required />
+          </label>
+          <label class="field">
+            <span>Tên gọi</span>
+            <input v-model="form.firstName" type="text" placeholder="VD: A" required />
+          </label>
+        </template>
+        <label v-else class="field field--full">
+          <span>Tên trường</span>
           <input v-model="form.fullName" type="text" required />
         </label>
 

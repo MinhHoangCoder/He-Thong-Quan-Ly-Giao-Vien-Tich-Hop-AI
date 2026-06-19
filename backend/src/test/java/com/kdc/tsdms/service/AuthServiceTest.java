@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,6 +53,9 @@ class AuthServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private DisplayNameResolver displayNameResolver;
+
     @InjectMocks
     private AuthService authService;
 
@@ -62,7 +66,6 @@ class AuthServiceTest {
         activeUser = new AppUser();
         activeUser.setId(1);
         activeUser.setUsername("admin");
-        activeUser.setFullName("Quản trị");
         activeUser.setEmail("admin@tsdms.local");
         activeUser.setPasswordHash("$2b$hash");
         activeUser.setStatus("ACTIVE");
@@ -72,7 +75,8 @@ class AuthServiceTest {
     private void stubTokenIssuing() {
         when(userRoleRepo.findRoleNamesByAppUserId(1)).thenReturn(List.of("ADMIN"));
         when(userRoleRepo.findPermissionCodesByAppUserId(1)).thenReturn(List.of("USER_VIEW"));
-        when(jwtService.generateAccessToken(any(AppUser.class), anyList(), anyList()))
+        when(displayNameResolver.resolve(any(AppUser.class))).thenReturn("Quản trị");
+        when(jwtService.generateAccessToken(any(AppUser.class), anyList(), anyList(), anyString()))
                 .thenReturn("access.jwt");
         when(jwtService.generateOpaqueToken()).thenReturn("raw-refresh");
         when(jwtService.sha256("raw-refresh")).thenReturn("hash-refresh");

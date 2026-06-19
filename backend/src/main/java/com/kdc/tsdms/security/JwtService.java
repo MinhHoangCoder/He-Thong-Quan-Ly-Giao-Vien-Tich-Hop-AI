@@ -35,8 +35,8 @@ public class JwtService {
         this.key = Keys.hmacShaKeyFor(props.getSecret().getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Tạo access token (JWT) với subject = username + claim uid/roles/perms/fullName. */
-    public String generateAccessToken(AppUser user, List<String> roles, List<String> perms) {
+    /** Tạo access token (JWT): subject = username + claim uid/roles/perms/fullName (tên hiển thị ghép sẵn). */
+    public String generateAccessToken(AppUser user, List<String> roles, List<String> perms, String displayName) {
         Instant now = Instant.now();
         return Jwts.builder()
                 .subject(user.getUsername())
@@ -44,7 +44,7 @@ public class JwtService {
                 .claim("roles", roles)
                 // perms = danh sách MÃ QUYỀN chi tiết -> @PreAuthorize("hasAuthority('...')").
                 .claim("perms", perms)
-                .claim("fullName", user.getFullName())
+                .claim("fullName", displayName)
                 .issuer(props.getIssuer())
                 .issuedAt(Date.from(now))
                 .expiration(Date.from(now.plus(props.getAccessTokenTtl())))

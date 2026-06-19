@@ -25,6 +25,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final ResetProperties resetProps;
+    private final DisplayNameResolver displayNameResolver;
 
     public PasswordResetService(
             AppUserRepository appUserRepo,
@@ -33,7 +34,8 @@ public class PasswordResetService {
             JwtService jwtService,
             PasswordEncoder passwordEncoder,
             EmailService emailService,
-            ResetProperties resetProps) {
+            ResetProperties resetProps,
+            DisplayNameResolver displayNameResolver) {
         this.appUserRepo = appUserRepo;
         this.resetRepo = resetRepo;
         this.refreshTokenRepo = refreshTokenRepo;
@@ -41,6 +43,7 @@ public class PasswordResetService {
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.resetProps = resetProps;
+        this.displayNameResolver = displayNameResolver;
     }
 
     @Transactional
@@ -57,7 +60,7 @@ public class PasswordResetService {
             resetRepo.save(prt);
 
             String link = resetProps.getBaseUrl() + "/reset-password?token=" + rawToken;
-            emailService.sendPasswordReset(user.getEmail(), user.getFullName(), link);
+            emailService.sendPasswordReset(user.getEmail(), displayNameResolver.resolve(user), link);
         });
     }
 

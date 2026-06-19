@@ -25,8 +25,13 @@ public class Student extends SoftDeletableEntity {
     @Column(name = "SchoolId", nullable = false)
     private Integer schoolId;
 
-    @Column(name = "FullName", nullable = false)
-    private String fullName;
+    /** Tên gọi (given name). */
+    @Column(name = "FirstName", nullable = false)
+    private String firstName;
+
+    /** Họ và tên đệm (family name). */
+    @Column(name = "LastName", nullable = false)
+    private String lastName;
 
     @Column(name = "DateOfBirth")
     private LocalDate dateOfBirth;

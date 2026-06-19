@@ -90,9 +90,8 @@ CREATE TABLE AppUser (
     AppUserId     INT IDENTITY PRIMARY KEY,
     Username      VARCHAR(50)   NOT NULL,            -- tên đăng nhập
     PasswordHash  VARCHAR(255)  NOT NULL,            -- mật khẩu ĐÃ mã hóa BCrypt (KHÔNG lưu thô)
-    Email         VARCHAR(100)  NOT NULL,            -- email
-    FullName      NVARCHAR(150) NOT NULL,            -- tên hiển thị
-    Phone         VARCHAR(20)   NULL,
+    Email         VARCHAR(100)  NOT NULL,            -- email (đăng nhập + khôi phục mật khẩu)
+    -- Họ tên & SĐT đã chuyển về bảng tác nhân (Teacher/Employee/School) — AppUser chỉ giữ định danh.
     Status        VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / INACTIVE / LOCKED(bị khóa)
                   CONSTRAINT CK_AppUser_Status CHECK (Status IN ('ACTIVE','INACTIVE','LOCKED')),
     LastLoginAt   DATETIME2(3)  NULL,                -- lần đăng nhập gần nhất
@@ -197,6 +196,9 @@ CREATE TABLE Employee (
     EmployeeId   INT IDENTITY PRIMARY KEY,
     AppUserId    INT           NOT NULL UNIQUE,       -- → AppUser (mỗi user chỉ 1 hồ sơ NV)
     BranchId     INT           NOT NULL,             -- → Branch (nhân viên thuộc chi nhánh nào)
+    FirstName    NVARCHAR(50)  NOT NULL,             -- Tên gọi (given name)
+    LastName     NVARCHAR(100) NOT NULL,             -- Họ và tên đệm (family name)
+    Phone        VARCHAR(20)   NULL,                 -- SĐT liên hệ
     Position     NVARCHAR(100) NULL,                 -- chức vụ
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
                  CONSTRAINT CK_Employee_Status CHECK (Status IN ('ACTIVE','INACTIVE')),
@@ -210,7 +212,8 @@ CREATE TABLE Employee (
     FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId),
     FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId)
 );
-CREATE INDEX IX_Employee_Branch ON Employee(BranchId);  -- lọc nhân viên theo chi nhánh
+CREATE INDEX IX_Employee_Branch    ON Employee(BranchId);             -- lọc nhân viên theo chi nhánh
+CREATE INDEX IX_Employee_FirstName ON Employee(FirstName, LastName);  -- sắp xếp theo TÊN
 
 /* ========== Bảng 9: Subject — MÔN HỌC ==========
    Ý nghĩa : Danh mục môn (STEM, Công dân số...).
@@ -247,7 +250,9 @@ CREATE TABLE Teacher (
     TeacherId       INT IDENTITY PRIMARY KEY,
     AppUserId       INT           NOT NULL UNIQUE,    -- → AppUser (1-1)
     BranchId        INT           NOT NULL,          -- → Branch (chi nhánh quản lý GV)
-    FullName        NVARCHAR(150) NOT NULL,          -- họ tên
+    -- Tách họ tên (quy ước Tây): FirstName = tên gọi, LastName = họ + tên đệm.
+    FirstName       NVARCHAR(50)  NOT NULL,          -- Tên gọi (vd "A" trong "Trần Nguyễn Văn A")
+    LastName        NVARCHAR(100) NOT NULL,          -- Họ và tên đệm (vd "Trần Nguyễn Văn")
     DateOfBirth     DATE          NULL,              -- ngày sinh
     Gender          BIT           NULL,              -- 1 = Nam, 0 = Nữ
     IdCardNo        VARCHAR(20)   NULL,              -- số CCCD
@@ -270,8 +275,8 @@ CREATE TABLE Teacher (
 );
 -- CCCD là duy nhất (chỉ tính bản ghi chưa xóa mềm, và bỏ qua ô để trống)
 CREATE UNIQUE INDEX UX_Teacher_IdCard ON Teacher(IdCardNo) WHERE IdCardNo IS NOT NULL AND IsDeleted = 0;
-CREATE INDEX IX_Teacher_Branch   ON Teacher(BranchId);    -- lọc GV theo chi nhánh
-CREATE INDEX IX_Teacher_FullName ON Teacher(FullName);    -- tìm GV theo tên
+CREATE INDEX IX_Teacher_Branch    ON Teacher(BranchId);             -- lọc GV theo chi nhánh
+CREATE INDEX IX_Teacher_FirstName ON Teacher(FirstName, LastName);  -- sắp xếp theo TÊN
 
 /* ========== Bảng 11: TeacherSubject — bảng nối GIÁO VIÊN ⇄ MÔN dạy được ==========
    Ý nghĩa : Một GV dạy được nhiều môn; một môn nhiều GV dạy (nhiều-nhiều).
@@ -332,7 +337,8 @@ CREATE TABLE Contract (
     FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
     CONSTRAINT CK_Contract_Dates CHECK (EndDate IS NULL OR EndDate >= StartDate)  -- ngày KT ≥ ngày BĐ
 );
-CREATE INDEX IX_Contract_Teacher ON Contract(TeacherId);
+-- 1-1: mỗi GV tối đa 1 hợp đồng CHƯA xóa mềm (theo yêu cầu GVHD).
+CREATE UNIQUE INDEX UX_Contract_OneActivePerTeacher ON Contract(TeacherId) WHERE IsDeleted = 0;
 
 
 /* #####################################################################
@@ -422,7 +428,8 @@ CREATE UNIQUE INDEX UX_Class_School_Name_Year ON SchoolClass(SchoolId, Name, Sch
 CREATE TABLE Student (
     StudentId   INT IDENTITY PRIMARY KEY,
     SchoolId    INT           NOT NULL,              -- → School.SchoolId
-    FullName    NVARCHAR(150) NOT NULL,
+    FirstName   NVARCHAR(50)  NOT NULL,              -- Tên gọi (given name)
+    LastName    NVARCHAR(100) NOT NULL,              -- Họ và tên đệm (family name)
     DateOfBirth DATE          NULL,
     Gender      BIT           NULL,                 -- 1 = Nam, 0 = Nữ
     Status      VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
@@ -436,8 +443,8 @@ CREATE TABLE Student (
     UpdatedBy   INT           NULL,
     FOREIGN KEY (SchoolId) REFERENCES School(SchoolId)
 );
-CREATE INDEX IX_Student_School   ON Student(SchoolId);
-CREATE INDEX IX_Student_FullName ON Student(FullName);
+CREATE INDEX IX_Student_School    ON Student(SchoolId);
+CREATE INDEX IX_Student_FirstName ON Student(FirstName, LastName);  -- sắp xếp theo TÊN
 
 /* ========== Bảng 18: ClassEnrollment — bảng nối LỚP ⇄ HỌC SINH ==========
    Ý nghĩa : Một lớp có nhiều học sinh; một học sinh có thể vào nhiều lớp (nhiều-nhiều).
@@ -801,12 +808,12 @@ INSERT INTO Branch (Name, Address, Phone) VALUES
  (N'Chi nhánh trung tâm', N'Hà Nội', '0240000000');
 GO
 
--- 4 tài khoản đăng nhập. PasswordHash = BCrypt('Tsdms@123').
-INSERT INTO AppUser (Username, PasswordHash, Email, FullName, Phone) VALUES
- ('admin',    '$2b$10$ohMPL3S6/wcDn/t4v17ASuo1v6vfwB.ZVVH/g/OpNWahstMRKt20m', 'admin@tsdms.local',    N'Quản trị viên',       '0900000001'),
- ('employee', '$2b$10$O419OLGJ23IaXz9oT9DYL.Xhk/uMJDpbHr8SKQgjgEysVakGT1NkO', 'employee@tsdms.local', N'Nhân viên trung tâm', '0900000002'),
- ('school',   '$2b$10$bj4N5E1LwiGBEZIkgfAFmuCZgE2unPmyQr9kjwBrOeradCNmKAvWm', 'school@tsdms.local',   N'Trường THPT Demo',    '0900000003'),
- ('teacher',  '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK', 'teacher@tsdms.local',  N'Giáo viên Demo',      '0900000004');
+-- 4 tài khoản đăng nhập (chỉ định danh). PasswordHash = BCrypt('Tsdms@123').
+INSERT INTO AppUser (Username, PasswordHash, Email) VALUES
+ ('admin',    '$2b$10$ohMPL3S6/wcDn/t4v17ASuo1v6vfwB.ZVVH/g/OpNWahstMRKt20m', 'admin@tsdms.local'),
+ ('employee', '$2b$10$O419OLGJ23IaXz9oT9DYL.Xhk/uMJDpbHr8SKQgjgEysVakGT1NkO', 'employee@tsdms.local'),
+ ('school',   '$2b$10$bj4N5E1LwiGBEZIkgfAFmuCZgE2unPmyQr9kjwBrOeradCNmKAvWm', 'school@tsdms.local'),
+ ('teacher',  '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK', 'teacher@tsdms.local');
 GO
 
 -- Gán vai trò cho từng tài khoản (tra theo tên, không phụ thuộc Id)
@@ -820,15 +827,15 @@ JOIN Role r ON (u.Username = 'admin'    AND r.Name = 'ADMIN')
 GO
 
 -- Hồ sơ Nhân viên (1-1 với AppUser 'employee', gắn chi nhánh)
-INSERT INTO Employee (AppUserId, BranchId, Position)
-SELECT u.AppUserId, b.BranchId, N'Điều phối viên'
+INSERT INTO Employee (AppUserId, BranchId, FirstName, LastName, Phone, Position)
+SELECT u.AppUserId, b.BranchId, N'Tâm', N'Nhân Viên Trung', '0900000002', N'Điều phối viên'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'employee' AND b.Name = N'Chi nhánh trung tâm';
 GO
 
 -- Hồ sơ Giáo viên (1-1 với AppUser 'teacher')
-INSERT INTO Teacher (AppUserId, BranchId, FullName, EmploymentType)
-SELECT u.AppUserId, b.BranchId, N'Giáo viên Demo', 'FULL_TIME'
+INSERT INTO Teacher (AppUserId, BranchId, FirstName, LastName, EmploymentType)
+SELECT u.AppUserId, b.BranchId, N'Demo', N'Giáo Viên', 'FULL_TIME'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'teacher' AND b.Name = N'Chi nhánh trung tâm';
 GO

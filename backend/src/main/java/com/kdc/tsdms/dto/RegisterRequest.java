@@ -15,7 +15,12 @@ public record RegisterRequest(
 
         @NotBlank(message = "Thiếu username") String username,
         @NotBlank @Email(message = "Email không hợp lệ") String email,
-        @NotBlank(message = "Thiếu họ tên / tên trường") String fullName,
+
+        // Họ tên: GIÁO VIÊN dùng firstName (tên gọi) + lastName (họ và tên đệm); TRƯỜNG dùng
+        // fullName (tên trường). Bắt buộc theo role -> kiểm tra trong RegistrationService.
+        String firstName,
+        String lastName,
+        String fullName,
 
         // Lookahead (?=...) = "phải chứa ít nhất 1 ký tự loại này". Max 72: BCrypt chỉ băm 72 byte đầu.
         @NotBlank @Pattern(
