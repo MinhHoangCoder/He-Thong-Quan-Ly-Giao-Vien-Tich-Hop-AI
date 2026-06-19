@@ -22,7 +22,7 @@ public class LessonFile extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "LessonFileId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "LessonId", nullable = false)

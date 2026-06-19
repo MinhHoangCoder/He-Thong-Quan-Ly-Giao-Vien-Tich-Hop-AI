@@ -20,7 +20,7 @@ public class Contract extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "ContractId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "TeacherId", nullable = false)

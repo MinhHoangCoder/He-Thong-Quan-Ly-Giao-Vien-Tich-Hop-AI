@@ -18,7 +18,7 @@ public class Feedback extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "FeedbackId")
+    @Column(name = "Id")
     private Integer id;
 
     /** Người gửi (→ AppUser). */

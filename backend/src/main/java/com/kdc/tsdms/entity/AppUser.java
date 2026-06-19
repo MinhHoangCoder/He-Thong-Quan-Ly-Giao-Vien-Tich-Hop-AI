@@ -22,7 +22,7 @@ public class AppUser extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY) // SQL Server IDENTITY
-    @Column(name = "AppUserId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "Username", nullable = false)

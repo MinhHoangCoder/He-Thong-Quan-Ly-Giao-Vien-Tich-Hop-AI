@@ -22,7 +22,7 @@ public class Lesson extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "LessonId")
+    @Column(name = "Id")
     private Integer id;
 
     /** Môn học (FK → Subject). */

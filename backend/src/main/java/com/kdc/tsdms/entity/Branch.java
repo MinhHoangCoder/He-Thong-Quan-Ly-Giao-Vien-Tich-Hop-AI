@@ -18,7 +18,7 @@ public class Branch extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "BranchId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "Name", nullable = false)

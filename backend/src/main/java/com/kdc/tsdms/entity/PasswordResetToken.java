@@ -19,7 +19,7 @@ public class PasswordResetToken {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "PasswordResetTokenId")
+    @Column(name = "Id")
     private Long id;
 
     @Column(name = "AppUserId", nullable = false)
