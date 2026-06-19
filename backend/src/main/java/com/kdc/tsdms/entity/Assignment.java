@@ -23,7 +23,7 @@ public class Assignment extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "AssignmentId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "TeacherId", nullable = false)

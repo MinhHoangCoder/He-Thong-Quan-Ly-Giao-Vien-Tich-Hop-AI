@@ -29,7 +29,7 @@ public class Schedule {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "ScheduleId")
+    @Column(name = "Id")
     private Long id; // BIGINT — bảng sự kiện tích lũy nhanh
 
     @Column(name = "AssignmentId", nullable = false)

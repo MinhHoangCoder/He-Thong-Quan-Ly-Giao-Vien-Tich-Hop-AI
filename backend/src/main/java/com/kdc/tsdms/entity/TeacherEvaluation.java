@@ -18,7 +18,7 @@ public class TeacherEvaluation extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "EvaluationId")
+    @Column(name = "Id")
     private Integer id;
 
     /** GV được đánh giá. */

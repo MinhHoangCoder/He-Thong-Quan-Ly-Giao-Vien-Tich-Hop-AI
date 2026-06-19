@@ -22,7 +22,7 @@ public class Payroll extends AuditableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "PayrollId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "TeacherId", nullable = false)

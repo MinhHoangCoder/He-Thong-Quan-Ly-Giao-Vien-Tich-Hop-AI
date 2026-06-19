@@ -18,7 +18,7 @@ public class Subject extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "SubjectId")
+    @Column(name = "Id")
     private Integer id;
 
     /** Mã môn (unique), vd: STEM01, CDS01. */

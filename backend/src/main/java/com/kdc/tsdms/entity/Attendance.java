@@ -25,7 +25,7 @@ public class Attendance {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "AttendanceId")
+    @Column(name = "Id")
     private Long id; // BIGINT
 
     @Column(name = "TeacherId", nullable = false)

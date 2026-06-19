@@ -18,7 +18,7 @@ public class Employee extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "EmployeeId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "AppUserId", nullable = false)

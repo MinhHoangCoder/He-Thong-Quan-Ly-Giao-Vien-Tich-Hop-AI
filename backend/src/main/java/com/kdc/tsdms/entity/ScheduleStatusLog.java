@@ -22,7 +22,7 @@ public class ScheduleStatusLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "LogId")
+    @Column(name = "Id")
     private Long id;
 
     @Column(name = "ScheduleId", nullable = false)

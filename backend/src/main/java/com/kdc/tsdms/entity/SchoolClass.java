@@ -18,7 +18,7 @@ public class SchoolClass extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "ClassId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "SchoolId", nullable = false)

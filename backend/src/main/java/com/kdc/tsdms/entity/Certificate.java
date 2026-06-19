@@ -19,7 +19,7 @@ public class Certificate extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "CertificateId")
+    @Column(name = "Id")
     private Integer id;
 
     @Column(name = "TeacherId", nullable = false)

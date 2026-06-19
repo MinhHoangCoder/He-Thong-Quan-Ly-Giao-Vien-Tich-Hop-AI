@@ -19,7 +19,7 @@ public class AuditLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "AuditLogId")
+    @Column(name = "Id")
     private Long id; // BIGINT
 
     /** Người thao tác (nullable — hành động hệ thống thì để trống). */

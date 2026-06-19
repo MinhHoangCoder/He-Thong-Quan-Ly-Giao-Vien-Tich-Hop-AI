@@ -19,7 +19,7 @@ public class Notification {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "NotificationId")
+    @Column(name = "Id")
     private Long id; // BIGINT
 
     /** Người nhận (→ AppUser). */

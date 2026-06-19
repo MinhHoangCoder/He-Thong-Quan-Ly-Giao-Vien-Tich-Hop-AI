@@ -18,7 +18,7 @@ public class Permission {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "PermissionId")
+    @Column(name = "Id")
     private Integer id;
 
     /** Mã quyền (unique), vd: SCHEDULE_APPROVE. */
