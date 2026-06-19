@@ -3,7 +3,7 @@
 ## 1. Làm gì trong đợt này?
 
 Hoàn thiện phần backend còn thiếu của module Bài giảng đã ghi trong
-`2026-06-13-database-lesson-module-seed.md` (mục 6 — "Việc còn lại"):
+`2026-06-19-database-lesson-module-seed.md` (mục 6 — "Việc còn lại"):
 
 1. **DTO**: `LessonRequest` (tạo/sửa), `LessonResponse` (chi tiết + file đính kèm),
    `LessonSummary` (1 dòng trong danh sách), `LessonFileResponse` (file đính kèm).
