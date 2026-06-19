@@ -62,6 +62,16 @@ public class RegistrationService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ được tạo tài khoản vai trò TEACHER hoặc SCHOOL");
         }
 
+        // Tên bắt buộc theo role: GV cần firstName (tên gọi) + lastName (họ và tên đệm);
+        // trường cần fullName (tên trường).
+        boolean teacher = role.equals("TEACHER");
+        if (teacher && (isBlank(req.firstName()) || isBlank(req.lastName()))) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu tên gọi hoặc họ và tên đệm của giáo viên");
+        }
+        if (!teacher && isBlank(req.fullName())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu tên trường");
+        }
+
         // Phân quyền CHI TIẾT theo loại tài khoản tạo (ADMIN đi tắt mọi thứ):
         //   - tạo GIÁO VIÊN  -> cần TEACHER_MANAGE (phòng Nhân sự / HR)
         //   - tạo TRƯỜNG     -> cần SCHOOL_MANAGE  (phòng Tuyển sinh / SALES)
@@ -91,8 +101,6 @@ public class RegistrationService {
         AppUser user = new AppUser();
         user.setUsername(req.username());
         user.setEmail(req.email());
-        user.setFullName(req.fullName());
-        user.setPhone(req.phone());
         user.setPasswordHash(passwordEncoder.encode(req.password()));
         user.setStatus("ACTIVE");
         appUserRepo.save(user);
@@ -100,26 +108,35 @@ public class RegistrationService {
         // 2) Gán vai trò
         userRoleRepo.save(new UserRole(user.getId(), roleEntity.getId()));
 
-        // 3) Tạo hồ sơ tương ứng
-        if (role.equals("TEACHER")) {
+        // 3) Tạo hồ sơ tương ứng + xác định tên hiển thị trả về
+        String displayName;
+        if (teacher) {
             Teacher t = new Teacher();
             t.setAppUserId(user.getId());
             t.setBranchId(req.branchId());
-            t.setFullName(req.fullName());
+            t.setFirstName(req.firstName().trim());
+            t.setLastName(req.lastName().trim());
+            t.setPhone(req.phone());
             t.setStatus("ACTIVE");
             teacherRepo.save(t);
+            displayName = (t.getLastName() + " " + t.getFirstName()).trim();
         } else {
             School s = new School();
             s.setBranchId(req.branchId());
-            s.setName(req.fullName()); // dùng fullName làm tên trường (đơn giản hóa bản đầu)
+            s.setName(req.fullName().trim()); // fullName = tên trường
             s.setAppUserId(user.getId());
-            s.setContactPerson(req.fullName());
+            s.setContactPerson(req.fullName().trim());
+            s.setPhone(req.phone());
             s.setStatus("ACTIVE");
             schoolRepo.save(s);
+            displayName = s.getName();
         }
 
         // perms để rỗng ở đây — user mới đăng ký sẽ nhận đủ quyền theo role khi đăng nhập.
-        return new UserInfo(
-                user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), List.of(role), List.of());
+        return new UserInfo(user.getId(), user.getUsername(), displayName, user.getEmail(), List.of(role), List.of());
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }

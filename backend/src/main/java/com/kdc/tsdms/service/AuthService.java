@@ -26,18 +26,21 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final DisplayNameResolver displayNameResolver;
 
     public AuthService(
             AppUserRepository appUserRepo,
             UserRoleRepository userRoleRepo,
             RefreshTokenRepository refreshTokenRepo,
             PasswordEncoder passwordEncoder,
-            JwtService jwtService) {
+            JwtService jwtService,
+            DisplayNameResolver displayNameResolver) {
         this.appUserRepo = appUserRepo;
         this.userRoleRepo = userRoleRepo;
         this.refreshTokenRepo = refreshTokenRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
+        this.displayNameResolver = displayNameResolver;
     }
 
     @Transactional
@@ -111,12 +114,14 @@ public class AuthService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Phiên không hợp lệ"));
         List<String> roles = userRoleRepo.findRoleNamesByAppUserId(user.getId());
         List<String> perms = userRoleRepo.findPermissionCodesByAppUserId(user.getId());
-        return new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles, perms);
+        String displayName = displayNameResolver.resolve(user);
+        return new UserInfo(user.getId(), user.getUsername(), displayName, user.getEmail(), roles, perms);
     }
 
     /** Cấp access token (JWT) + refresh token (opaque, lưu hash). */
     private AuthResponse issueTokens(AppUser user, List<String> roles, List<String> perms) {
-        String accessToken = jwtService.generateAccessToken(user, roles, perms);
+        String displayName = displayNameResolver.resolve(user);
+        String accessToken = jwtService.generateAccessToken(user, roles, perms, displayName);
 
         String rawRefresh = jwtService.generateOpaqueToken();
         RefreshToken rt = new RefreshToken();
@@ -125,8 +130,7 @@ public class AuthService {
         rt.setExpiresAt(jwtService.refreshTokenExpiry());
         refreshTokenRepo.save(rt);
 
-        UserInfo info =
-                new UserInfo(user.getId(), user.getUsername(), user.getFullName(), user.getEmail(), roles, perms);
+        UserInfo info = new UserInfo(user.getId(), user.getUsername(), displayName, user.getEmail(), roles, perms);
         return new AuthResponse(accessToken, rawRefresh, "Bearer", jwtService.accessTokenTtlSeconds(), info);
     }
 }

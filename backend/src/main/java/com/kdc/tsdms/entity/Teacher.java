@@ -28,8 +28,13 @@ public class Teacher extends SoftDeletableEntity {
     @Column(name = "BranchId", nullable = false)
     private Integer branchId;
 
-    @Column(name = "FullName", nullable = false)
-    private String fullName;
+    /** Tên gọi (given name), vd: "A" trong "Trần Nguyễn Văn A". */
+    @Column(name = "FirstName", nullable = false)
+    private String firstName;
+
+    /** Họ và tên đệm (family name), vd: "Trần Nguyễn Văn". */
+    @Column(name = "LastName", nullable = false)
+    private String lastName;
 
     @Column(name = "DateOfBirth")
     private LocalDate dateOfBirth;

@@ -27,6 +27,17 @@ public class Employee extends SoftDeletableEntity {
     @Column(name = "BranchId", nullable = false)
     private Integer branchId;
 
+    /** Tên gọi (given name). */
+    @Column(name = "FirstName", nullable = false)
+    private String firstName;
+
+    /** Họ và tên đệm (family name). */
+    @Column(name = "LastName", nullable = false)
+    private String lastName;
+
+    @Column(name = "Phone")
+    private String phone;
+
     /** Chức vụ, vd: Điều phối viên. */
     @Column(name = "Position")
     private String position;
