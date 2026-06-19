@@ -10,9 +10,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Bài giảng (bảng Lesson) — nhân viên trung tâm soạn/quản lý, gắn với môn học,
- * chi nhánh và (tùy chọn) giáo viên phụ trách. Trường & giáo viên chỉ XEM bài
- * đã PUBLISHED. Một bài giảng có nhiều {@link LessonFile}.
+ * Bài giảng (bảng Lesson) — nhân viên trung tâm soạn/quản lý.
+ * Môn học liên kết qua SubjectId FK → bảng Subject (đã có sẵn từ V1/V2).
+ * KHÔNG dùng cột Category text nữa. Không thay đổi DB.
  */
 @Entity
 @Table(name = "Lesson")
@@ -25,6 +25,7 @@ public class Lesson extends SoftDeletableEntity {
     @Column(name = "LessonId")
     private Integer id;
 
+    /** Môn học (FK → Subject). */
     @Column(name = "SubjectId", nullable = false)
     private Integer subjectId;
 

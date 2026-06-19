@@ -8,4 +8,23 @@ export const staffRoutes = [
     component: () => import('@/pages/StaffHomePage.vue'),
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
+  // ── Kho bài giảng (LESSON) ────────────────────────────────────────
+  {
+    path: '/staff/lessons',
+    name: 'lesson-list',
+    component: () => import('@/pages/LessonListPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
+  {
+    path: '/staff/lessons/new',
+    name: 'lesson-new',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
+  {
+    path: '/staff/lessons/:id/edit',
+    name: 'lesson-edit',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
 ]
