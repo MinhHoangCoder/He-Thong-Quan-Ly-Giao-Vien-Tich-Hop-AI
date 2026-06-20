@@ -38,7 +38,7 @@ export const STAFF_MODULES = [
     perm: 'LESSON_VIEW',
     label: 'Kho bài giảng',
     icon: 'subject',
-    to: '#',
+    to: '/staff/lessons',
     desc: 'Quản lý bài giảng',
   },
   {
@@ -128,14 +128,6 @@ export const STAFF_MODULES = [
     icon: 'dashboard',
     to: '#',
     desc: 'Báo cáo hoạt động chung',
-  },
-  {
-    section: 'Giảng dạy',
-    perm: 'LESSON_VIEW',
-    label: 'Kho bài giảng',
-    icon: 'subject',
-    to: '/staff/lessons',
-    desc: 'Quản lý bài giảng',
   },
 ]
 
