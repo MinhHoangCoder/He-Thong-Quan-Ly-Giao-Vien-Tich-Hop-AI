@@ -24,5 +24,9 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-13 | database | Module Bài giảng (Lesson) + Flyway V2 + Seed demo toàn hệ thống | [2026-06-13-database-lesson-module-seed.md](2026-06-13-database-lesson-module-seed.md) |
 | 2026-06-14 | backend | ⭐ Phân quyền RBAC theo permission — Ma trận quyền & quy ước nhóm | [2026-06-14-backend-rbac-permission-matrix.md](2026-06-14-backend-rbac-permission-matrix.md) |
 | 2026-06-14 | database | Bảng ServiceContract — HĐ dịch vụ trường↔trung tâm (nguồn doanh thu) | [2026-06-14-database-service-contract.md](2026-06-14-database-service-contract.md) |
+| 2026-06-16 | frontend | Portal phòng ban (staff) + tách route theo khu vực + menu động theo quyền | [2026-06-16-frontend-portal-phong-ban.md](2026-06-16-frontend-portal-phong-ban.md) |
+| 2026-06-17 | backend | Chốt chặn `/register` theo quyền (2 tầng) + tài khoản test `employee` (V5) | [2026-06-17-backend-rbac-register-guard.md](2026-06-17-backend-rbac-register-guard.md) |
+| 2026-06-19 | backend | API Bài giảng (Lesson) — CRUD + upload file | [2026-06-19-backend-lesson-api-crud-upload.md](2026-06-19-backend-lesson-api-crud-upload.md) |
+| 2026-06-20 | fullstack | ⭐ Áp góp ý GVHD vào DB: tách họ tên, AppUser bỏ trùng, Contract 1-1, PK→`Id` (V6+V7) | [2026-06-20-database-gvhd-3-thay-doi.md](2026-06-20-database-gvhd-3-thay-doi.md) |
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.
