@@ -340,3 +340,4 @@ public class LessonService {
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 }
+ád
