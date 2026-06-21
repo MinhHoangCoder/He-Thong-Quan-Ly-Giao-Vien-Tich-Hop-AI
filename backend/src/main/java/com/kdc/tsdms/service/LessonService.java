@@ -36,9 +36,11 @@ import org.springframework.web.multipart.MultipartFile;
  * Nghiệp vụ module Bài giảng.
  *
  * Môn học (Subject) liên kết qua SubjectId FK — bảng Subject đã có sẵn từ V1.
- * KHÔNG thêm/sửa DB, chỉ dùng đúng cột SubjectId đã tồn tại trong bảng Lesson (V2).
+ * KHÔNG thêm/sửa DB, chỉ dùng đúng cột SubjectId đã tồn tại trong bảng Lesson
+ * (V2).
  *
- * GradeLevel là text tự do (vd "Lớp 4", "Lớp 10"), không liên kết bảng SchoolClass.
+ * GradeLevel là text tự do (vd "Lớp 4", "Lớp 10"), không liên kết bảng
+ * SchoolClass.
  */
 @Service
 public class LessonService {
@@ -46,9 +48,8 @@ public class LessonService {
     private static final String UPLOAD_ROOT = "uploads/lessons";
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of(
-            "Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9", "Lớp 10", "Lớp 11",
-            "Lớp 12");
+    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
+            "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final LessonFileRepository lessonFileRepo;
@@ -69,9 +70,11 @@ public class LessonService {
         this.subjectRepo = subjectRepo;
     }
 
-    /* ================================================================
-    METADATA cho dropdown form
-    ================================================================ */
+    /*
+     * ================================================================
+     * METADATA cho dropdown form
+     * ================================================================
+     */
 
     /** Danh sách môn học ACTIVE từ bảng Subject — dùng cho dropdown "Môn học". */
     public List<Subject> getSubjects() {
@@ -85,9 +88,11 @@ public class LessonService {
         return GRADE_LEVELS;
     }
 
-    /* ================================================================
-    1. DANH SÁCH (phân trang + lọc)
-    ================================================================ */
+    /*
+     * ================================================================
+     * 1. DANH SÁCH (phân trang + lọc)
+     * ================================================================
+     */
 
     @Transactional(readOnly = true)
     public Page<LessonSummary> search(
@@ -101,7 +106,8 @@ public class LessonService {
         String effectiveStatus = forcePublished ? "PUBLISHED" : status;
         Page<Lesson> lessonPage = lessonRepo.search(subjectId, gradeLevel, effectiveStatus, keyword, pageable);
 
-        // Lấy thông tin Subject (tên + category) cho tất cả bài trong trang — 1 query duy nhất (tránh N+1)
+        // Lấy thông tin Subject (tên + category) cho tất cả bài trong trang — 1 query
+        // duy nhất (tránh N+1)
         List<Integer> ids = lessonPage.getContent().stream()
                 .map(Lesson::getSubjectId)
                 .filter(id -> id != null)
@@ -117,9 +123,11 @@ public class LessonService {
         });
     }
 
-    /* ================================================================
-    2. CHI TIẾT
-    ================================================================ */
+    /*
+     * ================================================================
+     * 2. CHI TIẾT
+     * ================================================================
+     */
 
     @Transactional(readOnly = true)
     public LessonResponse getDetail(Integer id, boolean forcePublished) {
@@ -130,9 +138,11 @@ public class LessonService {
         return buildResponse(lesson);
     }
 
-    /* ================================================================
-    3. TẠO MỚI
-    ================================================================ */
+    /*
+     * ================================================================
+     * 3. TẠO MỚI
+     * ================================================================
+     */
 
     @Transactional
     public LessonResponse create(LessonRequest req) {
@@ -143,9 +153,11 @@ public class LessonService {
         return buildResponse(lessonRepo.save(lesson));
     }
 
-    /* ================================================================
-    4. SỬA
-    ================================================================ */
+    /*
+     * ================================================================
+     * 4. SỬA
+     * ================================================================
+     */
 
     @Transactional
     public LessonResponse update(Integer id, LessonRequest req) {
@@ -157,9 +169,11 @@ public class LessonService {
         return buildResponse(lessonRepo.save(lesson));
     }
 
-    /* ================================================================
-    5. XÓA MỀM
-    ================================================================ */
+    /*
+     * ================================================================
+     * 5. XÓA MỀM
+     * ================================================================
+     */
 
     @Transactional
     public void delete(Integer id) {
@@ -170,9 +184,11 @@ public class LessonService {
         lessonRepo.save(lesson);
     }
 
-    /* ================================================================
-    6. UPLOAD FILE PPT
-    ================================================================ */
+    /*
+     * ================================================================
+     * 6. UPLOAD FILE PPT
+     * ================================================================
+     */
 
     @Transactional
     public List<LessonFileResponse> uploadFiles(Integer lessonId, List<MultipartFile> files) {
@@ -192,7 +208,8 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty()) continue;
+            if (f.isEmpty())
+                continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
             int dot = original.lastIndexOf('.');
             String ext = dot >= 0 ? original.substring(dot) : "";
@@ -221,9 +238,11 @@ public class LessonService {
         return saved.stream().map(LessonFileResponse::fromEntity).toList();
     }
 
-    /* ================================================================
-    7. THÊM LINK CANVA
-    ================================================================ */
+    /*
+     * ================================================================
+     * 7. THÊM LINK CANVA
+     * ================================================================
+     */
 
     @Transactional
     public LessonFileResponse addCanvaLink(Integer lessonId, CanvaLinkRequest req) {
@@ -244,9 +263,11 @@ public class LessonService {
         return LessonFileResponse.fromEntity(lessonFileRepo.save(lf));
     }
 
-    /* ================================================================
-    8. XÓA FILE ĐÍNH KÈM (mềm)
-    ================================================================ */
+    /*
+     * ================================================================
+     * 8. XÓA FILE ĐÍNH KÈM (mềm)
+     * ================================================================
+     */
 
     @Transactional
     public void deleteFile(Integer lessonId, Integer fileId) {
@@ -263,9 +284,11 @@ public class LessonService {
         lessonFileRepo.save(f);
     }
 
-    /* ================================================================
-    PRIVATE HELPERS
-    ================================================================ */
+    /*
+     * ================================================================
+     * PRIVATE HELPERS
+     * ================================================================
+     */
 
     private Lesson getOrThrow(Integer id) {
         return lessonRepo
@@ -312,7 +335,8 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty()) return Map.of();
+        if (ids.isEmpty())
+            return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 }
