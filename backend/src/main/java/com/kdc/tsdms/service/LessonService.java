@@ -46,9 +46,8 @@ public class LessonService {
     private static final String UPLOAD_ROOT = "uploads/lessons";
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of(
-            "Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9", "Lớp 10", "Lớp 11",
-            "Lớp 12");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final LessonFileRepository lessonFileRepo;
