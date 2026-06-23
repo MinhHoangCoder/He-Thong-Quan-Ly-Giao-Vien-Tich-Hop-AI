@@ -13,6 +13,9 @@ export const lessonApi = {
   gradeLevels() {
     return http.get('/lessons/grade-levels')
   },
+  categories() {
+    return http.get('/lessons/categories')
+  },
 
   /* ── CRUD ──────────────────────────────────────────── */
   /**
