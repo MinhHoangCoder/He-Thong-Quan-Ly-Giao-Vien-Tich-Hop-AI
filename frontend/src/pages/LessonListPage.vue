@@ -1,17 +1,26 @@
 <script setup>
 /**
  * Trang danh sách bài giảng — ADMIN / EMPLOYEE.
- * Lọc: Category (Tin học / Tiếng Anh / STEM - AI / Kĩ năng sống) | GradeLevel | Status | Từ khóa.
- * Category & GradeLevel lấy trực tiếp từ Lesson (không qua bảng Subject/SchoolClass).
+ * Lọc: Category (Danh mục từ bảng Subject) | GradeLevel | Status | Từ khóa.
+ * Danh mục lấy từ endpoint /lessons/categories (distinct category của Subject ACTIVE).
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 
 const router = useRouter()
 
-const subjects = ref([])
+const subjects = ref([]) // danh sách subject đầy đủ (dùng để map category→tên hiển thị)
 const gradeLevels = ref([])
+
+// Danh sách category duy nhất, tính từ subjects
+const categories = computed(() => {
+  const set = new Set()
+  subjects.value.forEach((s) => {
+    if (s.category) set.add(s.category)
+  })
+  return Array.from(set).sort()
+})
 
 const STATUS_MAP = {
   DRAFT: { label: 'Bản nháp', cls: 'badge--draft' },
@@ -26,7 +35,7 @@ const DIFFICULTY_MAP = {
 }
 
 const filter = reactive({
-  subjectId: '',
+  category: '',
   gradeLevel: '',
   status: '',
   keyword: '',
@@ -44,8 +53,8 @@ const deleteId = ref(null)
 
 async function loadMeta() {
   try {
-    const [cat, grade] = await Promise.all([lessonApi.subjects(), lessonApi.gradeLevels()])
-    subjects.value = cat.data
+    const [sub, grade] = await Promise.all([lessonApi.subjects(), lessonApi.gradeLevels()])
+    subjects.value = sub.data
     gradeLevels.value = grade.data
   } catch {
     /* dropdown lỗi không block trang */
@@ -59,7 +68,7 @@ async function load() {
     const params = {
       page: page.value,
       size: PAGE_SIZE,
-      ...(filter.subjectId && { subjects: filter.subjectId }),
+      ...(filter.category && { category: filter.category }),
       ...(filter.gradeLevel && { gradeLevel: filter.gradeLevel }),
       ...(filter.status && { status: filter.status }),
       ...(filter.keyword && { keyword: filter.keyword }),
@@ -81,7 +90,7 @@ function applyFilter() {
 }
 
 function clearFilter() {
-  Object.assign(filter, { subjectId: '', gradeLevel: '', status: '', keyword: '' })
+  Object.assign(filter, { category: '', gradeLevel: '', status: '', keyword: '' })
   page.value = 0
   load()
 }
@@ -126,14 +135,15 @@ onMounted(() => {
 
     <!-- Bộ lọc -->
     <div class="filter-bar">
-      <!-- Template: dropdown Môn học -->
+      <!-- Dropdown Danh mục (category từ bảng Subject) -->
       <label class="field">
-        <span>Môn học</span>
-        <select v-model="filter.subjectId" @change="applyFilter">
-          <option value="">Tất cả môn</option>
-          <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+        <span>Danh mục</span>
+        <select v-model="filter.category" @change="applyFilter">
+          <option value="">Tất cả danh mục</option>
+          <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
         </select>
       </label>
+
       <label class="field">
         <span>Khối lớp</span>
         <select v-model="filter.gradeLevel" @change="applyFilter">
@@ -179,6 +189,7 @@ onMounted(() => {
           <tr>
             <th>Tiêu đề</th>
             <th>Danh mục</th>
+            <th>Môn học</th>
             <th>Khối</th>
             <th>Thời lượng</th>
             <th>Độ khó</th>
@@ -188,10 +199,10 @@ onMounted(() => {
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="7" class="empty">Đang tải…</td>
+            <td colspan="8" class="empty">Đang tải…</td>
           </tr>
           <tr v-else-if="lessons.length === 0">
-            <td colspan="7" class="empty">Không có bài giảng nào.</td>
+            <td colspan="8" class="empty">Không có bài giảng nào.</td>
           </tr>
           <tr v-for="l in lessons" :key="l.id">
             <td class="col-title">
@@ -201,6 +212,7 @@ onMounted(() => {
             <td>
               <span class="cat-badge">{{ l.category || '—' }}</span>
             </td>
+            <td>{{ l.subjectName || '—' }}</td>
             <td>{{ l.gradeLevel || '—' }}</td>
             <td>{{ l.duration ? l.duration + ' phút' : '—' }}</td>
             <td>{{ DIFFICULTY_MAP[l.difficultyLevel] || '—' }}</td>
@@ -257,7 +269,7 @@ onMounted(() => {
 
 <style scoped>
 .page {
-  max-width: 1100px;
+  max-width: 1200px;
 }
 .page__head {
   display: flex;
@@ -366,7 +378,7 @@ tr:hover td {
 
 .col-title {
   min-width: 200px;
-  max-width: 280px;
+  max-width: 260px;
 }
 .title-text {
   display: block;
@@ -380,13 +392,13 @@ tr:hover td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 260px;
+  max-width: 240px;
 }
 
 .cat-badge {
   display: inline-block;
-  background: #f1f5f9;
-  color: #475569;
+  background: #eff6ff;
+  color: #1d4ed8;
   font-size: 12px;
   border-radius: 6px;
   padding: 3px 8px;

@@ -35,8 +35,8 @@ import org.springframework.web.multipart.MultipartFile;
  * STEM - AI / Kĩ năng sống — gắn trực tiếp trên Lesson, không qua Subject.
  *
  * Quyền:
- *   LESSON_VIEW   : ADMIN, EMPLOYEE, TEACHER (TEACHER chỉ thấy PUBLISHED)
- *   LESSON_MANAGE : ADMIN, EMPLOYEE (tạo/sửa/xóa/upload)
+ * LESSON_VIEW : ADMIN, EMPLOYEE, TEACHER (TEACHER chỉ thấy PUBLISHED)
+ * LESSON_MANAGE : ADMIN, EMPLOYEE (tạo/sửa/xóa/upload)
  */
 @RestController
 @RequestMapping("/api/v1/lessons")
@@ -50,13 +50,23 @@ public class LessonController {
 
     /* ── Metadata cho form/bộ lọc ───────────────────────────────────── */
 
-    /** 4 danh mục cố định (Tin học / Tiếng Anh / STEM - AI / Kĩ năng sống). */
+    /** Danh sách môn học ACTIVE (id, name, category) — dùng cho dropdown form. */
     @GetMapping("/subjects")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
     public List<SubjectDto> subjects() {
         return lessonService.getSubjects().stream()
                 .map(s -> new SubjectDto(s.getId(), s.getName(), s.getCategory()))
                 .toList();
+    }
+
+    /**
+     * Danh sách category duy nhất (sorted) từ bảng Subject — dùng cho dropdown bộ
+     * lọc.
+     */
+    @GetMapping("/categories")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
+    public List<String> categories() {
+        return lessonService.getCategories();
     }
 
     /** Danh sách khối lớp gợi ý cho dropdown (text tự do, không ràng buộc DB). */
@@ -68,11 +78,14 @@ public class LessonController {
 
     /* ── 1. DANH SÁCH ───────────────────────────────────────────────── */
 
-    /** GET /api/v1/lessons — params: category, gradeLevel, status, keyword, page, size */
+    /**
+     * GET /api/v1/lessons — params: category, gradeLevel, status, keyword, page,
+     * size
+     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
     public Page<LessonSummary> list(
-            @RequestParam(required = false) Integer subjectId, // ✅ Integer thay String
+            @RequestParam(required = false) String category,
             @RequestParam(required = false) String gradeLevel,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
@@ -81,7 +94,7 @@ public class LessonController {
 
         Pageable pageable =
                 PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
-        return lessonService.search(subjectId, gradeLevel, status, keyword, isTeacherOnly(), pageable);
+        return lessonService.search(category, gradeLevel, status, keyword, isTeacherOnly(), pageable);
     }
 
     /* ── 2. CHI TIẾT ────────────────────────────────────────────────── */
@@ -146,7 +159,10 @@ public class LessonController {
 
     /* ── Helper ──────────────────────────────────────────────────────── */
 
-    /** TEACHER chỉ được xem bài PUBLISHED; staff (ADMIN/EMPLOYEE/ACADEMIC) xem tất cả. */
+    /**
+     * TEACHER chỉ được xem bài PUBLISHED; staff (ADMIN/EMPLOYEE/ACADEMIC) xem tất
+     * cả.
+     */
     private boolean isTeacherOnly() {
         return !SecurityUtils.hasRole("ADMIN")
                 && !SecurityUtils.hasRole("EMPLOYEE")

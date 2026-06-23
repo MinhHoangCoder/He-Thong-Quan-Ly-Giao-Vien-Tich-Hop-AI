@@ -1,12 +1,11 @@
 <script setup>
 /**
  * Trang thêm / sửa bài giảng.
- * Category là 1 trong 4 giá trị cố định (Tin học/Tiếng Anh/STEM-AI/Kĩ năng sống),
- * gắn trực tiếp trên Lesson. GradeLevel là text tự do (chọn từ dropdown gợi ý).
- *
+ * Chọn Danh mục (category từ bảng Subject) → lọc Môn học trong danh mục đó.
+ * GradeLevel là text tự do (chọn từ dropdown gợi ý).
  * Hỗ trợ: upload file PPT (multipart), thêm link Canva (JSON), xóa file đính kèm.
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 import { branchApi } from '@/api/branches'
@@ -19,8 +18,35 @@ const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
 const lessonId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 
-const subjects = ref([])
+const subjects = ref([]) // tất cả subject ACTIVE
 const gradeLevels = ref([])
+
+// Danh sách category duy nhất (tính từ subjects)
+const categories = computed(() => {
+  const set = new Set()
+  subjects.value.forEach((s) => {
+    if (s.category) set.add(s.category)
+  })
+  return Array.from(set).sort()
+})
+
+// Danh mục đang được chọn (bước 1)
+const selectedCategory = ref('')
+
+// Môn học lọc theo danh mục đã chọn (bước 2)
+const filteredSubjects = computed(() => {
+  if (!selectedCategory.value) return subjects.value
+  return subjects.value.filter((s) => s.category === selectedCategory.value)
+})
+
+// Khi đổi danh mục → reset subjectId nếu subject hiện tại không thuộc danh mục mới
+watch(selectedCategory, (newCat) => {
+  if (!newCat) return
+  const currentSubject = subjects.value.find((s) => s.id === form.subjectId)
+  if (currentSubject && currentSubject.category !== newCat) {
+    form.subjectId = null
+  }
+})
 const closeCanvaForm = () => {
   showCanvaForm.value = false
   canvaError.value = ''
@@ -109,6 +135,10 @@ async function loadLesson() {
     form.difficultyLevel = data.difficultyLevel || ''
     form.status = data.status
     attachedFiles.value = data.files || []
+    // Khôi phục category dựa trên category trả về từ API
+    if (data.category) {
+      selectedCategory.value = data.category
+    }
   } catch {
     errorMsg.value = 'Không tải được bài giảng. Vui lòng thử lại.'
   } finally {
@@ -261,16 +291,30 @@ onMounted(async () => {
         <form class="card" @submit.prevent="onSubmit">
           <h2 class="card__title">Thông tin bài giảng</h2>
 
-          <!-- Hàng 1: Danh mục + Khối lớp -->
+          <!-- Hàng 1: Danh mục + Môn học (lọc theo danh mục) -->
           <div class="grid-2">
             <label class="field">
-              <span>Môn học <span class="req">*</span></span>
-              <select v-model="form.subjectId" required>
-                <option value="">-- Chọn môn học --</option>
-                <option v-for="s in subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
+              <span>Danh mục <span class="req">*</span></span>
+              <select v-model="selectedCategory" required>
+                <option value="">-- Chọn danh mục --</option>
+                <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
               </select>
             </label>
 
+            <label class="field">
+              <span>Môn học <span class="req">*</span></span>
+              <select v-model="form.subjectId" :disabled="!selectedCategory" required>
+                <option :value="null">-- Chọn môn học --</option>
+                <option v-for="s in filteredSubjects" :key="s.id" :value="s.id">
+                  {{ s.name }}
+                </option>
+              </select>
+              <span v-if="!selectedCategory" class="field-hint">Chọn danh mục trước</span>
+            </label>
+          </div>
+
+          <!-- Hàng 1b: Khối lớp -->
+          <div class="grid-1">
             <label class="field">
               <span>Khối lớp</span>
               <select v-model="form.gradeLevel">
@@ -521,6 +565,12 @@ onMounted(async () => {
   color: #64748b;
 }
 
+.grid-1 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  max-width: 50%;
+}
 .grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -532,10 +582,17 @@ onMounted(async () => {
   gap: 14px;
 }
 @media (max-width: 600px) {
+  .grid-1,
   .grid-2,
   .grid-3 {
     grid-template-columns: 1fr;
+    max-width: 100%;
   }
+}
+.field-hint {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-top: 2px;
 }
 
 .field {
