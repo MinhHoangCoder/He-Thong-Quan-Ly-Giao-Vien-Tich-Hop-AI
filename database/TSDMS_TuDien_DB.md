@@ -14,8 +14,8 @@
 | Table | Bảng | Một loại dữ liệu, vd bảng giáo viên |
 | Column / Field | Cột / Trường | Một thông tin trong bảng, vd cột "họ tên" |
 | Row / Record | Dòng / Bản ghi | Một mục dữ liệu, vd một giáo viên cụ thể |
-| Primary Key (PK) | Khóa chính | Cột định danh duy nhất mỗi dòng — tên cột là `Id` ở mọi bảng (đồng nhất từ V7) |
-| Foreign Key (FK) | Khóa ngoại | Cột trỏ sang bảng khác để tạo quan hệ — giữ tên `<Bảng>Id` (vd `TeacherId`) để tự mô tả trỏ tới đâu |
+| Primary Key (PK) | Khóa chính | Cột định danh duy nhất mỗi dòng (vd TeacherId) |
+| Foreign Key (FK) | Khóa ngoại | Cột trỏ sang bảng khác để tạo quan hệ |
 | Index | Chỉ mục | "Mục lục" giúp tìm/lọc dữ liệu nhanh hơn |
 | Unique | Duy nhất | Không cho phép giá trị trùng (vd email) |
 | Constraint | Ràng buộc | Quy tắc dữ liệu phải tuân theo |
