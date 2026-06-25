@@ -11,8 +11,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Phân công (bảng Assignment) — nhân viên TRUNG TÂM gán GV ↔ trường ↔ môn ↔ lớp trong
- * một giai đoạn. Đây là điểm BẮT ĐẦU của luồng điều phối (không có "yêu cầu từ trường");
+ * Phân công (bảng Assignment) — nhân viên TRUNG TÂM gán GV ↔ trường ↔ môn ↔ lớp
+ * trong
+ * một giai đoạn. Đây là điểm BẮT ĐẦU của luồng điều phối (không có "yêu cầu từ
+ * trường");
  * từ một Assignment sinh ra nhiều Schedule (buổi dạy cụ thể).
  */
 @Entity

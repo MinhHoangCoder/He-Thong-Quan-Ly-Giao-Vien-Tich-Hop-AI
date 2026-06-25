@@ -15,7 +15,7 @@ import lombok.Setter;
  */
 @Entity
 @Table(name = "Branch")
-@Gettera
+@Getter
 @Setter
 public class Branch extends SoftDeletableEntity {
 

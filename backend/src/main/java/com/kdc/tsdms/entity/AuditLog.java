@@ -1,4 +1,4 @@
-apackage com.kdc.tsdms.entity;
+package com.kdc.tsdms.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +10,10 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Nhật ký hệ thống (bảng AuditLog) — ai làm gì (tạo/sửa/xóa/đăng nhập) trên toàn hệ thống. */
+/**
+ * Nhật ký hệ thống (bảng AuditLog) — ai làm gì (tạo/sửa/xóa/đăng nhập) trên
+ * toàn hệ thống.
+ */
 @Entity
 @Table(name = "AuditLog")
 @Getter

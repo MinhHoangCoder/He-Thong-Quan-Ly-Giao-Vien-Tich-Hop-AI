@@ -47,3 +47,4 @@ public class AppUser extends SoftDeletableEntity {
     @Column(name = "LastLoginAt")
     private Instant lastLoginAt;
 }
+a

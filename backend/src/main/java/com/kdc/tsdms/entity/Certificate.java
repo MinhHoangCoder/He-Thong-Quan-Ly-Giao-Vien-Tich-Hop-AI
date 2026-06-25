@@ -1,4 +1,4 @@
-apackage com.kdc.tsdms.entity;
+package com.kdc.tsdms.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -10,7 +10,9 @@ import java.time.LocalDate;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Bằng cấp & chứng chỉ của giáo viên (bảng Certificate) — 1 GV có nhiều bằng. */
+/**
+ * Bằng cấp & chứng chỉ của giáo viên (bảng Certificate) — 1 GV có nhiều bằng.
+ */
 @Entity
 @Table(name = "Certificate")
 @Getter
