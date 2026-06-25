@@ -118,7 +118,9 @@ public class LessonService {
         return lessonPage.map(l -> {
             Subject subj = subjectMap.get(l.getSubjectId());
             String subjectName = subj != null ? subj.getName() : null;
-            String category = subj != null ? subj.getCategory() : null;
+            String category = subj != null && subj.getCategory() != null
+                    ? subj.getCategory().getName()
+                    : null;
             return LessonSummary.fromEntity(l, subjectName, category);
         });
     }
@@ -326,7 +328,9 @@ public class LessonService {
                 ? subjectRepo.findById(l.getSubjectId()).orElse(null)
                 : null;
         String subjectName = subject != null ? subject.getName() : "";
-        String category = subject != null ? subject.getCategory() : null;
+        String category = subject != null && subject.getCategory() != null
+                ? subject.getCategory().getName()
+                : null;
         List<LessonFileResponse> files = lessonFileRepo.findByLessonId(l.getId()).stream()
                 .map(LessonFileResponse::fromEntity)
                 .toList();

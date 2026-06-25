@@ -55,7 +55,10 @@ public class LessonController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
     public List<SubjectDto> subjects() {
         return lessonService.getSubjects().stream()
-                .map(s -> new SubjectDto(s.getId(), s.getName(), s.getCategory()))
+                .map(s -> new SubjectDto(
+                        s.getId(),
+                        s.getName(),
+                        s.getCategory() != null ? s.getCategory().getName() : null))
                 .toList();
     }
 

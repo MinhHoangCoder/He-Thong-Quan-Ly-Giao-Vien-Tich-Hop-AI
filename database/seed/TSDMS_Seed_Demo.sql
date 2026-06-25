@@ -133,15 +133,19 @@ DECLARE @EmpDN  INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp4);
 DECLARE @EmpHCM INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp5);
 
 /* =====================================================================
-   6) Subject — 6 môn (STEM & Công dân số)
+   6) Subject — 6 môn, gán vào nhóm CHÍNH THỨC trong SubjectCategory (chuẩn hóa V8).
+   Môn STEM -> "STEM - AI"; môn Công dân số -> "Kĩ năng sống".
    ===================================================================== */
-INSERT INTO Subject (Code, Name, Category, Description) VALUES
- ('STEM01', N'Lập trình Scratch',            N'STEM',        N'Lập trình kéo-thả cho học sinh tiểu học'),
- ('STEM02', N'Robotics cơ bản',              N'STEM',        N'Lắp ráp và lập trình robot giáo dục'),
- ('STEM03', N'Lập trình Python thiếu nhi',   N'STEM',        N'Python nhập môn cho học sinh THCS'),
- ('STEM04', N'Thiết kế 3D & In 3D',          N'STEM',        N'Mô hình hóa 3D và vận hành máy in 3D'),
- ('CDS01',  N'Công dân số cơ bản',           N'CONG_DAN_SO', N'Kỹ năng số nền tảng, định danh số'),
- ('CDS02',  N'An toàn trên không gian mạng', N'CONG_DAN_SO', N'Nhận diện lừa đảo, bảo vệ thông tin cá nhân');
+DECLARE @CatStemAi INT = (SELECT Id FROM SubjectCategory WHERE Code = 'STEM_AI');
+DECLARE @CatKns    INT = (SELECT Id FROM SubjectCategory WHERE Code = 'KY_NANG_SONG');
+
+INSERT INTO Subject (Code, Name, CategoryId, Description) VALUES
+ ('STEM01', N'Lập trình Scratch',            @CatStemAi, N'Lập trình kéo-thả cho học sinh tiểu học'),
+ ('STEM02', N'Robotics cơ bản',              @CatStemAi, N'Lắp ráp và lập trình robot giáo dục'),
+ ('STEM03', N'Lập trình Python thiếu nhi',   @CatStemAi, N'Python nhập môn cho học sinh THCS'),
+ ('STEM04', N'Thiết kế 3D & In 3D',          @CatStemAi, N'Mô hình hóa 3D và vận hành máy in 3D'),
+ ('CDS01',  N'Công dân số cơ bản',           @CatKns,    N'Kỹ năng số nền tảng, định danh số'),
+ ('CDS02',  N'An toàn trên không gian mạng', @CatKns,    N'Nhận diện lừa đảo, bảo vệ thông tin cá nhân');
 
 DECLARE @SubSc  INT = (SELECT Id FROM Subject WHERE Code = 'STEM01');
 DECLARE @SubRo  INT = (SELECT Id FROM Subject WHERE Code = 'STEM02');

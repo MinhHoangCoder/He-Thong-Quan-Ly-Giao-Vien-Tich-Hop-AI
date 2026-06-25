@@ -2,43 +2,36 @@ package com.kdc.tsdms.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Môn học (bảng Subject) — danh mục môn: STEM, Công dân số... */
+/**
+ * Nhóm môn học (bảng SubjectCategory) — danh mục tra cứu: Tin học, Tiếng Anh,
+ * STEM - AI, Kĩ năng sống. Thay cho cột text Subject.Category cũ (chuẩn hóa ở
+ * Flyway V8): mỗi {@link Subject} trỏ tới một nhóm qua FK CategoryId.
+ */
 @Entity
-@Table(name = "Subject")
+@Table(name = "SubjectCategory")
 @Getter
 @Setter
-public class Subject extends SoftDeletableEntity {
+public class SubjectCategory extends SoftDeletableEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "Id")
     private Integer id;
 
-    /** Mã môn (unique), vd: STEM01, CDS01. */
+    /** Mã nhóm (unique), khớp Enum Java: TIN_HOC | TIENG_ANH | STEM_AI | KY_NANG_SONG. */
     @Column(name = "Code", nullable = false)
     private String code;
 
+    /** Tên hiển thị: Tin học | Tiếng Anh | STEM - AI | Kĩ năng sống. */
     @Column(name = "Name", nullable = false)
     private String name;
-
-    /**
-     * Nhóm môn (FK -> SubjectCategory), thay cho cột text Category cũ (chuẩn hóa V8).
-     * EAGER vì là bảng danh mục nhỏ và tầng feature đọc category sau khi entity đã
-     * detached — tránh LazyInitializationException.
-     */
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "CategoryId")
-    private SubjectCategory category;
 
     @Column(name = "Description")
     private String description;
