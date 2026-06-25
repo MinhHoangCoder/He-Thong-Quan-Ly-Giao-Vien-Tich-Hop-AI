@@ -1,4 +1,4 @@
-package com.kdc.tsdms.entity;
+apackage com.kdc.tsdms.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;

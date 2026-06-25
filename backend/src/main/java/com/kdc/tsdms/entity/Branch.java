@@ -9,10 +9,13 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Chi nhánh (bảng Branch) — gốc tổ chức: Employee/Teacher/School đều gắn về 1 chi nhánh. */
+/**
+ * Chi nhánh (bảng Branch) — gốc tổ chức: Employee/Teacher/School đều gắn về 1
+ * chi nhánh.
+ */
 @Entity
 @Table(name = "Branch")
-@Getter
+@Gettera
 @Setter
 public class Branch extends SoftDeletableEntity {
 
