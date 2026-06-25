@@ -48,8 +48,8 @@ public class LessonService {
     private static final String UPLOAD_ROOT = "uploads/lessons";
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
-            "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final LessonFileRepository lessonFileRepo;
@@ -96,7 +96,9 @@ public class LessonService {
         return subjectRepo.findAll().stream()
                 .filter(s -> !s.isDeleted() && "ACTIVE".equals(s.getStatus()))
                 .map(Subject::getCategory)
-                .filter(c -> c != null && !c.isBlank())
+                .filter(c -> c != null)
+                .map(c -> c.getName())
+                .filter(name -> name != null && !name.isBlank())
                 .distinct()
                 .sorted()
                 .toList();
@@ -132,8 +134,10 @@ public class LessonService {
         return lessonPage.map(l -> {
             Subject subj = subjectMap.get(l.getSubjectId());
             String subjectName = subj != null ? subj.getName() : null;
-            String subjectcategory = subj != null ? subj.getCategory() : null;
-            return LessonSummary.fromEntity(l, subjectName, subjectcategory);
+            String categoryName = subj != null && subj.getCategory() != null
+                    ? subj.getCategory().getName()
+                    : null;
+            return LessonSummary.fromEntity(l, subjectName, categoryName);
         });
     }
 
@@ -222,8 +226,7 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty())
-                continue;
+            if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
             int dot = original.lastIndexOf('.');
             String ext = dot >= 0 ? original.substring(dot) : "";
@@ -341,7 +344,9 @@ public class LessonService {
                 ? subjectRepo.findById(l.getSubjectId()).orElse(null)
                 : null;
         String subjectName = subject != null ? subject.getName() : "";
-        String category = subject != null ? subject.getCategory() : null;
+        String category = subject != null && subject.getCategory() != null
+                ? subject.getCategory().getName()
+                : null;
         List<LessonFileResponse> files = lessonFileRepo.findByLessonId(l.getId()).stream()
                 .map(LessonFileResponse::fromEntity)
                 .toList();
@@ -349,8 +354,7 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty())
-            return Map.of();
+        if (ids.isEmpty()) return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 }

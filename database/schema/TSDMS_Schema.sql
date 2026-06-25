@@ -215,14 +215,35 @@ CREATE TABLE Employee (
 CREATE INDEX IX_Employee_Branch    ON Employee(BranchId);             -- lọc nhân viên theo chi nhánh
 CREATE INDEX IX_Employee_FirstName ON Employee(FirstName, LastName);  -- sắp xếp theo TÊN
 
+/* ========== Bảng 8b: SubjectCategory — NHÓM MÔN (lookup, thêm ở V8) ==========
+   Ý nghĩa : Danh mục 4 nhóm môn chính thức (Tin học, Tiếng Anh, STEM - AI,
+             Kĩ năng sống) — thay cột text Subject.Category, dùng chung với Lesson.
+   QUAN HỆ : Được Subject tham chiếu qua FK CategoryId.                            */
+CREATE TABLE SubjectCategory (
+    Id          INT IDENTITY PRIMARY KEY,
+    Code        VARCHAR(50)   NOT NULL UNIQUE,      -- mã nhóm (khớp Enum Java): TIN_HOC | TIENG_ANH | STEM_AI | KY_NANG_SONG
+    Name        NVARCHAR(100) NOT NULL,            -- tên hiển thị: Tin học | Tiếng Anh | STEM - AI | Kĩ năng sống
+    Description NVARCHAR(500) NULL,
+    Status      VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / DISABLED(ngừng dùng)
+                CONSTRAINT CK_SubjectCategory_Status CHECK (Status IN ('ACTIVE','DISABLED')),
+    IsDeleted   BIT           NOT NULL DEFAULT 0,
+    DeletedAt   DATETIME2(3)  NULL,
+    DeletedBy   INT           NULL,
+    CreatedAt   DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy   INT           NULL,
+    UpdatedAt   DATETIME2(3)  NULL,
+    UpdatedBy   INT           NULL
+);
+
 /* ========== Bảng 9: Subject — MÔN HỌC ==========
-   Ý nghĩa : Danh mục môn (STEM, Công dân số...).
-   QUAN HỆ : Nối với Teacher qua TeacherSubject; được Assignment tham chiếu.        */
+   Ý nghĩa : Môn học cụ thể (Lập trình Scratch, Robotics...).
+   QUAN HỆ : CategoryId → SubjectCategory (nhóm môn); nối với Teacher qua
+             TeacherSubject; được Assignment tham chiếu.                          */
 CREATE TABLE Subject (
     Id           INT IDENTITY PRIMARY KEY,
     Code         VARCHAR(20)   NOT NULL UNIQUE,      -- mã môn, vd: STEM01, CDS01
     Name         NVARCHAR(150) NOT NULL,            -- tên môn
-    Category     NVARCHAR(50)  NULL,                -- nhóm: STEM | CONG_DAN_SO | ...
+    CategoryId   INT           NULL,                -- → SubjectCategory (nhóm môn)
     Description  NVARCHAR(500) NULL,
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / DISABLED(ngừng dạy)
                  CONSTRAINT CK_Subject_Status CHECK (Status IN ('ACTIVE','DISABLED')),
@@ -232,9 +253,11 @@ CREATE TABLE Subject (
     CreatedAt    DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
-    UpdatedBy    INT           NULL
+    UpdatedBy    INT           NULL,
+    CONSTRAINT FK_Subject_Category FOREIGN KEY (CategoryId) REFERENCES SubjectCategory(Id)
 );
-CREATE INDEX IX_Subject_Name ON Subject(Name);  -- tìm môn theo tên
+CREATE INDEX IX_Subject_Name     ON Subject(Name);        -- tìm môn theo tên
+CREATE INDEX IX_Subject_Category ON Subject(CategoryId);  -- lọc môn theo nhóm
 
 
 /* #####################################################################
