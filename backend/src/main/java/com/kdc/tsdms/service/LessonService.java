@@ -88,6 +88,22 @@ public class LessonService {
         return GRADE_LEVELS;
     }
 
+    /**
+     * Danh sách category duy nhất từ bảng Subject ACTIVE — dùng cho dropdown "Danh
+     * mục".
+     */
+    public List<String> getCategories() {
+        return subjectRepo.findAll().stream()
+                .filter(s -> !s.isDeleted() && "ACTIVE".equals(s.getStatus()))
+                .map(Subject::getCategory)
+                .filter(c -> c != null)
+                .map(c -> c.getName())
+                .filter(name -> name != null && !name.isBlank())
+                .distinct()
+                .sorted()
+                .toList();
+    }
+
     /*
      * ================================================================
      * 1. DANH SÁCH (phân trang + lọc)
@@ -96,7 +112,7 @@ public class LessonService {
 
     @Transactional(readOnly = true)
     public Page<LessonSummary> search(
-            Integer subjectId,
+            String category,
             String gradeLevel,
             String status,
             String keyword,
@@ -104,7 +120,7 @@ public class LessonService {
             Pageable pageable) {
 
         String effectiveStatus = forcePublished ? "PUBLISHED" : status;
-        Page<Lesson> lessonPage = lessonRepo.search(subjectId, gradeLevel, effectiveStatus, keyword, pageable);
+        Page<Lesson> lessonPage = lessonRepo.search(category, gradeLevel, effectiveStatus, keyword, pageable);
 
         // Lấy thông tin Subject (tên + category) cho tất cả bài trong trang — 1 query
         // duy nhất (tránh N+1)
@@ -118,10 +134,10 @@ public class LessonService {
         return lessonPage.map(l -> {
             Subject subj = subjectMap.get(l.getSubjectId());
             String subjectName = subj != null ? subj.getName() : null;
-            String category = subj != null && subj.getCategory() != null
+            String categoryName = subj != null && subj.getCategory() != null
                     ? subj.getCategory().getName()
                     : null;
-            return LessonSummary.fromEntity(l, subjectName, category);
+            return LessonSummary.fromEntity(l, subjectName, categoryName);
         });
     }
 

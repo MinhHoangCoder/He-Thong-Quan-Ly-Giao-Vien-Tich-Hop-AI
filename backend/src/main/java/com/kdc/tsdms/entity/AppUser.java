@@ -35,8 +35,10 @@ public class AppUser extends SoftDeletableEntity {
     @Column(name = "Email", nullable = false)
     private String email;
 
-    // Họ tên & SĐT đã chuyển về bảng tác nhân (Teacher/Employee/School) — AppUser chỉ giữ
-    // định danh đăng nhập. Tên hiển thị được ghép từ hồ sơ actor (xem DisplayNameResolver).
+    // Họ tên & SĐT đã chuyển về bảng tác nhân (Teacher/Employee/School) — AppUser
+    // chỉ giữ
+    // định danh đăng nhập. Tên hiển thị được ghép từ hồ sơ actor (xem
+    // DisplayNameResolver).
 
     /** ACTIVE | INACTIVE | LOCKED */
     @Column(name = "Status", nullable = false)
