@@ -10,7 +10,10 @@ import java.time.Instant;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Nhật ký hệ thống (bảng AuditLog) — ai làm gì (tạo/sửa/xóa/đăng nhập) trên toàn hệ thống. */
+/**
+ * Nhật ký hệ thống (bảng AuditLog) — ai làm gì (tạo/sửa/xóa/đăng nhập) trên
+ * toàn hệ thống.
+ */
 @Entity
 @Table(name = "AuditLog")
 @Getter

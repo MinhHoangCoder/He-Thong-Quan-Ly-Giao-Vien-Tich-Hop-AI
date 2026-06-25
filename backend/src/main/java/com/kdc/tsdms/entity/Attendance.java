@@ -13,7 +13,8 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Chấm công (bảng Attendance) — GV có dạy buổi đó không, giờ vào/ra. Chống gian lận:
+ * Chấm công (bảng Attendance) — GV có dạy buổi đó không, giờ vào/ra. Chống gian
+ * lận:
  * GV tự check-in (CheckInMethod=SELF) + trường xác nhận (ConfirmedByUserId).
  * Bảng log: không có soft delete / UpdatedAt.
  */

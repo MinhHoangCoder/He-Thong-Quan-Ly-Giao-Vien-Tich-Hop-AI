@@ -7,12 +7,17 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Bộ 4 cột audit chuẩn (CreatedAt/CreatedBy/UpdatedAt/UpdatedBy) dùng chung cho các bảng
- * có đủ bộ này. {@code @MappedSuperclass} = KHÔNG phải bảng riêng; các cột được "dán" vào
+ * Bộ 4 cột audit chuẩn (CreatedAt/CreatedBy/UpdatedAt/UpdatedBy) dùng chung cho
+ * các bảng
+ * có đủ bộ này. {@code @MappedSuperclass} = KHÔNG phải bảng riêng; các cột được
+ * "dán" vào
  * bảng của entity con.
  *
- * <p>CreatedAt do DB tự điền (DEFAULT SYSUTCDATETIME()) → chỉ đọc, không cho Hibernate ghi.
- * UpdatedAt/UpdatedBy do tầng service tự set khi sửa (dự án chưa bật JPA Auditing).
+ * <p>
+ * CreatedAt do DB tự điền (DEFAULT SYSUTCDATETIME()) → chỉ đọc, không cho
+ * Hibernate ghi.
+ * UpdatedAt/UpdatedBy do tầng service tự set khi sửa (dự án chưa bật JPA
+ * Auditing).
  */
 @MappedSuperclass
 @Getter
