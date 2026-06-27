@@ -1,26 +1,19 @@
 <script setup>
 /**
  * Trang danh sách bài giảng — ADMIN / EMPLOYEE.
- * Lọc: Category (Danh mục từ bảng Subject) | GradeLevel | Status | Từ khóa.
- * Danh mục lấy từ endpoint /lessons/categories (distinct category của Subject ACTIVE).
+ * Lọc: Category (Danh mục từ bảng SubjectCategory) | GradeLevel | Status | Từ khóa.
+ * Danh mục lấy từ endpoint /subject-categories/active (chỉ các nhóm ACTIVE).
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
+import { subjectCategoryApi } from '@/api/subjectCategories'
 
 const router = useRouter()
 
-const subjects = ref([]) // danh sách subject đầy đủ (dùng để map category→tên hiển thị)
+// Danh sách nhóm môn từ bảng SubjectCategory: [{ id, code, name, ... }]
+const categories = ref([])
 const gradeLevels = ref([])
-
-// Danh sách category duy nhất, tính từ subjects
-const categories = computed(() => {
-  const set = new Set()
-  subjects.value.forEach((s) => {
-    if (s.category) set.add(s.category)
-  })
-  return Array.from(set).sort()
-})
 
 const STATUS_MAP = {
   DRAFT: { label: 'Bản nháp', cls: 'badge--draft' },
@@ -53,8 +46,11 @@ const deleteId = ref(null)
 
 async function loadMeta() {
   try {
-    const [sub, grade] = await Promise.all([lessonApi.subjects(), lessonApi.gradeLevels()])
-    subjects.value = sub.data
+    const [cats, grade] = await Promise.all([
+      subjectCategoryApi.listActive(),
+      lessonApi.gradeLevels(),
+    ])
+    categories.value = cats.data
     gradeLevels.value = grade.data
   } catch {
     /* dropdown lỗi không block trang */
@@ -135,12 +131,12 @@ onMounted(() => {
 
     <!-- Bộ lọc -->
     <div class="filter-bar">
-      <!-- Dropdown Danh mục (category từ bảng Subject) -->
+      <!-- Dropdown Danh mục (từ bảng SubjectCategory) -->
       <label class="field">
         <span>Danh mục</span>
         <select v-model="filter.category" @change="applyFilter">
           <option value="">Tất cả danh mục</option>
-          <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+          <option v-for="cat in categories" :key="cat.id" :value="cat.name">{{ cat.name }}</option>
         </select>
       </label>
 

@@ -12,6 +12,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.LessonFileRepository;
 import com.kdc.tsdms.repository.LessonRepository;
+import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
@@ -52,6 +53,7 @@ public class LessonService {
             List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
+    private final SubjectCategoryRepository subjectCategoryRepo;
     private final LessonFileRepository lessonFileRepo;
     private final BranchRepository branchRepo;
     private final TeacherRepository teacherRepo;
@@ -62,12 +64,14 @@ public class LessonService {
             LessonFileRepository lessonFileRepo,
             BranchRepository branchRepo,
             TeacherRepository teacherRepo,
-            SubjectRepository subjectRepo) {
+            SubjectRepository subjectRepo,
+            SubjectCategoryRepository subjectCategoryRepo) {
         this.lessonRepo = lessonRepo;
         this.lessonFileRepo = lessonFileRepo;
         this.branchRepo = branchRepo;
         this.teacherRepo = teacherRepo;
         this.subjectRepo = subjectRepo;
+        this.subjectCategoryRepo = subjectCategoryRepo;
     }
 
     /*
@@ -89,18 +93,12 @@ public class LessonService {
     }
 
     /**
-     * Danh sách category duy nhất từ bảng Subject ACTIVE — dùng cho dropdown "Danh
-     * mục".
+     * Danh sách tên nhóm môn ACTIVE — dùng cho dropdown bộ lọc bài giảng.
+     * Nguồn: SubjectCategory table (thay vì distinct string từ Subject.Category).
      */
     public List<String> getCategories() {
-        return subjectRepo.findAll().stream()
-                .filter(s -> !s.isDeleted() && "ACTIVE".equals(s.getStatus()))
-                .map(Subject::getCategory)
-                .filter(c -> c != null)
-                .map(c -> c.getName())
-                .filter(name -> name != null && !name.isBlank())
-                .distinct()
-                .sorted()
+        return subjectCategoryRepo.findByStatusAndDeletedFalseOrderByName("ACTIVE").stream()
+                .map(sc -> sc.getName())
                 .toList();
     }
 

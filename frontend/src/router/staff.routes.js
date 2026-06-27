@@ -27,4 +27,11 @@ export const staffRoutes = [
     component: () => import('@/pages/LessonFormPage.vue'),
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
+  // ── Nhóm môn (SubjectCategory) — quản lý danh mục ───────────────
+  {
+    path: '/staff/subject-categories',
+    name: 'subject-category-list',
+    component: () => import('@/pages/SubjectCategoryListPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
 ]

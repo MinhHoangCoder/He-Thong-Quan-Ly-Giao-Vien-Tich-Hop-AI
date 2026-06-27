@@ -1,7 +1,7 @@
 <script setup>
 /**
  * Trang thêm / sửa bài giảng.
- * Chọn Danh mục (category từ bảng Subject) → lọc Môn học trong danh mục đó.
+ * Chọn Danh mục (từ bảng SubjectCategory) → lọc Môn học trong danh mục đó.
  * GradeLevel là text tự do (chọn từ dropdown gợi ý).
  * Hỗ trợ: upload file PPT (multipart), thêm link Canva (JSON), xóa file đính kèm.
  */
@@ -9,6 +9,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 import { branchApi } from '@/api/branches'
+import { subjectCategoryApi } from '@/api/subjectCategories'
 
 const branches = ref([])
 
@@ -21,16 +22,10 @@ const lessonId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 const subjects = ref([]) // tất cả subject ACTIVE
 const gradeLevels = ref([])
 
-// Danh sách category duy nhất (tính từ subjects)
-const categories = computed(() => {
-  const set = new Set()
-  subjects.value.forEach((s) => {
-    if (s.category) set.add(s.category)
-  })
-  return Array.from(set).sort()
-})
+// Danh sách nhóm môn từ bảng SubjectCategory: [{ id, code, name, ... }]
+const categories = ref([])
 
-// Danh mục đang được chọn (bước 1)
+// Danh mục đang được chọn (bước 1) — lưu theo name (String) để khớp filter backend
 const selectedCategory = ref('')
 
 // Môn học lọc theo danh mục đã chọn (bước 2)
@@ -98,24 +93,18 @@ const deletingFileId = ref(null)
 
 async function loadMeta() {
   try {
-    const sub = await lessonApi.subjects()
-    subjects.value = sub.data
+    const [catsRes, subRes, gradeRes, brRes] = await Promise.all([
+      subjectCategoryApi.listActive(),
+      lessonApi.subjects(),
+      lessonApi.gradeLevels(),
+      branchApi.list(),
+    ])
+    categories.value = catsRes.data
+    subjects.value = subRes.data
+    gradeLevels.value = gradeRes.data
+    branches.value = brRes.data
   } catch (e) {
-    console.error('subjects', e)
-  }
-
-  try {
-    const grade = await lessonApi.gradeLevels()
-    gradeLevels.value = grade.data
-  } catch (e) {
-    console.error('grades', e)
-  }
-
-  try {
-    const br = await branchApi.list()
-    branches.value = br.data
-  } catch (e) {
-    console.error('branches', e)
+    console.error('loadMeta', e)
   }
 }
 
@@ -297,7 +286,9 @@ onMounted(async () => {
               <span>Danh mục <span class="req">*</span></span>
               <select v-model="selectedCategory" required>
                 <option value="">-- Chọn danh mục --</option>
-                <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
+                <option v-for="cat in categories" :key="cat.id" :value="cat.name">
+                  {{ cat.name }}
+                </option>
               </select>
             </label>
 
@@ -317,7 +308,7 @@ onMounted(async () => {
           <div class="grid-1">
             <label class="field">
               <span>Khối lớp</span>
-              <select v-model="form.gradeLevel">
+              <select v-model="form.gradeLevel" required>
                 <option value="">— Chọn khối —</option>
                 <option v-for="g in gradeLevels" :key="g" :value="g">{{ g }}</option>
               </select>
@@ -354,12 +345,12 @@ onMounted(async () => {
           <div class="grid-3">
             <label class="field">
               <span>Thời lượng (phút)</span>
-              <input v-model="form.duration" type="number" min="1" placeholder="VD: 45" />
+              <input v-model="form.duration" type="number" min="1" placeholder="VD: 45" required />
             </label>
 
             <label class="field">
               <span>Độ khó</span>
-              <select v-model="form.difficultyLevel">
+              <select v-model="form.difficultyLevel" required>
                 <option value="">— Chọn —</option>
                 <option v-for="d in DIFFICULTY_OPTIONS" :key="d.value" :value="d.value">
                   {{ d.label }}
