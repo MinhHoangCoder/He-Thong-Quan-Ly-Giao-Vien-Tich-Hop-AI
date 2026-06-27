@@ -42,6 +42,14 @@ export const STAFF_MODULES = [
     desc: 'Quản lý bài giảng',
   },
   {
+    section: 'Giảng dạy',
+    perm: 'LESSON_MANAGE',
+    label: 'Nhóm môn học',
+    icon: 'subject',
+    to: '/staff/subject-categories',
+    desc: 'Quản lý nhóm/danh mục môn học',
+  },
+  {
     section: 'Nhân sự',
     perm: 'TEACHER_VIEW',
     label: 'Hồ sơ giáo viên',

@@ -7,8 +7,10 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * Audit + XÓA MỀM (IsDeleted/DeletedAt/DeletedBy). Bản ghi "xóa" chỉ gắn cờ, vẫn nằm
- * trong DB để giữ lịch sử; mọi truy vấn nghiệp vụ phải lọc {@code deleted = false}
+ * Audit + XÓA MỀM (IsDeleted/DeletedAt/DeletedBy). Bản ghi "xóa" chỉ gắn cờ,
+ * vẫn nằm
+ * trong DB để giữ lịch sử; mọi truy vấn nghiệp vụ phải lọc
+ * {@code deleted = false}
  * (đặt tên method repository dạng {@code ...AndDeletedFalse}).
  */
 @MappedSuperclass
