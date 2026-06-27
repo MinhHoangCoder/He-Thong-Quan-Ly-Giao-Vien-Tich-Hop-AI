@@ -45,11 +45,11 @@ INSERT INTO Branch (Name, Address, Phone) VALUES
  (N'Chi nhánh Đà Nẵng',  N'88 Nguyễn Văn Linh, Hải Châu, Đà Nẵng', '0243333333'),
  (N'Chi nhánh TP.HCM',   N'215 Điện Biên Phủ, Bình Thạnh, TP.HCM', '0284444444');
 
-DECLARE @BrTT  INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh trung tâm');
-DECLARE @BrCG  INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh Cầu Giấy');
-DECLARE @BrHD  INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh Hà Đông');
-DECLARE @BrDN  INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh Đà Nẵng');
-DECLARE @BrHCM INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh TP.HCM');
+DECLARE @BrTT  INT = (SELECT Id FROM Branch WHERE Name = N'Chi nhánh trung tâm');
+DECLARE @BrCG  INT = (SELECT Id FROM Branch WHERE Name = N'Chi nhánh Cầu Giấy');
+DECLARE @BrHD  INT = (SELECT Id FROM Branch WHERE Name = N'Chi nhánh Hà Đông');
+DECLARE @BrDN  INT = (SELECT Id FROM Branch WHERE Name = N'Chi nhánh Đà Nẵng');
+DECLARE @BrHCM INT = (SELECT Id FROM Branch WHERE Name = N'Chi nhánh TP.HCM');
 
 /* =====================================================================
    2) AppUser — thêm 13 tài khoản (4 NV + 5 GV + 4 trường), tổng 17.
@@ -57,147 +57,119 @@ DECLARE @BrHCM INT = (SELECT BranchId FROM Branch WHERE Name = N'Chi nhánh TP.H
    ===================================================================== */
 DECLARE @Hash VARCHAR(255) = '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK';
 
-INSERT INTO AppUser (Username, PasswordHash, Email, FullName, Phone) VALUES
- ('employee2', @Hash, 'employee2@tsdms.local', N'Trần Văn Bình',              '0901000001'),
- ('employee3', @Hash, 'employee3@tsdms.local', N'Lê Thị Cúc',                 '0901000002'),
- ('employee4', @Hash, 'employee4@tsdms.local', N'Phạm Văn Dũng',              '0901000003'),
- ('employee5', @Hash, 'employee5@tsdms.local', N'Võ Thị Em',                  '0901000004'),
- ('teacher2',  @Hash, 'teacher2@tsdms.local',  N'Nguyễn Văn An',              '0902000001'),
- ('teacher3',  @Hash, 'teacher3@tsdms.local',  N'Trần Thị Bích',              '0902000002'),
- ('teacher4',  @Hash, 'teacher4@tsdms.local',  N'Lê Minh Châu',               '0902000003'),
- ('teacher5',  @Hash, 'teacher5@tsdms.local',  N'Phạm Quốc Đạt',              '0902000004'),
- ('teacher6',  @Hash, 'teacher6@tsdms.local',  N'Hoàng Thu Hà',               '0902000005'),
- ('school2',   @Hash, 'school2@tsdms.local',   N'Trường Tiểu học Ban Mai',    '0903000001'),
- ('school3',   @Hash, 'school3@tsdms.local',   N'Trường THCS Nguyễn Trãi',    '0903000002'),
- ('school4',   @Hash, 'school4@tsdms.local',   N'Trường Tiểu học Hòa Bình',   '0903000003'),
- ('school5',   @Hash, 'school5@tsdms.local',   N'Trường THPT Lê Quý Đôn',     '0903000004');
+-- AppUser chỉ còn ĐỊNH DANH đăng nhập (họ tên/SĐT nằm ở bảng tác nhân — xem #2).
+INSERT INTO AppUser (Username, PasswordHash, Email) VALUES
+ ('employee2', @Hash, 'employee2@tsdms.local'),
+ ('employee3', @Hash, 'employee3@tsdms.local'),
+ ('employee4', @Hash, 'employee4@tsdms.local'),
+ ('employee5', @Hash, 'employee5@tsdms.local'),
+ ('teacher2',  @Hash, 'teacher2@tsdms.local'),
+ ('teacher3',  @Hash, 'teacher3@tsdms.local'),
+ ('teacher4',  @Hash, 'teacher4@tsdms.local'),
+ ('teacher5',  @Hash, 'teacher5@tsdms.local'),
+ ('teacher6',  @Hash, 'teacher6@tsdms.local'),
+ ('school2',   @Hash, 'school2@tsdms.local'),
+ ('school3',   @Hash, 'school3@tsdms.local'),
+ ('school4',   @Hash, 'school4@tsdms.local'),
+ ('school5',   @Hash, 'school5@tsdms.local');
 
-DECLARE @UAdmin INT = (SELECT AppUserId FROM AppUser WHERE Username = 'admin');
-DECLARE @UEmp1  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'employee');
-DECLARE @UEmp2  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'employee2');
-DECLARE @UEmp3  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'employee3');
-DECLARE @UEmp4  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'employee4');
-DECLARE @UEmp5  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'employee5');
-DECLARE @UTea1  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher');
-DECLARE @UTea2  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher2');
-DECLARE @UTea3  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher3');
-DECLARE @UTea4  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher4');
-DECLARE @UTea5  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher5');
-DECLARE @UTea6  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'teacher6');
-DECLARE @USch1  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'school');
-DECLARE @USch2  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'school2');
-DECLARE @USch3  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'school3');
-DECLARE @USch4  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'school4');
-DECLARE @USch5  INT = (SELECT AppUserId FROM AppUser WHERE Username = 'school5');
+DECLARE @UAdmin INT = (SELECT Id FROM AppUser WHERE Username = 'admin');
+DECLARE @UEmp1  INT = (SELECT Id FROM AppUser WHERE Username = 'employee');
+DECLARE @UEmp2  INT = (SELECT Id FROM AppUser WHERE Username = 'employee2');
+DECLARE @UEmp3  INT = (SELECT Id FROM AppUser WHERE Username = 'employee3');
+DECLARE @UEmp4  INT = (SELECT Id FROM AppUser WHERE Username = 'employee4');
+DECLARE @UEmp5  INT = (SELECT Id FROM AppUser WHERE Username = 'employee5');
+DECLARE @UTea1  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher');
+DECLARE @UTea2  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher2');
+DECLARE @UTea3  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher3');
+DECLARE @UTea4  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher4');
+DECLARE @UTea5  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher5');
+DECLARE @UTea6  INT = (SELECT Id FROM AppUser WHERE Username = 'teacher6');
+DECLARE @USch1  INT = (SELECT Id FROM AppUser WHERE Username = 'school');
+DECLARE @USch2  INT = (SELECT Id FROM AppUser WHERE Username = 'school2');
+DECLARE @USch3  INT = (SELECT Id FROM AppUser WHERE Username = 'school3');
+DECLARE @USch4  INT = (SELECT Id FROM AppUser WHERE Username = 'school4');
+DECLARE @USch5  INT = (SELECT Id FROM AppUser WHERE Username = 'school5');
 
 /* =====================================================================
    3) UserRole — gán vai trò cho 13 tài khoản mới
    ===================================================================== */
 INSERT INTO UserRole (AppUserId, RoleId)
-SELECT u.AppUserId, r.RoleId FROM AppUser u JOIN Role r ON r.Name = 'EMPLOYEE'
+SELECT u.Id, r.Id FROM AppUser u JOIN Role r ON r.Name = 'EMPLOYEE'
 WHERE u.Username IN ('employee2','employee3','employee4','employee5');
 
 INSERT INTO UserRole (AppUserId, RoleId)
-SELECT u.AppUserId, r.RoleId FROM AppUser u JOIN Role r ON r.Name = 'TEACHER'
+SELECT u.Id, r.Id FROM AppUser u JOIN Role r ON r.Name = 'TEACHER'
 WHERE u.Username IN ('teacher2','teacher3','teacher4','teacher5','teacher6');
 
 INSERT INTO UserRole (AppUserId, RoleId)
-SELECT u.AppUserId, r.RoleId FROM AppUser u JOIN Role r ON r.Name = 'SCHOOL'
+SELECT u.Id, r.Id FROM AppUser u JOIN Role r ON r.Name = 'SCHOOL'
 WHERE u.Username IN ('school2','school3','school4','school5');
 
 /* =====================================================================
-   4) Permission + RolePermission — danh mục quyền & gán cho vai trò
+   4) Permission + RolePermission — ĐÃ CHUYỂN SANG FLYWAY (V3)
+   ---------------------------------------------------------------------
+   RBAC (danh mục quyền + gán quyền cho vai trò + 4 role phòng ban) GIỜ DO
+   migration V3__rbac_permissions.sql quản lý DUY NHẤT, theo ma trận chuẩn ở
+   docs/dev-notes/2026-06-14-backend-rbac-permission-matrix.md.
+   KHÔNG seed Permission/RolePermission ở đây nữa — tránh trùng khóa & lệch
+   bộ quyền với V3 (file seed này chỉ còn lo DỮ LIỆU DEMO).
    ===================================================================== */
-INSERT INTO Permission (Code, Description) VALUES
- ('TEACHER_VIEW',      N'Xem danh sách & hồ sơ giáo viên'),
- ('TEACHER_CREATE',    N'Tạo hồ sơ giáo viên'),
- ('TEACHER_UPDATE',    N'Cập nhật hồ sơ giáo viên'),
- ('TEACHER_DELETE',    N'Xóa (mềm) hồ sơ giáo viên'),
- ('SCHOOL_VIEW',       N'Xem danh sách trường khách hàng'),
- ('SCHOOL_MANAGE',     N'Tạo/sửa/xóa trường khách hàng'),
- ('ASSIGNMENT_VIEW',   N'Xem phân công giảng dạy'),
- ('ASSIGNMENT_MANAGE', N'Tạo/sửa/hủy phân công giảng dạy'),
- ('SCHEDULE_VIEW',     N'Xem lịch dạy'),
- ('SCHEDULE_CREATE',   N'Tạo lịch dạy'),
- ('SCHEDULE_APPROVE',  N'Duyệt / từ chối lịch dạy'),
- ('LESSON_VIEW',       N'Xem bài giảng'),
- ('LESSON_MANAGE',     N'Tạo/sửa/xóa bài giảng'),
- ('PAYROLL_VIEW',      N'Xem bảng lương'),
- ('PAYROLL_MANAGE',    N'Lập / chốt bảng lương'),
- ('REPORT_VIEW',       N'Xem thống kê & báo cáo');
-
--- ADMIN: toàn bộ quyền
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r CROSS JOIN Permission p
-WHERE r.Name = 'ADMIN';
-
--- EMPLOYEE: mọi quyền vận hành, trừ xóa giáo viên
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code NOT IN ('TEACHER_DELETE')
-WHERE r.Name = 'EMPLOYEE';
-
--- SCHOOL: chỉ XEM (đúng mô hình: trường không can thiệp điều phối)
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code IN ('TEACHER_VIEW','SCHEDULE_VIEW','LESSON_VIEW','REPORT_VIEW')
-WHERE r.Name = 'SCHOOL';
-
--- TEACHER: xem lịch của mình + xem bài giảng
-INSERT INTO RolePermission (RoleId, PermissionId)
-SELECT r.RoleId, p.PermissionId FROM Role r JOIN Permission p
-  ON p.Code IN ('SCHEDULE_VIEW','LESSON_VIEW')
-WHERE r.Name = 'TEACHER';
 
 /* =====================================================================
    5) Employee — 4 hồ sơ nhân viên mới, mỗi người 1 chi nhánh (tổng 5)
    ===================================================================== */
-INSERT INTO Employee (AppUserId, BranchId, Position) VALUES
- (@UEmp2, @BrCG,  N'Điều phối viên'),
- (@UEmp3, @BrHD,  N'Điều phối viên'),
- (@UEmp4, @BrDN,  N'Trưởng chi nhánh'),
- (@UEmp5, @BrHCM, N'Trưởng chi nhánh');
+-- FirstName = tên gọi, LastName = họ + tên đệm (chuyển từ AppUser về).
+INSERT INTO Employee (AppUserId, BranchId, FirstName, LastName, Phone, Position) VALUES
+ (@UEmp2, @BrCG,  N'Bình', N'Trần Văn', '0901000001', N'Điều phối viên'),
+ (@UEmp3, @BrHD,  N'Cúc',  N'Lê Thị',   '0901000002', N'Điều phối viên'),
+ (@UEmp4, @BrDN,  N'Dũng', N'Phạm Văn', '0901000003', N'Trưởng chi nhánh'),
+ (@UEmp5, @BrHCM, N'Em',   N'Võ Thị',   '0901000004', N'Trưởng chi nhánh');
 
-DECLARE @EmpTT  INT = (SELECT EmployeeId FROM Employee WHERE AppUserId = @UEmp1);
-DECLARE @EmpCG  INT = (SELECT EmployeeId FROM Employee WHERE AppUserId = @UEmp2);
-DECLARE @EmpHD  INT = (SELECT EmployeeId FROM Employee WHERE AppUserId = @UEmp3);
-DECLARE @EmpDN  INT = (SELECT EmployeeId FROM Employee WHERE AppUserId = @UEmp4);
-DECLARE @EmpHCM INT = (SELECT EmployeeId FROM Employee WHERE AppUserId = @UEmp5);
+DECLARE @EmpTT  INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp1);
+DECLARE @EmpCG  INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp2);
+DECLARE @EmpHD  INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp3);
+DECLARE @EmpDN  INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp4);
+DECLARE @EmpHCM INT = (SELECT Id FROM Employee WHERE AppUserId = @UEmp5);
 
 /* =====================================================================
-   6) Subject — 6 môn (STEM & Công dân số)
+   6) Subject — 6 môn, gán vào nhóm CHÍNH THỨC trong SubjectCategory (chuẩn hóa V8).
+   Môn STEM -> "STEM - AI"; môn Công dân số -> "Kĩ năng sống".
    ===================================================================== */
-INSERT INTO Subject (Code, Name, Category, Description) VALUES
- ('STEM01', N'Lập trình Scratch',            N'STEM',        N'Lập trình kéo-thả cho học sinh tiểu học'),
- ('STEM02', N'Robotics cơ bản',              N'STEM',        N'Lắp ráp và lập trình robot giáo dục'),
- ('STEM03', N'Lập trình Python thiếu nhi',   N'STEM',        N'Python nhập môn cho học sinh THCS'),
- ('STEM04', N'Thiết kế 3D & In 3D',          N'STEM',        N'Mô hình hóa 3D và vận hành máy in 3D'),
- ('CDS01',  N'Công dân số cơ bản',           N'CONG_DAN_SO', N'Kỹ năng số nền tảng, định danh số'),
- ('CDS02',  N'An toàn trên không gian mạng', N'CONG_DAN_SO', N'Nhận diện lừa đảo, bảo vệ thông tin cá nhân');
+DECLARE @CatStemAi INT = (SELECT Id FROM SubjectCategory WHERE Code = 'STEM_AI');
+DECLARE @CatKns    INT = (SELECT Id FROM SubjectCategory WHERE Code = 'KY_NANG_SONG');
 
-DECLARE @SubSc  INT = (SELECT SubjectId FROM Subject WHERE Code = 'STEM01');
-DECLARE @SubRo  INT = (SELECT SubjectId FROM Subject WHERE Code = 'STEM02');
-DECLARE @SubPy  INT = (SELECT SubjectId FROM Subject WHERE Code = 'STEM03');
-DECLARE @Sub3D  INT = (SELECT SubjectId FROM Subject WHERE Code = 'STEM04');
-DECLARE @SubCD1 INT = (SELECT SubjectId FROM Subject WHERE Code = 'CDS01');
-DECLARE @SubCD2 INT = (SELECT SubjectId FROM Subject WHERE Code = 'CDS02');
+INSERT INTO Subject (Code, Name, CategoryId, Description) VALUES
+ ('STEM01', N'Lập trình Scratch',            @CatStemAi, N'Lập trình kéo-thả cho học sinh tiểu học'),
+ ('STEM02', N'Robotics cơ bản',              @CatStemAi, N'Lắp ráp và lập trình robot giáo dục'),
+ ('STEM03', N'Lập trình Python thiếu nhi',   @CatStemAi, N'Python nhập môn cho học sinh THCS'),
+ ('STEM04', N'Thiết kế 3D & In 3D',          @CatStemAi, N'Mô hình hóa 3D và vận hành máy in 3D'),
+ ('CDS01',  N'Công dân số cơ bản',           @CatKns,    N'Kỹ năng số nền tảng, định danh số'),
+ ('CDS02',  N'An toàn trên không gian mạng', @CatKns,    N'Nhận diện lừa đảo, bảo vệ thông tin cá nhân');
+
+DECLARE @SubSc  INT = (SELECT Id FROM Subject WHERE Code = 'STEM01');
+DECLARE @SubRo  INT = (SELECT Id FROM Subject WHERE Code = 'STEM02');
+DECLARE @SubPy  INT = (SELECT Id FROM Subject WHERE Code = 'STEM03');
+DECLARE @Sub3D  INT = (SELECT Id FROM Subject WHERE Code = 'STEM04');
+DECLARE @SubCD1 INT = (SELECT Id FROM Subject WHERE Code = 'CDS01');
+DECLARE @SubCD2 INT = (SELECT Id FROM Subject WHERE Code = 'CDS02');
 
 /* =====================================================================
    7) Teacher — 5 hồ sơ giáo viên mới (tổng 6 cùng 'Giáo viên Demo')
    ===================================================================== */
-INSERT INTO Teacher (AppUserId, BranchId, FullName, DateOfBirth, Gender, IdCardNo, Phone, Address, HireDate, EmploymentType) VALUES
- (@UTea2, @BrCG,  N'Nguyễn Văn An',  '1995-03-12', 1, '001095000001', '0902000001', N'Cầu Giấy, Hà Nội',  '2024-08-01', 'FULL_TIME'),
- (@UTea3, @BrCG,  N'Trần Thị Bích',  '1998-07-25', 0, '001098000002', '0902000002', N'Nam Từ Liêm, Hà Nội','2025-01-15', 'PART_TIME'),
- (@UTea4, @BrHD,  N'Lê Minh Châu',   '1992-11-02', 0, '001092000003', '0902000003', N'Hà Đông, Hà Nội',   '2023-09-01', 'FULL_TIME'),
- (@UTea5, @BrDN,  N'Phạm Quốc Đạt',  '1990-01-30', 1, '001090000004', '0902000004', N'Hải Châu, Đà Nẵng', '2025-06-01', 'CONTRACT'),
- (@UTea6, @BrHCM, N'Hoàng Thu Hà',   '1996-05-18', 0, '001096000005', '0902000005', N'Bình Thạnh, TP.HCM','2024-02-01', 'FULL_TIME');
+INSERT INTO Teacher (AppUserId, BranchId, FirstName, LastName, DateOfBirth, Gender, IdCardNo, Phone, Address, HireDate, EmploymentType) VALUES
+ (@UTea2, @BrCG,  N'An',   N'Nguyễn Văn', '1995-03-12', 1, '001095000001', '0902000001', N'Cầu Giấy, Hà Nội',   '2024-08-01', 'FULL_TIME'),
+ (@UTea3, @BrCG,  N'Bích', N'Trần Thị',   '1998-07-25', 0, '001098000002', '0902000002', N'Nam Từ Liêm, Hà Nội','2025-01-15', 'PART_TIME'),
+ (@UTea4, @BrHD,  N'Châu', N'Lê Minh',    '1992-11-02', 0, '001092000003', '0902000003', N'Hà Đông, Hà Nội',    '2023-09-01', 'FULL_TIME'),
+ (@UTea5, @BrDN,  N'Đạt',  N'Phạm Quốc',  '1990-01-30', 1, '001090000004', '0902000004', N'Hải Châu, Đà Nẵng',  '2025-06-01', 'CONTRACT'),
+ (@UTea6, @BrHCM, N'Hà',   N'Hoàng Thu',  '1996-05-18', 0, '001096000005', '0902000005', N'Bình Thạnh, TP.HCM', '2024-02-01', 'FULL_TIME');
 
-DECLARE @TeaDemo INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea1);
-DECLARE @TeaAn   INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea2);
-DECLARE @TeaBich INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea3);
-DECLARE @TeaChau INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea4);
-DECLARE @TeaDat  INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea5);
-DECLARE @TeaHa   INT = (SELECT TeacherId FROM Teacher WHERE AppUserId = @UTea6);
+DECLARE @TeaDemo INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea1);
+DECLARE @TeaAn   INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea2);
+DECLARE @TeaBich INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea3);
+DECLARE @TeaChau INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea4);
+DECLARE @TeaDat  INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea5);
+DECLARE @TeaHa   INT = (SELECT Id FROM Teacher WHERE AppUserId = @UTea6);
 
 /* =====================================================================
    8) TeacherSubject — môn dạy được + mức thành thạo (cho AI matching)
@@ -222,13 +194,11 @@ INSERT INTO Certificate (TeacherId, Name, Issuer, IssueDate, ExpiryDate) VALUES
  (@TeaHa,   N'Chứng chỉ An toàn thông tin cơ bản', N'Trung tâm VNCERT',      '2024-04-10', '2027-04-10');
 
 /* =====================================================================
-   10) Contract — 7 hợp đồng (Bích có 2 HĐ: 1 hết hạn + 1 gia hạn,
-       thể hiện lịch sử hợp đồng theo thời gian)
+   10) Contract — 1-1: MỖI giáo viên đúng 1 hợp đồng (theo yêu cầu GVHD)
    ===================================================================== */
 INSERT INTO Contract (TeacherId, ContractNo, StartDate, EndDate, BaseSalary, Allowance, Status) VALUES
  (@TeaDemo, 'HD-2024-001', '2024-01-01', NULL,         12000000, 1000000, 'ACTIVE'),
  (@TeaAn,   'HD-2024-002', '2024-08-01', '2026-07-31', 11000000,  800000, 'ACTIVE'),
- (@TeaBich, 'HD-2025-003', '2025-01-15', '2026-01-14',  6000000,  500000, 'EXPIRED'),
  (@TeaBich, 'HD-2026-004', '2026-01-15', NULL,          7000000,  500000, 'ACTIVE'),
  (@TeaChau, 'HD-2023-005', '2023-09-01', NULL,         13000000, 1200000, 'ACTIVE'),
  (@TeaDat,  'HD-2025-006', '2025-06-01', '2026-05-31',  9000000,  600000, 'EXPIRED'),
@@ -243,11 +213,11 @@ INSERT INTO School (BranchId, Name, Address, Phone, Email, ContactPerson, AppUse
  (@BrDN,  N'Trường Tiểu học Hòa Bình', N'Hải Châu, Đà Nẵng',  '0903000003', 'hoabinh@school.local',  N'Cô Trần Mỹ Linh',    @USch4, '2026-01-01', '2026-12-31'),
  (@BrHCM, N'Trường THPT Lê Quý Đôn',   N'Quận 3, TP.HCM',     '0903000004', 'lequydon@school.local', N'Thầy Lê Hoàng Nam',  @USch5, '2025-08-01', '2027-07-31');
 
-DECLARE @SchDemo INT = (SELECT SchoolId FROM School WHERE AppUserId = @USch1);
-DECLARE @SchBM   INT = (SELECT SchoolId FROM School WHERE AppUserId = @USch2);
-DECLARE @SchNT   INT = (SELECT SchoolId FROM School WHERE AppUserId = @USch3);
-DECLARE @SchHB   INT = (SELECT SchoolId FROM School WHERE AppUserId = @USch4);
-DECLARE @SchLQD  INT = (SELECT SchoolId FROM School WHERE AppUserId = @USch5);
+DECLARE @SchDemo INT = (SELECT Id FROM School WHERE AppUserId = @USch1);
+DECLARE @SchBM   INT = (SELECT Id FROM School WHERE AppUserId = @USch2);
+DECLARE @SchNT   INT = (SELECT Id FROM School WHERE AppUserId = @USch3);
+DECLARE @SchHB   INT = (SELECT Id FROM School WHERE AppUserId = @USch4);
+DECLARE @SchLQD  INT = (SELECT Id FROM School WHERE AppUserId = @USch5);
 
 /* =====================================================================
    12) Room — 10 phòng học rải trên 5 trường
@@ -264,12 +234,12 @@ INSERT INTO Room (SchoolId, Name, Building, Floor, Type, Capacity) VALUES
  (@SchLQD,  N'D301',       N'Dãy D', '3', 'CLASSROOM', 45),
  (@SchLQD,  N'Lab Tin',    N'Dãy D', '1', 'LAB',       35);
 
-DECLARE @RoomLabDemo INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchDemo AND Name = N'Lab Tin 1');
-DECLARE @RoomLabBM   INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchBM   AND Name = N'Lab STEM');
-DECLARE @RoomP202    INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchBM   AND Name = N'P202');
-DECLARE @RoomB101    INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchNT   AND Name = N'B101');
-DECLARE @RoomC101    INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchHB   AND Name = N'C101');
-DECLARE @RoomD301    INT = (SELECT RoomId FROM Room WHERE SchoolId = @SchLQD  AND Name = N'D301');
+DECLARE @RoomLabDemo INT = (SELECT Id FROM Room WHERE SchoolId = @SchDemo AND Name = N'Lab Tin 1');
+DECLARE @RoomLabBM   INT = (SELECT Id FROM Room WHERE SchoolId = @SchBM   AND Name = N'Lab STEM');
+DECLARE @RoomP202    INT = (SELECT Id FROM Room WHERE SchoolId = @SchBM   AND Name = N'P202');
+DECLARE @RoomB101    INT = (SELECT Id FROM Room WHERE SchoolId = @SchNT   AND Name = N'B101');
+DECLARE @RoomC101    INT = (SELECT Id FROM Room WHERE SchoolId = @SchHB   AND Name = N'C101');
+DECLARE @RoomD301    INT = (SELECT Id FROM Room WHERE SchoolId = @SchLQD  AND Name = N'D301');
 
 /* =====================================================================
    13) SchoolClass — 6 lớp, năm học 2025-2026
@@ -282,43 +252,44 @@ INSERT INTO SchoolClass (SchoolId, Name, GradeLevel, SchoolYear) VALUES
  (@SchNT,   N'6A1',  N'Lớp 6',  '2025-2026'),
  (@SchLQD,  N'10C3', N'Lớp 10', '2025-2026');
 
-DECLARE @Cls10A1 INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchDemo AND Name = N'10A1' AND SchoolYear = '2025-2026');
-DECLARE @Cls11A2 INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchDemo AND Name = N'11A2' AND SchoolYear = '2025-2026');
-DECLARE @Cls4A   INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchBM   AND Name = N'4A'   AND SchoolYear = '2025-2026');
-DECLARE @Cls5B   INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchBM   AND Name = N'5B'   AND SchoolYear = '2025-2026');
-DECLARE @Cls6A1  INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchNT   AND Name = N'6A1'  AND SchoolYear = '2025-2026');
-DECLARE @Cls10C3 INT = (SELECT ClassId FROM SchoolClass WHERE SchoolId = @SchLQD  AND Name = N'10C3' AND SchoolYear = '2025-2026');
+DECLARE @Cls10A1 INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchDemo AND Name = N'10A1' AND SchoolYear = '2025-2026');
+DECLARE @Cls11A2 INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchDemo AND Name = N'11A2' AND SchoolYear = '2025-2026');
+DECLARE @Cls4A   INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchBM   AND Name = N'4A'   AND SchoolYear = '2025-2026');
+DECLARE @Cls5B   INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchBM   AND Name = N'5B'   AND SchoolYear = '2025-2026');
+DECLARE @Cls6A1  INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchNT   AND Name = N'6A1'  AND SchoolYear = '2025-2026');
+DECLARE @Cls10C3 INT = (SELECT Id FROM SchoolClass WHERE SchoolId = @SchLQD  AND Name = N'10C3' AND SchoolYear = '2025-2026');
 
 /* =====================================================================
    14) Student — 10 học sinh thuộc đúng trường của lớp sẽ ghi danh
    ===================================================================== */
-INSERT INTO Student (SchoolId, FullName, DateOfBirth, Gender) VALUES
- (@SchDemo, N'Nguyễn Văn Hùng',  '2010-04-11', 1),
- (@SchDemo, N'Trần Thị Lan',     '2010-09-23', 0),
- (@SchDemo, N'Lê Văn Minh',      '2009-02-17', 1),
- (@SchBM,   N'Phạm Gia Bảo',     '2016-06-05', 1),
- (@SchBM,   N'Đỗ Minh Anh',      '2016-12-19', 0),
- (@SchBM,   N'Vũ Ngọc Hân',      '2015-03-30', 0),
- (@SchNT,   N'Bùi Đức Long',     '2014-08-08', 1),
- (@SchNT,   N'Ngô Thanh Mai',    '2014-01-25', 0),
- (@SchLQD,  N'Đặng Quốc Khánh',  '2010-07-14', 1),
- (@SchLQD,  N'Lý Thu Trang',     '2010-11-02', 0);
+INSERT INTO Student (SchoolId, FirstName, LastName, DateOfBirth, Gender) VALUES
+ (@SchDemo, N'Hùng',  N'Nguyễn Văn', '2010-04-11', 1),
+ (@SchDemo, N'Lan',   N'Trần Thị',   '2010-09-23', 0),
+ (@SchDemo, N'Minh',  N'Lê Văn',     '2009-02-17', 1),
+ (@SchBM,   N'Bảo',   N'Phạm Gia',   '2016-06-05', 1),
+ (@SchBM,   N'Anh',   N'Đỗ Minh',    '2016-12-19', 0),
+ (@SchBM,   N'Hân',   N'Vũ Ngọc',    '2015-03-30', 0),
+ (@SchNT,   N'Long',  N'Bùi Đức',    '2014-08-08', 1),
+ (@SchNT,   N'Mai',   N'Ngô Thanh',  '2014-01-25', 0),
+ (@SchLQD,  N'Khánh', N'Đặng Quốc',  '2010-07-14', 1),
+ (@SchLQD,  N'Trang', N'Lý Thu',     '2010-11-02', 0);
 
 /* =====================================================================
    15) ClassEnrollment — ghi danh 10 học sinh vào lớp (tra theo tên)
    ===================================================================== */
+-- Tra học sinh theo FirstName (tên gọi là duy nhất trong mỗi trường ở bộ demo này).
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls10A1, StudentId FROM Student WHERE SchoolId = @SchDemo AND FullName IN (N'Nguyễn Văn Hùng', N'Trần Thị Lan');
+SELECT @Cls10A1, Id FROM Student WHERE SchoolId = @SchDemo AND FirstName IN (N'Hùng', N'Lan');
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls11A2, StudentId FROM Student WHERE SchoolId = @SchDemo AND FullName = N'Lê Văn Minh';
+SELECT @Cls11A2, Id FROM Student WHERE SchoolId = @SchDemo AND FirstName = N'Minh';
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls4A, StudentId FROM Student WHERE SchoolId = @SchBM AND FullName IN (N'Phạm Gia Bảo', N'Đỗ Minh Anh');
+SELECT @Cls4A, Id FROM Student WHERE SchoolId = @SchBM AND FirstName IN (N'Bảo', N'Anh');
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls5B, StudentId FROM Student WHERE SchoolId = @SchBM AND FullName = N'Vũ Ngọc Hân';
+SELECT @Cls5B, Id FROM Student WHERE SchoolId = @SchBM AND FirstName = N'Hân';
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls6A1, StudentId FROM Student WHERE SchoolId = @SchNT AND FullName IN (N'Bùi Đức Long', N'Ngô Thanh Mai');
+SELECT @Cls6A1, Id FROM Student WHERE SchoolId = @SchNT AND FirstName IN (N'Long', N'Mai');
 INSERT INTO ClassEnrollment (ClassId, StudentId)
-SELECT @Cls10C3, StudentId FROM Student WHERE SchoolId = @SchLQD AND FullName IN (N'Đặng Quốc Khánh', N'Lý Thu Trang');
+SELECT @Cls10C3, Id FROM Student WHERE SchoolId = @SchLQD AND FirstName IN (N'Khánh', N'Trang');
 
 /* =====================================================================
    16) Assignment — 6 phân công (GV của Schedule phải = GV của Assignment)
@@ -405,13 +376,13 @@ SET @Sch10 = SCOPE_IDENTITY();
 UPDATE Schedule
 SET Status = 'APPROVED', ApprovedByUserId = @UAdmin, ApprovedAt = SYSUTCDATETIME(),
     UpdatedAt = SYSUTCDATETIME(), UpdatedBy = @UAdmin
-WHERE ScheduleId IN (@Sch1, @Sch2, @Sch3, @Sch5, @Sch7, @Sch10);
+WHERE Id IN (@Sch1, @Sch2, @Sch3, @Sch5, @Sch7, @Sch10);
 
 UPDATE Schedule
 SET Status = 'REJECTED', ApprovedByUserId = @UAdmin, ApprovedAt = SYSUTCDATETIME(),
     RejectionReason = N'Trùng lịch sinh hoạt toàn trường, đề nghị dời sang tuần sau',
     UpdatedAt = SYSUTCDATETIME(), UpdatedBy = @UAdmin
-WHERE ScheduleId = @Sch8;
+WHERE Id = @Sch8;
 
 /* =====================================================================
    19) Attendance — 6 lượt chấm công (các buổi đã dạy + 1 nghỉ phép)

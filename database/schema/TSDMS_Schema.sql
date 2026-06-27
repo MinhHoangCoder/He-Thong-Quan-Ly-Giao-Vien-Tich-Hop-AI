@@ -67,7 +67,7 @@ GO
              trường) đều gắn với một chi nhánh để giới hạn quyền truy cập.
    QUAN HỆ : Là bảng GỐC, được Employee/Teacher/School tham chiếu tới.        */
 CREATE TABLE Branch (
-    BranchId      INT IDENTITY PRIMARY KEY,          -- mã chi nhánh (tự tăng)
+    Id            INT IDENTITY PRIMARY KEY,          -- mã chi nhánh (tự tăng)
     Name          NVARCHAR(150) NOT NULL,            -- tên chi nhánh
     Address       NVARCHAR(255) NULL,                -- địa chỉ
     Phone         VARCHAR(20)   NULL,                -- số điện thoại
@@ -87,12 +87,11 @@ CREATE TABLE Branch (
    QUAN HỆ : Là "trung tâm xác thực". Employee/Teacher/School nối 1-1 tới bảng này;
              UserRole gán vai trò; RefreshToken lưu phiên đăng nhập.               */
 CREATE TABLE AppUser (
-    AppUserId     INT IDENTITY PRIMARY KEY,
+    Id            INT IDENTITY PRIMARY KEY,
     Username      VARCHAR(50)   NOT NULL,            -- tên đăng nhập
     PasswordHash  VARCHAR(255)  NOT NULL,            -- mật khẩu ĐÃ mã hóa BCrypt (KHÔNG lưu thô)
-    Email         VARCHAR(100)  NOT NULL,            -- email
-    FullName      NVARCHAR(150) NOT NULL,            -- tên hiển thị
-    Phone         VARCHAR(20)   NULL,
+    Email         VARCHAR(100)  NOT NULL,            -- email (đăng nhập + khôi phục mật khẩu)
+    -- Họ tên & SĐT đã chuyển về bảng tác nhân (Teacher/Employee/School) — AppUser chỉ giữ định danh.
     Status        VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / INACTIVE / LOCKED(bị khóa)
                   CONSTRAINT CK_AppUser_Status CHECK (Status IN ('ACTIVE','INACTIVE','LOCKED')),
     LastLoginAt   DATETIME2(3)  NULL,                -- lần đăng nhập gần nhất
@@ -113,7 +112,7 @@ CREATE UNIQUE INDEX UX_AppUser_Email    ON AppUser(Email)    WHERE IsDeleted = 0
    Ý nghĩa : Danh mục 4 vai trò cố định của hệ thống.
    QUAN HỆ : Nối với AppUser qua UserRole; nối với Permission qua RolePermission. */
 CREATE TABLE Role (
-    RoleId       INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     Name         VARCHAR(30)   NOT NULL UNIQUE,      -- ADMIN | EMPLOYEE | SCHOOL | TEACHER
     Description  NVARCHAR(255) NULL                  -- mô tả vai trò
 );
@@ -123,7 +122,7 @@ CREATE TABLE Role (
              chức năng "Phân quyền" của Admin.
    QUAN HỆ : Gán cho vai trò qua RolePermission.                              */
 CREATE TABLE Permission (
-    PermissionId INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     Code         VARCHAR(100)  NOT NULL UNIQUE,      -- mã quyền, vd: SCHEDULE_APPROVE
     Description  NVARCHAR(255) NULL
 );
@@ -135,8 +134,8 @@ CREATE TABLE RolePermission (
     RoleId       INT NOT NULL,                       -- → Role.RoleId
     PermissionId INT NOT NULL,                       -- → Permission.PermissionId
     PRIMARY KEY (RoleId, PermissionId),              -- khóa kép: tránh trùng cặp
-    FOREIGN KEY (RoleId)       REFERENCES Role(RoleId),
-    FOREIGN KEY (PermissionId) REFERENCES Permission(PermissionId)
+    FOREIGN KEY (RoleId)       REFERENCES Role(Id),
+    FOREIGN KEY (PermissionId) REFERENCES Permission(Id)
 );
 
 /* ========== Bảng 6: UserRole — bảng nối TÀI KHOẢN ⇄ VAI TRÒ ==========
@@ -147,8 +146,8 @@ CREATE TABLE UserRole (
     RoleId       INT NOT NULL,                        -- → Role.RoleId
     AssignedAt   DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),  -- thời điểm gán vai trò
     PRIMARY KEY (AppUserId, RoleId),
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (RoleId)    REFERENCES Role(RoleId)
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id),
+    FOREIGN KEY (RoleId)    REFERENCES Role(Id)
 );
 
 /* ========== Bảng 7: RefreshToken — TOKEN làm mới phiên đăng nhập (JWT) ==========
@@ -156,13 +155,13 @@ CREATE TABLE UserRole (
              (đăng xuất 1 thiết bị / tất cả thiết bị).
    QUAN HỆ : AppUserId → AppUser. Khóa BIGINT vì sinh ra rất nhiều theo lượt đăng nhập. */
 CREATE TABLE RefreshToken (
-    RefreshTokenId BIGINT IDENTITY PRIMARY KEY,
+    Id             BIGINT IDENTITY PRIMARY KEY,
     AppUserId      INT          NOT NULL,             -- → AppUser.AppUserId
     TokenHash      VARCHAR(255) NOT NULL,             -- lưu HASH của token, không lưu token thô
     ExpiresAt      DATETIME2(3) NOT NULL,             -- hạn dùng
     RevokedAt      DATETIME2(3) NULL,                 -- thời điểm bị thu hồi (NULL = còn hiệu lực)
     CreatedAt      DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId)
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id)
 );
 CREATE INDEX IX_RefreshToken_AppUser ON RefreshToken(AppUserId);  -- tra token theo user
 CREATE INDEX IX_RefreshToken_Hash    ON RefreshToken(TokenHash);  -- tra theo token
@@ -173,13 +172,13 @@ CREATE INDEX IX_RefreshToken_Hash    ON RefreshToken(TokenHash);  -- tra theo to
              UsedAt để token chỉ dùng được MỘT lần.
    QUAN HỆ : AppUserId → AppUser.                                                          */
 CREATE TABLE PasswordResetToken (
-    PasswordResetTokenId BIGINT IDENTITY PRIMARY KEY,
+    Id                   BIGINT IDENTITY PRIMARY KEY,
     AppUserId   INT          NOT NULL,                -- → AppUser.AppUserId
     TokenHash   VARCHAR(255) NOT NULL,               -- HASH của token reset (SHA-256)
     ExpiresAt   DATETIME2(3) NOT NULL,               -- hạn dùng (vd 30 phút)
     UsedAt      DATETIME2(3) NULL,                   -- đã dùng lúc nào (NULL = chưa dùng)
     CreatedAt   DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId)
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id)
 );
 CREATE INDEX IX_PwdReset_Hash    ON PasswordResetToken(TokenHash);  -- tra theo token
 CREATE INDEX IX_PwdReset_AppUser ON PasswordResetToken(AppUserId);  -- tra theo user
@@ -194,9 +193,12 @@ CREATE INDEX IX_PwdReset_AppUser ON PasswordResetToken(AppUserId);  -- tra theo 
              dữ liệu trong chi nhánh của mình.
    QUAN HỆ : AppUserId → AppUser (1-1),  BranchId → Branch.                   */
 CREATE TABLE Employee (
-    EmployeeId   INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     AppUserId    INT           NOT NULL UNIQUE,       -- → AppUser (mỗi user chỉ 1 hồ sơ NV)
     BranchId     INT           NOT NULL,             -- → Branch (nhân viên thuộc chi nhánh nào)
+    FirstName    NVARCHAR(50)  NOT NULL,             -- Tên gọi (given name)
+    LastName     NVARCHAR(100) NOT NULL,             -- Họ và tên đệm (family name)
+    Phone        VARCHAR(20)   NULL,                 -- SĐT liên hệ
     Position     NVARCHAR(100) NULL,                 -- chức vụ
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
                  CONSTRAINT CK_Employee_Status CHECK (Status IN ('ACTIVE','INACTIVE')),
@@ -207,19 +209,41 @@ CREATE TABLE Employee (
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
     UpdatedBy    INT           NULL,
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId)
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id),
+    FOREIGN KEY (BranchId)  REFERENCES Branch(Id)
 );
-CREATE INDEX IX_Employee_Branch ON Employee(BranchId);  -- lọc nhân viên theo chi nhánh
+CREATE INDEX IX_Employee_Branch    ON Employee(BranchId);             -- lọc nhân viên theo chi nhánh
+CREATE INDEX IX_Employee_FirstName ON Employee(FirstName, LastName);  -- sắp xếp theo TÊN
+
+/* ========== Bảng 8b: SubjectCategory — NHÓM MÔN (lookup, thêm ở V8) ==========
+   Ý nghĩa : Danh mục 4 nhóm môn chính thức (Tin học, Tiếng Anh, STEM - AI,
+             Kĩ năng sống) — thay cột text Subject.Category, dùng chung với Lesson.
+   QUAN HỆ : Được Subject tham chiếu qua FK CategoryId.                            */
+CREATE TABLE SubjectCategory (
+    Id          INT IDENTITY PRIMARY KEY,
+    Code        VARCHAR(50)   NOT NULL UNIQUE,      -- mã nhóm (khớp Enum Java): TIN_HOC | TIENG_ANH | STEM_AI | KY_NANG_SONG
+    Name        NVARCHAR(100) NOT NULL,            -- tên hiển thị: Tin học | Tiếng Anh | STEM - AI | Kĩ năng sống
+    Description NVARCHAR(500) NULL,
+    Status      VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / DISABLED(ngừng dùng)
+                CONSTRAINT CK_SubjectCategory_Status CHECK (Status IN ('ACTIVE','DISABLED')),
+    IsDeleted   BIT           NOT NULL DEFAULT 0,
+    DeletedAt   DATETIME2(3)  NULL,
+    DeletedBy   INT           NULL,
+    CreatedAt   DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy   INT           NULL,
+    UpdatedAt   DATETIME2(3)  NULL,
+    UpdatedBy   INT           NULL
+);
 
 /* ========== Bảng 9: Subject — MÔN HỌC ==========
-   Ý nghĩa : Danh mục môn (STEM, Công dân số...).
-   QUAN HỆ : Nối với Teacher qua TeacherSubject; được Assignment tham chiếu.        */
+   Ý nghĩa : Môn học cụ thể (Lập trình Scratch, Robotics...).
+   QUAN HỆ : CategoryId → SubjectCategory (nhóm môn); nối với Teacher qua
+             TeacherSubject; được Assignment tham chiếu.                          */
 CREATE TABLE Subject (
-    SubjectId    INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     Code         VARCHAR(20)   NOT NULL UNIQUE,      -- mã môn, vd: STEM01, CDS01
     Name         NVARCHAR(150) NOT NULL,            -- tên môn
-    Category     NVARCHAR(50)  NULL,                -- nhóm: STEM | CONG_DAN_SO | ...
+    CategoryId   INT           NULL,                -- → SubjectCategory (nhóm môn)
     Description  NVARCHAR(500) NULL,
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / DISABLED(ngừng dạy)
                  CONSTRAINT CK_Subject_Status CHECK (Status IN ('ACTIVE','DISABLED')),
@@ -229,9 +253,11 @@ CREATE TABLE Subject (
     CreatedAt    DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
-    UpdatedBy    INT           NULL
+    UpdatedBy    INT           NULL,
+    CONSTRAINT FK_Subject_Category FOREIGN KEY (CategoryId) REFERENCES SubjectCategory(Id)
 );
-CREATE INDEX IX_Subject_Name ON Subject(Name);  -- tìm môn theo tên
+CREATE INDEX IX_Subject_Name     ON Subject(Name);        -- tìm môn theo tên
+CREATE INDEX IX_Subject_Category ON Subject(CategoryId);  -- lọc môn theo nhóm
 
 
 /* #####################################################################
@@ -244,10 +270,12 @@ CREATE INDEX IX_Subject_Name ON Subject(Name);  -- tìm môn theo tên
              Là tâm điểm: được TeacherSubject/Certificate/Contract/Assignment/
              Schedule/Attendance/Payroll/TeacherEvaluation tham chiếu tới.    */
 CREATE TABLE Teacher (
-    TeacherId       INT IDENTITY PRIMARY KEY,
+    Id              INT IDENTITY PRIMARY KEY,
     AppUserId       INT           NOT NULL UNIQUE,    -- → AppUser (1-1)
     BranchId        INT           NOT NULL,          -- → Branch (chi nhánh quản lý GV)
-    FullName        NVARCHAR(150) NOT NULL,          -- họ tên
+    -- Tách họ tên (quy ước Tây): FirstName = tên gọi, LastName = họ + tên đệm.
+    FirstName       NVARCHAR(50)  NOT NULL,          -- Tên gọi (vd "A" trong "Trần Nguyễn Văn A")
+    LastName        NVARCHAR(100) NOT NULL,          -- Họ và tên đệm (vd "Trần Nguyễn Văn")
     DateOfBirth     DATE          NULL,              -- ngày sinh
     Gender          BIT           NULL,              -- 1 = Nam, 0 = Nữ
     IdCardNo        VARCHAR(20)   NULL,              -- số CCCD
@@ -265,13 +293,13 @@ CREATE TABLE Teacher (
     CreatedBy       INT           NULL,
     UpdatedAt       DATETIME2(3)  NULL,
     UpdatedBy       INT           NULL,
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId)
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id),
+    FOREIGN KEY (BranchId)  REFERENCES Branch(Id)
 );
 -- CCCD là duy nhất (chỉ tính bản ghi chưa xóa mềm, và bỏ qua ô để trống)
 CREATE UNIQUE INDEX UX_Teacher_IdCard ON Teacher(IdCardNo) WHERE IdCardNo IS NOT NULL AND IsDeleted = 0;
-CREATE INDEX IX_Teacher_Branch   ON Teacher(BranchId);    -- lọc GV theo chi nhánh
-CREATE INDEX IX_Teacher_FullName ON Teacher(FullName);    -- tìm GV theo tên
+CREATE INDEX IX_Teacher_Branch    ON Teacher(BranchId);             -- lọc GV theo chi nhánh
+CREATE INDEX IX_Teacher_FirstName ON Teacher(FirstName, LastName);  -- sắp xếp theo TÊN
 
 /* ========== Bảng 11: TeacherSubject — bảng nối GIÁO VIÊN ⇄ MÔN dạy được ==========
    Ý nghĩa : Một GV dạy được nhiều môn; một môn nhiều GV dạy (nhiều-nhiều).
@@ -283,15 +311,15 @@ CREATE TABLE TeacherSubject (
     ProficiencyLevel TINYINT NULL                     -- mức thành thạo 1..5 (cho AI matching)
                      CONSTRAINT CK_TS_Prof CHECK (ProficiencyLevel BETWEEN 1 AND 5),
     PRIMARY KEY (TeacherId, SubjectId),
-    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (SubjectId) REFERENCES Subject(SubjectId)
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(Id),
+    FOREIGN KEY (SubjectId) REFERENCES Subject(Id)
 );
 CREATE INDEX IX_TeacherSubject_Subject ON TeacherSubject(SubjectId);  -- tìm GV theo môn
 
 /* ========== Bảng 12: Certificate — BẰNG CẤP & CHỨNG CHỈ của giáo viên ==========
    QUAN HỆ : TeacherId → Teacher (1 GV có nhiều bằng cấp/chứng chỉ).          */
 CREATE TABLE Certificate (
-    CertificateId INT IDENTITY PRIMARY KEY,
+    Id            INT IDENTITY PRIMARY KEY,
     TeacherId     INT           NOT NULL,             -- → Teacher.TeacherId
     Name          NVARCHAR(200) NOT NULL,            -- tên bằng/chứng chỉ
     Issuer        NVARCHAR(200) NULL,                -- nơi cấp
@@ -305,14 +333,14 @@ CREATE TABLE Certificate (
     CreatedBy     INT           NULL,
     UpdatedAt     DATETIME2(3)  NULL,
     UpdatedBy     INT           NULL,
-    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId)
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(Id)
 );
 CREATE INDEX IX_Certificate_Teacher ON Certificate(TeacherId);
 
 /* ========== Bảng 13: Contract — HỢP ĐỒNG của giáo viên ==========
    QUAN HỆ : TeacherId → Teacher (1 GV có thể có nhiều hợp đồng theo thời gian). */
 CREATE TABLE Contract (
-    ContractId   INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     TeacherId    INT           NOT NULL,             -- → Teacher.TeacherId
     ContractNo   VARCHAR(50)   NOT NULL UNIQUE,      -- số hợp đồng (duy nhất)
     StartDate    DATE          NOT NULL,             -- ngày bắt đầu
@@ -329,10 +357,11 @@ CREATE TABLE Contract (
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
     UpdatedBy    INT           NULL,
-    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(Id),
     CONSTRAINT CK_Contract_Dates CHECK (EndDate IS NULL OR EndDate >= StartDate)  -- ngày KT ≥ ngày BĐ
 );
-CREATE INDEX IX_Contract_Teacher ON Contract(TeacherId);
+-- 1-1: mỗi GV tối đa 1 hợp đồng CHƯA xóa mềm (theo yêu cầu GVHD).
+CREATE UNIQUE INDEX UX_Contract_OneActivePerTeacher ON Contract(TeacherId) WHERE IsDeleted = 0;
 
 
 /* #####################################################################
@@ -344,7 +373,7 @@ CREATE INDEX IX_Contract_Teacher ON Contract(TeacherId);
    QUAN HỆ : BranchId → Branch (chi nhánh phụ trách),  AppUserId → AppUser (1-1, tùy chọn).
              Sở hữu Room/SchoolClass/Student.                                */
 CREATE TABLE School (
-    SchoolId          INT IDENTITY PRIMARY KEY,
+    Id                INT IDENTITY PRIMARY KEY,
     BranchId          INT           NOT NULL,         -- → Branch (chi nhánh phụ trách trường)
     Name              NVARCHAR(200) NOT NULL,
     Address           NVARCHAR(255) NULL,
@@ -363,8 +392,8 @@ CREATE TABLE School (
     CreatedBy         INT           NULL,
     UpdatedAt         DATETIME2(3)  NULL,
     UpdatedBy         INT           NULL,
-    FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId),
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(AppUserId)
+    FOREIGN KEY (BranchId)  REFERENCES Branch(Id),
+    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id)
 );
 CREATE INDEX IX_School_Branch ON School(BranchId);
 CREATE INDEX IX_School_Name   ON School(Name);
@@ -373,7 +402,7 @@ CREATE INDEX IX_School_Name   ON School(Name);
    Ý nghĩa : Phòng để xếp lịch dạy. Chỉ phòng AVAILABLE mới được đặt.
    QUAN HỆ : SchoolId → School. Được Schedule tham chiếu.                    */
 CREATE TABLE Room (
-    RoomId     INT IDENTITY PRIMARY KEY,
+    Id         INT IDENTITY PRIMARY KEY,
     SchoolId   INT           NOT NULL,               -- → School.SchoolId
     Name       NVARCHAR(50)  NOT NULL,              -- tên phòng, vd: A101
     Building   NVARCHAR(50)  NULL,                  -- tòa nhà
@@ -390,7 +419,7 @@ CREATE TABLE Room (
     CreatedBy  INT           NULL,
     UpdatedAt  DATETIME2(3)  NULL,
     UpdatedBy  INT           NULL,
-    FOREIGN KEY (SchoolId) REFERENCES School(SchoolId)
+    FOREIGN KEY (SchoolId) REFERENCES School(Id)
 );
 -- Trong cùng 1 trường, tên phòng không trùng (tính trên bản ghi chưa xóa mềm)
 CREATE UNIQUE INDEX UX_Room_School_Name ON Room(SchoolId, Name) WHERE IsDeleted = 0;
@@ -398,7 +427,7 @@ CREATE UNIQUE INDEX UX_Room_School_Name ON Room(SchoolId, Name) WHERE IsDeleted 
 /* ========== Bảng 16: SchoolClass — LỚP HỌC (thuộc trường) ==========
    QUAN HỆ : SchoolId → School. Nối với Student qua ClassEnrollment.         */
 CREATE TABLE SchoolClass (
-    ClassId     INT IDENTITY PRIMARY KEY,
+    Id          INT IDENTITY PRIMARY KEY,
     SchoolId    INT           NOT NULL,              -- → School.SchoolId
     Name        NVARCHAR(100) NOT NULL,            -- tên lớp
     GradeLevel  NVARCHAR(50)  NULL,                -- khối
@@ -412,7 +441,7 @@ CREATE TABLE SchoolClass (
     CreatedBy   INT           NULL,
     UpdatedAt   DATETIME2(3)  NULL,
     UpdatedBy   INT           NULL,
-    FOREIGN KEY (SchoolId) REFERENCES School(SchoolId)
+    FOREIGN KEY (SchoolId) REFERENCES School(Id)
 );
 CREATE UNIQUE INDEX UX_Class_School_Name_Year ON SchoolClass(SchoolId, Name, SchoolYear) WHERE IsDeleted = 0;
 
@@ -420,9 +449,10 @@ CREATE UNIQUE INDEX UX_Class_School_Name_Year ON SchoolClass(SchoolId, Name, Sch
    Ý nghĩa : Chỉ lưu danh sách học sinh (KHÔNG điểm, KHÔNG học phí).
    QUAN HỆ : SchoolId → School. Nối với SchoolClass qua ClassEnrollment.     */
 CREATE TABLE Student (
-    StudentId   INT IDENTITY PRIMARY KEY,
+    Id          INT IDENTITY PRIMARY KEY,
     SchoolId    INT           NOT NULL,              -- → School.SchoolId
-    FullName    NVARCHAR(150) NOT NULL,
+    FirstName   NVARCHAR(50)  NOT NULL,              -- Tên gọi (given name)
+    LastName    NVARCHAR(100) NOT NULL,              -- Họ và tên đệm (family name)
     DateOfBirth DATE          NULL,
     Gender      BIT           NULL,                 -- 1 = Nam, 0 = Nữ
     Status      VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
@@ -434,10 +464,10 @@ CREATE TABLE Student (
     CreatedBy   INT           NULL,
     UpdatedAt   DATETIME2(3)  NULL,
     UpdatedBy   INT           NULL,
-    FOREIGN KEY (SchoolId) REFERENCES School(SchoolId)
+    FOREIGN KEY (SchoolId) REFERENCES School(Id)
 );
-CREATE INDEX IX_Student_School   ON Student(SchoolId);
-CREATE INDEX IX_Student_FullName ON Student(FullName);
+CREATE INDEX IX_Student_School    ON Student(SchoolId);
+CREATE INDEX IX_Student_FirstName ON Student(FirstName, LastName);  -- sắp xếp theo TÊN
 
 /* ========== Bảng 18: ClassEnrollment — bảng nối LỚP ⇄ HỌC SINH ==========
    Ý nghĩa : Một lớp có nhiều học sinh; một học sinh có thể vào nhiều lớp (nhiều-nhiều).
@@ -447,8 +477,8 @@ CREATE TABLE ClassEnrollment (
     StudentId  INT NOT NULL,                          -- → Student.StudentId
     EnrolledAt DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),  -- thời điểm ghi danh
     PRIMARY KEY (ClassId, StudentId),
-    FOREIGN KEY (ClassId)   REFERENCES SchoolClass(ClassId),
-    FOREIGN KEY (StudentId) REFERENCES Student(StudentId)
+    FOREIGN KEY (ClassId)   REFERENCES SchoolClass(Id),
+    FOREIGN KEY (StudentId) REFERENCES Student(Id)
 );
 CREATE INDEX IX_Enrollment_Student ON ClassEnrollment(StudentId);
 
@@ -465,7 +495,7 @@ CREATE INDEX IX_Enrollment_Student ON ClassEnrollment(StudentId);
              ClassId → SchoolClass,
              AssignedByEmployeeId → Employee.  Sinh ra nhiều Schedule.        */
 CREATE TABLE Assignment (
-    AssignmentId         INT IDENTITY PRIMARY KEY,
+    Id                   INT IDENTITY PRIMARY KEY,
     TeacherId            INT           NOT NULL,      -- → Teacher
     SchoolId             INT           NOT NULL,      -- → School
     SubjectId            INT           NOT NULL,      -- → Subject
@@ -482,11 +512,11 @@ CREATE TABLE Assignment (
     CreatedBy            INT           NULL,
     UpdatedAt            DATETIME2(3)  NULL,
     UpdatedBy            INT           NULL,
-    FOREIGN KEY (TeacherId)            REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (SchoolId)             REFERENCES School(SchoolId),
-    FOREIGN KEY (SubjectId)            REFERENCES Subject(SubjectId),
-    FOREIGN KEY (ClassId)              REFERENCES SchoolClass(ClassId),
-    FOREIGN KEY (AssignedByEmployeeId) REFERENCES Employee(EmployeeId),
+    FOREIGN KEY (TeacherId)            REFERENCES Teacher(Id),
+    FOREIGN KEY (SchoolId)             REFERENCES School(Id),
+    FOREIGN KEY (SubjectId)            REFERENCES Subject(Id),
+    FOREIGN KEY (ClassId)              REFERENCES SchoolClass(Id),
+    FOREIGN KEY (AssignedByEmployeeId) REFERENCES Employee(Id),
     CONSTRAINT CK_Assignment_Dates CHECK (EndDate IS NULL OR EndDate >= StartDate)
 );
 CREATE INDEX IX_Assignment_Teacher ON Assignment(TeacherId);
@@ -500,7 +530,7 @@ CREATE INDEX IX_Assignment_School  ON Assignment(SchoolId);
              RoomId → Room,  CreatedByUserId/ApprovedByUserId → AppUser.
    KHÓA BIGINT vì số buổi tích lũy rất lớn theo thời gian.                    */
 CREATE TABLE Schedule (
-    ScheduleId       BIGINT IDENTITY PRIMARY KEY,
+    Id               BIGINT IDENTITY PRIMARY KEY,
     AssignmentId     INT           NOT NULL,          -- → Assignment
     TeacherId        INT           NOT NULL,          -- → Teacher (dò trùng lịch GV)
     RoomId           INT           NULL,              -- → Room (phòng dạy)
@@ -520,11 +550,11 @@ CREATE TABLE Schedule (
     CreatedAt        DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     UpdatedAt        DATETIME2(3)  NULL,
     UpdatedBy        INT           NULL,              -- dùng cho trigger ghi log (ai đổi trạng thái)
-    FOREIGN KEY (AssignmentId)     REFERENCES Assignment(AssignmentId),
-    FOREIGN KEY (TeacherId)        REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (RoomId)           REFERENCES Room(RoomId),
-    FOREIGN KEY (CreatedByUserId)  REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (ApprovedByUserId) REFERENCES AppUser(AppUserId),
+    FOREIGN KEY (AssignmentId)     REFERENCES Assignment(Id),
+    FOREIGN KEY (TeacherId)        REFERENCES Teacher(Id),
+    FOREIGN KEY (RoomId)           REFERENCES Room(Id),
+    FOREIGN KEY (CreatedByUserId)  REFERENCES AppUser(Id),
+    FOREIGN KEY (ApprovedByUserId) REFERENCES AppUser(Id),
     CONSTRAINT CK_Schedule_Time CHECK (StartTime < EndTime)  -- giờ bắt đầu phải trước giờ kết thúc
 );
 -- Index để kiểm tra TRÙNG LỊCH giáo viên / TRÙNG PHÒNG theo khoảng thời gian thật nhanh:
@@ -540,14 +570,14 @@ CREATE INDEX IX_Schedule_Status       ON Schedule(Status);
    Ý nghĩa : Tự động ghi lại mỗi lần Schedule đổi trạng thái (qua trigger ở cuối file).
    QUAN HỆ : ScheduleId → Schedule.  Khóa BIGINT vì số dòng lớn.             */
 CREATE TABLE ScheduleStatusLog (
-    LogId           BIGINT IDENTITY PRIMARY KEY,
+    Id              BIGINT IDENTITY PRIMARY KEY,
     ScheduleId      BIGINT        NOT NULL,           -- → Schedule
     OldStatus       VARCHAR(20)   NULL,               -- trạng thái cũ
     NewStatus       VARCHAR(20)   NOT NULL,           -- trạng thái mới
     ChangedByUserId INT           NULL,               -- ai đổi
     ChangedAt       DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     Note            NVARCHAR(500) NULL,
-    FOREIGN KEY (ScheduleId) REFERENCES Schedule(ScheduleId)
+    FOREIGN KEY (ScheduleId) REFERENCES Schedule(Id)
 );
 CREATE INDEX IX_StatusLog_Schedule ON ScheduleStatusLog(ScheduleId);
 
@@ -563,7 +593,7 @@ CREATE INDEX IX_StatusLog_Schedule ON ScheduleStatusLog(ScheduleId);
    QUAN HỆ : TeacherId → Teacher,  ScheduleId → Schedule (buổi dạy),
              ConfirmedByUserId → AppUser (người xác nhận). Khóa BIGINT.       */
 CREATE TABLE Attendance (
-    AttendanceId      BIGINT IDENTITY PRIMARY KEY,
+    Id                BIGINT IDENTITY PRIMARY KEY,
     TeacherId         INT           NOT NULL,         -- → Teacher
     ScheduleId        BIGINT        NULL,             -- → Schedule (gắn buổi dạy, nếu chấm theo buổi)
     WorkDate          DATE          NOT NULL,         -- ngày làm việc
@@ -578,9 +608,9 @@ CREATE TABLE Attendance (
     Note              NVARCHAR(255) NULL,
     CreatedAt         DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     CreatedBy         INT           NULL,
-    FOREIGN KEY (TeacherId)         REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (ScheduleId)        REFERENCES Schedule(ScheduleId),
-    FOREIGN KEY (ConfirmedByUserId) REFERENCES AppUser(AppUserId),
+    FOREIGN KEY (TeacherId)         REFERENCES Teacher(Id),
+    FOREIGN KEY (ScheduleId)        REFERENCES Schedule(Id),
+    FOREIGN KEY (ConfirmedByUserId) REFERENCES AppUser(Id),
     CONSTRAINT CK_Attendance_Time CHECK (CheckIn IS NULL OR CheckOut IS NULL OR CheckIn < CheckOut)
 );
 CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
@@ -589,7 +619,7 @@ CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
    Ý nghĩa : Lưu đủ thành phần lương để linh hoạt công thức. NetAmount tự tính.
    QUAN HỆ : TeacherId → Teacher. Mỗi GV mỗi tháng chỉ 1 dòng (ràng buộc UNIQUE). */
 CREATE TABLE Payroll (
-    PayrollId   INT IDENTITY PRIMARY KEY,
+    Id          INT IDENTITY PRIMARY KEY,
     TeacherId   INT           NOT NULL,               -- → Teacher
     PeriodMonth TINYINT       NOT NULL CONSTRAINT CK_Payroll_Month CHECK (PeriodMonth BETWEEN 1 AND 12),  -- tháng
     PeriodYear  SMALLINT      NOT NULL,               -- năm
@@ -607,7 +637,7 @@ CREATE TABLE Payroll (
     CreatedBy   INT           NULL,
     UpdatedAt   DATETIME2(3)  NULL,
     UpdatedBy   INT           NULL,
-    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(Id),
     CONSTRAINT UX_Payroll_Period UNIQUE (TeacherId, PeriodYear, PeriodMonth)
 );
 
@@ -616,7 +646,7 @@ CREATE TABLE Payroll (
    QUAN HỆ : TeacherId → Teacher,  EvaluatorUserId → AppUser (người đánh giá),
              SchoolId → School (nếu do trường đánh giá).                      */
 CREATE TABLE TeacherEvaluation (
-    EvaluationId    INT IDENTITY PRIMARY KEY,
+    Id              INT IDENTITY PRIMARY KEY,
     TeacherId       INT            NOT NULL,          -- → Teacher (được đánh giá)
     EvaluatorUserId INT            NOT NULL,          -- → AppUser (người đánh giá)
     SchoolId        INT            NULL,              -- → School (nếu trường đánh giá)
@@ -630,9 +660,9 @@ CREATE TABLE TeacherEvaluation (
     CreatedBy       INT            NULL,
     UpdatedAt       DATETIME2(3)   NULL,
     UpdatedBy       INT            NULL,
-    FOREIGN KEY (TeacherId)       REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (EvaluatorUserId) REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (SchoolId)        REFERENCES School(SchoolId)
+    FOREIGN KEY (TeacherId)       REFERENCES Teacher(Id),
+    FOREIGN KEY (EvaluatorUserId) REFERENCES AppUser(Id),
+    FOREIGN KEY (SchoolId)        REFERENCES School(Id)
 );
 CREATE INDEX IX_Eval_Teacher ON TeacherEvaluation(TeacherId);
 
@@ -640,7 +670,7 @@ CREATE INDEX IX_Eval_Teacher ON TeacherEvaluation(TeacherId);
    Ý nghĩa : Người dùng (thường là GV) gửi phản hồi; nhân viên xử lý & trả lời.
    QUAN HỆ : SenderUserId → AppUser (người gửi),  HandledByEmployeeId → Employee. */
 CREATE TABLE Feedback (
-    FeedbackId          INT IDENTITY PRIMARY KEY,
+    Id                  INT IDENTITY PRIMARY KEY,
     SenderUserId        INT            NOT NULL,      -- → AppUser (người gửi)
     Title               NVARCHAR(200)  NOT NULL,
     Content             NVARCHAR(2000) NOT NULL,
@@ -652,8 +682,8 @@ CREATE TABLE Feedback (
     CreatedBy           INT            NULL,
     UpdatedAt           DATETIME2(3)   NULL,
     UpdatedBy           INT            NULL,
-    FOREIGN KEY (SenderUserId)        REFERENCES AppUser(AppUserId),
-    FOREIGN KEY (HandledByEmployeeId) REFERENCES Employee(EmployeeId)
+    FOREIGN KEY (SenderUserId)        REFERENCES AppUser(Id),
+    FOREIGN KEY (HandledByEmployeeId) REFERENCES Employee(Id)
 );
 CREATE INDEX IX_Feedback_Status ON Feedback(Status);
 
@@ -661,7 +691,7 @@ CREATE INDEX IX_Feedback_Status ON Feedback(Status);
    Ý nghĩa : Thông báo gửi tới một người dùng (vd: lịch được duyệt, có phân công mới).
    QUAN HỆ : RecipientUserId → AppUser (người nhận).  Khóa BIGINT vì rất nhiều. */
 CREATE TABLE Notification (
-    NotificationId  BIGINT IDENTITY PRIMARY KEY,
+    Id              BIGINT IDENTITY PRIMARY KEY,
     RecipientUserId INT            NOT NULL,          -- → AppUser (người nhận)
     Title           NVARCHAR(200)  NOT NULL,
     Content         NVARCHAR(1000) NULL,
@@ -671,7 +701,7 @@ CREATE TABLE Notification (
     IsRead          BIT            NOT NULL DEFAULT 0,-- đã đọc chưa
     ReadAt          DATETIME2(3)   NULL,
     CreatedAt       DATETIME2(3)   NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (RecipientUserId) REFERENCES AppUser(AppUserId)
+    FOREIGN KEY (RecipientUserId) REFERENCES AppUser(Id)
 );
 CREATE INDEX IX_Notification_Recipient ON Notification(RecipientUserId, IsRead);
 
@@ -679,7 +709,7 @@ CREATE INDEX IX_Notification_Recipient ON Notification(RecipientUserId, IsRead);
    Ý nghĩa : Ghi lại ai làm gì (tạo/sửa/xóa/đăng nhập) trên toàn hệ thống.
    QUAN HỆ : ActorUserId → AppUser (người thực hiện).  Khóa BIGINT.          */
 CREATE TABLE AuditLog (
-    AuditLogId  BIGINT IDENTITY PRIMARY KEY,
+    Id          BIGINT IDENTITY PRIMARY KEY,
     ActorUserId INT           NULL,                   -- → AppUser (người thao tác)
     Action      VARCHAR(50)   NOT NULL,              -- CREATE | UPDATE | DELETE | LOGIN...
     Entity      VARCHAR(50)   NULL,                  -- tên bảng bị tác động
@@ -688,7 +718,7 @@ CREATE TABLE AuditLog (
     NewValue    NVARCHAR(MAX) NULL,                  -- giá trị sau (JSON)
     IpAddress   VARCHAR(45)   NULL,                  -- IP người thao tác
     CreatedAt   DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
-    FOREIGN KEY (ActorUserId) REFERENCES AppUser(AppUserId)
+    FOREIGN KEY (ActorUserId) REFERENCES AppUser(Id)
 );
 CREATE INDEX IX_Audit_Entity ON AuditLog(Entity, EntityId);
 CREATE INDEX IX_Audit_Actor  ON AuditLog(ActorUserId, CreatedAt);
@@ -707,7 +737,7 @@ CREATE INDEX IX_Audit_Actor  ON AuditLog(ActorUserId, CreatedAt);
              BranchId  → Branch  (chi nhánh quản lý).
              Một bài giảng có nhiều LessonFile (file đính kèm).             */
 CREATE TABLE Lesson (
-    LessonId        INT IDENTITY PRIMARY KEY,
+    Id              INT IDENTITY PRIMARY KEY,
     SubjectId       INT            NOT NULL,          -- → Subject
     TeacherId       INT            NULL,              -- → Teacher (GV phụ trách, nếu có)
     BranchId        INT            NOT NULL,          -- → Branch (chi nhánh quản lý)
@@ -728,9 +758,9 @@ CREATE TABLE Lesson (
     CreatedBy       INT            NULL,
     UpdatedAt       DATETIME2(3)   NULL,
     UpdatedBy       INT            NULL,
-    FOREIGN KEY (SubjectId) REFERENCES Subject(SubjectId),
-    FOREIGN KEY (TeacherId) REFERENCES Teacher(TeacherId),
-    FOREIGN KEY (BranchId)  REFERENCES Branch(BranchId)
+    FOREIGN KEY (SubjectId) REFERENCES Subject(Id),
+    FOREIGN KEY (TeacherId) REFERENCES Teacher(Id),
+    FOREIGN KEY (BranchId)  REFERENCES Branch(Id)
 );
 CREATE INDEX IX_Lesson_Subject ON Lesson(SubjectId);   -- lọc bài giảng theo môn
 CREATE INDEX IX_Lesson_Teacher ON Lesson(TeacherId);   -- lọc theo GV phụ trách
@@ -743,7 +773,7 @@ CREATE INDEX IX_Lesson_Title ON Lesson(Title) WHERE IsDeleted = 0;  -- tìm theo
    Ý nghĩa : Một bài giảng có thể có nhiều file (PDF, PPTX, link video...).
    QUAN HỆ : LessonId → Lesson (nhiều-1).                                   */
 CREATE TABLE LessonFile (
-    LessonFileId INT IDENTITY PRIMARY KEY,
+    Id           INT IDENTITY PRIMARY KEY,
     LessonId     INT           NOT NULL,              -- → Lesson
     FileName     NVARCHAR(255) NOT NULL,              -- tên file hiển thị
     FileUrl      VARCHAR(500)  NOT NULL,              -- đường dẫn / URL lưu trữ
@@ -757,7 +787,7 @@ CREATE TABLE LessonFile (
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
     UpdatedBy    INT           NULL,
-    FOREIGN KEY (LessonId) REFERENCES Lesson(LessonId)
+    FOREIGN KEY (LessonId) REFERENCES Lesson(Id)
 );
 CREATE INDEX IX_LessonFile_Lesson ON LessonFile(LessonId) WHERE IsDeleted = 0;
 
@@ -801,12 +831,12 @@ INSERT INTO Branch (Name, Address, Phone) VALUES
  (N'Chi nhánh trung tâm', N'Hà Nội', '0240000000');
 GO
 
--- 4 tài khoản đăng nhập. PasswordHash = BCrypt('Tsdms@123').
-INSERT INTO AppUser (Username, PasswordHash, Email, FullName, Phone) VALUES
- ('admin',    '$2b$10$ohMPL3S6/wcDn/t4v17ASuo1v6vfwB.ZVVH/g/OpNWahstMRKt20m', 'admin@tsdms.local',    N'Quản trị viên',       '0900000001'),
- ('employee', '$2b$10$O419OLGJ23IaXz9oT9DYL.Xhk/uMJDpbHr8SKQgjgEysVakGT1NkO', 'employee@tsdms.local', N'Nhân viên trung tâm', '0900000002'),
- ('school',   '$2b$10$bj4N5E1LwiGBEZIkgfAFmuCZgE2unPmyQr9kjwBrOeradCNmKAvWm', 'school@tsdms.local',   N'Trường THPT Demo',    '0900000003'),
- ('teacher',  '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK', 'teacher@tsdms.local',  N'Giáo viên Demo',      '0900000004');
+-- 4 tài khoản đăng nhập (chỉ định danh). PasswordHash = BCrypt('Tsdms@123').
+INSERT INTO AppUser (Username, PasswordHash, Email) VALUES
+ ('admin',    '$2b$10$ohMPL3S6/wcDn/t4v17ASuo1v6vfwB.ZVVH/g/OpNWahstMRKt20m', 'admin@tsdms.local'),
+ ('employee', '$2b$10$O419OLGJ23IaXz9oT9DYL.Xhk/uMJDpbHr8SKQgjgEysVakGT1NkO', 'employee@tsdms.local'),
+ ('school',   '$2b$10$bj4N5E1LwiGBEZIkgfAFmuCZgE2unPmyQr9kjwBrOeradCNmKAvWm', 'school@tsdms.local'),
+ ('teacher',  '$2b$10$QNvoqOIPKkrbysnPpWc5buzR/mVnKyCDL//p8jiTfl3VGTcs2XdfK', 'teacher@tsdms.local');
 GO
 
 -- Gán vai trò cho từng tài khoản (tra theo tên, không phụ thuộc Id)
@@ -820,15 +850,15 @@ JOIN Role r ON (u.Username = 'admin'    AND r.Name = 'ADMIN')
 GO
 
 -- Hồ sơ Nhân viên (1-1 với AppUser 'employee', gắn chi nhánh)
-INSERT INTO Employee (AppUserId, BranchId, Position)
-SELECT u.AppUserId, b.BranchId, N'Điều phối viên'
+INSERT INTO Employee (AppUserId, BranchId, FirstName, LastName, Phone, Position)
+SELECT u.AppUserId, b.BranchId, N'Tâm', N'Nhân Viên Trung', '0900000002', N'Điều phối viên'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'employee' AND b.Name = N'Chi nhánh trung tâm';
 GO
 
 -- Hồ sơ Giáo viên (1-1 với AppUser 'teacher')
-INSERT INTO Teacher (AppUserId, BranchId, FullName, EmploymentType)
-SELECT u.AppUserId, b.BranchId, N'Giáo viên Demo', 'FULL_TIME'
+INSERT INTO Teacher (AppUserId, BranchId, FirstName, LastName, EmploymentType)
+SELECT u.AppUserId, b.BranchId, N'Demo', N'Giáo Viên', 'FULL_TIME'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'teacher' AND b.Name = N'Chi nhánh trung tâm';
 GO

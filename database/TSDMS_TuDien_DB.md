@@ -14,8 +14,8 @@
 | Table | Bảng | Một loại dữ liệu, vd bảng giáo viên |
 | Column / Field | Cột / Trường | Một thông tin trong bảng, vd cột "họ tên" |
 | Row / Record | Dòng / Bản ghi | Một mục dữ liệu, vd một giáo viên cụ thể |
-| Primary Key (PK) | Khóa chính | Cột định danh duy nhất mỗi dòng (vd TeacherId) |
-| Foreign Key (FK) | Khóa ngoại | Cột trỏ sang bảng khác để tạo quan hệ |
+| Primary Key (PK) | Khóa chính | Cột định danh duy nhất mỗi dòng — tên cột là `Id` ở mọi bảng (đồng nhất từ V7) |
+| Foreign Key (FK) | Khóa ngoại | Cột trỏ sang bảng khác để tạo quan hệ — giữ tên `<Bảng>Id` (vd `TeacherId`) để tự mô tả trỏ tới đâu |
 | Index | Chỉ mục | "Mục lục" giúp tìm/lọc dữ liệu nhanh hơn |
 | Unique | Duy nhất | Không cho phép giá trị trùng (vd email) |
 | Constraint | Ràng buộc | Quy tắc dữ liệu phải tuân theo |
@@ -62,6 +62,7 @@
 | Employee | Nhân viên trung tâm |
 | Teacher | Giáo viên |
 | Subject | Môn học |
+| SubjectCategory | Nhóm môn (danh mục) |
 | Certificate / Contract | Bằng cấp - chứng chỉ / Hợp đồng |
 | School | Trường (khách hàng) |
 | Room | Phòng học |
@@ -122,7 +123,8 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 7. **RefreshToken** — token làm mới phiên đăng nhập (JWT).
    - **7b. PasswordResetToken** — token đặt lại mật khẩu (luồng quên mật khẩu), dùng 1 lần.
 8. **Employee** — hồ sơ nhân viên trung tâm.
-9. **Subject** — danh mục môn học.
+9. **Subject** — môn học (nhóm môn trỏ tới `SubjectCategory` qua `CategoryId`).
+   - **9b. SubjectCategory** *(Flyway V8)* — danh mục 4 nhóm môn chính thức (Tin học, Tiếng Anh, STEM - AI, Kĩ năng sống), dùng chung với Lesson; thay cột text `Subject.Category` cũ.
 10. **Teacher** — hồ sơ giáo viên.
 11. **TeacherSubject** — giáo viên dạy được môn nào.
 12. **Certificate** — bằng cấp & chứng chỉ của giáo viên.
