@@ -15,7 +15,7 @@ import lombok.Setter;
 @Table(name = "Certificate")
 @Getter
 @Setter
-public class Certificate {
+public class Certificate extends SoftDeletableEntity{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "Id")
