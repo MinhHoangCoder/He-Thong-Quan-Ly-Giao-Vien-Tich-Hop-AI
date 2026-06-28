@@ -1,5 +1,7 @@
 package com.kdc.tsdms.entity;
 
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -14,29 +16,58 @@ import lombok.Setter;
 @Table(name = "Teacher")
 @Getter
 @Setter
-public class Teacher {
+public class Teacher extends SoftDeletableEntity{
 
-    @Id
+        @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "TeacherId")
+    @Column(name = "Id")  // Sửa từ TeacherId thành Id
     private Integer id;
-
+    
     @Column(name = "AppUserId", nullable = false)
     private Integer appUserId;
-
+    
     @Column(name = "BranchId", nullable = false)
     private Integer branchId;
-
-    @Column(name = "FullName", nullable = false)
-    private String fullName;
-
-    /** FULL_TIME | PART_TIME | CONTRACT (nullable). */
+    
+    @Column(name = "FirstName", nullable = false, length = 100)
+    private String firstName;
+    
+    @Column(name = "LastName", nullable = false, length = 100)
+    private String lastName;
+    // thông tin cá nhân==================================================
+    
+    @Column(name = "DateOfBirth")
+    private LocalDate dateOfBirth;
+    
+    @Column(name = "Gender")
+    private Boolean gender;  
+    
+    @Column(name = "IdCardNo", length = 20)
+    private String idCardNo;  // CCCD unique in db
+    
+    @Column(name = "Phone", length = 15)
+    private String phone;
+    
+    @Column(name = "Address", length = 255)
+    private String address;
+    
+    @Column(name = "HireDate")
+    private LocalDate hireDate;
+    // thông tin cviec =================================================
+    
     @Column(name = "EmploymentType")
     private String employmentType;
-
+    
     @Column(name = "Status", nullable = false)
     private String status = "ACTIVE";
-
+    
     @Column(name = "IsDeleted", nullable = false)
     private boolean deleted = false;
+    
+    // Getter cho fullName (tổng hợp từ FirstName + LastName = ghép tên)
+    public String getFullName() {
+        return (this.lastName != null ? this.lastName : "") + 
+               " " + 
+               (this.firstName != null ? this.firstName : "");
+    }
 }
