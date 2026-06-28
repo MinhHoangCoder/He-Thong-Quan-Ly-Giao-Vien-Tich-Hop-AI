@@ -30,6 +30,13 @@ public class Certificate {
     @Column(name = "Issuer", length = 200)
     private String issuer;               // Nơi cấp
  
-
+    @Column(name = "IssueDate")
+    private LocalDate issueDate;
+ 
+    @Column(name = "ExpiryDate")
+    private LocalDate expiryDate;        // Ngày hết hạn (null = không hết hạn)
+ 
+    @Column(name = "FileUrl", length = 500)
+    private String fileUrl;              // Link file scan
 
 }
