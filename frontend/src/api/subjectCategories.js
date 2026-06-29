@@ -31,3 +31,4 @@ export const subjectCategoryApi = {
     return http.delete(`/subject-categories/${id}`)
   },
 }
+a
