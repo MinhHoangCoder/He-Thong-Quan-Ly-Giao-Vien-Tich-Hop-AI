@@ -47,7 +47,9 @@ class JwtServiceTest {
         jwt = new JwtService(props("test-secret-key-which-is-at-least-32-bytes-long!!", ACCESS_TTL, REFRESH_TTL));
     }
 
+    // claims JWT trả List thô -> ép kiểu phần tử để assertThat suy luận được (tránh lỗi ECJ trên máy khác)
     @Test
+    @SuppressWarnings("unchecked")
     void generateThenParse_roundTrip_carriesAllClaims() {
         String token = jwt.generateAccessToken(
                 user(7, "teacher1"), List.of("ADMIN", "TEACHER"), List.of("USER_VIEW", "LESSON_EDIT"), "Nguyễn Văn A");
@@ -56,8 +58,8 @@ class JwtServiceTest {
 
         assertThat(c.getSubject()).isEqualTo("teacher1");
         assertThat(c.get("uid", Integer.class)).isEqualTo(7);
-        assertThat(c.get("roles", List.class)).containsExactly("ADMIN", "TEACHER");
-        assertThat(c.get("perms", List.class)).containsExactly("USER_VIEW", "LESSON_EDIT");
+        assertThat((List<String>) c.get("roles", List.class)).containsExactly("ADMIN", "TEACHER");
+        assertThat((List<String>) c.get("perms", List.class)).containsExactly("USER_VIEW", "LESSON_EDIT");
         assertThat(c.get("fullName", String.class)).isEqualTo("Nguyễn Văn A");
         assertThat(c.getIssuer()).isEqualTo("tsdms-test");
     }
