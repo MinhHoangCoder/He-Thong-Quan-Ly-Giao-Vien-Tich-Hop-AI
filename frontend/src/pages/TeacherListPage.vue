@@ -1,8 +1,17 @@
 <script setup>
 import { ref, computed, reactive, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
+
+const router = useRouter()
+
+// Thêm mới GV = tạo TÀI KHOẢN vai trò TEACHER (AppUser + Teacher được tạo cùng lúc
+// ở RegistrationService), nên điều hướng sang trang "Tạo tài khoản" thay vì mở modal riêng.
+function goToCreateTeacher() {
+  router.push({ path: '/users/new', query: { role: 'TEACHER' } })
+}
  
 /* ══════════════════════════════════════════════════════════
    STATE
@@ -281,6 +290,13 @@ function formatDate(d) {
           title="Lịch sử (giáo viên đã bị ẩn)"
         >
           <SvgIcon name="history" :size="16" /> Lịch sử
+        </button>
+        <button
+          class="btn-tab btn-tab--add"
+          title="Tạo tài khoản giáo viên mới"
+          @click="goToCreateTeacher"
+        >
+          <SvgIcon name="plus" :size="16" /> Thêm mới
         </button>
       </div>
     </div>
@@ -706,6 +722,13 @@ function formatDate(d) {
 .btn-tab:hover { border-color: var(--c-primary); color: var(--c-primary); }
 .btn-tab--active { background: var(--grad-primary); border-color: transparent; color: #fff; }
 .btn-tab--history:not(.btn-tab--active) { color: var(--a-text-muted); }
+.btn-tab--add {
+  background: var(--grad-primary);
+  border-color: transparent;
+  color: #fff;
+  margin-left: 0.25rem;
+}
+.btn-tab--add:hover { filter: brightness(1.08); }
  
 /* ── Filters ── */
 .filters {
