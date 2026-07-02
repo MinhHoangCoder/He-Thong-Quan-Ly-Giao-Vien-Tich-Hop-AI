@@ -17,4 +17,10 @@ export const adminRoutes = [
     component: () => import('@/pages/RegisterUserPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE', 'HR', 'SALES'] },
   },
+    {
+    path: '/dashboard/teacher',
+    name: 'teacher-list',
+    component: () => import('@/pages/TeacherListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]
