@@ -1,8 +1,7 @@
 package com.kdc.tsdms.dto;
 
-import java.time.LocalDate;
-
 import jakarta.validation.constraints.NotNull;
+import java.time.LocalDate;
 
 /**
  * DTO request HR generate lịch làm việc CỐ ĐỊNH cho nhân viên FULL_TIME
@@ -24,19 +23,14 @@ import jakarta.validation.constraints.NotNull;
 public record EmployeeScheduleGenerateRequest(
 
         /** Nhân viên cần generate lịch (→ Employee, phải có EmploymentType = FULL_TIME). */
-        @NotNull(message = "Vui lòng chọn nhân viên")
-        Integer employeeId,
+        @NotNull(message = "Vui lòng chọn nhân viên") Integer employeeId,
 
         /** Ngày bắt đầu generate — thường là đầu học kỳ hoặc ngày vào làm. */
-        @NotNull(message = "Vui lòng nhập ngày bắt đầu")
-        LocalDate startDate,
+        @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,
 
         /**
          * Ngày kết thúc generate — thường là cuối học kỳ hoặc ngày hết hợp đồng.
          * Service validate: endDate >= startDate và khoảng cách không quá 1 năm
          * (tránh generate quá nhiều dòng gây chậm).
          */
-        @NotNull(message = "Vui lòng nhập ngày kết thúc")
-        LocalDate endDate
-
-) {}
+        @NotNull(message = "Vui lòng nhập ngày kết thúc") LocalDate endDate) {}

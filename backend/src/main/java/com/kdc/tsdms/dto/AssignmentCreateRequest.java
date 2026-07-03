@@ -1,12 +1,11 @@
 package com.kdc.tsdms.dto;
 
-import java.time.LocalDate;
-import java.util.List;
-
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.time.LocalDate;
+import java.util.List;
 
 /**
  * DTO request tạo phân công giáo viên (POST /api/v1/assignments).
@@ -34,27 +33,22 @@ import jakarta.validation.constraints.Size;
 public record AssignmentCreateRequest(
 
         /** Giáo viên được phân công (→ Teacher). */
-        @NotNull(message = "Vui lòng chọn giáo viên")
-        Integer teacherId,
+        @NotNull(message = "Vui lòng chọn giáo viên") Integer teacherId,
 
         /** Trường sẽ dạy (→ School). */
-        @NotNull(message = "Vui lòng chọn trường")
-        Integer schoolId,
+        @NotNull(message = "Vui lòng chọn trường") Integer schoolId,
 
         /** Môn học (→ Subject). */
-        @NotNull(message = "Vui lòng chọn môn học")
-        Integer subjectId,
+        @NotNull(message = "Vui lòng chọn môn học") Integer subjectId,
 
         /**
          * Lớp cụ thể (→ SchoolClass) — BẮT BUỘC trong nghiệp vụ phân công GV
          * (Service validate, không thể null khi gọi endpoint này).
          */
-        @NotNull(message = "Vui lòng chọn lớp học")
-        Integer classId,
+        @NotNull(message = "Vui lòng chọn lớp học") Integer classId,
 
         /** Ngày bắt đầu giai đoạn phân công. */
-        @NotNull(message = "Vui lòng nhập ngày bắt đầu")
-        LocalDate startDate,
+        @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,
 
         /**
          * Ngày kết thúc giai đoạn — nullable (phân công vô thời hạn).
@@ -67,9 +61,5 @@ public record AssignmentCreateRequest(
          * không thể dạy nhiều hơn tổng số tiết/ngày).
          * Mỗi slot phải là 1 tổ hợp DayOfWeek+PeriodId không trùng nhau.
          */
-        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy")
-        @Size(max = 9, message = "Không thể chọn quá 9 tiết dạy cho 1 phân công")
-        @Valid                       // kích hoạt validate đệ quy bên trong AssignmentSlotRequest
-        List<AssignmentSlotRequest> slots
-
-) {}
+        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 9, message = "Không thể chọn quá 9 tiết dạy cho 1 phân công") @Valid // kích hoạt validate đệ quy bên trong AssignmentSlotRequest
+        List<AssignmentSlotRequest> slots) {}

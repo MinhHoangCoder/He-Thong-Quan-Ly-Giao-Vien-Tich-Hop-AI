@@ -1,9 +1,8 @@
 package com.kdc.tsdms.dto;
 
+import com.kdc.tsdms.entity.Assignment;
 import java.time.LocalDate;
 import java.util.List;
-
-import com.kdc.tsdms.entity.Assignment;
 
 /**
  * DTO response chi tiết 1 phân công giáo viên — bao gồm thông tin tên của
@@ -69,19 +68,19 @@ public class AssignmentResponse {
             List<AssignmentSlotResponse> slots) {
 
         AssignmentResponse r = new AssignmentResponse();
-        r.id          = a.getId();
-        r.teacherId   = a.getTeacherId();
+        r.id = a.getId();
+        r.teacherId = a.getTeacherId();
         r.teacherName = teacherName;
-        r.schoolId    = a.getSchoolId();
-        r.schoolName  = schoolName;
-        r.subjectId   = a.getSubjectId();
+        r.schoolId = a.getSchoolId();
+        r.schoolName = schoolName;
+        r.subjectId = a.getSubjectId();
         r.subjectName = subjectName;
-        r.classId     = a.getClassId();
-        r.className   = className;
-        r.startDate   = a.getStartDate();
-        r.endDate     = a.getEndDate();
-        r.status      = a.getStatus();
-        r.slots       = slots;
+        r.classId = a.getClassId();
+        r.className = className;
+        r.startDate = a.getStartDate();
+        r.endDate = a.getEndDate();
+        r.status = a.getStatus();
+        r.slots = slots;
         return r;
     }
 }
