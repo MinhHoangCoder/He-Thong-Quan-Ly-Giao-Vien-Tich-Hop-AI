@@ -276,19 +276,17 @@ async function submitCreate() {
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
-       branchId: editModal.form.branchId ? Number(editModal.form.branchId) : null,
-  firstName: editModal.form.firstName,
-  lastName: editModal.form.lastName,
-  status: editModal.form.status,
-
-  employmentType: editModal.form.employmentType || null,
-  phone: editModal.form.phone || null,
-  idCardNo: editModal.form.idCardNo || null,
-  address: editModal.form.address || null,
-
-  dateOfBirth: editModal.form.dateOfBirth || null,
-  hireDate: editModal.form.hireDate || null,
-  gender: editModal.form.gender === '' ? null : editModal.form.gender,
+      branchId: Number(p.branchId),
+      firstName: p.firstName,
+      lastName: p.lastName,
+      status: 'ACTIVE',
+      employmentType: p.employmentType || null,
+      dateOfBirth: p.dateOfBirth || null,
+      hireDate: p.hireDate || null,
+      gender: p.gender === '' ? null : p.gender,
+      idCardNo: p.idCardNo || null,
+      phone: p.phone || null,
+      address: p.address || null,
     })
 
     // 3) Bằng cấp + chứng chỉ — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
