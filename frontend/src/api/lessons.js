@@ -3,7 +3,7 @@ import http from './http'
 /**
  * API module Bài giảng.
  * Category: 1 trong 4 giá trị cố định "Tin học" | "Tiếng Anh" | "STEM - AI" | "Kĩ năng sống".
- * FileType: 'pptx' = file PPT upload, 'canva' = link Canva.
+ * FileType: 'pdf' = file PDF upload, 'canva' = link Canva.
  */
 export const lessonApi = {
   /* ── Metadata ──────────────────────────────────────── */

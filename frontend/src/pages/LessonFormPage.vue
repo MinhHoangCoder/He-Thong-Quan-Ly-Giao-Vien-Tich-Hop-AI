@@ -3,7 +3,7 @@
  * Trang thêm / sửa bài giảng.
  * Chọn Danh mục (từ bảng SubjectCategory) → lọc Môn học trong danh mục đó.
  * GradeLevel là text tự do (chọn từ dropdown gợi ý).
- * Hỗ trợ: upload file PPT (multipart), thêm link Canva (JSON), xóa file đính kèm.
+ * Hỗ trợ: upload file PDF (multipart), thêm link Canva (JSON), xóa file đính kèm.
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -47,12 +47,6 @@ const closeCanvaForm = () => {
   canvaError.value = ''
 }
 
-const DIFFICULTY_OPTIONS = [
-  { value: 'BASIC', label: 'Cơ bản' },
-  { value: 'INTERMEDIATE', label: 'Trung cấp' },
-  { value: 'ADVANCED', label: 'Nâng cao' },
-]
-
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: 'Bản nháp (DRAFT)' },
   { value: 'PUBLISHED', label: 'Đã đăng (PUBLISHED)' },
@@ -61,14 +55,12 @@ const STATUS_OPTIONS = [
 
 const form = reactive({
   subjectId: null,
-  branchId: 1, // mặc định chi nhánh đầu — thay bằng dropdown Branch nếu cần
+  branchId: null,
   teacherId: null,
   title: '',
   description: '',
   content: '',
   gradeLevel: '',
-  duration: '',
-  difficultyLevel: '',
   status: 'DRAFT',
 })
 
@@ -79,10 +71,10 @@ const successMsg = ref('')
 
 const attachedFiles = ref([])
 
-const pptInput = ref(null)
-const pptFiles = ref([])
-const uploadingPPT = ref(false)
-const pptError = ref('')
+const pdfInput = ref(null)
+const pdfFiles = ref([])
+const uploadingPDF = ref(false)
+const pdfError = ref('')
 
 const showCanvaForm = ref(false)
 const canvaForm = reactive({ fileName: '', canvaUrl: '' })
@@ -120,8 +112,6 @@ async function loadLesson() {
     form.description = data.description || ''
     form.content = data.content || ''
     form.gradeLevel = data.gradeLevel || ''
-    form.duration = data.duration || ''
-    form.difficultyLevel = data.difficultyLevel || ''
     form.status = data.status
     attachedFiles.value = data.files || []
     // Khôi phục category dựa trên category trả về từ API
@@ -139,6 +129,10 @@ async function onSubmit() {
   errorMsg.value = ''
   successMsg.value = ''
 
+  if (!form.branchId) {
+    errorMsg.value = 'Vui lòng chọn chi nhánh.'
+    return
+  }
   if (!form.subjectId) {
     errorMsg.value = 'Vui lòng chọn môn học.'
     return
@@ -156,8 +150,6 @@ async function onSubmit() {
     description: form.description.trim() || null,
     content: form.content.trim() || null,
     gradeLevel: form.gradeLevel || null,
-    duration: form.duration ? Number(form.duration) : null,
-    difficultyLevel: form.difficultyLevel || null,
     status: form.status,
   }
 
@@ -178,26 +170,26 @@ async function onSubmit() {
   }
 }
 
-function onPptChange(e) {
-  pptFiles.value = Array.from(e.target.files || [])
+function onPdfChange(e) {
+  pdfFiles.value = Array.from(e.target.files || [])
 }
 
-async function uploadPPT() {
-  if (!pptFiles.value.length) {
-    pptError.value = 'Chọn ít nhất 1 file PPT.'
+async function uploadPDF() {
+  if (!pdfFiles.value.length) {
+    pdfError.value = 'Chọn ít nhất 1 file PDF.'
     return
   }
-  pptError.value = ''
-  uploadingPPT.value = true
+  pdfError.value = ''
+  uploadingPDF.value = true
   try {
-    const { data } = await lessonApi.uploadFiles(lessonId.value, pptFiles.value)
+    const { data } = await lessonApi.uploadFiles(lessonId.value, pdfFiles.value)
     attachedFiles.value.push(...data)
-    pptFiles.value = []
-    if (pptInput.value) pptInput.value.value = ''
+    pdfFiles.value = []
+    if (pdfInput.value) pdfInput.value.value = ''
   } catch (e) {
-    pptError.value = e.response?.data?.message || 'Upload thất bại.'
+    pdfError.value = e.response?.data?.message || 'Upload thất bại.'
   } finally {
-    uploadingPPT.value = false
+    uploadingPDF.value = false
   }
 }
 
@@ -265,13 +257,6 @@ onMounted(async () => {
       <button class="back-btn" @click="router.push({ name: 'lesson-list' })">← Danh sách</button>
       <h1 class="page__title">{{ isEdit ? 'Sửa bài giảng' : 'Thêm bài giảng' }}</h1>
     </div>
-    <label class="field">
-      <span>Chi nhánh <span class="req">*</span></span>
-      <select v-model="form.branchId" required>
-        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-      </select>
-    </label>
-
     <div v-if="loadingPage" class="loading">Đang tải dữ liệu…</div>
 
     <div v-else class="layout">
@@ -279,6 +264,17 @@ onMounted(async () => {
       <div class="col-main">
         <form class="card" @submit.prevent="onSubmit">
           <h2 class="card__title">Thông tin bài giảng</h2>
+
+          <!-- Hàng 0: Chi nhánh -->
+          <div class="grid-1">
+            <label class="field">
+              <span>Chi nhánh <span class="req">*</span></span>
+              <select v-model="form.branchId" required>
+                <option :value="null">-- Chọn chi nhánh --</option>
+                <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+            </label>
+          </div>
 
           <!-- Hàng 1: Danh mục + Môn học (lọc theo danh mục) -->
           <div class="grid-2">
@@ -341,23 +337,8 @@ onMounted(async () => {
             ></textarea>
           </label>
 
-          <!-- Hàng 5: Thời lượng + Độ khó + Trạng thái -->
-          <div class="grid-3">
-            <label class="field">
-              <span>Thời lượng (phút)</span>
-              <input v-model="form.duration" type="number" min="1" placeholder="VD: 45" required />
-            </label>
-
-            <label class="field">
-              <span>Độ khó</span>
-              <select v-model="form.difficultyLevel" required>
-                <option value="">— Chọn —</option>
-                <option v-for="d in DIFFICULTY_OPTIONS" :key="d.value" :value="d.value">
-                  {{ d.label }}
-                </option>
-              </select>
-            </label>
-
+          <!-- Hàng 5: Trạng thái -->
+          <div class="grid-1">
             <label class="field field--req">
               <span>Trạng thái</span>
               <select v-model="form.status" required>
@@ -388,28 +369,28 @@ onMounted(async () => {
 
       <!-- Cột phải: file đính kèm (chỉ hiện khi đang sửa) -->
       <div v-if="isEdit" class="col-side">
-        <!-- PPT Upload -->
+        <!-- PDF Upload -->
         <div class="card">
-          <h2 class="card__title">📊 Tải lên file PPT</h2>
-          <p class="card__sub">Chỉ chấp nhận file .pptx / .ppt (nhiều file cùng lúc).</p>
+          <h2 class="card__title">📄 Tải lên file PDF</h2>
+          <p class="card__sub">Chỉ chấp nhận file .pdf (nhiều file cùng lúc).</p>
 
           <input
-            ref="pptInput"
+            ref="pdfInput"
             type="file"
-            accept=".pptx,.ppt"
+            accept=".pdf"
             multiple
             class="file-input"
-            @change="onPptChange"
+            @change="onPdfChange"
           />
 
-          <div v-if="pptFiles.length" class="file-preview">
-            <span v-for="f in pptFiles" :key="f.name" class="file-chip">📊 {{ f.name }}</span>
+          <div v-if="pdfFiles.length" class="file-preview">
+            <span v-for="f in pdfFiles" :key="f.name" class="file-chip">📄 {{ f.name }}</span>
           </div>
 
-          <p v-if="pptError" class="msg msg--error">{{ pptError }}</p>
+          <p v-if="pdfError" class="msg msg--error">{{ pdfError }}</p>
 
-          <button class="btn" :disabled="uploadingPPT || !pptFiles.length" @click="uploadPPT">
-            {{ uploadingPPT ? 'Đang tải…' : 'Tải lên' }}
+          <button class="btn" :disabled="uploadingPDF || !pdfFiles.length" @click="uploadPDF">
+            {{ uploadingPDF ? 'Đang tải…' : 'Tải lên' }}
           </button>
         </div>
 
