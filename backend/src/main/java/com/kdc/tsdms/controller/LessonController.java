@@ -133,7 +133,7 @@ public class LessonController {
         return ResponseEntity.noContent().build();
     }
 
-    /* ── 6. UPLOAD FILE PPT ─────────────────────────────────────────── */
+    /* ── 6. UPLOAD FILE PDF ─────────────────────────────────────────── */
 
     @PostMapping("/{id}/files")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_MANAGE')")
