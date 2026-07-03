@@ -28,5 +28,9 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-17 | backend | Chốt chặn `/register` theo quyền (2 tầng) + tài khoản test `employee` (V5) | [2026-06-17-backend-rbac-register-guard.md](2026-06-17-backend-rbac-register-guard.md) |
 | 2026-06-19 | backend | API Bài giảng (Lesson) — CRUD + upload file | [2026-06-19-backend-lesson-api-crud-upload.md](2026-06-19-backend-lesson-api-crud-upload.md) |
 | 2026-06-20 | fullstack | ⭐ Áp góp ý GVHD vào DB: tách họ tên, AppUser bỏ trùng, Contract 1-1, PK→`Id` (V6+V7) | [2026-06-20-database-gvhd-3-thay-doi.md](2026-06-20-database-gvhd-3-thay-doi.md) |
+| 2026-06-25 | database | Chuẩn hóa nhóm môn: bảng SubjectCategory (V8) | [2026-06-25-database-subject-category-lookup.md](2026-06-25-database-subject-category-lookup.md) |
+| 2026-06-27 | backend | Category đọc từ SubjectCategory | [2026-06-27-category-from-subject-category.md](2026-06-27-category-from-subject-category.md) |
+| 2026-06-30 | database | Lịch dạy GV (Period/AssignmentSlot, V9) + ca làm NV (V10) | [2026-06-30-database-teacher-timetable-employee-shift.md](2026-06-30-database-teacher-timetable-employee-shift.md) |
+| 2026-07-02 | backend | ⭐ Lưới an toàn schema ↔ entity: Testcontainers + Flyway + Hibernate validate | [2026-07-02-backend-integration-test-schema-validate.md](2026-07-02-backend-integration-test-schema-validate.md) |
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.
