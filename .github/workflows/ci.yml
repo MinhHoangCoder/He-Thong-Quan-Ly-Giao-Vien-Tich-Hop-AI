@@ -1,0 +1,42 @@
+# =====================================================================
+# CI — CONG CHAN CHAT LUONG truoc khi merge vao master.
+#   Chay tren MOI Pull Request (+ moi push len master): kiem
+#     1) spotless:check  -> code CHUA FORMAT   => check DO
+#     2) unit test        -> test DO            => check DO
+#   Khi da bat branch protection "Require status checks" cho master,
+#   check DO = KHONG merge duoc. (Setup 1 lan, xem huong dan cuoi file.)
+#
+#   Maven project nam trong thu muc backend/ -> moi buoc chay o do.
+#   `mvnw test` KHONG can Docker (cac *IT can DB la failsafe/verify, khong chay o day).
+# =====================================================================
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [ master ]
+
+jobs:
+  build:
+    name: build (spotless + unit test)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 21 (Temurin) + cache Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # spotless:check da bind san trong build -> `mvnw test` bao gom ca kiem format.
+      # (Muon CI chay luon bo *IT Testcontainers thi doi `test` -> `verify`;
+      #  GitHub runner co Docker nen se dung SQL Server that de validate schema,
+      #  doi lai cham hon ~1-2 phut vi keo image.)
+      - name: Build — spotless:check + unit test
+        working-directory: backend
+        run: |
+          chmod +x mvnw
+          ./mvnw -B test
