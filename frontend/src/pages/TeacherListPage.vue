@@ -111,10 +111,107 @@ const createModal = reactive({
   experience: '',
 })
 
+// Validate inline cho form thêm mới
+const createFieldErrors = reactive({
+  username: '',
+  email: '',
+  password: '',
+  lastName: '',
+  firstName: '',
+  phone: '',
+  idCardNo: '',
+})
+
+const NAME_RE = /^[\p{L} ]+$/u
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_RE = /^(\+84|0)\d{9,10}$/
+const CCCD_RE = /^\d{9}(\d{3})?$/
+
+function validateUsername() {
+  const v = createModal.account.username.trim()
+  if (!v) { createFieldErrors.username = 'Không được để trống'; return false }
+  if (v.length < 3) { createFieldErrors.username = 'Ít nhất 3 ký tự'; return false }
+  if (v.length > 50) { createFieldErrors.username = 'Tối đa 50 ký tự'; return false }
+  createFieldErrors.username = ''
+  return true
+}
+
+function validateEmail() {
+  const v = createModal.account.email.trim()
+  if (!v) { createFieldErrors.email = 'Không được để trống'; return false }
+  if (!EMAIL_RE.test(v)) { createFieldErrors.email = 'Email không hợp lệ (VD: gv@tsdms.local)'; return false }
+  createFieldErrors.email = ''
+  return true
+}
+
+function validateCreatePassword() {
+  const v = createModal.account.password
+  if (!v) { createFieldErrors.password = 'Không được để trống'; return false }
+  if (!isStrongPassword(v)) { createFieldErrors.password = `Chưa đủ mạnh: ${PASSWORD_HINT}`; return false }
+  createFieldErrors.password = ''
+  return true
+}
+
+function validateLastName() {
+  const v = createModal.profile.lastName.trim()
+  if (!v) { createFieldErrors.lastName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { createFieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  createFieldErrors.lastName = ''
+  return true
+}
+
+function validateFirstName() {
+  const v = createModal.profile.firstName.trim()
+  if (!v) { createFieldErrors.firstName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { createFieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  createFieldErrors.firstName = ''
+  return true
+}
+
+function validatePhone() {
+  const v = createModal.profile.phone.trim()
+  if (!v) { createFieldErrors.phone = ''; return true }
+  if (!PHONE_RE.test(v)) { createFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'; return false }
+  createFieldErrors.phone = ''
+  return true
+}
+
+function validateIdCard() {
+  const v = createModal.profile.idCardNo.trim()
+  if (!v) { createFieldErrors.idCardNo = ''; return true }
+  if (!CCCD_RE.test(v)) { createFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'; return false }
+  createFieldErrors.idCardNo = ''
+  return true
+}
+
+function validateAllCreateFields() {
+  const results = [
+    validateUsername(),
+    validateEmail(),
+    validateCreatePassword(),
+    validateLastName(),
+    validateFirstName(),
+    validatePhone(),
+    validateIdCard(),
+  ]
+  if (!createModal.profile.branchId) {
+    createModal.error = 'Vui lòng chọn chi nhánh.'
+    createModal.activeTab = 'profile'
+    return false
+  }
+  if (!results.every(Boolean)) {
+    createModal.error = 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ.'
+    createModal.activeTab = 'profile'
+    return false
+  }
+  return true
+}
+
 function openCreate() {
   createModal.activeTab = 'profile'
   createModal.error = ''
   createModal.saving = false
+  Object.keys(createFieldErrors).forEach((k) => (createFieldErrors[k] = ''))
   createModal.account = { username: '', email: '', password: '' }
   createModal.profile = {
     branchId: branches.value[0]?.id || '',
@@ -151,26 +248,14 @@ function onPickFile(doc, e) {
 }
 
 async function submitCreate() {
+  if (!validateAllCreateFields()) return
+
   const p = createModal.profile
   const a = createModal.account
-  if (!a.username || !a.email || !a.password) {
-    createModal.error = 'Thiếu tên đăng nhập / email / mật khẩu (dùng để GV đăng nhập).'
-    createModal.activeTab = 'profile'
-    return
-  }
-  if (!isStrongPassword(a.password)) {
-    createModal.error = `Mật khẩu chưa đủ mạnh: ${PASSWORD_HINT}.`
-    createModal.activeTab = 'profile'
-    return
-  }
-  if (!p.branchId || !p.lastName || !p.firstName) {
-    createModal.error = 'Thiếu chi nhánh / họ và tên đệm / tên gọi.'
-    createModal.activeTab = 'profile'
-    return
-  }
 
   createModal.saving = true
   createModal.error = ''
+  let createdTeacherId = null
   try {
     // 1) Tạo tài khoản đăng nhập + hồ sơ GV cơ bản (BE tạo AppUser + Teacher cùng lúc)
     const { data: userInfo } = await authApi.register({
@@ -188,23 +273,25 @@ async function submitCreate() {
     const { data: allTeachers } = await teacherApi.list()
     const created = allTeachers.find((t) => t.appUserId === userInfo.id)
     if (!created) throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
+    createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
-      branchId: Number(p.branchId),
-      firstName: p.firstName,
-      lastName: p.lastName,
-      status: 'ACTIVE',
-      employmentType: p.employmentType || null,
-      dateOfBirth: p.dateOfBirth || null,
-      gender: p.gender === '' ? null : p.gender,
-      idCardNo: p.idCardNo || null,
-      phone: p.phone || null,
-      address: p.address || null,
-      hireDate: p.hireDate || null,
+       branchId: editModal.form.branchId ? Number(editModal.form.branchId) : null,
+  firstName: editModal.form.firstName,
+  lastName: editModal.form.lastName,
+  status: editModal.form.status,
+
+  employmentType: editModal.form.employmentType || null,
+  phone: editModal.form.phone || null,
+  idCardNo: editModal.form.idCardNo || null,
+  address: editModal.form.address || null,
+
+  dateOfBirth: editModal.form.dateOfBirth || null,
+  hireDate: editModal.form.hireDate || null,
+  gender: editModal.form.gender === '' ? null : editModal.form.gender,
     })
 
     // 3) Bằng cấp + chứng chỉ — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
-    //    (BE hiện chưa có API upload nhị phân cho mục này, nên fileUrl = tên file để tham chiếu tạm).
     const allDocs = [...createModal.degrees, ...createModal.certificates].filter((d) => d.name.trim())
     for (const d of allDocs) {
       await teacherApi.addCertificate(created.id, {
@@ -219,7 +306,16 @@ async function submitCreate() {
     showToast('Đã thêm giáo viên mới thành công')
     await loadTeachers()
   } catch (e) {
-    createModal.error = e?.response?.data?.message || e?.message || 'Tạo giáo viên thất bại'
+    const msg = e?.response?.data?.message || e?.message || 'Tạo giáo viên thất bại'
+    // Nếu bước 1 đã tạo xong mà bước 2-3 bị lỗi → rollbacks xóa_teacher vừa tạo
+    if (createdTeacherId && canManage.value) {
+      try { await teacherApi.delete(createdTeacherId) } catch { /* bỏ qua nếu rollbacks thất bại */ }
+      createModal.error = `${msg} — Đã tự rollbacks, bạn có thể thử lại.`
+    } else if (createdTeacherId) {
+      createModal.error = `${msg} — Tài khoản đã được tạo. Vui lòng vào danh sách, bấm Sửa để bổ sung thông tin còn thiếu.`
+    } else {
+      createModal.error = msg
+    }
   } finally {
     createModal.saving = false
   }
@@ -323,10 +419,42 @@ async function openDetail(teacher) {
 /* ══════════════════════════════════════════════════════════
    SỬA
 ══════════════════════════════════════════════════════════ */
+const editFieldErrors = reactive({ lastName: '', firstName: '', phone: '', idCardNo: '' })
+
+function validateEditLastName() {
+  const v = editModal.form.lastName.trim()
+  if (!v) { editFieldErrors.lastName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { editFieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  editFieldErrors.lastName = ''
+  return true
+}
+function validateEditFirstName() {
+  const v = editModal.form.firstName.trim()
+  if (!v) { editFieldErrors.firstName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { editFieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  editFieldErrors.firstName = ''
+  return true
+}
+function validateEditPhone() {
+  const v = editModal.form.phone.trim()
+  if (!v) { editFieldErrors.phone = ''; return true }
+  if (!PHONE_RE.test(v)) { editFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'; return false }
+  editFieldErrors.phone = ''
+  return true
+}
+function validateEditIdCard() {
+  const v = editModal.form.idCardNo.trim()
+  if (!v) { editFieldErrors.idCardNo = ''; return true }
+  if (!CCCD_RE.test(v)) { editFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'; return false }
+  editFieldErrors.idCardNo = ''
+  return true
+}
+
 function openEdit(teacher) {
   editModal.id = teacher.id
   editModal.error = ''
   editModal.saving = false
+  Object.keys(editFieldErrors).forEach((k) => (editFieldErrors[k] = ''))
   Object.assign(editModal.form, {
     branchId: teacher.branchId,
     firstName: teacher.firstName,
@@ -344,6 +472,9 @@ function openEdit(teacher) {
 }
 
 async function saveEdit() {
+  const ok = [validateEditLastName(), validateEditFirstName(), validateEditPhone(), validateEditIdCard()].every(Boolean)
+  if (!ok) { editModal.error = 'Vui lòng kiểm tra lại các trường bị đánh dấu đỏ.'; return }
+
   editModal.saving = true
   editModal.error = ''
   try {
@@ -602,7 +733,7 @@ function formatDate(d) {
                     <span :class="['t-avatar-dot', t.status === 'ACTIVE' ? 'dot--active' : 'dot--off']" />
                   </span>
                   <div>
-                    <div class="t-name">{{ t.fullName }}</div>
+                    <div class="t-name" :title="t.fullName"> {{ t.fullName }} </div>
                     <div class="t-id">ID: {{ t.id }}</div>
                   </div>
                 </div>
@@ -610,12 +741,12 @@ function formatDate(d) {
 
               <!-- Liên hệ -->
               <td>
-                <div class="t-contact">{{ t.phone || '—' }}</div>
-                <div class="t-contact t-contact--muted">{{ t.idCardNo || '—' }}</div>
+                <div class="t-contact"><strong>SĐT:</strong> {{ t.phone || '—' }}</div>
+                <div class="t-contact t-contact--muted"><strong>CCCD:</strong>{{ t.idCardNo || '—' }}</div>
               </td>
 
               <!-- Chi nhánh -->
-              <td><span class="badge badge--branch">{{ branchName(t.branchId) }}</span></td>
+              <td><span class="badge badge--branch"><strong>Branch:</strong>{{ branchName(t.branchId) }}</span></td>
 
               <!-- Loại hình -->
               <td>{{ t.employmentType ? empLabel[t.employmentType] : '—' }}</td>
@@ -740,25 +871,40 @@ function formatDate(d) {
                   <h4 class="create-section-title">Tài khoản đăng nhập</h4>
                   <p class="create-section-hint">Giáo viên cần 1 tài khoản để đăng nhập hệ thống.</p>
                   <div class="form-row">
-                    <label class="form-label">Tên đăng nhập <span class="req">*</span>
-                      <input v-model="createModal.account.username" class="form-input" placeholder="VD: gv.nguyenvana" />
-                    </label>
-                    <label class="form-label">Email <span class="req">*</span>
-                      <input v-model="createModal.account.email" type="email" class="form-input" placeholder="VD: gv@tsdms.local" />
-                    </label>
+                    <div class="form-field">
+                      <label class="form-label">Tên đăng nhập <span class="req">*</span>
+                        <input v-model="createModal.account.username" class="form-input" :class="{ 'form-input--error': createFieldErrors.username }" placeholder="VD: gv.nguyenvana" @blur="validateUsername" />
+                      </label>
+                      <span v-if="createFieldErrors.username" class="field-error">{{ createFieldErrors.username }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Email <span class="req">*</span>
+                        <input v-model="createModal.account.email" type="email" class="form-input" :class="{ 'form-input--error': createFieldErrors.email }" placeholder="VD: gv@tsdms.local" @blur="validateEmail" />
+                      </label>
+                      <span v-if="createFieldErrors.email" class="field-error">{{ createFieldErrors.email }}</span>
+                    </div>
                   </div>
-                  <label class="form-label">Mật khẩu <span class="req">*</span>
-                    <input v-model="createModal.account.password" type="password" class="form-input" placeholder="Ít nhất 8 ký tự, có hoa/thường/số" />
-                  </label>
+                  <div class="form-field">
+                    <label class="form-label">Mật khẩu <span class="req">*</span>
+                      <input v-model="createModal.account.password" type="password" class="form-input" :class="{ 'form-input--error': createFieldErrors.password }" placeholder="Ít nhất 8 ký tự, có hoa/thường/số" @blur="validateCreatePassword" />
+                    </label>
+                    <span v-if="createFieldErrors.password" class="field-error">{{ createFieldErrors.password }}</span>
+                  </div>
 
                   <h4 class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
                   <div class="form-row">
-                    <label class="form-label">Họ và tên đệm <span class="req">*</span>
-                      <input v-model="createModal.profile.lastName" class="form-input" placeholder="VD: Trần Nguyễn Văn" />
-                    </label>
-                    <label class="form-label">Tên gọi <span class="req">*</span>
-                      <input v-model="createModal.profile.firstName" class="form-input" placeholder="VD: A" />
-                    </label>
+                    <div class="form-field">
+                      <label class="form-label">Họ và tên đệm <span class="req">*</span>
+                        <input v-model="createModal.profile.lastName" class="form-input" :class="{ 'form-input--error': createFieldErrors.lastName }" placeholder="VD: Trần Nguyễn Văn" @blur="validateLastName" />
+                      </label>
+                      <span v-if="createFieldErrors.lastName" class="field-error">{{ createFieldErrors.lastName }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Tên gọi <span class="req">*</span>
+                        <input v-model="createModal.profile.firstName" class="form-input" :class="{ 'form-input--error': createFieldErrors.firstName }" placeholder="VD: A" @blur="validateFirstName" />
+                      </label>
+                      <span v-if="createFieldErrors.firstName" class="field-error">{{ createFieldErrors.firstName }}</span>
+                    </div>
                   </div>
                   <div class="form-row">
                     <label class="form-label">Chi nhánh <span class="req">*</span>
@@ -776,12 +922,18 @@ function formatDate(d) {
                     </label>
                   </div>
                   <div class="form-row">
-                    <label class="form-label">Số điện thoại
-                      <input v-model="createModal.profile.phone" class="form-input" placeholder="VD: 0901234567" />
-                    </label>
-                    <label class="form-label">Số CCCD
-                      <input v-model="createModal.profile.idCardNo" class="form-input" placeholder="9 hoặc 12 chữ số" />
-                    </label>
+                    <div class="form-field">
+                      <label class="form-label">Số điện thoại
+                        <input v-model="createModal.profile.phone" class="form-input" :class="{ 'form-input--error': createFieldErrors.phone }" placeholder="VD: 0901234567" @blur="validatePhone" />
+                      </label>
+                      <span v-if="createFieldErrors.phone" class="field-error">{{ createFieldErrors.phone }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Số CCCD
+                        <input v-model="createModal.profile.idCardNo" class="form-input" :class="{ 'form-input--error': createFieldErrors.idCardNo }" placeholder="9 hoặc 12 chữ số" @blur="validateIdCard" />
+                      </label>
+                      <span v-if="createFieldErrors.idCardNo" class="field-error">{{ createFieldErrors.idCardNo }}</span>
+                    </div>
                   </div>
                   <div class="form-row">
                     <label class="form-label">Ngày sinh
@@ -999,12 +1151,18 @@ function formatDate(d) {
 
             <div class="edit-form">
               <div class="form-row">
-                <label class="form-label">Họ và tên đệm <span class="req">*</span>
-                  <input v-model="editModal.form.lastName" class="form-input" placeholder="VD: Trần Nguyễn Văn" />
-                </label>
-                <label class="form-label">Tên gọi <span class="req">*</span>
-                  <input v-model="editModal.form.firstName" class="form-input" placeholder="VD: A" />
-                </label>
+                <div class="form-field">
+                  <label class="form-label">Họ và tên đệm <span class="req">*</span>
+                    <input v-model="editModal.form.lastName" class="form-input" :class="{ 'form-input--error': editFieldErrors.lastName }" placeholder="VD: Trần Nguyễn Văn" @blur="validateEditLastName" />
+                  </label>
+                  <span v-if="editFieldErrors.lastName" class="field-error">{{ editFieldErrors.lastName }}</span>
+                </div>
+                <div class="form-field">
+                  <label class="form-label">Tên gọi <span class="req">*</span>
+                    <input v-model="editModal.form.firstName" class="form-input" :class="{ 'form-input--error': editFieldErrors.firstName }" placeholder="VD: A" @blur="validateEditFirstName" />
+                  </label>
+                  <span v-if="editFieldErrors.firstName" class="field-error">{{ editFieldErrors.firstName }}</span>
+                </div>
               </div>
 
               <div class="form-row">
@@ -1042,12 +1200,18 @@ function formatDate(d) {
               </div>
 
               <div class="form-row">
-                <label class="form-label">Số điện thoại
-                  <input v-model="editModal.form.phone" class="form-input" placeholder="VD: 0901234567" />
-                </label>
-                <label class="form-label">Số CCCD
-                  <input v-model="editModal.form.idCardNo" class="form-input" placeholder="12 chữ số" />
-                </label>
+                <div class="form-field">
+                  <label class="form-label">Số điện thoại
+                    <input v-model="editModal.form.phone" class="form-input" :class="{ 'form-input--error': editFieldErrors.phone }" placeholder="VD: 0901234567" @blur="validateEditPhone" />
+                  </label>
+                  <span v-if="editFieldErrors.phone" class="field-error">{{ editFieldErrors.phone }}</span>
+                </div>
+                <div class="form-field">
+                  <label class="form-label">Số CCCD
+                    <input v-model="editModal.form.idCardNo" class="form-input" :class="{ 'form-input--error': editFieldErrors.idCardNo }" placeholder="9 hoặc 12 chữ số" @blur="validateEditIdCard" />
+                  </label>
+                  <span v-if="editFieldErrors.idCardNo" class="field-error">{{ editFieldErrors.idCardNo }}</span>
+                </div>
               </div>
 
               <div class="form-row">
@@ -1544,6 +1708,10 @@ function formatDate(d) {
   font-size: 0.84rem; color: #dc2626;
   background: #fef2f2; border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.85rem 0 0;
 }
+.form-field { display: flex; flex-direction: column; }
+.form-field .form-label { margin-bottom: 0; }
+.form-input--error { border-color: #dc2626 !important; }
+.field-error { font-size: 0.78rem; color: #dc2626; margin-top: 0.25rem; }
 
 /* ── Toast ── */
 .toast {
