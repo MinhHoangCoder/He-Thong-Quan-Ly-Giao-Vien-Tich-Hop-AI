@@ -1,9 +1,8 @@
 package com.kdc.tsdms.dto;
 
+import com.kdc.tsdms.entity.EmployeeSchedule;
 import java.time.LocalDate;
 import java.time.LocalTime;
-
-import com.kdc.tsdms.entity.EmployeeSchedule;
 
 /**
  * DTO response cho 1 buổi làm việc thực tế của nhân viên.

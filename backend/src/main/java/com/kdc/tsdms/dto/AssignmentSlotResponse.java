@@ -1,9 +1,8 @@
 package com.kdc.tsdms.dto;
 
-import java.time.LocalTime;
-
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Period;
+import java.time.LocalTime;
 
 /**
  * DTO response cho 1 slot (Thứ + Tiết) — trả về kèm thông tin tiết học
@@ -48,19 +47,18 @@ public class AssignmentSlotResponse {
      */
     public static AssignmentSlotResponse fromEntity(AssignmentSlot slot, Period period) {
         AssignmentSlotResponse r = new AssignmentSlotResponse();
-        r.id           = slot.getId();
+        r.id = slot.getId();
         r.assignmentId = slot.getAssignmentId();
-        r.dayOfWeek    = slot.getDayOfWeek();
+        r.dayOfWeek = slot.getDayOfWeek();
         r.dayOfWeekLabel = mapDayLabel(slot.getDayOfWeek()); // tự map sang tiếng Việt
-        r.periodId     = slot.getPeriodId();
-        
+        r.periodId = slot.getPeriodId();
 
         // Gắn thêm thông tin tiết học nếu Period còn tồn tại
         if (period != null) {
             r.periodNumber = period.getPeriodNumber();
-            r.sessionType  = period.getSessionType();
-            r.startTime    = period.getStartTime();
-            r.endTime      = period.getEndTime();
+            r.sessionType = period.getSessionType();
+            r.startTime = period.getStartTime();
+            r.endTime = period.getEndTime();
         }
         return r;
     }
@@ -76,7 +74,7 @@ public class AssignmentSlotResponse {
             case "FRI" -> "Thứ 6";
             case "SAT" -> "Thứ 7";
             case "SUN" -> "Chủ nhật";
-            default    -> dayOfWeek;
+            default -> dayOfWeek;
         };
     }
 }
