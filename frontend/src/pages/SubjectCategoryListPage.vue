@@ -43,6 +43,7 @@ const subjectModal = reactive({
   open: false,
   mode: 'create',
   id: null,
+  categoryName: '', // tên nhóm môn hiện tại — chỉ hiển thị (read-only) khi tạo mới
   form: { code: '', name: '', categoryId: null, description: '', status: 'ACTIVE' },
   errors: {},
   error: '',
@@ -225,6 +226,7 @@ function openCreateSubject(category) {
     open: true,
     mode: 'create',
     id: null,
+    categoryName: category.name,
     form: { code: '', name: '', categoryId: category.id, description: '', status: 'ACTIVE' },
     errors: {},
     error: '',
@@ -552,7 +554,11 @@ const totalPages = () => Math.ceil(total.value / pageSize)
             subjectModal.errors.name
           }}</small>
         </div>
-        <div class="form-group">
+        <div v-if="subjectModal.mode === 'create'" class="form-group">
+          <label>Nhóm môn</label>
+          <input :value="subjectModal.categoryName" disabled />
+        </div>
+        <div v-else class="form-group">
           <label>Nhóm môn *</label>
           <select
             v-model="subjectModal.form.categoryId"
