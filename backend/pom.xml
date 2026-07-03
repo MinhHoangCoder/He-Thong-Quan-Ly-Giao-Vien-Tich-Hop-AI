@@ -103,6 +103,18 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers 2.x (version do Boot BOM quản lý): bật SQL Server THẬT trong Docker
+             cho integration test (*IT) — chạy Flyway V1→V10 rồi Hibernate validate entity. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-mssqlserver</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>io.jsonwebtoken</groupId>
             <artifactId>jjwt-api</artifactId>
@@ -157,6 +169,21 @@
                         <phase>compile</phase>
                         <goals>
                             <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Failsafe: chạy integration test (tên *IT) ở phase verify — tách khỏi unit test
+                 (*Test, surefire) vì *IT cần Docker. Máy không có Docker: *IT tự SKIP
+                 (@Testcontainers(disabledWithoutDocker=true)), build vẫn xanh. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
                         </goals>
                     </execution>
                 </executions>
