@@ -1,6 +1,6 @@
 # TSDMS — Database
 
-Microsoft SQL Server 2019+. Schema gồm **36 bảng** (30 bảng lõi + 6 bảng AI). Bảng lõi = 28 bảng V1 + 2 bảng module Bài giảng (V2).
+Microsoft SQL Server 2019+. Schema gồm **42 bảng** (36 bảng lõi + 6 bảng AI). Bảng lõi = 28 (V1) + 2 module Bài giảng (V2) + ServiceContract (V4) + SubjectCategory (V8) + Period & AssignmentSlot (V9) + PartTimeShiftRequest & EmployeeSchedule (V10).
 
 ## Cấu trúc thư mục
 
@@ -22,7 +22,10 @@ Migration thực thi nằm trong backend: `backend/src/main/resources/db/migrati
 - `V5__employee_all_departments.sql` — mở Employee cho mọi phòng ban (không chỉ chi nhánh).
 - `V6__split_name_dedup_contract.sql` — tách `FirstName`/`LastName`, bỏ trùng ở AppUser, Contract 1-1 (góp ý GVHD).
 - `V7__rename_pk_to_id.sql` — đổi tên cột khóa chính `<Bảng>Id → Id` cho 27 bảng PK đơn; GIỮ tên khóa ngoại; KHÔNG đổi 4 bảng nối PK ghép (góp ý GVHD).
-- Thêm thay đổi schema sau này bằng file mới: `V8__<mô_tả>.sql`, `V9__...` (KHÔNG sửa file đã chạy). Nhớ "xí số" version trong nhóm trước khi tạo (xem quy ước làm việc nhóm).
+- `V8__subject_category_lookup.sql` — bảng lookup `SubjectCategory` (4 nhóm môn), thay cột text `Subject.Category` cũ.
+- `V9__teacher_timetable.sql` — thời khóa biểu dạy: `Period` (khung tiết theo trường) + `AssignmentSlot` (mẫu lặp tuần); `Schedule` thêm `PeriodId`, `SourceSlotId`.
+- `V10__employee_workshift.sql` — ca làm nhân viên: `Employee.EmploymentType` + `PartTimeShiftRequest` (đăng ký ca) + `EmployeeSchedule` (lịch làm thực tế).
+- Thêm thay đổi schema sau này bằng file mới: `V11__<mô_tả>.sql`, `V12__...` (KHÔNG sửa file đã chạy). Nhớ "xí số" version trong nhóm trước khi tạo (xem quy ước làm việc nhóm).
 
 > **Giữ đồng bộ:** `schema/TSDMS_Schema.sql` là bản thiết kế để đọc; `db/migration/V1__init_schema.sql` là bản Flyway thực thi. Khi đổi schema, cập nhật cả hai (hoặc coi migration là nguồn chính).
 
