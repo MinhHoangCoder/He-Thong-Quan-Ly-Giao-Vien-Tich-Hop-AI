@@ -57,6 +57,14 @@ public class Schedule {
     @Column(name = "Source", nullable = false)
     private String source = "MANUAL";
 
+    /** Tiết học của buổi (→ Period) — buổi sinh từ AssignmentSlot mang theo "tiết mấy" (V9). */
+    @Column(name = "PeriodId")
+    private Integer periodId;
+
+    /** Slot gốc đã sinh ra buổi này (→ AssignmentSlot) — để sinh lại / hủy khi slot đổi (V9). */
+    @Column(name = "SourceSlotId")
+    private Integer sourceSlotId;
+
     /** Người tạo lịch (→ AppUser). */
     @Column(name = "CreatedByUserId")
     private Integer createdByUserId;

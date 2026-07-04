@@ -15,4 +15,16 @@ public interface SubjectRepository extends JpaRepository<Subject, Integer> {
     Optional<Subject> findByIdAndDeletedFalse(Integer id);
 
     long countByCategoryIdAndDeletedFalse(Integer categoryId);
+
+    boolean existsByCodeAndDeletedFalse(String code);
+
+    boolean existsByCodeAndDeletedFalseAndIdNot(String code, Integer id);
+
+    /**
+     * Dùng cho trang "Nhóm môn học": liệt kê môn theo từng nhóm (CRUD môn lồng
+     * trong nhóm).
+     */
+    List<Subject> findByCategoryIdAndDeletedFalseOrderByName(Integer categoryId);
+
+    List<Subject> findByDeletedFalseOrderByName();
 }

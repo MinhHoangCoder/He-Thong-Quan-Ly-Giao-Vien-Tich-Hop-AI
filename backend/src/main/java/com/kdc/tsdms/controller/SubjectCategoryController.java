@@ -37,9 +37,11 @@ public class SubjectCategoryController {
         return service.listActive();
     }
 
-    /** Danh sách có phân trang + tìm kiếm (admin/employee). */
+    /**
+     * Danh sách có phân trang + tìm kiếm (xem được bởi mọi vai trò có LESSON_VIEW).
+     */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_MANAGE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
     public Page<SubjectCategoryResponse> list(
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,

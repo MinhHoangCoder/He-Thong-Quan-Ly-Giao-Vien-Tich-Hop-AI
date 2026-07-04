@@ -42,6 +42,10 @@ public class Employee extends SoftDeletableEntity {
     @Column(name = "Position")
     private String position;
 
+    /** FULL_TIME | PART_TIME (mặc định FULL_TIME, thêm ở Flyway V10). */
+    @Column(name = "EmploymentType", nullable = false)
+    private String employmentType = "FULL_TIME";
+
     /** ACTIVE | INACTIVE */
     @Column(name = "Status", nullable = false)
     private String status = "ACTIVE";

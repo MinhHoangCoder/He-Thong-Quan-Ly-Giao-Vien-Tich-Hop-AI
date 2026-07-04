@@ -26,10 +26,17 @@
 
      LUỒNG ĐIỀU PHỐI (quan trọng nhất):
         Employee (TRUNG TÂM) tạo  Assignment  (gán GV ↔ trường ↔ môn ↔ lớp ↔ giai đoạn)
-            → từ Assignment sinh ra nhiều  Schedule  (từng BUỔI dạy cụ thể)
-                → mỗi buổi có thể có  Attendance  (chấm công)
+            → Assignment có nhiều  AssignmentSlot  (mẫu lặp tuần: thứ + tiết[+ phòng]; V9)
+                → generator nở slot ra nhiều  Schedule  (từng BUỔI dạy cụ thể, theo Period)
+                    → mỗi buổi có thể có  Attendance  (chấm công)
+        Period (V9) = khung TIẾT riêng của TỪNG TRƯỜNG (giờ vào/ra mỗi tiết).
         Schedule đổi trạng thái → tự ghi  ScheduleStatusLog  (qua trigger)
         (Trung tâm TOÀN QUYỀN phân công; TRƯỜNG chỉ XEM thống kê/báo cáo.)
+
+     CA LÀM NHÂN VIÊN (V10, song song lịch dạy GV):
+        Employee.EmploymentType = FULL_TIME | PART_TIME
+        PART_TIME đăng ký  PartTimeShiftRequest  → HR duyệt → sinh  EmployeeSchedule
+        FULL_TIME → EmployeeSchedule cố định (Source = FIXED).
 
      VẬN HÀNH KHÁC: Payroll (lương), TeacherEvaluation (đánh giá),
                     Feedback (phản hồi), Notification (thông báo),
@@ -200,6 +207,8 @@ CREATE TABLE Employee (
     LastName     NVARCHAR(100) NOT NULL,             -- Họ và tên đệm (family name)
     Phone        VARCHAR(20)   NULL,                 -- SĐT liên hệ
     Position     NVARCHAR(100) NULL,                 -- chức vụ
+    EmploymentType VARCHAR(20) NOT NULL DEFAULT 'FULL_TIME'  -- FULL_TIME / PART_TIME (loại hình làm việc, thêm ở V10)
+                 CONSTRAINT CK_Employee_EmploymentType CHECK (EmploymentType IN ('FULL_TIME','PART_TIME')),
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'
                  CONSTRAINT CK_Employee_Status CHECK (Status IN ('ACTIVE','INACTIVE')),
     IsDeleted    BIT           NOT NULL DEFAULT 0,
@@ -424,6 +433,30 @@ CREATE TABLE Room (
 -- Trong cùng 1 trường, tên phòng không trùng (tính trên bản ghi chưa xóa mềm)
 CREATE UNIQUE INDEX UX_Room_School_Name ON Room(SchoolId, Name) WHERE IsDeleted = 0;
 
+/* ========== Bảng 15b: Period — KHUNG TIẾT theo TỪNG TRƯỜNG (thêm ở V9) ==========
+   Ý nghĩa : Mỗi trường có số tiết & giờ giấc riêng → khung tiết gắn SchoolId.
+             Dữ liệu VẬN HÀNH (trường sửa được), seed theo từng trường ở seed demo.
+   QUAN HỆ : SchoolId → School. Được AssignmentSlot & Schedule tham chiếu (buổi thuộc tiết nào). */
+CREATE TABLE Period (
+    Id           INT IDENTITY PRIMARY KEY,
+    SchoolId     INT           NOT NULL,              -- → School (khung tiết của riêng trường này)
+    PeriodNumber TINYINT       NOT NULL,              -- số tiết trong ngày (1..n)
+    SessionType  VARCHAR(10)   NOT NULL               -- MORNING / AFTERNOON
+                 CONSTRAINT CK_Period_Session CHECK (SessionType IN ('MORNING','AFTERNOON')),
+    StartTime    TIME(0)       NOT NULL,              -- giờ bắt đầu tiết (khung cố định mọi ngày, KHÔNG kèm ngày)
+    EndTime      TIME(0)       NOT NULL,              -- giờ kết thúc tiết
+    IsDeleted    BIT           NOT NULL DEFAULT 0,
+    DeletedAt    DATETIME2(3)  NULL,
+    DeletedBy    INT           NULL,
+    CreatedAt    DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy    INT           NULL,
+    UpdatedAt    DATETIME2(3)  NULL,
+    UpdatedBy    INT           NULL,
+    CONSTRAINT FK_Period_School FOREIGN KEY (SchoolId) REFERENCES School(Id)
+);
+-- Trong 1 trường không trùng số tiết (trên bản ghi chưa xóa mềm)
+CREATE UNIQUE INDEX UX_Period_School_Number ON Period(SchoolId, PeriodNumber) WHERE IsDeleted = 0;
+
 /* ========== Bảng 16: SchoolClass — LỚP HỌC (thuộc trường) ==========
    QUAN HỆ : SchoolId → School. Nối với Student qua ClassEnrollment.         */
 CREATE TABLE SchoolClass (
@@ -522,6 +555,36 @@ CREATE TABLE Assignment (
 CREATE INDEX IX_Assignment_Teacher ON Assignment(TeacherId);
 CREATE INDEX IX_Assignment_School  ON Assignment(SchoolId);
 
+/* ========== Bảng 19b: AssignmentSlot — MẪU LẶP TUẦN của một phân công (thêm ở V9) ==========
+   Ý nghĩa : Một Assignment (mức KỲ) lặp lại theo tuần ở các ô (thứ, tiết[, phòng]).
+             Bảng CON để 1 phân công ôm NHIỀU tiết/tuần mà KHÔNG phá grain "mức kỳ".
+   QUAN HỆ : AssignmentId → Assignment,  TeacherId → Teacher (lưu kèm dò trùng nhanh),
+             PeriodId → Period,  RoomId → Room. Sinh ra Schedule (qua generator ở Service). */
+CREATE TABLE AssignmentSlot (
+    Id           INT IDENTITY PRIMARY KEY,
+    AssignmentId INT           NOT NULL,              -- → Assignment (mức kỳ)
+    TeacherId    INT           NOT NULL,              -- = GV của Assignment (lưu kèm để dò trùng nhanh)
+    DayOfWeek    VARCHAR(10)   NOT NULL               -- MON..SUN
+                 CONSTRAINT CK_AssignmentSlot_Day CHECK (DayOfWeek IN ('MON','TUE','WED','THU','FRI','SAT','SUN')),
+    PeriodId     INT           NOT NULL,              -- → Period (tiết)
+    RoomId       INT           NULL,                  -- phòng MẶC ĐỊNH của ô lịch (generator copy xuống Schedule, cho override)
+    IsDeleted    BIT           NOT NULL DEFAULT 0,
+    DeletedAt    DATETIME2(3)  NULL,
+    DeletedBy    INT           NULL,
+    CreatedAt    DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy    INT           NULL,
+    UpdatedAt    DATETIME2(3)  NULL,
+    UpdatedBy    INT           NULL,
+    CONSTRAINT FK_AssignmentSlot_Assignment FOREIGN KEY (AssignmentId) REFERENCES Assignment(Id),
+    CONSTRAINT FK_AssignmentSlot_Teacher    FOREIGN KEY (TeacherId)    REFERENCES Teacher(Id),
+    CONSTRAINT FK_AssignmentSlot_Period     FOREIGN KEY (PeriodId)     REFERENCES Period(Id),
+    CONSTRAINT FK_AssignmentSlot_Room       FOREIGN KEY (RoomId)       REFERENCES Room(Id)
+);
+-- 1 phân công không lặp cùng (thứ, tiết) trên bản ghi chưa xóa mềm
+CREATE UNIQUE INDEX UX_AssignmentSlot_Assign_Day_Period ON AssignmentSlot(AssignmentId, DayOfWeek, PeriodId) WHERE IsDeleted = 0;
+-- Hỗ trợ dò TRÙNG LỊCH GV toàn hệ thống (cùng GV + thứ + tiết)
+CREATE INDEX IX_AssignmentSlot_Teacher_Day_Period ON AssignmentSlot(TeacherId, DayOfWeek, PeriodId) WHERE IsDeleted = 0;
+
 /* ========== Bảng 20: Schedule — LỊCH DẠY (bảng TRUNG TÂM) ==========
    Ý nghĩa : Từng BUỔI dạy cụ thể (ngày-giờ-phòng) sinh ra từ một Assignment,
              kèm quy trình duyệt PENDING → APPROVED/REJECTED/CANCELLED.
@@ -540,6 +603,8 @@ CREATE TABLE Schedule (
                      CONSTRAINT CK_Schedule_Status CHECK (Status IN ('PENDING','APPROVED','REJECTED','CANCELLED')),
     Source           VARCHAR(10)   NOT NULL DEFAULT 'MANUAL'   -- MANUAL=nhập tay, AI=do AI xếp
                      CONSTRAINT CK_Schedule_Source CHECK (Source IN ('MANUAL','AI')),
+    PeriodId         INT           NULL,              -- → Period (buổi thuộc tiết nào — thêm ở V9)
+    SourceSlotId     INT           NULL,              -- → AssignmentSlot (buổi sinh từ slot nào — thêm ở V9)
     CreatedByUserId  INT           NULL,              -- → AppUser (người tạo lịch)
     ApprovedByUserId INT           NULL,              -- → AppUser (người duyệt/từ chối)
     ApprovedAt       DATETIME2(3)  NULL,              -- thời điểm duyệt
@@ -555,6 +620,8 @@ CREATE TABLE Schedule (
     FOREIGN KEY (RoomId)           REFERENCES Room(Id),
     FOREIGN KEY (CreatedByUserId)  REFERENCES AppUser(Id),
     FOREIGN KEY (ApprovedByUserId) REFERENCES AppUser(Id),
+    FOREIGN KEY (PeriodId)         REFERENCES Period(Id),
+    FOREIGN KEY (SourceSlotId)     REFERENCES AssignmentSlot(Id),
     CONSTRAINT CK_Schedule_Time CHECK (StartTime < EndTime)  -- giờ bắt đầu phải trước giờ kết thúc
 );
 -- Index để kiểm tra TRÙNG LỊCH giáo viên / TRÙNG PHÒNG theo khoảng thời gian thật nhanh:
@@ -562,6 +629,7 @@ CREATE INDEX IX_Schedule_Teacher_Time ON Schedule(TeacherId, StartTime, EndTime)
 CREATE INDEX IX_Schedule_Room_Time    ON Schedule(RoomId,    StartTime, EndTime) INCLUDE (Status) WHERE IsDeleted = 0 AND RoomId IS NOT NULL;
 CREATE INDEX IX_Schedule_Assignment   ON Schedule(AssignmentId);
 CREATE INDEX IX_Schedule_Status       ON Schedule(Status);
+CREATE INDEX IX_Schedule_SourceSlot   ON Schedule(SourceSlotId) WHERE IsDeleted = 0 AND SourceSlotId IS NOT NULL;  -- buổi sinh từ slot nào (thêm ở V9)
 /* LƯU Ý: SQL Server không có ràng buộc "chống chồng lấn thời gian" sẵn như PostgreSQL,
    nên quy tắc không trùng lịch được kiểm tra ở tầng Service (Java) bằng truy vấn dùng
    các index ở trên. */
@@ -614,6 +682,75 @@ CREATE TABLE Attendance (
     CONSTRAINT CK_Attendance_Time CHECK (CheckIn IS NULL OR CheckOut IS NULL OR CheckIn < CheckOut)
 );
 CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
+
+/* ========== Bảng 22b: PartTimeShiftRequest — NV PART-TIME ĐĂNG KÝ CA (thêm ở V10) ==========
+   Ý nghĩa : Nhân viên part-time đăng ký ca làm theo ngày/buổi; HR duyệt hoặc từ chối.
+   QUAN HỆ : EmployeeId → Employee (người đăng ký),  ReviewedByEmployeeId → Employee (HR).
+             Khi APPROVED → Service sinh dòng EmployeeSchedule tương ứng.               */
+CREATE TABLE PartTimeShiftRequest (
+    Id                   INT IDENTITY PRIMARY KEY,
+    EmployeeId           INT           NOT NULL,       -- → Employee (người đăng ký)
+    WorkDate             DATE          NOT NULL,       -- ngày làm cụ thể
+    ShiftType            VARCHAR(10)   NOT NULL         -- MORNING / AFTERNOON
+                         CONSTRAINT CK_PTRequest_Shift CHECK (ShiftType IN ('MORNING','AFTERNOON')),
+    Note                 NVARCHAR(255) NULL,            -- ghi chú của NV
+    Status               VARCHAR(20)   NOT NULL DEFAULT 'PENDING'  -- PENDING / APPROVED / REJECTED
+                         CONSTRAINT CK_PTRequest_Status CHECK (Status IN ('PENDING','APPROVED','REJECTED')),
+    ReviewedByEmployeeId INT           NULL,            -- → Employee (HR duyệt/từ chối)
+    ReviewedAt           DATETIME2(3)  NULL,
+    RejectionReason      NVARCHAR(255) NULL,
+    IsDeleted            BIT           NOT NULL DEFAULT 0,
+    DeletedAt            DATETIME2(3)  NULL,
+    DeletedBy            INT           NULL,
+    CreatedAt            DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy            INT           NULL,
+    UpdatedAt            DATETIME2(3)  NULL,
+    UpdatedBy            INT           NULL,
+    CONSTRAINT FK_PTRequest_Employee FOREIGN KEY (EmployeeId)           REFERENCES Employee(Id),
+    CONSTRAINT FK_PTRequest_Reviewer FOREIGN KEY (ReviewedByEmployeeId) REFERENCES Employee(Id)
+);
+-- Mỗi NV chỉ 1 đăng ký CÒN HIỆU LỰC / ngày / ca (loại REJECTED để được đăng ký lại)
+CREATE UNIQUE INDEX UX_PTRequest_Emp_Date_Shift ON PartTimeShiftRequest(EmployeeId, WorkDate, ShiftType)
+    WHERE IsDeleted = 0 AND Status <> 'REJECTED';
+CREATE INDEX IX_PTRequest_Employee_Date ON PartTimeShiftRequest(EmployeeId, WorkDate);
+
+/* ========== Bảng 22c: EmployeeSchedule — LỊCH LÀM VIỆC THỰC TẾ của NV (thêm ở V10) ==========
+   Ý nghĩa : Lịch làm thực tế theo buổi. Song song mô hình AssignmentSlot → Schedule của GV.
+   QUAN HỆ : EmployeeId → Employee,  SourceRequestId → PartTimeShiftRequest
+             (CHỈ khi Source = FROM_REQUEST). Source: FIXED (full-time cố định) |
+             FROM_REQUEST (sinh từ đăng ký đã duyệt) | MANUAL.                          */
+CREATE TABLE EmployeeSchedule (
+    Id              INT IDENTITY PRIMARY KEY,
+    EmployeeId      INT           NOT NULL,            -- → Employee
+    WorkDate        DATE          NOT NULL,
+    ShiftType       VARCHAR(10)   NOT NULL             -- MORNING / AFTERNOON
+                    CONSTRAINT CK_EmpSchedule_Shift CHECK (ShiftType IN ('MORNING','AFTERNOON')),
+    StartTime       TIME(0)       NOT NULL,            -- Service set theo ShiftType (08:00 sáng / 14:00 chiều)
+    EndTime         TIME(0)       NOT NULL,            -- (11:00 sáng / 17:00 chiều)
+    Status          VARCHAR(20)   NOT NULL DEFAULT 'SCHEDULED'  -- SCHEDULED / ON_LEAVE / CANCELLED
+                    CONSTRAINT CK_EmpSchedule_Status CHECK (Status IN ('SCHEDULED','ON_LEAVE','CANCELLED')),
+    Source          VARCHAR(20)   NOT NULL DEFAULT 'FIXED'      -- FIXED / FROM_REQUEST / MANUAL
+                    CONSTRAINT CK_EmpSchedule_Source CHECK (Source IN ('FIXED','FROM_REQUEST','MANUAL')),
+    SourceRequestId INT           NULL,                -- → PartTimeShiftRequest (CHỈ khi Source = FROM_REQUEST)
+    Note            NVARCHAR(255) NULL,
+    IsDeleted       BIT           NOT NULL DEFAULT 0,
+    DeletedAt       DATETIME2(3)  NULL,
+    DeletedBy       INT           NULL,
+    CreatedAt       DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy       INT           NULL,
+    UpdatedAt       DATETIME2(3)  NULL,
+    UpdatedBy       INT           NULL,
+    CONSTRAINT FK_EmpSchedule_Employee FOREIGN KEY (EmployeeId)      REFERENCES Employee(Id),
+    CONSTRAINT FK_EmpSchedule_Request  FOREIGN KEY (SourceRequestId) REFERENCES PartTimeShiftRequest(Id),
+    -- Có SourceRequestId KHI VÀ CHỈ KHI Source = FROM_REQUEST
+    CONSTRAINT CK_EmpSchedule_SourceLink CHECK (
+        (Source = 'FROM_REQUEST' AND SourceRequestId IS NOT NULL)
+        OR (Source <> 'FROM_REQUEST' AND SourceRequestId IS NULL)
+    )
+);
+-- Mỗi NV chỉ 1 dòng lịch / ngày / ca (tránh xếp trùng)
+CREATE UNIQUE INDEX UX_EmpSchedule_Emp_Date_Shift ON EmployeeSchedule(EmployeeId, WorkDate, ShiftType) WHERE IsDeleted = 0;
+CREATE INDEX IX_EmpSchedule_Employee_Date ON EmployeeSchedule(EmployeeId, WorkDate);
 
 /* ========== Bảng 23: Payroll — BẢNG LƯƠNG (theo tháng) ==========
    Ý nghĩa : Lưu đủ thành phần lương để linh hoạt công thức. NetAmount tự tính.
