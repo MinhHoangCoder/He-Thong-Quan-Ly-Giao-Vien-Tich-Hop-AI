@@ -1,16 +1,31 @@
 <script setup>
+// Trang Quản lý Giáo viên — 1 FILE DUY NHẤT (giống phong cách TeacherDashboardPage.vue)
+// để dễ đọc / dễ sửa, không tách nhỏ ra nhiều component.
+// Giao diện danh sách dạng BẢNG (giống trang Quản lý Nhân viên) thay cho card cũ.
 import { ref, computed, reactive, onMounted } from 'vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
- 
+import { authApi } from '@/api/auth'
+import { useAuthStore } from '@/stores/auth'
+import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
+import '@fortawesome/fontawesome-free/css/all.min.css'
+
+/* ══════════════════════════════════════════════════════════
+   PHÂN QUYỀN THEO VAI TRÒ
+   ADMIN / EMPLOYEE: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
+   TEACHER: chỉ xem + sửa — KHÔNG có nút "Xóa" và tab "Lịch sử".
+══════════════════════════════════════════════════════════ */
+const auth = useAuthStore()
+const canManage = computed(() => auth.roles.some((r) => ['ADMIN', 'EMPLOYEE'].includes(r)))
+
 /* ══════════════════════════════════════════════════════════
    STATE
 ══════════════════════════════════════════════════════════ */
 const loading = ref(false)
 const teachers = ref([])
 const branches = ref([])
- 
+
 // Bộ lọc
 const filters = reactive({
   keyword: '',
@@ -18,46 +33,338 @@ const filters = reactive({
   employmentType: '',
   branchId: '',
 })
- 
+
 // Chế độ giao diện
 const viewMode = ref('list') // 'list' | 'trash'
- 
+
 // Xóa mềm — chọn nhiều
 const deleteMode = ref(false)
 const selectedIds = ref([])
- 
+
 // Thùng rác
 const trashItems = ref([])
 const trashLoading = ref(false)
- 
-// Modal chi tiết / sửa
+
+// Modal chi tiết
 const detailModal = reactive({ open: false, teacher: null })
-const editModal = reactive({
-  open: false,
-  id: null,
-  saving: false,
-  error: '',
-  form: {
-    branchId: '',
-    firstName: '',
-    lastName: '',
-    status: 'ACTIVE',
-    employmentType: '',
-    phone: '',
-    idCardNo: '',
-    address: '',
-    dateOfBirth: '',
-    hireDate: '',
-    gender: null,
-  },
-})
- 
+
 // Confirm xóa
 const confirmDelete = reactive({ open: false })
- 
+
 // Notification toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
- 
+
+/* ══════════════════════════════════════════════════════════
+   REGEX / HẰNG SỐ VALIDATE DÙNG CHUNG (Tạo + Sửa)
+══════════════════════════════════════════════════════════ */
+const NAME_RE = /^[\p{L} ]+$/u
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const PHONE_RE = /^(\+84|0)\d{9,10}$/
+const CCCD_RE = /^\d{9}(\d{3})?$/
+const MIN_WORKING_AGE = 18 // tuổi lao động tối thiểu — dùng để so ngày sinh với ngày vào làm
+
+/**
+ * So sánh cặp Ngày sinh / Ngày vào làm — dùng chung cho cả 2 form (Tạo & Sửa).
+ * Trả về '' nếu hợp lệ, hoặc thông báo lỗi cụ thể.
+ * Quy tắc:
+ *   - Ngày sinh không được ở tương lai.
+ *   - Ngày sinh và ngày vào làm không được trùng nhau.
+ *   - Ngày vào làm không được trước ngày sinh.
+ *   - Ngày vào làm phải sau ngày sinh ít nhất MIN_WORKING_AGE năm.
+ */
+function checkDobHirePair(dobStr, hireStr) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (dobStr) {
+    const dob = new Date(dobStr)
+    if (dob > today) return { field: 'dateOfBirth', msg: 'Ngày sinh không được ở tương lai.' }
+  }
+  if (dobStr && hireStr) {
+    const dob = new Date(dobStr)
+    const hire = new Date(hireStr)
+    if (dob.getTime() === hire.getTime()) {
+      return { field: 'hireDate', msg: 'Ngày vào làm không được trùng với ngày sinh.' }
+    }
+    if (hire < dob) {
+      return { field: 'hireDate', msg: 'Ngày vào làm không được trước ngày sinh.' }
+    }
+    const ageAtHireYears = (hire - dob) / (365.25 * 24 * 3600 * 1000)
+    if (ageAtHireYears < MIN_WORKING_AGE) {
+      return { field: 'hireDate', msg: `Ngày vào làm phải sau ngày sinh ít nhất ${MIN_WORKING_AGE} năm (tuổi lao động tối thiểu).` }
+    }
+  }
+  return null
+}
+
+/* ══════════════════════════════════════════════════════════
+   MODAL: THÊM GIÁO VIÊN (tab trái + form phải)
+   — Hồ sơ giáo viên cần 1 tài khoản đăng nhập đi kèm (bảng AppUser bên DB
+   ràng buộc Teacher.AppUserId NOT NULL) nên tab "Hồ sơ" có thêm 3 ô tài khoản.
+══════════════════════════════════════════════════════════ */
+const createTabs = [
+  { key: 'profile', label: 'Hồ sơ giáo viên', icon: 'teacher' },
+  { key: 'degree', label: 'Bằng cấp', icon: 'assignment' },
+  { key: 'cert', label: 'Chứng chỉ', icon: 'subject' },
+  { key: 'experience', label: 'Kinh nghiệm', icon: 'history' },
+  { key: 'status', label: 'Trạng thái', icon: 'attendance' },
+]
+function emptyDoc() {
+  return { name: '', issuer: '', issueDate: '', file: null }
+}
+const createModal = reactive({
+  open: false,
+  saving: false,
+  error: '',
+  activeTab: 'profile',
+  account: { username: '', email: '', password: '' },
+  profile: {
+    branchId: '',
+    lastName: '',
+    firstName: '',
+    gender: null,
+    phone: '',
+    idCardNo: '',
+    dateOfBirth: '',
+    hireDate: '',
+    address: '',
+    employmentType: '',
+  },
+  degrees: [emptyDoc()],
+  certificates: [emptyDoc()],
+  experience: '',
+})
+
+// Validate inline cho form thêm mới
+const createFieldErrors = reactive({
+  username: '',
+  email: '',
+  password: '',
+  lastName: '',
+  firstName: '',
+  phone: '',
+  idCardNo: '',
+  dateOfBirth: '',
+  hireDate: '',
+})
+
+function validateUsername() {
+  const v = createModal.account.username.trim()
+  if (!v) { createFieldErrors.username = 'Không được để trống'; return false }
+  if (v.length < 3) { createFieldErrors.username = 'Ít nhất 3 ký tự'; return false }
+  if (v.length > 50) { createFieldErrors.username = 'Tối đa 50 ký tự'; return false }
+  createFieldErrors.username = ''
+  return true
+}
+
+function validateEmail() {
+  const v = createModal.account.email.trim()
+  if (!v) { createFieldErrors.email = 'Không được để trống'; return false }
+  if (!EMAIL_RE.test(v)) { createFieldErrors.email = 'Email không hợp lệ (VD: gv@tsdms.local)'; return false }
+  createFieldErrors.email = ''
+  return true
+}
+
+function validateCreatePassword() {
+  const v = createModal.account.password
+  if (!v) { createFieldErrors.password = 'Không được để trống'; return false }
+  if (!isStrongPassword(v)) { createFieldErrors.password = `Chưa đủ mạnh: ${PASSWORD_HINT}`; return false }
+  createFieldErrors.password = ''
+  return true
+}
+
+function validateLastName() {
+  const v = createModal.profile.lastName.trim()
+  if (!v) { createFieldErrors.lastName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { createFieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  createFieldErrors.lastName = ''
+  return true
+}
+
+function validateFirstName() {
+  const v = createModal.profile.firstName.trim()
+  if (!v) { createFieldErrors.firstName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { createFieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  createFieldErrors.firstName = ''
+  return true
+}
+
+function validatePhone() {
+  const v = createModal.profile.phone.trim()
+  if (!v) { createFieldErrors.phone = ''; return true }
+  if (!PHONE_RE.test(v)) { createFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'; return false }
+  createFieldErrors.phone = ''
+  return true
+}
+
+function validateIdCard() {
+  const v = createModal.profile.idCardNo.trim()
+  if (!v) { createFieldErrors.idCardNo = ''; return true }
+  if (!CCCD_RE.test(v)) { createFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'; return false }
+  createFieldErrors.idCardNo = ''
+  return true
+}
+
+/** Validate cặp Ngày sinh/Ngày vào làm cho form TẠO — set lỗi vào đúng field liên quan. */
+function validateCreateDates() {
+  createFieldErrors.dateOfBirth = ''
+  createFieldErrors.hireDate = ''
+  const err = checkDobHirePair(createModal.profile.dateOfBirth, createModal.profile.hireDate)
+  if (err) {
+    createFieldErrors[err.field] = err.msg
+    return false
+  }
+  return true
+}
+
+function validateAllCreateFields() {
+  const results = [
+    validateUsername(),
+    validateEmail(),
+    validateCreatePassword(),
+    validateLastName(),
+    validateFirstName(),
+    validatePhone(),
+    validateIdCard(),
+    validateCreateDates(),
+  ]
+  if (!createModal.profile.branchId) {
+    createModal.error = 'Vui lòng chọn chi nhánh.'
+    createModal.activeTab = 'profile'
+    return false
+  }
+  if (!results.every(Boolean)) {
+    createModal.error = 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ.'
+    createModal.activeTab = 'profile'
+    return false
+  }
+  return true
+}
+
+function openCreate() {
+  createModal.activeTab = 'profile'
+  createModal.error = ''
+  createModal.saving = false
+  Object.keys(createFieldErrors).forEach((k) => (createFieldErrors[k] = ''))
+  createModal.account = { username: '', email: '', password: '' }
+  createModal.profile = {
+    branchId: branches.value[0]?.id || '',
+    lastName: '',
+    firstName: '',
+    gender: null,
+    phone: '',
+    idCardNo: '',
+    dateOfBirth: '',
+    hireDate: '',
+    address: '',
+    employmentType: '',
+  }
+  createModal.degrees = [emptyDoc()]
+  createModal.certificates = [emptyDoc()]
+  createModal.experience = ''
+  createModal.open = true
+}
+function addDoc(list) {
+  list.push(emptyDoc())
+}
+function removeDoc(list, i) {
+  list.splice(i, 1)
+}
+function onPickFile(doc, e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  if (file.type !== 'application/pdf') {
+    showToast('Chỉ nhận file PDF', 'error')
+    e.target.value = ''
+    return
+  }
+  doc.file = file
+}
+
+async function submitCreate() {
+  if (!validateAllCreateFields()) return
+
+  const p = createModal.profile
+  const a = createModal.account
+
+  createModal.saving = true
+  createModal.error = ''
+  let createdTeacherId = null
+  try {
+    // 1) Tạo tài khoản đăng nhập + hồ sơ GV cơ bản (BE tạo AppUser + Teacher cùng lúc)
+    const { data: userInfo } = await authApi.register({
+      role: 'TEACHER',
+      username: a.username,
+      email: a.email,
+      password: a.password,
+      firstName: p.firstName,
+      lastName: p.lastName,
+      phone: p.phone,
+      branchId: Number(p.branchId),
+    })
+
+    // 2) Tìm lại GV vừa tạo (theo AppUserId) để bổ sung các trường hồ sơ chi tiết
+    const { data: allTeachers } = await teacherApi.list()
+    const created = allTeachers.find((t) => t.appUserId === userInfo.id)
+    if (!created) throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
+    createdTeacherId = created.id
+
+    await teacherApi.update(created.id, {
+      branchId: Number(p.branchId),
+      firstName: p.firstName,
+      lastName: p.lastName,
+      status: 'ACTIVE',
+      employmentType: p.employmentType || null,
+      dateOfBirth: p.dateOfBirth || null,
+      hireDate: p.hireDate || null,
+      gender: p.gender === '' ? null : p.gender,
+      idCardNo: p.idCardNo || null,
+      phone: p.phone || null,
+      address: p.address || null,
+    })
+
+    // 3) Bằng cấp + chứng chỉ — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
+    const allDocs = [...createModal.degrees, ...createModal.certificates].filter((d) => d.name.trim())
+    for (const d of allDocs) {
+      await teacherApi.addCertificate(created.id, {
+        name: d.name.trim(),
+        issuer: d.issuer || null,
+        issueDate: d.issueDate || null,
+        fileUrl: d.file?.name || null,
+      })
+    }
+
+    createModal.open = false
+    showToast('Đã thêm giáo viên mới thành công')
+    await loadTeachers()
+  } catch (e) {
+    const msg = e?.response?.data?.message || e?.message || 'Tạo giáo viên thất bại'
+    // Nếu bước 1 đã tạo xong mà bước 2-3 bị lỗi → rollbacks xóa_teacher vừa tạo
+    if (createdTeacherId && canManage.value) {
+      try { await teacherApi.delete(createdTeacherId) } catch { /* bỏ qua nếu rollbacks thất bại */ }
+      createModal.error = `${msg} — Đã tự rollbacks, bạn có thể thử lại.`
+    } else if (createdTeacherId) {
+      createModal.error = `${msg} — Tài khoản đã được tạo. Vui lòng vào danh sách, bấm Sửa để bổ sung thông tin còn thiếu.`
+    } else {
+      createModal.error = msg
+    }
+  } finally {
+    createModal.saving = false
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
+   NHÃN / MÀU DÙNG CHUNG TRONG TRANG
+══════════════════════════════════════════════════════════ */
+const statusLabel = { ACTIVE: 'Đang hoạt động', RETIRED: 'Ngừng hoạt động', SUSPENDED: 'Đã nghỉ phép' }
+const statusClass = { ACTIVE: 'badge--active', RETIRED: 'badge--retired', SUSPENDED: 'badge--suspended' }
+const empLabel = { FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng' }
+// Bảng màu avatar xoay vòng theo id — chỉ để phân biệt trực quan giữa các dòng.
+const avatarPalette = ['#0ea5e9', '#22c55e', '#8b5cf6', '#f97316', '#ec4899', '#14b8a6', '#f43f5e']
+function avatarColor(id) {
+  return avatarPalette[id % avatarPalette.length]
+}
+
 /* ══════════════════════════════════════════════════════════
    COMPUTED — LỌC PHÍA FRONTEND
 ══════════════════════════════════════════════════════════ */
@@ -75,7 +382,7 @@ const filtered = computed(() => {
     return matchKw && matchStatus && matchEmp && matchBranch
   })
 })
- 
+
 /* ══════════════════════════════════════════════════════════
    LOAD DATA
 ══════════════════════════════════════════════════════════ */
@@ -90,16 +397,21 @@ async function loadTeachers() {
     loading.value = false
   }
 }
- 
+
 async function loadBranches() {
   try {
+    // /branches trả về TOÀN BỘ chi nhánh trong bảng Branch (BranchController.list() dùng
+    // findAll(), không lọc theo phạm vi người dùng) — bao gồm đủ các chi nhánh trong file
+    // seed database/seed/TSDMS_Seed_Demo.sql (Chi nhánh trung tâm, Cầu Giấy, Hà Đông, Đà Nẵng,
+    // TP.HCM). Nếu dropdown đang thiếu chi nhánh, khả năng cao là seed CHƯA được chạy trên
+    // DB đang dùng, chứ không phải do FE lọc bớt — FE ở đây không hardcode gì cả.
     const res = await branchApi.list()
     branches.value = res.data
   } catch {
     // Bỏ qua lỗi branch — không cản trang chính
   }
 }
- 
+
 async function loadTrash() {
   trashLoading.value = true
   try {
@@ -111,21 +423,23 @@ async function loadTrash() {
     trashLoading.value = false
   }
 }
- 
+
 onMounted(async () => {
   await Promise.all([loadTeachers(), loadBranches()])
 })
- 
+
 /* ══════════════════════════════════════════════════════════
    SWITCH VIEW
 ══════════════════════════════════════════════════════════ */
 function switchView(mode) {
+  // TEACHER không được phép vào chế độ Lịch sử (thùng rác).
+  if (mode === 'trash' && !canManage.value) return
   viewMode.value = mode
   deleteMode.value = false
   selectedIds.value = []
   if (mode === 'trash') loadTrash()
 }
- 
+
 /* ══════════════════════════════════════════════════════════
    XEM CHI TIẾT
 ══════════════════════════════════════════════════════════ */
@@ -138,14 +452,106 @@ async function openDetail(teacher) {
     showToast('Không tải được chi tiết giáo viên', 'error')
   }
 }
- 
+
 /* ══════════════════════════════════════════════════════════
-   SỬA
+   SỬA — modal dùng LẠI cấu trúc tab trái/phải giống modal Tạo, để có
+   ĐẦY ĐỦ thông tin y hệt lúc tạo (hồ sơ + bằng cấp + chứng chỉ + kinh
+   nghiệm + trạng thái), không phải chỉ 1 form phẳng như trước.
 ══════════════════════════════════════════════════════════ */
-function openEdit(teacher) {
+const editTabs = [
+  { key: 'profile', label: 'Hồ sơ giáo viên', icon: 'teacher' },
+  { key: 'degree', label: 'Bằng cấp', icon: 'assignment' },
+  { key: 'cert', label: 'Chứng chỉ', icon: 'subject' },
+  { key: 'experience', label: 'Kinh nghiệm', icon: 'history' },
+  { key: 'status', label: 'Trạng thái', icon: 'attendance' },
+]
+const editModal = reactive({
+  open: false,
+  id: null,
+  saving: false,
+  error: '',
+  activeTab: 'profile',
+  form: {
+    branchId: '',
+    firstName: '',
+    lastName: '',
+    status: 'ACTIVE',
+    employmentType: '',
+    phone: '',
+    idCardNo: '',
+    address: '',
+    dateOfBirth: '',
+    hireDate: '',
+    gender: null,
+  },
+  // Bằng cấp/chứng chỉ ĐÃ có sẵn — BE không phân biệt "bằng cấp" khác "chứng chỉ" (cùng 1
+  // bảng Certificate), nên danh sách đã lưu hiển thị gộp chung ở tab Chứng chỉ; tab Bằng cấp
+  // chỉ dùng để THÊM MỚI cho gọn, tránh hiện trùng lặp 1 danh sách ở cả 2 tab.
+  existingCerts: [],
+  newDegrees: [emptyDoc()],
+  newCerts: [emptyDoc()],
+  experience: '',
+})
+
+const editFieldErrors = reactive({
+  lastName: '',
+  firstName: '',
+  phone: '',
+  idCardNo: '',
+  dateOfBirth: '',
+  hireDate: '',
+})
+
+function validateEditLastName() {
+  const v = editModal.form.lastName.trim()
+  if (!v) { editFieldErrors.lastName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { editFieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  editFieldErrors.lastName = ''
+  return true
+}
+function validateEditFirstName() {
+  const v = editModal.form.firstName.trim()
+  if (!v) { editFieldErrors.firstName = 'Không được để trống'; return false }
+  if (!NAME_RE.test(v)) { editFieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'; return false }
+  editFieldErrors.firstName = ''
+  return true
+}
+function validateEditPhone() {
+  const v = editModal.form.phone.trim()
+  if (!v) { editFieldErrors.phone = ''; return true }
+  if (!PHONE_RE.test(v)) { editFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'; return false }
+  editFieldErrors.phone = ''
+  return true
+}
+function validateEditIdCard() {
+  const v = editModal.form.idCardNo.trim()
+  if (!v) { editFieldErrors.idCardNo = ''; return true }
+  if (!CCCD_RE.test(v)) { editFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'; return false }
+  editFieldErrors.idCardNo = ''
+  return true
+}
+/** Validate cặp Ngày sinh/Ngày vào làm cho form SỬA — cùng quy tắc với bên Tạo. */
+function validateEditDates() {
+  editFieldErrors.dateOfBirth = ''
+  editFieldErrors.hireDate = ''
+  const err = checkDobHirePair(editModal.form.dateOfBirth, editModal.form.hireDate)
+  if (err) {
+    editFieldErrors[err.field] = err.msg
+    return false
+  }
+  return true
+}
+
+async function openEdit(teacher) {
   editModal.id = teacher.id
   editModal.error = ''
   editModal.saving = false
+  editModal.activeTab = 'profile'
+  editModal.existingCerts = []
+  editModal.newDegrees = [emptyDoc()]
+  editModal.newCerts = [emptyDoc()]
+  editModal.experience = ''
+  Object.keys(editFieldErrors).forEach((k) => (editFieldErrors[k] = ''))
   Object.assign(editModal.form, {
     branchId: teacher.branchId,
     firstName: teacher.firstName,
@@ -160,9 +566,40 @@ function openEdit(teacher) {
     gender: teacher.gender,
   })
   editModal.open = true
+  // teacherApi.list() không trả kèm certificates — phải gọi get() riêng để tải đủ
+  // bằng cấp/chứng chỉ hiện có, giống hệt những gì modal Chi tiết đang hiển thị.
+  try {
+    const { data } = await teacherApi.get(teacher.id)
+    editModal.existingCerts = data.certificates || []
+  } catch {
+    // Lỗi tải chứng chỉ không nên chặn cả form sửa — các tab khác vẫn dùng được.
+  }
 }
- 
+
+async function removeExistingCert(certId) {
+  try {
+    await teacherApi.deleteCertificate(editModal.id, certId)
+    editModal.existingCerts = editModal.existingCerts.filter((c) => c.id !== certId)
+    showToast('Đã xóa chứng chỉ')
+  } catch {
+    showToast('Xóa chứng chỉ thất bại', 'error')
+  }
+}
+
 async function saveEdit() {
+  const ok = [
+    validateEditLastName(),
+    validateEditFirstName(),
+    validateEditPhone(),
+    validateEditIdCard(),
+    validateEditDates(),
+  ].every(Boolean)
+  if (!ok) {
+    editModal.error = 'Vui lòng kiểm tra lại các trường bị đánh dấu đỏ.'
+    editModal.activeTab = 'profile'
+    return
+  }
+
   editModal.saving = true
   editModal.error = ''
   try {
@@ -171,6 +608,16 @@ async function saveEdit() {
       branchId: Number(editModal.form.branchId),
       gender: editModal.form.gender === '' ? null : editModal.form.gender,
     })
+    // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
+    const newOnes = [...editModal.newDegrees, ...editModal.newCerts].filter((d) => d.name.trim())
+    for (const d of newOnes) {
+      await teacherApi.addCertificate(editModal.id, {
+        name: d.name.trim(),
+        issuer: d.issuer || null,
+        issueDate: d.issueDate || null,
+        fileUrl: d.file?.name || null,
+      })
+    }
     editModal.open = false
     showToast('Cập nhật giáo viên thành công')
     await loadTeachers()
@@ -180,29 +627,64 @@ async function saveEdit() {
     editModal.saving = false
   }
 }
- 
+
 /* ══════════════════════════════════════════════════════════
-   XÓA MỀM
+   XÓA MỀM (chỉ ADMIN / EMPLOYEE)
+   Yêu cầu: khi ẩn GV khỏi danh sách, GV đó phải hiện trạng thái
+   "Ngừng hoạt động" (RETIRED) ngay khi xem trong Lịch sử.
+   BE hiện KHÔNG tự đổi status lúc xóa mềm, nên ở đây ta chủ động gọi
+   update(status=RETIRED) cho từng GV TRƯỚC KHI xóa mềm (phải làm trước,
+   vì sau khi xóa mềm bản ghi không còn "active" nên update sẽ báo lỗi).
 ══════════════════════════════════════════════════════════ */
 function toggleDeleteMode() {
+  if (!canManage.value) return
   deleteMode.value = !deleteMode.value
   selectedIds.value = []
 }
- 
+
 function toggleSelect(id) {
   const idx = selectedIds.value.indexOf(id)
   if (idx === -1) selectedIds.value.push(id)
   else selectedIds.value.splice(idx, 1)
 }
- 
+
+function quickDelete(id) {
+  if (!canManage.value) return
+  deleteMode.value = true
+  selectedIds.value = [id]
+  requestDelete()
+}
+
 function requestDelete() {
+  if (!canManage.value) return
   if (!selectedIds.value.length) return
   confirmDelete.open = true
 }
- 
+
 async function confirmDoDelete() {
   confirmDelete.open = false
   try {
+    // 1) Chuyển trạng thái từng GV sang "Ngừng hoạt động" trước khi ẩn.
+    await Promise.all(
+      selectedIds.value.map((id) => {
+        const t = teachers.value.find((x) => x.id === id)
+        if (!t) return Promise.resolve()
+        return teacherApi.update(id, {
+          branchId: t.branchId,
+          firstName: t.firstName,
+          lastName: t.lastName,
+          status: 'RETIRED',
+          employmentType: t.employmentType,
+          dateOfBirth: t.dateOfBirth,
+          gender: t.gender,
+          idCardNo: t.idCardNo,
+          phone: t.phone,
+          address: t.address,
+          hireDate: t.hireDate,
+        })
+      }),
+    )
+    // 2) Ẩn khỏi danh sách chính (xóa mềm) — chuyển vào Lịch sử.
     await teacherApi.deleteMany(selectedIds.value)
     showToast(`Đã chuyển ${selectedIds.value.length} giáo viên vào lịch sử`)
     selectedIds.value = []
@@ -212,7 +694,7 @@ async function confirmDoDelete() {
     showToast('Xóa thất bại, vui lòng thử lại', 'error')
   }
 }
- 
+
 /* ══════════════════════════════════════════════════════════
    KHÔI PHỤC TỪ THÙNG RÁC
 ══════════════════════════════════════════════════════════ */
@@ -226,7 +708,7 @@ async function restore(id) {
     showToast('Khôi phục thất bại', 'error')
   }
 }
- 
+
 /* ══════════════════════════════════════════════════════════
    HELPERS
 ══════════════════════════════════════════════════════════ */
@@ -236,24 +718,20 @@ function showToast(msg, type = 'success') {
   toast.show = true
   setTimeout(() => (toast.show = false), 3000)
 }
- 
+
 function branchName(branchId) {
   return branches.value.find((b) => b.id === branchId)?.name || `CN ${branchId}`
 }
- 
-const statusLabel = { ACTIVE: 'Đang hoạt động', RETIRED: 'Đã nghỉ', SUSPENDED: 'Tạm dừng' }
-const statusClass = { ACTIVE: 'badge--active', RETIRED: 'badge--retired', SUSPENDED: 'badge--suspended' }
-const empLabel = { FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng' }
- 
+
 function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('vi-VN')
 }
 </script>
- 
+
 <template>
   <div class="tl">
- 
+
     <!-- ── Toast ────────────────────────────────────── -->
     <Transition name="toast">
       <div v-if="toast.show" :class="['toast', `toast--${toast.type}`]">
@@ -261,37 +739,46 @@ function formatDate(d) {
         {{ toast.msg }}
       </div>
     </Transition>
- 
+
     <!-- ── Tiêu đề + nút chuyển view ────────────────── -->
     <div class="tl__header">
       <div>
         <h1 class="tl__title">Quản lý Giáo viên</h1>
-        <p class="tl__sub">Danh sách, tìm kiếm và quản lý thông tin toàn bộ giáo viên</p>
+        <p class="tl__sub">Tổng quan / Giáo viên</p>
       </div>
       <div class="tl__header-actions">
         <button
           :class="['btn-tab', viewMode === 'list' && 'btn-tab--active']"
           @click="switchView('list')"
         >
-          <SvgIcon name="teacher" :size="16" /> Danh sách
-        </button>
+          <SvgIcon name="teacher" :size="16" /> Danh sách </button>
+
         <button
+          v-if="canManage"
           :class="['btn-tab btn-tab--history', viewMode === 'trash' && 'btn-tab--active']"
           @click="switchView('trash')"
           title="Lịch sử (giáo viên đã bị ẩn)"
         >
-          <SvgIcon name="history" :size="16" /> Lịch sử
+          <i class="fa-solid fa-arrow-rotate-left"></i> Lịch sử  </button>
+
+        <button v-if="canManage" class="btn-add" @click="openCreate">
+          <SvgIcon name="plus" :size="16" /> Thêm giáo viên
         </button>
       </div>
     </div>
- 
+
     <!-- ═══════════════════════════════════════════════
-         VIEW: DANH SÁCH CHÍNH
+         VIEW: DANH SÁCH CHÍNH (dạng bảng)
     ═══════════════════════════════════════════════ -->
     <template v-if="viewMode === 'list'">
- 
-      <!-- ── Thanh lọc ──────────────────────────────── -->
+
+      <!-- ── Thanh lọc: ô tổng số + tìm kiếm + select + xóa ── -->
       <div class="filters">
+        <div class="filter-total">
+          <span class="filter-total__num">{{ filtered.length }}</span>
+          <span class="filter-total__label">Tổng giáo viên</span>
+        </div>
+
         <div class="filter-search">
           <SvgIcon name="search" :size="16" />
           <input
@@ -300,114 +787,136 @@ function formatDate(d) {
             placeholder="Tìm theo tên, SĐT, CCCD…"
           />
         </div>
- 
+
         <select v-model="filters.status" class="filter-select">
           <option value="">Tất cả trạng thái</option>
           <option value="ACTIVE">Đang hoạt động</option>
-          <option value="RETIRED">Đã nghỉ</option>
-          <option value="SUSPENDED">Tạm dừng</option>
+          <option value="RETIRED">Dừng hoạt động</option>
+          <option value="SUSPENDED">Đã nghỉ phép</option>
         </select>
- 
+
         <select v-model="filters.employmentType" class="filter-select">
           <option value="">Tất cả loại hình</option>
           <option value="FULL_TIME">Toàn thời gian</option>
           <option value="PART_TIME">Bán thời gian</option>
           <option value="CONTRACT">Hợp đồng</option>
         </select>
- 
+
         <select v-model="filters.branchId" class="filter-select">
           <option value="">Tất cả chi nhánh</option>
           <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
         </select>
- 
-        <span class="filter-count">{{ filtered.length }} giáo viên</span>
- 
-        <!-- Nút xóa -->
+
+        <!-- Nút xóa: chỉ ADMIN / EMPLOYEE mới thấy -->
         <button
+          v-if="canManage"
           :class="['btn-delete-toggle', deleteMode && 'btn-delete-toggle--active']"
           @click="toggleDeleteMode"
-          title="Chọn giáo viên để ẩn"
+          title="Chọn giáo viên để xóa"
         >
-          <SvgIcon name="trash" :size="16" />
+          <i class="fa-solid fa-trash" style="color: rgb(255, 59, 59);"></i>
           {{ deleteMode ? 'Hủy chọn' : 'Xóa' }}
         </button>
- 
-        <!-- Nút xác nhận xóa (hiện khi đã chọn) -->
+
         <button
-          v-if="deleteMode && selectedIds.length"
+          v-if="canManage && deleteMode && selectedIds.length"
           class="btn-confirm-delete"
           @click="requestDelete"
         >
-          Ẩn {{ selectedIds.length }} giáo viên
+          Xóa {{ selectedIds.length }} giáo viên
         </button>
       </div>
- 
+
       <!-- ── Trạng thái loading ────────────────────── -->
       <div v-if="loading" class="tl__loading">
         <span class="spinner" />
         <span>Đang tải danh sách…</span>
       </div>
- 
-      <!-- ── Danh sách thẻ giáo viên ─────────────── -->
-      <div v-else-if="filtered.length" class="teacher-grid">
-        <div
-          v-for="t in filtered"
-          :key="t.id"
-          :class="['teacher-card', deleteMode && selectedIds.includes(t.id) && 'teacher-card--selected']"
-        >
-          <!-- Tick chọn khi delete mode -->
-          <div v-if="deleteMode" class="card-tick" @click="toggleSelect(t.id)">
-            <span :class="['tick', selectedIds.includes(t.id) && 'tick--checked']">
-              <SvgIcon v-if="selectedIds.includes(t.id)" name="attendance" :size="13" />
-            </span>
-          </div>
- 
-          <!-- Avatar -->
-          <div class="card-avatar">
-            <span class="card-avatar__initials">
-              {{ (t.firstName || '?')[0].toUpperCase() }}
-            </span>
-            <span :class="['card-status-dot', t.status === 'ACTIVE' ? 'dot--active' : 'dot--off']" />
-          </div>
- 
-          <!-- Thông tin -->
-          <div class="card-info">
-            <div class="card-name">{{ t.fullName }}</div>
-            <div class="card-meta">
-              <span :class="['badge', statusClass[t.status]]">{{ statusLabel[t.status] }}</span>
-              <span v-if="t.employmentType" class="badge badge--emp">{{ empLabel[t.employmentType] }}</span>
-            </div>
-            <div class="card-detail">
-              <span v-if="t.phone"><SvgIcon name="phone" :size="12" /> {{ t.phone }}</span>
-              <span><SvgIcon name="school" :size="12" /> {{ branchName(t.branchId) }}</span>
-            </div>
-          </div>
- 
-          <!-- CRUD Icons -->
-          <div v-if="!deleteMode" class="card-actions">
-            <button class="ca-btn ca-btn--view" title="Xem chi tiết" @click="openDetail(t)">
-              <SvgIcon name="eye" :size="16" />
-            </button>
-            <button class="ca-btn ca-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">View
-              <SvgIcon name="edit" :size="16" />
-            </button>
-            <button class="ca-btn ca-btn--delete" title="Ẩn giáo viên" @click="() => { deleteMode = true; selectedIds = [t.id]; requestDelete() }">
-              <SvgIcon name="trash" :size="16" />
-            </button>
-          </div>
- 
-          <!-- Click toàn thẻ khi delete mode -->
-          <div v-if="deleteMode" class="card-overlay" @click="toggleSelect(t.id)" />
-        </div>
+
+      <!-- ── Bảng danh sách giáo viên ─────────────── -->
+      <div v-else-if="filtered.length" class="table-wrap">
+        <table class="teacher-table">
+          <thead>
+            <tr>
+              <th v-if="deleteMode" class="col-check"></th>
+              <th>Giáo viên</th>
+              <th>Liên hệ</th>
+              <th>Chi nhánh</th>
+              <th>Loại hình</th>
+              <th>Trạng thái</th>
+              <th class="col-action">Hành động</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="t in filtered"
+              :key="t.id"
+              :class="['t-row', deleteMode && selectedIds.includes(t.id) && 't-row--selected']"
+              :title="deleteMode ? '' : 'Bấm để xem chi tiết'"
+              @click="deleteMode ? toggleSelect(t.id) : openDetail(t)"
+            >
+              <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(t.id)">
+                <span :class="['tick', selectedIds.includes(t.id) && 'tick--checked']">
+                  <SvgIcon v-if="selectedIds.includes(t.id)" name="attendance" :size="13" />
+                </span>
+              </td>
+
+              <!-- Tên + avatar + ID -->
+              <td>
+                <div class="t-name-cell">
+                  <span class="t-avatar" :style="{ background: avatarColor(t.id) }">
+                    {{ (t.firstName || '?')[0].toUpperCase() }}
+                    <span :class="['t-avatar-dot', t.status === 'ACTIVE' ? 'dot--active' : 'dot--off']" />
+                  </span>
+                  <div>
+                    <div class="t-name" :title="t.fullName"> {{ t.fullName }} </div>
+                    <div class="t-id">ID: {{ t.id }}</div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Liên hệ -->
+              <td>
+                <div class="t-contact"><strong>SĐT:</strong> {{ t.phone || '—' }}</div>
+                <div class="t-contact t-contact--muted"><strong>CCCD:</strong>{{ t.idCardNo || '—' }}</div>
+              </td>
+
+              <!-- Chi nhánh -->
+              <td><span class="badge badge--branch"><strong>Branch:</strong>{{ branchName(t.branchId) }}</span></td>
+
+              <!-- Loại hình -->
+              <td>{{ t.employmentType ? empLabel[t.employmentType] : '—' }}</td>
+
+              <!-- Trạng thái -->
+              <td><span :class="['badge', statusClass[t.status]]">{{ statusLabel[t.status] }}</span></td>
+
+              <!-- Hành động -->
+              <td class="col-action" @click.stop>
+                <div class="row-actions">
+                  <button class="ra-btn ra-btn--view" title="Xem chi tiết" @click="openDetail(t)">
+                <i class="fa-solid fa-eye" style="color: rgb(99, 230, 190);"></i>
+    </button>
+                  <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">
+                    <i class="fa-solid fa-wrench" style="color: rgb(255, 212, 59);"></i>
+                  </button>
+                  <button
+                    v-if="canManage" class="ra-btn ra-btn--delete"   title="Xóa giáo viên"   @click="quickDelete(t.id)">
+                   <i class="fa-solid fa-delete-left fa-width-auto" style="color: rgb(255, 59, 59);"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
- 
+
       <!-- Empty state -->
       <div v-else class="tl__empty">
         <SvgIcon name="teacher" :size="48" />
         <p>Không tìm thấy giáo viên phù hợp</p>
       </div>
     </template>
- 
+
     <!-- ═══════════════════════════════════════════════
          VIEW: LỊCH SỬ (THÙNG RÁC)
     ═══════════════════════════════════════════════ -->
@@ -415,18 +924,18 @@ function formatDate(d) {
       <div class="trash-header">
         <div>
           <h2 class="trash-title">
-            <SvgIcon name="history" :size="20" /> Lịch sử giáo viên đã ẩn
+            <SvgIcon name="history" :size="20" /> Lịch sử giáo viên đã xóa
           </h2>
-          <p class="trash-sub">Các giáo viên bên dưới đã bị ẩn khỏi danh sách chính. Bạn có thể khôi phục bất kỳ lúc nào.</p>
+          <p class="trash-sub">Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Bạn có thể khôi phục bất kỳ lúc nào.</p>
         </div>
       </div>
- 
+
       <div v-if="trashLoading" class="tl__loading">
         <span class="spinner" /> Đang tải…
       </div>
- 
-      <div v-else-if="trashItems.length" class="trash-table-wrap">
-        <table class="trash-table">
+
+      <div v-else-if="trashItems.length" class="table-wrap">
+        <table class="teacher-table">
           <thead>
             <tr>
               <th>Họ và tên</th>
@@ -441,13 +950,13 @@ function formatDate(d) {
           </thead>
           <tbody>
             <tr v-for="item in trashItems" :key="item.id">
-              <td class="trash-name">{{ item.fullName }}</td>
+              <td class="t-name">{{ item.fullName }}</td>
               <td>{{ item.phone || '—' }}</td>
               <td>{{ item.idCardNo || '—' }}</td>
               <td>{{ empLabel[item.employmentType] || '—' }}</td>
               <td><span :class="['badge', statusClass[item.status]]">{{ statusLabel[item.status] }}</span></td>
               <td>{{ formatDate(item.deletedAt) }}</td>
-              <td>{{ branchName(item.branchId) }}</td>
+              <td><span class="badge badge--branch">{{ branchName(item.branchId) }}</span></td>
               <td>
                 <button class="btn-restore" @click="restore(item.id)">
                   <SvgIcon name="restore" :size="14" /> Khôi phục
@@ -457,13 +966,221 @@ function formatDate(d) {
           </tbody>
         </table>
       </div>
- 
+
       <div v-else class="tl__empty">
         <SvgIcon name="history" :size="48" />
         <p>Chưa có giáo viên nào trong lịch sử</p>
       </div>
     </template>
- 
+
+    <!-- ═══════════════════════════════════════════════
+         MODAL: THÊM GIÁO VIÊN (tab trái + form phải)
+    ═══════════════════════════════════════════════ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="createModal.open" class="overlay" @click.self="createModal.open = false">
+          <div class="modal modal--xl">
+            <div class="modal__head">
+              <h3 class="modal__title">Thêm giáo viên mới</h3>
+              <button class="modal__close" @click="createModal.open = false">
+                <SvgIcon name="close" :size="18" />
+              </button>
+            </div>
+
+            <div class="create-body">
+              <!-- Menu trái -->
+              <div class="create-nav">
+                <button
+                  v-for="tab in createTabs"
+                  :key="tab.key"
+                  :class="['create-nav__item', createModal.activeTab === tab.key && 'create-nav__item--active']"
+                  @click="createModal.activeTab = tab.key"
+                >
+                  <SvgIcon :name="tab.icon" :size="16" /> {{ tab.label }}
+                </button>
+              </div>
+
+              <!-- Form phải -->
+              <div class="create-form">
+                <!-- Tab: Hồ sơ giáo viên -->
+                <template v-if="createModal.activeTab === 'profile'">
+                  <h4 class="create-section-title">Tài khoản đăng nhập</h4>
+                  <p class="create-section-hint">Giáo viên cần 1 tài khoản để đăng nhập hệ thống.</p>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Tên đăng nhập <span class="req">*</span>
+                        <input v-model="createModal.account.username" class="form-input" :class="{ 'form-input--error': createFieldErrors.username }" placeholder="VD: gv.nguyenvana" @blur="validateUsername" />
+                      </label>
+                      <span v-if="createFieldErrors.username" class="field-error">{{ createFieldErrors.username }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Email <span class="req">*</span>
+                        <input v-model="createModal.account.email" type="email" class="form-input" :class="{ 'form-input--error': createFieldErrors.email }" placeholder="VD: gv@tsdms.local" @blur="validateEmail" />
+                      </label>
+                      <span v-if="createFieldErrors.email" class="field-error">{{ createFieldErrors.email }}</span>
+                    </div>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label">Mật khẩu <span class="req">*</span>
+                      <input v-model="createModal.account.password" type="password" class="form-input" :class="{ 'form-input--error': createFieldErrors.password }" placeholder="Ít nhất 8 ký tự, có hoa/thường/số" @blur="validateCreatePassword" />
+                    </label>
+                    <span v-if="createFieldErrors.password" class="field-error">{{ createFieldErrors.password }}</span>
+                  </div>
+
+                  <h4 class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Họ và tên đệm <span class="req">*</span>
+                        <input v-model="createModal.profile.lastName" class="form-input" :class="{ 'form-input--error': createFieldErrors.lastName }" placeholder="VD: Trần Nguyễn Văn" @blur="validateLastName" />
+                      </label>
+                      <span v-if="createFieldErrors.lastName" class="field-error">{{ createFieldErrors.lastName }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Tên gọi <span class="req">*</span>
+                        <input v-model="createModal.profile.firstName" class="form-input" :class="{ 'form-input--error': createFieldErrors.firstName }" placeholder="VD: A" @blur="validateFirstName" />
+                      </label>
+                      <span v-if="createFieldErrors.firstName" class="field-error">{{ createFieldErrors.firstName }}</span>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <label class="form-label">Chi nhánh <span class="req">*</span>
+                      <select v-model="createModal.profile.branchId" class="form-input">
+                        <option value="">-- Chọn chi nhánh --</option>
+                        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                      </select>
+                    </label>
+                    <label class="form-label">Giới tính
+                      <select v-model="createModal.profile.gender" class="form-input">
+                        <option :value="null">-- Chọn --</option>
+                        <option :value="true">Nam</option>
+                        <option :value="false">Nữ</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Số điện thoại
+                        <input v-model="createModal.profile.phone" class="form-input" :class="{ 'form-input--error': createFieldErrors.phone }" placeholder="VD: 0901234567" @blur="validatePhone" />
+                      </label>
+                      <span v-if="createFieldErrors.phone" class="field-error">{{ createFieldErrors.phone }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Số CCCD
+                        <input v-model="createModal.profile.idCardNo" class="form-input" :class="{ 'form-input--error': createFieldErrors.idCardNo }" placeholder="9 hoặc 12 chữ số" @blur="validateIdCard" />
+                      </label>
+                      <span v-if="createFieldErrors.idCardNo" class="field-error">{{ createFieldErrors.idCardNo }}</span>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Ngày sinh
+                        <input v-model="createModal.profile.dateOfBirth" type="date" class="form-input" :class="{ 'form-input--error': createFieldErrors.dateOfBirth }" @change="validateCreateDates" />
+                      </label>
+                      <span v-if="createFieldErrors.dateOfBirth" class="field-error">{{ createFieldErrors.dateOfBirth }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Ngày vào làm
+                        <input v-model="createModal.profile.hireDate" type="date" class="form-input" :class="{ 'form-input--error': createFieldErrors.hireDate }" @change="validateCreateDates" />
+                      </label>
+                      <span v-if="createFieldErrors.hireDate" class="field-error">{{ createFieldErrors.hireDate }}</span>
+                    </div>
+                  </div>
+                  <label class="form-label">Loại hình
+                    <select v-model="createModal.profile.employmentType" class="form-input">
+                      <option value="">-- Chọn loại hình --</option>
+                      <option value="FULL_TIME">Toàn thời gian</option>
+                      <option value="PART_TIME">Bán thời gian</option>
+                      <option value="CONTRACT">Hợp đồng</option>
+                    </select>
+                  </label>
+                  <label class="form-label">Địa chỉ
+                    <input v-model="createModal.profile.address" class="form-input" placeholder="Địa chỉ thường trú" />
+                  </label>
+                </template>
+
+                <!-- Tab: Bằng cấp -->
+                <template v-else-if="createModal.activeTab === 'degree'">
+                  <h4 class="create-section-title">Bằng cấp</h4>
+                  <p class="create-section-hint">Có thể bỏ trống nếu chưa có, sau này thêm cũng được.</p>
+                  <div v-for="(d, i) in createModal.degrees" :key="i" class="doc-row">
+                    <input v-model="d.name" class="form-input" placeholder="Tên bằng cấp (VD: Cử nhân Sư phạm)" />
+                    <input v-model="d.issuer" class="form-input" placeholder="Nơi cấp" />
+                    <input v-model="d.issueDate" type="date" class="form-input" />
+                    <label class="doc-file">
+                      <SvgIcon name="assignment" :size="14" />
+                      {{ d.file ? d.file.name : 'Chọn PDF' }}
+                      <input type="file" accept="application/pdf" hidden @change="onPickFile(d, $event)" />
+                    </label>
+                    <button v-if="createModal.degrees.length > 1" class="doc-remove" @click="removeDoc(createModal.degrees, i)">
+                      <SvgIcon name="close" :size="14" />
+                    </button>
+                  </div>
+                  <button class="btn-add-row" @click="addDoc(createModal.degrees)">
+                    <SvgIcon name="plus" :size="14" /> Thêm bằng cấp
+                  </button>
+                </template>
+
+                <!-- Tab: Chứng chỉ -->
+                <template v-else-if="createModal.activeTab === 'cert'">
+                  <h4 class="create-section-title">Chứng chỉ</h4>
+                  <p class="create-section-hint">Có thể bỏ trống nếu chưa có, sau này thêm cũng được.</p>
+                  <div v-for="(c, i) in createModal.certificates" :key="i" class="doc-row">
+                    <input v-model="c.name" class="form-input" placeholder="Tên chứng chỉ (VD: TESOL, STEM-AI)" />
+                    <input v-model="c.issuer" class="form-input" placeholder="Nơi cấp" />
+                    <input v-model="c.issueDate" type="date" class="form-input" />
+                    <label class="doc-file">
+                      <SvgIcon name="subject" :size="14" />
+                      {{ c.file ? c.file.name : 'Chọn PDF' }}
+                      <input type="file" accept="application/pdf" hidden @change="onPickFile(c, $event)" />
+                    </label>
+                    <button v-if="createModal.certificates.length > 1" class="doc-remove" @click="removeDoc(createModal.certificates, i)">
+                      <SvgIcon name="close" :size="14" />
+                    </button>
+                  </div>
+                  <button class="btn-add-row" @click="addDoc(createModal.certificates)">
+                    <SvgIcon name="plus" :size="14" /> Thêm chứng chỉ
+                  </button>
+                </template>
+
+                <!-- Tab: Kinh nghiệm -->
+                <template v-else-if="createModal.activeTab === 'experience'">
+                  <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
+                  <p class="create-section-hint">Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.</p>
+                  <textarea
+                    v-model="createModal.experience"
+                    class="form-input form-textarea"
+                    rows="8"
+                    placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
+                  />
+                </template>
+
+                <!-- Tab: Trạng thái -->
+                <template v-else-if="createModal.activeTab === 'status'">
+                  <h4 class="create-section-title">Trạng thái</h4>
+                  <p class="create-section-hint">
+                    Giáo viên mới luôn khởi tạo ở trạng thái <strong>Đang hoạt động</strong>.
+                    Khi bị ẩn khỏi danh sách, hệ thống tự chuyển sang <strong>Ngừng hoạt động</strong> và
+                    chuyển vào mục Lịch sử.
+                  </p>
+                  <span class="badge badge--active badge--lg">Đang hoạt động</span>
+                </template>
+
+                <p v-if="createModal.error" class="form-error">{{ createModal.error }}</p>
+              </div>
+            </div>
+
+            <div class="modal__footer">
+              <button class="btn btn--ghost" @click="createModal.open = false">Hủy</button>
+              <button class="btn btn--primary" :disabled="createModal.saving" @click="submitCreate">
+                <span v-if="createModal.saving" class="spinner spinner--sm" />
+                {{ createModal.saving ? 'Đang tạo…' : 'Tạo giáo viên' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- ═══════════════════════════════════════════════
          MODAL: XÁC NHẬN XÓA
     ═══════════════════════════════════════════════ -->
@@ -474,20 +1191,19 @@ function formatDate(d) {
             <div class="modal__icon modal__icon--warn">
               <SvgIcon name="trash" :size="28" />
             </div>
-            <h3 class="modal__title">Bạn chắc chắn muốn ẩn không?</h3>
+            <h3 class="modal__title">Bạn chắc chắn muốn xóa không?</h3>
             <p class="modal__body">
-              {{ selectedIds.length }} giáo viên sẽ bị ẩn khỏi danh sách chính và
-              có thể khôi phục lại trong mục <strong>Lịch sử</strong>.
+              {{ selectedIds.length }} giáo viên sẽ bị xóa khỏi danh sách chính, và có thể khôi phục lại trong mục <strong>Lịch sử</strong>.
             </p>
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="confirmDelete.open = false">Không</button>
-              <button class="btn btn--danger" @click="confirmDoDelete">Có, ẩn đi</button>
+              <button class="btn btn--danger" @click="confirmDoDelete">Có</button>
             </div>
           </div>
         </div>
       </Transition>
     </Teleport>
- 
+
     <!-- ═══════════════════════════════════════════════
          MODAL: CHI TIẾT GIÁO VIÊN
     ═══════════════════════════════════════════════ -->
@@ -501,10 +1217,10 @@ function formatDate(d) {
                 <SvgIcon name="close" :size="18" />
               </button>
             </div>
- 
+
             <template v-if="detailModal.teacher">
               <div class="detail-hero">
-                <div class="detail-avatar">
+                <div class="detail-avatar" :style="{ background: avatarColor(detailModal.teacher.id) }">
                   {{ (detailModal.teacher.firstName || '?')[0].toUpperCase() }}
                 </div>
                 <div>
@@ -515,7 +1231,7 @@ function formatDate(d) {
                   </div>
                 </div>
               </div>
- 
+
               <div class="detail-grid">
                 <div class="dg-item"><span class="dg-label">Chi nhánh</span><span>{{ branchName(detailModal.teacher.branchId) }}</span></div>
                 <div class="dg-item"><span class="dg-label">SĐT</span><span>{{ detailModal.teacher.phone || '—' }}</span></div>
@@ -525,7 +1241,7 @@ function formatDate(d) {
                 <div class="dg-item"><span class="dg-label">Ngày vào làm</span><span>{{ formatDate(detailModal.teacher.hireDate) }}</span></div>
                 <div class="dg-item dg-item--full"><span class="dg-label">Địa chỉ</span><span>{{ detailModal.teacher.address || '—' }}</span></div>
               </div>
- 
+
               <!-- Hợp đồng -->
               <div v-if="detailModal.teacher.contract" class="detail-section">
                 <h4 class="detail-section-title"><SvgIcon name="assignment" :size="15" /> Hợp đồng</h4>
@@ -538,7 +1254,7 @@ function formatDate(d) {
                   <div class="dg-item"><span class="dg-label">Trạng thái</span><span>{{ detailModal.teacher.contract.status }}</span></div>
                 </div>
               </div>
- 
+
               <!-- Chứng chỉ -->
               <div v-if="detailModal.teacher.certificates?.length" class="detail-section">
                 <h4 class="detail-section-title"><SvgIcon name="subject" :size="15" /> Chứng chỉ ({{ detailModal.teacher.certificates.length }})</h4>
@@ -552,7 +1268,7 @@ function formatDate(d) {
                 </div>
               </div>
             </template>
- 
+
             <div class="modal__footer">
               <button class="btn btn--primary" @click="detailModal.open = false">Đóng</button>
             </div>
@@ -560,90 +1276,199 @@ function formatDate(d) {
         </div>
       </Transition>
     </Teleport>
- 
+
     <!-- ═══════════════════════════════════════════════
-         MODAL: SỬA GIÁO VIÊN
+         MODAL: SỬA GIÁO VIÊN (tab trái + form phải — giống hệt modal Tạo)
     ═══════════════════════════════════════════════ -->
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="editModal.open" class="overlay" @click.self="editModal.open = false">
-          <div class="modal modal--lg">
+          <div class="modal modal--xl">
             <div class="modal__head">
               <h3 class="modal__title">Chỉnh sửa Giáo viên</h3>
               <button class="modal__close" @click="editModal.open = false">
                 <SvgIcon name="close" :size="18" />
               </button>
             </div>
- 
-            <div class="edit-form">
-              <div class="form-row">
-                <label class="form-label">Họ và tên đệm <span class="req">*</span>
-                  <input v-model="editModal.form.lastName" class="form-input" placeholder="VD: Trần Nguyễn Văn" />
-                </label>
-                <label class="form-label">Tên gọi <span class="req">*</span>
-                  <input v-model="editModal.form.firstName" class="form-input" placeholder="VD: A" />
-                </label>
+
+            <div class="create-body">
+              <!-- Menu trái -->
+              <div class="create-nav">
+                <button
+                  v-for="tab in editTabs"
+                  :key="tab.key"
+                  :class="['create-nav__item', editModal.activeTab === tab.key && 'create-nav__item--active']"
+                  @click="editModal.activeTab = tab.key"
+                >
+                  <SvgIcon :name="tab.icon" :size="16" /> {{ tab.label }}
+                </button>
               </div>
- 
-              <div class="form-row">
-                <label class="form-label">Chi nhánh <span class="req">*</span>
-                  <select v-model="editModal.form.branchId" class="form-input">
-                    <option value="">-- Chọn chi nhánh --</option>
-                    <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-                  </select>
-                </label>
-                <label class="form-label">Trạng thái <span class="req">*</span>
-                  <select v-model="editModal.form.status" class="form-input">
+
+              <!-- Form phải -->
+              <div class="create-form">
+                <!-- Tab: Hồ sơ giáo viên -->
+                <template v-if="editModal.activeTab === 'profile'">
+                  <h4 class="create-section-title">Thông tin cá nhân</h4>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Họ và tên đệm <span class="req">*</span>
+                        <input v-model="editModal.form.lastName" class="form-input" :class="{ 'form-input--error': editFieldErrors.lastName }" placeholder="VD: Trần Nguyễn Văn" @blur="validateEditLastName" />
+                      </label>
+                      <span v-if="editFieldErrors.lastName" class="field-error">{{ editFieldErrors.lastName }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Tên gọi <span class="req">*</span>
+                        <input v-model="editModal.form.firstName" class="form-input" :class="{ 'form-input--error': editFieldErrors.firstName }" placeholder="VD: A" @blur="validateEditFirstName" />
+                      </label>
+                      <span v-if="editFieldErrors.firstName" class="field-error">{{ editFieldErrors.firstName }}</span>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <label class="form-label">Chi nhánh <span class="req">*</span>
+                      <select v-model="editModal.form.branchId" class="form-input">
+                        <option value="">-- Chọn chi nhánh --</option>
+                        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+                      </select>
+                    </label>
+                    <label class="form-label">Giới tính
+                      <select v-model="editModal.form.gender" class="form-input">
+                        <option :value="null">-- Chọn --</option>
+                        <option :value="true">Nam</option>
+                        <option :value="false">Nữ</option>
+                      </select>
+                    </label>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Số điện thoại
+                        <input v-model="editModal.form.phone" class="form-input" :class="{ 'form-input--error': editFieldErrors.phone }" placeholder="VD: 0901234567" @blur="validateEditPhone" />
+                      </label>
+                      <span v-if="editFieldErrors.phone" class="field-error">{{ editFieldErrors.phone }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Số CCCD
+                        <input v-model="editModal.form.idCardNo" class="form-input" :class="{ 'form-input--error': editFieldErrors.idCardNo }" placeholder="9 hoặc 12 chữ số" @blur="validateEditIdCard" />
+                      </label>
+                      <span v-if="editFieldErrors.idCardNo" class="field-error">{{ editFieldErrors.idCardNo }}</span>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">Ngày sinh
+                        <input v-model="editModal.form.dateOfBirth" type="date" class="form-input" :class="{ 'form-input--error': editFieldErrors.dateOfBirth }" @change="validateEditDates" />
+                      </label>
+                      <span v-if="editFieldErrors.dateOfBirth" class="field-error">{{ editFieldErrors.dateOfBirth }}</span>
+                    </div>
+                    <div class="form-field">
+                      <label class="form-label">Ngày vào làm
+                        <input v-model="editModal.form.hireDate" type="date" class="form-input" :class="{ 'form-input--error': editFieldErrors.hireDate }" @change="validateEditDates" />
+                      </label>
+                      <span v-if="editFieldErrors.hireDate" class="field-error">{{ editFieldErrors.hireDate }}</span>
+                    </div>
+                  </div>
+
+                  <label class="form-label">Loại hình
+                    <select v-model="editModal.form.employmentType" class="form-input">
+                      <option value="">-- Chọn loại hình --</option>
+                      <option value="FULL_TIME">Toàn thời gian</option>
+                      <option value="PART_TIME">Bán thời gian</option>
+                      <option value="CONTRACT">Hợp đồng</option>
+                    </select>
+                  </label>
+                  <label class="form-label">Địa chỉ
+                    <input v-model="editModal.form.address" class="form-input" placeholder="Địa chỉ thường trú" />
+                  </label>
+                </template>
+
+                <!-- Tab: Bằng cấp -->
+                <template v-else-if="editModal.activeTab === 'degree'">
+                  <h4 class="create-section-title">Thêm bằng cấp mới</h4>
+                  <p class="create-section-hint">
+                    Danh sách bằng cấp/chứng chỉ ĐÃ LƯU xem ở tab "Chứng chỉ" (hệ thống lưu chung 1 bảng,
+                    không phân biệt 2 loại này).
+                  </p>
+                  <div v-for="(d, i) in editModal.newDegrees" :key="i" class="doc-row">
+                    <input v-model="d.name" class="form-input" placeholder="Tên bằng cấp (VD: Cử nhân Sư phạm)" />
+                    <input v-model="d.issuer" class="form-input" placeholder="Nơi cấp" />
+                    <input v-model="d.issueDate" type="date" class="form-input" />
+                    <label class="doc-file">
+                      <SvgIcon name="assignment" :size="14" />
+                      {{ d.file ? d.file.name : 'Chọn PDF' }}
+                      <input type="file" accept="application/pdf" hidden @change="onPickFile(d, $event)" />
+                    </label>
+                    <button v-if="editModal.newDegrees.length > 1" class="doc-remove" @click="removeDoc(editModal.newDegrees, i)">
+                      <SvgIcon name="close" :size="14" />
+                    </button>
+                  </div>
+                  <button class="btn-add-row" @click="addDoc(editModal.newDegrees)">
+                    <SvgIcon name="plus" :size="14" /> Thêm bằng cấp
+                  </button>
+                </template>
+
+                <!-- Tab: Chứng chỉ -->
+                <template v-else-if="editModal.activeTab === 'cert'">
+                  <h4 class="create-section-title">Đã lưu</h4>
+                  <p v-if="!editModal.existingCerts.length" class="create-section-hint">Chưa có bằng cấp/chứng chỉ nào.</p>
+                  <div v-for="c in editModal.existingCerts" :key="c.id" class="existing-doc">
+                    <div>
+                      <strong>{{ c.name }}</strong>
+                      <span v-if="c.issuer"> · {{ c.issuer }}</span>
+                      <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
+                    </div>
+                    <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
+                      <SvgIcon name="trash" :size="14" />
+                    </button>
+                  </div>
+
+                  <h4 class="create-section-title create-section-title--gap">Thêm chứng chỉ mới</h4>
+                  <div v-for="(c, i) in editModal.newCerts" :key="i" class="doc-row">
+                    <input v-model="c.name" class="form-input" placeholder="Tên chứng chỉ (VD: TESOL, STEM-AI)" />
+                    <input v-model="c.issuer" class="form-input" placeholder="Nơi cấp" />
+                    <input v-model="c.issueDate" type="date" class="form-input" />
+                    <label class="doc-file">
+                      <SvgIcon name="subject" :size="14" />
+                      {{ c.file ? c.file.name : 'Chọn PDF' }}
+                      <input type="file" accept="application/pdf" hidden @change="onPickFile(c, $event)" />
+                    </label>
+                    <button v-if="editModal.newCerts.length > 1" class="doc-remove" @click="removeDoc(editModal.newCerts, i)">
+                      <SvgIcon name="close" :size="14" />
+                    </button>
+                  </div>
+                  <button class="btn-add-row" @click="addDoc(editModal.newCerts)">
+                    <SvgIcon name="plus" :size="14" /> Thêm chứng chỉ
+                  </button>
+                </template>
+
+                <!-- Tab: Kinh nghiệm -->
+                <template v-else-if="editModal.activeTab === 'experience'">
+                  <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
+                  <p class="create-section-hint">Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.</p>
+                  <textarea
+                    v-model="editModal.experience"
+                    class="form-input form-textarea"
+                    rows="8"
+                    placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
+                  />
+                </template>
+
+                <!-- Tab: Trạng thái -->
+                <template v-else-if="editModal.activeTab === 'status'">
+                  <h4 class="create-section-title">Trạng thái</h4>
+                  <p class="create-section-hint">Chuyển tay nếu cần — bình thường hệ thống tự đổi khi Xóa/Khôi phục.</p>
+                  <select v-model="editModal.form.status" class="form-input" style="max-width: 280px">
                     <option value="ACTIVE">Đang hoạt động</option>
-                    <option value="RETIRED">Đã nghỉ</option>
-                    <option value="SUSPENDED">Tạm dừng</option>
+                    <option value="RETIRED">Ngừng hoạt động</option>
+                    <option value="SUSPENDED">Đã nghỉ phép</option>
                   </select>
-                </label>
+                </template>
+
+                <p v-if="editModal.error" class="form-error">{{ editModal.error }}</p>
               </div>
- 
-              <div class="form-row">
-                <label class="form-label">Loại hình
-                  <select v-model="editModal.form.employmentType" class="form-input">
-                    <option value="">-- Chọn loại hình --</option>
-                    <option value="FULL_TIME">Toàn thời gian</option>
-                    <option value="PART_TIME">Bán thời gian</option>
-                    <option value="CONTRACT">Hợp đồng</option>
-                  </select>
-                </label>
-                <label class="form-label">Giới tính
-                  <select v-model="editModal.form.gender" class="form-input">
-                    <option :value="null">-- Chọn --</option>
-                    <option :value="true">Nam</option>
-                    <option :value="false">Nữ</option>
-                  </select>
-                </label>
-              </div>
- 
-              <div class="form-row">
-                <label class="form-label">Số điện thoại
-                  <input v-model="editModal.form.phone" class="form-input" placeholder="VD: 0901234567" />
-                </label>
-                <label class="form-label">Số CCCD
-                  <input v-model="editModal.form.idCardNo" class="form-input" placeholder="9 hoặc 12 chữ số" />
-                </label>
-              </div>
- 
-              <div class="form-row">
-                <label class="form-label">Ngày sinh
-                  <input v-model="editModal.form.dateOfBirth" type="date" class="form-input" />
-                </label>
-                <label class="form-label">Ngày vào làm
-                  <input v-model="editModal.form.hireDate" type="date" class="form-input" />
-                </label>
-              </div>
- 
-              <label class="form-label">Địa chỉ
-                <input v-model="editModal.form.address" class="form-input" placeholder="Địa chỉ thường trú" />
-              </label>
- 
-              <p v-if="editModal.error" class="form-error">{{ editModal.error }}</p>
             </div>
- 
+
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="editModal.open = false">Hủy</button>
               <button class="btn btn--primary" :disabled="editModal.saving" @click="saveEdit">
@@ -657,14 +1482,14 @@ function formatDate(d) {
     </Teleport>
   </div>
 </template>
- 
+
 <style scoped>
 /* ════ Biến màu kế thừa từ design system ════ */
 .tl {
-  max-width: 1200px;
+  max-width: 1280px;
   position: relative;
 }
- 
+
 /* ── Header ── */
 .tl__header {
   display: flex;
@@ -688,6 +1513,7 @@ function formatDate(d) {
   display: flex;
   gap: 0.5rem;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 .btn-tab {
   display: flex;
@@ -705,8 +1531,17 @@ function formatDate(d) {
 }
 .btn-tab:hover { border-color: var(--c-primary); color: var(--c-primary); }
 .btn-tab--active { background: var(--grad-primary); border-color: transparent; color: #fff; }
-.btn-tab--history:not(.btn-tab--active) { color: var(--a-text-muted); }
- 
+.btn-add {
+  display: flex; align-items: center; gap: 0.4rem;
+  padding: 0.5rem 1.1rem;
+  border: none; border-radius: 9px;
+  background: var(--grad-primary); color: #fff;
+  font-size: 0.86rem; font-weight: 700; cursor: pointer;
+  box-shadow: 0 6px 14px rgba(249,115,22,.28);
+  transition: filter 0.15s, transform 0.15s;
+}
+.btn-add:hover { filter: brightness(1.06); transform: translateY(-1px); }
+
 /* ── Filters ── */
 .filters {
   display: flex;
@@ -719,6 +1554,20 @@ function formatDate(d) {
   border: 1px solid var(--a-border);
   border-radius: 12px;
 }
+.filter-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.5rem 1.1rem;
+  background: var(--grad-primary);
+  border-radius: 10px;
+  color: #fff;
+  flex-shrink: 0;
+}
+.filter-total__num { font-size: 1.15rem; font-weight: 800; line-height: 1; }
+.filter-total__label { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase; opacity: 0.92; }
 .filter-search {
   display: flex;
   align-items: center;
@@ -754,19 +1603,14 @@ function formatDate(d) {
   transition: border-color 0.15s;
 }
 .filter-select:focus { border-color: var(--c-primary); }
-.filter-count {
-  font-size: 0.82rem;
-  color: var(--a-text-muted);
-  white-space: nowrap;
-  margin-left: auto;
-}
- 
+
 .btn-delete-toggle {
   display: flex; align-items: center; gap: 0.4rem;
   padding: 0.45rem 0.9rem;
   background: transparent; border: 1.5px solid #fca5a5;
   border-radius: 8px; color: #dc2626; font-size: 0.84rem;
   font-weight: 600; cursor: pointer; transition: all 0.15s;
+  margin-left: auto;
 }
 .btn-delete-toggle:hover, .btn-delete-toggle--active {
   background: #fef2f2; border-color: #dc2626;
@@ -779,7 +1623,7 @@ function formatDate(d) {
   cursor: pointer; transition: background 0.15s;
 }
 .btn-confirm-delete:hover { background: #b91c1c; }
- 
+
 /* ── Loading / Empty ── */
 .tl__loading {
   display: flex; align-items: center; gap: 0.75rem;
@@ -791,7 +1635,7 @@ function formatDate(d) {
   gap: 1rem; padding: 3rem 0; color: var(--a-text-muted);
   opacity: 0.55; text-align: center;
 }
- 
+
 /* ── Spinner ── */
 .spinner {
   display: inline-block;
@@ -803,116 +1647,105 @@ function formatDate(d) {
 }
 .spinner--sm { width: 14px; height: 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
- 
-/* ── Teacher grid ── */
-.teacher-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 1rem;
-}
-.teacher-card {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
+
+/* ── Bảng danh sách giáo viên ── */
+.table-wrap {
+  overflow-x: auto;
   background: #fff;
-  border: 1.5px solid var(--a-border);
-  border-radius: 14px;
-  padding: 1rem 1.1rem;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
-  overflow: hidden;
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
 }
-.teacher-card:hover {
-  border-color: var(--c-primary);
-  box-shadow: 0 4px 16px rgba(249,115,22,.1);
-  transform: translateY(-2px);
+.teacher-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  min-width: 760px;
 }
-.teacher-card--selected {
-  border-color: #dc2626;
-  background: #fff5f5;
+.teacher-table th {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--a-text-muted);
+  background: var(--a-bg);
+  border-bottom: 1px solid var(--a-border);
+  white-space: nowrap;
 }
- 
-/* Tick chọn */
-.card-tick {
-  position: absolute; top: 0.6rem; right: 0.6rem; z-index: 2;
-  cursor: pointer;
+.teacher-table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--a-border);
+  color: var(--a-text);
+  vertical-align: middle;
 }
+.teacher-table tr:last-child td { border-bottom: none; }
+.t-row { transition: background 0.12s; cursor: pointer; }
+.t-row:hover { background: var(--a-bg); }
+.t-row--selected { background: #fff5f5; }
+.col-check { width: 36px; }
+.col-action { width: 130px; }
+
+/* Tick chọn (bảng) */
 .tick {
   display: grid; place-items: center;
   width: 20px; height: 20px;
   border: 2px solid var(--a-border);
   border-radius: 6px; background: #fff;
-  transition: all 0.15s;
+  transition: all 0.15s; cursor: pointer;
 }
 .tick--checked { background: #dc2626; border-color: #dc2626; color: #fff; }
- 
-/* Avatar */
-.card-avatar {
-  position: relative; flex-shrink: 0;
-  width: 48px; height: 48px;
-}
-.card-avatar__initials {
+
+/* Tên + avatar */
+.t-name-cell { display: flex; align-items: center; gap: 0.65rem; }
+.t-avatar {
+  position: relative;
   display: grid; place-items: center;
-  width: 100%; height: 100%;
-  border-radius: 50%;
-  background: var(--grad-primary);
-  color: #fff; font-size: 1.2rem; font-weight: 700;
+  width: 38px; height: 38px; border-radius: 50%;
+  color: #fff; font-size: 0.95rem; font-weight: 700;
+  flex-shrink: 0;
 }
-.card-status-dot {
-  position: absolute; bottom: 1px; right: 1px;
-  width: 11px; height: 11px;
-  border-radius: 50%; border: 2px solid #fff;
+.t-avatar-dot {
+  position: absolute; bottom: -1px; right: -1px;
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid #fff;
 }
 .dot--active { background: #22c55e; }
 .dot--off { background: #94a3b8; }
- 
-/* Card info */
-.card-info { flex: 1; min-width: 0; }
-.card-name {
-  font-size: 0.95rem; font-weight: 700;
-  color: var(--a-text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.card-meta { display: flex; gap: 0.35rem; flex-wrap: wrap; margin: 0.3rem 0 0.35rem; }
-.card-detail {
-  display: flex; gap: 0.75rem; flex-wrap: wrap;
-  font-size: 0.78rem; color: var(--a-text-muted);
-}
-.card-detail span { display: flex; align-items: center; gap: 0.3rem; }
- 
+.t-name { font-weight: 700; color: var(--a-text); white-space: nowrap; }
+.t-id { font-size: 0.74rem; color: var(--a-text-muted); }
+
+/* Liên hệ */
+.t-contact { white-space: nowrap; }
+.t-contact--muted { color: var(--a-text-muted); font-size: 0.8rem; margin-top: 0.1rem; }
+
 /* Badge */
 .badge {
   display: inline-flex; align-items: center;
   padding: 0.15rem 0.55rem;
   border-radius: 20px; font-size: 0.72rem; font-weight: 700;
+  white-space: nowrap;
 }
 .badge--active { background: #dcfce7; color: #166534; }
 .badge--retired { background: #f1f5f9; color: #64748b; }
 .badge--suspended { background: #fef9c3; color: #854d0e; }
 .badge--emp { background: #eff6ff; color: #1d4ed8; }
- 
-/* CRUD Actions */
-.card-actions {
-  display: flex; flex-direction: column; gap: 0.3rem;
-  flex-shrink: 0; opacity: 0; transition: opacity 0.15s;
-}
-.teacher-card:hover .card-actions { opacity: 1; }
-.ca-btn {
-  display: grid; place-items: center;
+.badge--branch { background: #eff6ff; color: #1d4ed8; }
+.badge--lg { font-size: 0.85rem; padding: 0.4rem 0.9rem; }
+
+/* Hành động (bảng) */
+.row-actions { display: flex; align-items: center; gap: 0.35rem; }
+.ra-btn {
+  display: flex; align-items: center; justify-content: center;
   width: 30px; height: 30px;
   border: none; border-radius: 8px;
   cursor: pointer; transition: all 0.15s;
+  line-height: 0;
 }
-.ca-btn--view  { background: #eff6ff; color: #2563eb; }
-.ca-btn--edit  { background: #f0fdf4; color: #16a34a; }
-.ca-btn--delete { background: #fef2f2; color: #dc2626; }
-.ca-btn:hover { filter: brightness(0.92); transform: scale(1.1); }
- 
-/* Overlay khi delete mode */
-.card-overlay {
-  position: absolute; inset: 0; cursor: pointer; z-index: 1;
-}
- 
+.ra-btn--view  { background: #eff6ff; color: #2563eb; }
+.ra-btn--edit  { background: #f0fdf4; color: #16a34a; }
+.ra-btn--delete { background: #fef2f2; color: #dc2626; }
+.ra-btn:hover { filter: brightness(0.92); transform: scale(1.08); }
+
 /* ── Trash table ── */
 .trash-header { margin-bottom: 1.2rem; }
 .trash-title {
@@ -920,21 +1753,6 @@ function formatDate(d) {
   display: flex; align-items: center; gap: 0.5rem; margin: 0 0 0.3rem;
 }
 .trash-sub { font-size: 0.84rem; color: var(--a-text-muted); margin: 0; }
-.trash-table-wrap { overflow-x: auto; background: #fff; border: 1px solid var(--a-border); border-radius: 12px; }
-.trash-table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
-.trash-table th {
-  padding: 0.75rem 1rem; text-align: left;
-  font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px;
-  color: var(--a-text-muted); background: var(--a-bg);
-  border-bottom: 1px solid var(--a-border);
-}
-.trash-table td {
-  padding: 0.85rem 1rem;
-  border-bottom: 1px solid var(--a-border);
-  color: var(--a-text);
-}
-.trash-table tr:last-child td { border-bottom: none; }
-.trash-name { font-weight: 600; }
 .btn-restore {
   display: flex; align-items: center; gap: 0.4rem;
   padding: 0.35rem 0.75rem;
@@ -944,7 +1762,7 @@ function formatDate(d) {
   transition: all 0.15s;
 }
 .btn-restore:hover { background: #dcfce7; }
- 
+
 /* ── Modal ── */
 .overlay {
   position: fixed; inset: 0; z-index: 100;
@@ -960,6 +1778,9 @@ function formatDate(d) {
 }
 .modal--sm { max-width: 420px; text-align: center; }
 .modal--lg { max-width: 680px; }
+.modal--xl { max-width: 880px; padding: 1.75rem 0; }
+.modal--xl .modal__head { padding: 0 2rem; }
+.modal--xl .modal__footer { padding: 1.25rem 2rem 0; margin-top: 1.5rem; }
 .modal__head {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 1.4rem;
@@ -985,7 +1806,82 @@ function formatDate(d) {
   border-top: 1px solid var(--a-border);
 }
 .modal--sm .modal__footer { justify-content: center; }
- 
+
+/* ── Modal Thêm/Sửa giáo viên: menu trái + form phải ── */
+.create-body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 0;
+  border-top: 1px solid var(--a-border);
+  min-height: 420px;
+}
+.create-nav {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--a-border);
+  background: var(--a-bg);
+}
+.create-nav__item {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.6rem 0.75rem;
+  border: none; border-radius: 9px;
+  background: transparent; color: var(--a-text-muted);
+  font-size: 0.84rem; font-weight: 600; text-align: left;
+  cursor: pointer; transition: all 0.15s;
+}
+.create-nav__item:hover { background: #fff; color: var(--c-primary); }
+.create-nav__item--active { background: var(--grad-primary); color: #fff; }
+.create-form { padding: 1.25rem 2rem; }
+.create-section-title { font-size: 0.95rem; font-weight: 700; color: var(--a-text); margin: 0 0 0.2rem; }
+.create-section-title--gap { margin-top: 1.4rem; }
+.create-section-hint { font-size: 0.8rem; color: var(--a-text-muted); margin: 0 0 0.9rem; }
+
+/* Bằng cấp / Chứng chỉ: 1 dòng nhiều ô */
+.doc-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 0.9fr 1fr auto;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  align-items: center;
+}
+.doc-file {
+  display: flex; align-items: center; gap: 0.4rem;
+  height: 38px; padding: 0 0.7rem;
+  border: 1.5px dashed var(--a-border); border-radius: 9px;
+  font-size: 0.8rem; color: var(--a-text-muted);
+  cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: border-color 0.15s, color 0.15s;
+}
+.doc-file:hover { border-color: var(--c-primary); color: var(--c-primary); }
+.doc-remove {
+  display: grid; place-items: center;
+  width: 32px; height: 32px; flex-shrink: 0;
+  border: none; border-radius: 8px;
+  background: #fef2f2; color: #dc2626; cursor: pointer;
+}
+.btn-add-row {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.5rem 0.9rem; margin-top: 0.3rem;
+  border: 1.5px dashed var(--a-border); border-radius: 9px;
+  background: transparent; color: var(--a-text-muted);
+  font-size: 0.82rem; font-weight: 600; cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-add-row:hover { border-color: var(--c-primary); color: var(--c-primary); }
+
+/* Danh sách bằng cấp/chứng chỉ ĐÃ LƯU (modal Sửa) */
+.existing-doc {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  margin-bottom: 0.5rem;
+  background: var(--a-bg);
+  border: 1px solid var(--a-border);
+  border-radius: 9px;
+  font-size: 0.84rem;
+  color: var(--a-text);
+}
+
 /* Buttons */
 .btn {
   display: inline-flex; align-items: center; gap: 0.4rem;
@@ -1003,7 +1899,7 @@ function formatDate(d) {
 .btn--ghost:hover { border-color: var(--c-primary); color: var(--c-primary); }
 .btn--danger { background: #dc2626; color: #fff; }
 .btn--danger:hover { background: #b91c1c; }
- 
+
 /* ── Detail modal ── */
 .detail-hero {
   display: flex; align-items: center; gap: 1rem; margin-bottom: 1.4rem;
@@ -1011,7 +1907,7 @@ function formatDate(d) {
 .detail-avatar {
   display: grid; place-items: center;
   width: 64px; height: 64px; border-radius: 50%;
-  background: var(--grad-primary); color: #fff;
+  color: #fff;
   font-size: 1.6rem; font-weight: 800; flex-shrink: 0;
 }
 .detail-name { font-size: 1.15rem; font-weight: 700; color: var(--a-text); }
@@ -1034,14 +1930,16 @@ function formatDate(d) {
   background: var(--a-bg); border-radius: 8px;
   font-size: 0.84rem; color: var(--a-text);
 }
- 
-/* ── Edit form ── */
-.edit-form { display: flex; flex-direction: column; gap: 0.85rem; }
+
+/* ── Edit / Create form ── */
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; }
 .form-label {
   display: flex; flex-direction: column; gap: 0.4rem;
   font-size: 0.82rem; font-weight: 600; color: var(--a-text-muted);
+  margin-bottom: 0.85rem;
 }
+.create-form .form-row { margin-bottom: 0; }
+.create-form .form-label { margin-bottom: 0.85rem; }
 .req { color: #dc2626; }
 .form-input {
   width: 100%; padding: 0.55rem 0.75rem;
@@ -1056,11 +1954,16 @@ function formatDate(d) {
   box-shadow: 0 0 0 3px rgba(249,115,22,.12);
   background: #fff;
 }
+.form-textarea { resize: vertical; font-family: inherit; line-height: 1.5; }
 .form-error {
   font-size: 0.84rem; color: #dc2626;
-  background: #fef2f2; border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0;
+  background: #fef2f2; border-radius: 8px; padding: 0.5rem 0.75rem; margin: 0.85rem 0 0;
 }
- 
+.form-field { display: flex; flex-direction: column; }
+.form-field .form-label { margin-bottom: 0; }
+.form-input--error { border-color: #dc2626 !important; }
+.field-error { font-size: 0.78rem; color: #dc2626; margin-top: 0.25rem; }
+
 /* ── Toast ── */
 .toast {
   position: fixed; top: 1.25rem; right: 1.25rem; z-index: 999;
@@ -1074,15 +1977,20 @@ function formatDate(d) {
 .toast--error   { background: #dc2626; color: #fff; }
 .toast-enter-active, .toast-leave-active { transition: all 0.25s; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(-8px) scale(0.95); }
- 
+
 /* Modal transition */
 .modal-enter-active, .modal-leave-active { transition: all 0.22s; }
 .modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.95); }
- 
+
 /* Responsive */
 @media (max-width: 640px) {
-  .teacher-grid { grid-template-columns: 1fr; }
   .detail-grid, .form-row { grid-template-columns: 1fr; }
   .tl__header { flex-direction: column; }
+  .filter-total { flex-direction: row; gap: 0.4rem; }
+}
+@media (max-width: 760px) {
+  .create-body { grid-template-columns: 1fr; }
+  .create-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--a-border); }
+  .doc-row { grid-template-columns: 1fr; }
 }
 </style>
