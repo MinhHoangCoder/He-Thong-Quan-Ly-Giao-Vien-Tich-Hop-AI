@@ -1971,6 +1971,10 @@ function formatDate(d) {
   background: #fff;
   border: 1px solid var(--a-border);
   border-radius: 12px;
+  position: sticky;
+  top: 60px;
+  z-index: 1000;
+  padding: 15px;
 }
 .filter-total {
   display: flex;
