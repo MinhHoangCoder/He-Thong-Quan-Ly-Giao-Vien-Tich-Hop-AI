@@ -373,6 +373,7 @@ async function loadBranches() {
   }
 }
 
+
 async function loadTrash() {
   trashLoading.value = true
   try {
