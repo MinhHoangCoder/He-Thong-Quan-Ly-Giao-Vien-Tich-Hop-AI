@@ -351,6 +351,22 @@ VALUES (@TeaDat, @SchHB, @SubRo, NULL, @EmpDN, '2025-09-01', '2026-05-31', 'COMP
 SET @Asg6 = SCOPE_IDENTITY();
 
 /* =====================================================================
+   16b) AssignmentSlot — mẫu lặp TUẦN của phân công (thứ + tiết[, phòng])
+        Generator (tầng Service) sẽ nở các ô này thành Schedule cụ thể theo Period.
+        Demo: 1 phân công (@Asg1) có 2 ô/tuần → minh họa grain "mức kỳ ôm nhiều tiết".
+   ===================================================================== */
+DECLARE @PerDemo1 INT = (SELECT Id FROM Period WHERE SchoolId = @SchDemo AND PeriodNumber = 1);
+DECLARE @PerDemo2 INT = (SELECT Id FROM Period WHERE SchoolId = @SchDemo AND PeriodNumber = 2);
+DECLARE @PerBM6   INT = (SELECT Id FROM Period WHERE SchoolId = @SchBM   AND PeriodNumber = 6);
+DECLARE @PerBM3   INT = (SELECT Id FROM Period WHERE SchoolId = @SchBM   AND PeriodNumber = 3);
+
+INSERT INTO AssignmentSlot (AssignmentId, TeacherId, DayOfWeek, PeriodId, RoomId) VALUES
+ (@Asg1, @TeaDemo, 'MON', @PerDemo1, @RoomLabDemo),   -- Scratch 10A1: sáng thứ 2, tiết 1
+ (@Asg1, @TeaDemo, 'WED', @PerDemo2, @RoomLabDemo),   -- và sáng thứ 4, tiết 2 (2 ô/tuần CÙNG phân công)
+ (@Asg2, @TeaAn,   'TUE', @PerBM6,   @RoomLabBM),     -- Scratch 4A Ban Mai: chiều thứ 3, tiết 6
+ (@Asg3, @TeaBich, 'THU', @PerBM3,   @RoomP202);      -- CDS 5B Ban Mai: sáng thứ 5, tiết 3
+
+/* =====================================================================
    17) Schedule — 10 buổi dạy (tạo PENDING, phần 18 sẽ duyệt qua UPDATE
        để trigger TR_Schedule_StatusLog tự sinh ScheduleStatusLog)
    ===================================================================== */
@@ -530,6 +546,32 @@ INSERT INTO LessonFile (LessonId, FileName, FileUrl, FileType, FileSizeKb, Creat
  (@Les4, N'python-bien-kieu-du-lieu.pdf',   '/uploads/lessons/python-bien-kieu-du-lieu.pdf',   'pdf',   780, @UEmp3),
  (@Les5, N'dau-chan-so-slide.pdf',          '/uploads/lessons/dau-chan-so-slide.pdf',          'pdf',   950, @UEmp2),
  (@Les6, N'lua-dao-truc-tuyen-2025.pptx',   '/uploads/lessons/lua-dao-truc-tuyen-2025.pptx',   'pptx', 2400, @UEmp5);
+
+/* =====================================================================
+   27) Ca làm nhân viên (V10): loại hình + đăng ký ca (part-time) + lịch thực tế
+       Song song mô hình AssignmentSlot → Schedule của lịch dạy GV.
+   ===================================================================== */
+-- Cho 1 nhân viên sang PART_TIME để minh họa luồng đăng ký ca (còn lại mặc định FULL_TIME)
+UPDATE Employee SET EmploymentType = 'PART_TIME', UpdatedAt = SYSUTCDATETIME(), UpdatedBy = @UAdmin
+WHERE Id = @EmpCG;
+
+-- Đăng ký ca của NV part-time: đủ 3 trạng thái APPROVED / PENDING / REJECTED
+DECLARE @Ptr1 INT;
+INSERT INTO PartTimeShiftRequest (EmployeeId, WorkDate, ShiftType, Note, Status, ReviewedByEmployeeId, ReviewedAt)
+VALUES (@EmpCG, '2026-07-06', 'MORNING', N'Đăng ký trực sáng thứ 2', 'APPROVED', @EmpTT, SYSUTCDATETIME());
+SET @Ptr1 = SCOPE_IDENTITY();
+
+INSERT INTO PartTimeShiftRequest (EmployeeId, WorkDate, ShiftType, Note)
+VALUES (@EmpCG, '2026-07-07', 'AFTERNOON', N'Đăng ký trực chiều thứ 3');   -- Status mặc định PENDING
+
+INSERT INTO PartTimeShiftRequest (EmployeeId, WorkDate, ShiftType, Note, Status, ReviewedByEmployeeId, ReviewedAt, RejectionReason)
+VALUES (@EmpCG, '2026-07-08', 'MORNING', N'Đăng ký trực sáng thứ 4', 'REJECTED', @EmpTT, SYSUTCDATETIME(), N'Đã đủ người ca sáng hôm đó');
+
+-- Lịch làm THỰC TẾ: full-time cố định (FIXED) + part-time sinh từ đăng ký đã duyệt (FROM_REQUEST → @Ptr1)
+INSERT INTO EmployeeSchedule (EmployeeId, WorkDate, ShiftType, StartTime, EndTime, Source, SourceRequestId, Note) VALUES
+ (@EmpTT, '2026-07-06', 'MORNING',   '08:00', '11:00', 'FIXED',        NULL,  N'Ca cố định full-time (T2-T6)'),
+ (@EmpTT, '2026-07-06', 'AFTERNOON', '14:00', '17:00', 'FIXED',        NULL,  N'Ca cố định full-time (T2-T6)'),
+ (@EmpCG, '2026-07-06', 'MORNING',   '08:00', '11:00', 'FROM_REQUEST', @Ptr1, N'Sinh từ đăng ký ca đã duyệt');
 
 COMMIT TRANSACTION;
 PRINT N'>>> Seed demo hoàn tất: dữ liệu mẫu đã nạp cho toàn bộ bảng nghiệp vụ.';
