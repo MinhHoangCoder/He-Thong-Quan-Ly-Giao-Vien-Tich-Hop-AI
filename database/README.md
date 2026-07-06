@@ -25,13 +25,28 @@ Migration thực thi nằm trong backend: `backend/src/main/resources/db/migrati
 - `V8__subject_category_lookup.sql` — bảng lookup `SubjectCategory` (4 nhóm môn), thay cột text `Subject.Category` cũ.
 - `V9__teacher_timetable.sql` — thời khóa biểu dạy: `Period` (khung tiết theo trường) + `AssignmentSlot` (mẫu lặp tuần); `Schedule` thêm `PeriodId`, `SourceSlotId`.
 - `V10__employee_workshift.sql` — ca làm nhân viên: `Employee.EmploymentType` + `PartTimeShiftRequest` (đăng ký ca) + `EmployeeSchedule` (lịch làm thực tế).
-- Thêm thay đổi schema sau này bằng file mới: `V11__<mô_tả>.sql`, `V12__...` (KHÔNG sửa file đã chạy). Nhớ "xí số" version trong nhóm trước khi tạo (xem quy ước làm việc nhóm).
+- `V11__fix_schedule_status_trigger.sql` — dựng lại trigger `TR_Schedule_StatusLog` theo PK mới (`Id`): V7 rename cột nhưng `sp_rename` KHÔNG sửa thân trigger → `UPDATE Schedule` nổ "Invalid column name 'ScheduleId'" trên DB dựng bằng Flyway.
+- Thêm thay đổi schema sau này bằng file mới: `V12__<mô_tả>.sql`, `V13__...` (KHÔNG sửa file đã chạy). Nhớ "xí số" version trong nhóm trước khi tạo (xem quy ước làm việc nhóm).
 
 > **Giữ đồng bộ:** `schema/TSDMS_Schema.sql` là bản thiết kế để đọc; `db/migration/V1__init_schema.sql` là bản Flyway thực thi. Khi đổi schema, cập nhật cả hai (hoặc coi migration là nguồn chính).
 
 ### Lưu ý SQL Server + Flyway
 - Schema dùng `GO` batch separator và có `CREATE TRIGGER` — cần dependency `flyway-sqlserver` (đã thêm trong `pom.xml`) để tách batch đúng.
 - Phần AI (`TSDMS_Schema_AI.sql`, 6 bảng) làm ở giai đoạn sau → sẽ thành `V2__ai_schema.sql`.
+
+## ⚠ Reset DB đúng cách (đọc kỹ trước khi "xóa DB làm lại")
+
+1. `DROP DATABASE TSDMS;` → `CREATE DATABASE TSDMS;` (DB **RỖNG**, không chạy file .sql nào).
+2. Chạy backend (`mvnw spring-boot:run`, nhớ `$env:DB_PASSWORD`) — Flyway tự dựng V1→V11
+   kèm seed hệ thống (role, permission, tài khoản demo `Tsdms@123`).
+3. (Tùy chọn) Muốn có dữ liệu nghiệp vụ mẫu: chạy `seed/TSDMS_Seed_Demo.sql` bằng SSMS.
+   Nếu dùng `sqlcmd` thì PHẢI kèm cờ `-I` (bật `QUOTED_IDENTIFIER ON` — schema có filtered
+   index `WHERE IsDeleted = 0`, thiếu cờ này mọi INSERT đều lỗi Msg 1934).
+
+**TUYỆT ĐỐI KHÔNG** dựng DB dev bằng cách chạy tay `schema/TSDMS_Schema.sql` rồi mới bật
+backend: file đó là bản **mirror trạng thái CUỐI** (sau V10). Flyway thấy DB có bảng nhưng
+chưa có `flyway_schema_history` sẽ baseline ở V1 rồi chạy đè V2→V11 lên schema cuối —
+V6/V7/V9/V10 không idempotent nên vỡ ngay ("migration chồng lấn"). Mirror chỉ để ĐỌC.
 
 ## Quy ước chung mọi bảng nghiệp vụ
 - **Khóa chính:** tên cột là `Id` ở mọi bảng (đồng nhất từ V7). Khóa ngoại giữ tên `<Bảng>Id` (vd `TeacherId`, `SchoolId`) để tự mô tả trỏ tới bảng nào.

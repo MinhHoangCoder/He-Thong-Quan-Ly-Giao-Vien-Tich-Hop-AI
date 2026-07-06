@@ -1,4 +1,12 @@
 /* =====================================================================
+   ⚠⚠⚠  FILE NÀY CHỈ ĐỂ ĐỌC — KHÔNG CHẠY ĐỂ DỰNG DB DEV  ⚠⚠⚠
+   Đây là bản MIRROR trạng thái schema CUỐI (sau V10) phục vụ đọc/review.
+   Muốn dựng/reset DB: tạo database RỖNG rồi chạy backend — Flyway tự dựng
+   V1→V11 + seed. Chạy tay file này trước sẽ làm Flyway baseline nhầm ở V1
+   và chạy đè V2+ lên schema cuối → vỡ migration ("chồng lấn").
+   Chi tiết: database/README.md mục "Reset DB đúng cách".
+   =====================================================================
+
    TSDMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
    ---------------------------------------------------------------------
    MÔ HÌNH: Trung tâm giáo dục ĐIỀU PHỐI giáo viên đi dạy cho các trường
