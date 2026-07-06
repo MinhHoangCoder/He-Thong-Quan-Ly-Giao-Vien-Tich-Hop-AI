@@ -47,3 +47,4 @@ EXEC sp_rename 'Lesson.LessonId',                         'Id', 'COLUMN';
 EXEC sp_rename 'LessonFile.LessonFileId',                 'Id', 'COLUMN';
 EXEC sp_rename 'ServiceContract.ServiceContractId',       'Id', 'COLUMN';
 GO
+a
