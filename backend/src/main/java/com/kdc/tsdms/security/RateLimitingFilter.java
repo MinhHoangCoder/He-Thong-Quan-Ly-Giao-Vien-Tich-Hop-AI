@@ -31,8 +31,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class RateLimitingFilter extends OncePerRequestFilter {
 
     /** Chỉ chặn đúng các endpoint tốn kém/nhạy cảm; phần còn lại không đụng tới. */
-    private static final Set<String> LIMITED_PATHS =
-            Set.of("/api/v1/auth/login", "/api/v1/auth/forgot-password", "/api/v1/auth/reset-password");
+    private static final Set<String> LIMITED_PATHS = Set.of(
+            "/api/v1/auth/login",
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/reset-password",
+            // Đổi mật khẩu yêu cầu nhập mật khẩu HIỆN TẠI -> cũng là mục tiêu brute-force
+            // (kẻ chiếm được access token có thể dò mật khẩu để chiếm hẳn tài khoản).
+            "/api/v1/me/change-password");
 
     /** Chặn rò rỉ bộ nhớ: khi vượt số khoá này thì dọn bớt các xô đã đầy (idle). */
     private static final int MAX_TRACKED_KEYS = 50_000;

@@ -1,6 +1,8 @@
 package com.kdc.tsdms.exception;
 
 import com.kdc.tsdms.dto.ErrorResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -11,6 +13,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 /** Gom mọi lỗi về một định dạng JSON thống nhất. */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<ErrorResponse> handleApi(ApiException ex) {
@@ -32,9 +36,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.FORBIDDEN, "Bạn không có quyền thực hiện thao tác này");
     }
 
+    /**
+     * Lỗi không lường trước: message gốc (SQL, stacktrace…) chỉ ghi LOG server,
+     * KHÔNG trả về client — tránh lộ cấu trúc DB/hệ thống cho kẻ dò lỗi.
+     */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleOther(Exception ex) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống: " + ex.getMessage());
+        log.error("Lỗi hệ thống chưa xử lý", ex);
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống, vui lòng thử lại sau");
     }
 
     private ResponseEntity<ErrorResponse> build(HttpStatus status, String message) {

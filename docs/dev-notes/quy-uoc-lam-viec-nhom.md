@@ -3,11 +3,30 @@
 > Áp dụng cho mọi thành viên. Mục tiêu: nhiều người làm song song mà KHÔNG giẫm chân nhau.
 > Nguyên tắc chung: **feature mới = THÊM file mới**; file dùng chung chỉ **thêm vào cuối**, không sửa/sắp xếp lại phần của người khác.
 
-## 1. Quy trình Git (quan trọng nhất)
+## 1. Quy trình Git (quan trọng nhất) — cập nhật 2026-07-07
 
-- **Nhánh sống ngắn**: mỗi nhánh feature tối đa 1–3 ngày là mở PR. Nhánh càng lâu, conflict càng to.
-- **Mỗi ngày một lần** kéo master mới nhất về nhánh mình: `git fetch origin; git merge origin/master`.
-- Merge PR trên GitHub bằng **"Create a merge commit"** (KHÔNG Squash — mất chuỗi commit từng ngày của từng người).
+> Đổi quy ước: nhóm đã dùng "Squash and merge" trên thực tế từ nhiều PR nay, nên quy trình
+> nhánh phải đổi THEO cho khớp. Squash chỉ chạy đúng khi nhánh sống ngắn (lý do ở cuối mục).
+
+- **Mỗi việc một nhánh MỚI, cắt từ master mới nhất** — làm chức năng hay fix bug đều vậy:
+
+  ```
+  git switch master
+  git pull
+  git switch -c feature/ten-viec   # hoặc fix/ten-bug
+  ```
+
+- **Merge PR bằng "Squash and merge"** → master sạch, mỗi dòng = 1 tính năng kèm số PR,
+  các commit "wip"/"fix typo" không lọt vào master.
+- **PR merge xong → XÓA nhánh** (nút Delete branch), **không tái sử dụng nhánh cũ**.
+  Vì sao bắt buộc: squash tạo 1 commit MỚI trên master, các commit gốc trên nhánh không
+  bao giờ vào lịch sử master → commit lại tiếp trên nhánh cũ thì PR sau sẽ hiện lại toàn
+  bộ commit cũ, càng ngày càng phình (bài học từ chuỗi PR #48→#54 của feature/core).
+  Tiện thể: nhánh chỉ có 1 commit thì GitHub tự điền tiêu đề + mô tả PR từ commit message.
+- **Nhánh sống ngắn**: tối đa 1–3 ngày là mở PR. Nhánh càng lâu, conflict càng to.
+  Nhánh sống quá 1 ngày thì kéo master về: `git fetch origin; git merge origin/master`.
+- Nhánh cá nhân nên đặt `git config pull.rebase true` — hết cảnh tự merge với chính mình
+  ("Merge branch 'X' of https://..." khi bản local và bản trên GitHub lệch nhau).
 - **Chia việc theo MODULE DỌC** (một người ôm trọn cả BE+FE của "Phân công", người khác ôm "Chấm công"...), không chia theo tầng (một người ôm "toàn bộ service" là cách nhanh nhất để cả nhóm sửa chung một file).
 
 ## 2. Database / Flyway — bẫy nguy hiểm nhất, Git KHÔNG cảnh báo
