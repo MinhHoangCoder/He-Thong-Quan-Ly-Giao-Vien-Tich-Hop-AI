@@ -88,6 +88,14 @@ public class AuthService {
                 .findById(stored.getAppUserId())
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Tài khoản không tồn tại"));
 
+        // Tài khoản bị khóa/xóa sau khi đăng nhập thì KHÔNG được gia hạn phiên nữa —
+        // thiếu check này, refresh token xoay vòng giúp user bị khóa sống vô hạn.
+        // Thu hồi luôn mọi token còn lại (nhờ noRollbackFor nên lệnh revoke vẫn được lưu).
+        if (user.isDeleted() || !"ACTIVE".equals(user.getStatus())) {
+            refreshTokenRepo.revokeAllActiveByAppUserId(user.getId(), Instant.now());
+            throw new ApiException(HttpStatus.FORBIDDEN, "Tài khoản đang bị khóa hoặc ngừng hoạt động");
+        }
+
         // ROTATION: thu hồi token cũ rồi cấp cặp token mới -> nếu token cũ bị đánh cắp
         // và dùng lại sau khi đã refresh, nó sẽ vô hiệu.
         stored.setRevokedAt(Instant.now());

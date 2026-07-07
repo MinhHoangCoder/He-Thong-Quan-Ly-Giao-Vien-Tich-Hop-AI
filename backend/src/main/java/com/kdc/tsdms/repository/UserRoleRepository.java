@@ -2,6 +2,7 @@ package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.UserRole;
 import com.kdc.tsdms.entity.UserRoleId;
+import java.util.Collection;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -21,4 +22,15 @@ public interface UserRoleRepository extends JpaRepository<UserRole, UserRoleId> 
     @Query("SELECT DISTINCT p.code FROM UserRole ur, RolePermission rp, Permission p "
             + "WHERE ur.roleId = rp.roleId AND rp.permissionId = p.id AND ur.appUserId = :appUserId")
     List<String> findPermissionCodesByAppUserId(@Param("appUserId") Integer appUserId);
+
+    /**
+     * Cặp (appUserId, tên role) cho NHIỀU tài khoản một lượt — trang quản trị hiển thị
+     * cột vai trò cho cả trang danh sách bằng 1 query thay vì N query.
+     */
+    @Query("SELECT ur.appUserId, r.name FROM UserRole ur, Role r "
+            + "WHERE ur.roleId = r.id AND ur.appUserId IN :appUserIds")
+    List<Object[]> findRoleNamePairsByAppUserIds(@Param("appUserIds") Collection<Integer> appUserIds);
+
+    /** Toàn bộ dòng gán role của 1 tài khoản — dùng khi thay danh sách role (gán chức danh). */
+    List<UserRole> findByAppUserId(Integer appUserId);
 }
