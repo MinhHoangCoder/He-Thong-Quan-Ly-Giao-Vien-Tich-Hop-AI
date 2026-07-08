@@ -17,6 +17,13 @@ const nav = [
     ],
   },
   {
+    label: 'Kho bài giảng',
+    icon: '📚',
+    to: {
+      name: 'teacher-lessons',
+    },
+  },
+  {
     title: 'Cá nhân',
     items: [
       { label: 'Phiếu lương', icon: 'payroll', to: '#' },
