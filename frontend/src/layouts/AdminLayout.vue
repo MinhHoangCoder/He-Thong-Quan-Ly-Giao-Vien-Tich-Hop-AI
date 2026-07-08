@@ -17,6 +17,10 @@ const nav = [
     ],
   },
   {
+    title: 'Kho bài giảng',
+    items: [{ label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' }],
+  },
+  {
     title: 'Khách hàng',
     items: [
       { label: 'Trường', icon: 'school', to: '#' },
