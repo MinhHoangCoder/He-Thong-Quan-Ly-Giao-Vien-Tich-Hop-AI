@@ -23,4 +23,22 @@ export const adminRoutes = [
     component: () => import('@/pages/TeacherListPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
+  // ── Khu CÀI ĐẶT ──────────────────────────────────────────────────
+  {
+    // Cài đặt CÁ NHÂN của người đang đăng nhập (hồ sơ / mật khẩu / thiết bị).
+    // Cùng component với /staff/settings, /teacher/settings... — chỉ khác layout bọc ngoài.
+    path: '/settings',
+    name: 'admin-settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    // Ma trận Role × Permission (chỉ đọc).
+    // LƯU Ý: trang "quản lý tài khoản" (list/khóa/gán role) do THÀNH VIÊN KHÁC dựng UI —
+    // backend đã sẵn ở /api/v1/admin/users/** (xem api/adminUsers.js), FE không làm trùng.
+    path: '/settings/roles',
+    name: 'admin-roles',
+    component: () => import('@/pages/RoleMatrixPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN'] },
+  },
 ]
