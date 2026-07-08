@@ -29,10 +29,11 @@ const nav = [
     items: [{ label: 'Thông báo', icon: 'bell', to: '#' }],
   },
 ]
+// "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>
 
 <template>
-  <PortalShell :nav="nav">
+  <PortalShell :nav="nav" settings-to="/teacher/settings">
     <slot />
   </PortalShell>
 </template>
