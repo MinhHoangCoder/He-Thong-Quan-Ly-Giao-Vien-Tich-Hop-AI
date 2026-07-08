@@ -98,7 +98,7 @@ const features = [
   border: 1px solid var(--c-border);
   border-radius: 12px;
   padding: 1.5rem;
-  background: #fff;
+  background: var(--c-surface);
   transition:
     box-shadow var(--t),
     transform var(--t),

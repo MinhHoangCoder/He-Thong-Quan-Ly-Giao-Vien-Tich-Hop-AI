@@ -290,7 +290,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 12px;
   align-items: flex-end;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border, #e2e8f0);
   border-radius: 12px;
   padding: 16px;
@@ -301,7 +301,7 @@ onMounted(() => {
   flex-direction: column;
   gap: 5px;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   min-width: 150px;
 }
 .field--wide {
@@ -315,7 +315,7 @@ onMounted(() => {
   border-radius: 8px;
   font-size: 14px;
   outline: none;
-  background: #fff;
+  background: var(--c-surface);
 }
 .field select:focus,
 .field input:focus {
@@ -335,7 +335,7 @@ onMounted(() => {
 
 .table-wrap {
   overflow-x: auto;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border, #e2e8f0);
   border-radius: 12px;
 }
@@ -344,19 +344,19 @@ table {
   border-collapse: collapse;
 }
 th {
-  background: #f8fafc;
+  background: var(--c-surface-2);
   padding: 10px 12px;
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--c-text);
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--c-border);
   white-space: nowrap;
 }
 td {
   padding: 10px 12px;
   font-size: 14px;
-  color: #1e293b;
+  color: var(--c-text);
   border-bottom: 1px solid #f1f5f9;
   vertical-align: top;
 }
@@ -368,7 +368,7 @@ tr:hover td {
 }
 .empty {
   text-align: center;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   padding: 32px !important;
 }
 
@@ -410,7 +410,7 @@ tr:hover td {
   white-space: nowrap;
 }
 .badge--draft {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
   color: #64748b;
 }
 .badge--pub {
@@ -435,7 +435,7 @@ tr:hover td {
   transition: background 0.15s;
 }
 .act-btn:hover {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
 }
 
 .pagination {
@@ -446,9 +446,9 @@ tr:hover td {
 }
 .pg-btn {
   padding: 6px 11px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--c-border);
   border-radius: 7px;
-  background: #fff;
+  background: var(--c-surface);
   font-size: 13px;
   cursor: pointer;
   transition: all 0.15s;
@@ -483,8 +483,8 @@ tr:hover td {
   filter: brightness(1.05);
 }
 .btn--ghost {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 .btn--ghost:hover {
   background: #e2e8f0;
@@ -515,7 +515,7 @@ tr:hover td {
   z-index: 999;
 }
 .modal {
-  background: #fff;
+  background: var(--c-surface);
   border-radius: 14px;
   padding: 28px;
   max-width: 400px;
@@ -526,7 +526,7 @@ tr:hover td {
   font-size: 18px;
 }
 .modal p {
-  color: #475569;
+  color: var(--c-text);
   font-size: 14px;
   margin: 0 0 20px;
 }

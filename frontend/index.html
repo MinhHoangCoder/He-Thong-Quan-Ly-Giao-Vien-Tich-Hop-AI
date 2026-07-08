@@ -5,6 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <title>KDC EduOps AI — Quản lý & điều phối giáo viên</title>
+    <script>
+      // Chống "chớp trắng": áp theme từ localStorage TRƯỚC khi Vue kịp chạy.
+      // Logic phải khớp stores/ui.js (nguồn sự thật); đây chỉ là bản áp sớm.
+      ;(function () {
+        try {
+          var saved = JSON.parse(localStorage.getItem('tsdms.ui') || 'null') || {}
+          var theme = saved.theme || 'system'
+          if (theme === 'system') {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          }
+          document.documentElement.dataset.theme = theme
+          if (saved.fontSize === 'large') document.documentElement.dataset.fontsize = 'large'
+          if (saved.motion === false) document.documentElement.dataset.motion = 'reduced'
+        } catch (e) {
+          /* localStorage hỏng/bị chặn -> giữ theme sáng mặc định */
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

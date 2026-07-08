@@ -340,7 +340,7 @@ const topTeachers = [
 
 /* Card chung */
 .card {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 16px;
   padding: 1.3rem;
@@ -402,7 +402,7 @@ const topTeachers = [
   padding: 0.45rem 0.7rem;
   font-size: 0.82rem;
   color: var(--a-text);
-  background: #fff;
+  background: var(--c-surface);
   cursor: pointer;
   transition:
     border-color var(--t-fast),

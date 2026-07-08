@@ -516,7 +516,7 @@ onMounted(async () => {
 }
 
 .card {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border, #e2e8f0);
   border-radius: 14px;
   padding: 20px;
@@ -529,7 +529,7 @@ onMounted(async () => {
   margin: 0 0 4px;
   font-size: 16px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text);
 }
 .card__sub {
   margin: 0 0 14px;
@@ -563,7 +563,7 @@ onMounted(async () => {
 }
 .field-hint {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   margin-top: 2px;
 }
 
@@ -572,7 +572,7 @@ onMounted(async () => {
   flex-direction: column;
   gap: 5px;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   margin-bottom: 14px;
 }
 .field--full {
@@ -590,7 +590,7 @@ onMounted(async () => {
   border-radius: 9px;
   font-size: 14px;
   outline: none;
-  background: #fff;
+  background: var(--c-surface);
   resize: vertical;
   font-family: inherit;
 }
@@ -601,7 +601,7 @@ onMounted(async () => {
 }
 .hint {
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   font-size: 12px;
 }
 
@@ -615,7 +615,7 @@ onMounted(async () => {
 .file-input {
   display: block;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   margin-bottom: 10px;
   width: 100%;
 }
@@ -626,11 +626,11 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 .file-chip {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 12px;
-  color: #334155;
+  color: var(--c-text);
 }
 
 .canva-form {
@@ -644,7 +644,7 @@ onMounted(async () => {
 }
 
 .empty-files {
-  color: #94a3b8;
+  color: var(--c-text-muted);
   font-size: 13px;
   padding: 8px 0;
 }
@@ -676,7 +676,7 @@ onMounted(async () => {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: #1e293b;
+  color: var(--c-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -688,12 +688,12 @@ a.file-name:hover {
 }
 .file-meta {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--c-text-muted);
 }
 .del-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
@@ -727,8 +727,8 @@ a.file-name:hover {
   cursor: not-allowed;
 }
 .btn--ghost {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 .btn--ghost:hover:not(:disabled) {
   background: #e2e8f0;
