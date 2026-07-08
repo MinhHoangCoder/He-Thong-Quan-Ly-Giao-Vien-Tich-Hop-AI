@@ -1,7 +1,8 @@
 <script setup>
 // Trang đăng nhập dùng CHUNG cho cả 4 actor (RBAC: 1 login, phân quyền sau đăng nhập).
-// Có thêm chế độ "Quên mật khẩu" (gửi email đặt lại).
-import { ref } from 'vue'
+// Có thêm chế độ "Quên mật khẩu" (gửi email đặt lại) và chế độ "Thêm tài khoản"
+// (?add=1 — đăng nhập THÊM tài khoản cho account switcher, phiên đang có giữ nguyên).
+import { computed, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -14,6 +15,10 @@ const route = useRoute()
 const auth = useAuthStore()
 
 const mode = ref('login') // 'login' | 'forgot'
+
+// Chế độ "Thêm tài khoản": vào từ dropdown avatar khi ĐÃ đăng nhập (guard cho qua
+// nhờ ?add=1). Login thành công thì store upsert tài khoản mới, tài khoản cũ ở lại.
+const isAddMode = computed(() => route.query.add === '1')
 
 // --- Đăng nhập ---
 const username = ref('')
@@ -116,6 +121,10 @@ const features = [
 
         <!-- CHẾ ĐỘ ĐĂNG NHẬP -->
         <form v-if="mode === 'login'" @submit.prevent="onLogin" class="form">
+          <p v-if="isAddMode" class="addnote">
+            Đang <strong>thêm tài khoản</strong> — các tài khoản đã đăng nhập vẫn giữ nguyên.
+            <button type="button" class="addnote__back" @click="router.back()">← Quay lại</button>
+          </p>
           <label class="field">
             <span>Tên đăng nhập</span>
             <input v-model="username" type="text" autocomplete="username" required />
@@ -186,6 +195,29 @@ const features = [
 </template>
 
 <style scoped>
+/* Banner chế độ "Thêm tài khoản" (account switcher) */
+.addnote {
+  margin: 0 0 0.4rem;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.82rem;
+  color: var(--c-accent-dark, #1d4ed8);
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  line-height: 1.45;
+}
+.addnote__back {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin-left: 0.35rem;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .auth {
   display: flex;
   width: 100%;
@@ -304,7 +336,7 @@ const features = [
   max-width: 400px;
   padding: 32px;
   border-radius: 18px;
-  background: #fff;
+  background: var(--c-surface);
   box-shadow: 0 18px 50px rgba(15, 40, 80, 0.12);
   border: 1px solid var(--c-border);
 }
@@ -336,7 +368,7 @@ const features = [
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-  color: #334155;
+  color: var(--c-text);
 }
 .field input {
   padding: 10px 12px;
@@ -395,7 +427,7 @@ const features = [
   height: 32px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   cursor: pointer;
   border-radius: 8px;
   transition:
@@ -431,7 +463,7 @@ const features = [
 .demo {
   margin-top: 8px;
   padding-top: 14px;
-  border-top: 1px dashed #e2e8f0;
+  border-top: 1px dashed var(--c-border);
 }
 .demo__title {
   margin: 0 0 8px;
@@ -460,7 +492,7 @@ const features = [
   transform: translateY(-1px);
 }
 code {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
   padding: 1px 5px;
   border-radius: 4px;
 }

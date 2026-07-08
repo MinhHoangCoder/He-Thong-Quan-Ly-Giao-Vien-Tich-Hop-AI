@@ -34,4 +34,11 @@ export const staffRoutes = [
     component: () => import('@/pages/SubjectCategoryListPage.vue'),
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
+  // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
+  {
+    path: '/staff/settings',
+    name: 'staff-settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
 ]

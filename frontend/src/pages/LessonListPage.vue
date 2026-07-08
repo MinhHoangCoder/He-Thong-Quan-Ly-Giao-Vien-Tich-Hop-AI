@@ -434,12 +434,12 @@ onMounted(async () => {
   margin: 0;
   font-size: 26px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--c-text);
 }
 
 .page__sub {
   margin-top: 6px;
-  color: #64748b;
+  color: var(--c-text-muted);
   font-size: 14px;
 }
 
@@ -452,11 +452,11 @@ onMounted(async () => {
   padding: 18px;
   margin-bottom: 18px;
 
-  background: white;
+  background: var(--c-surface);
 
   border-radius: 14px;
 
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--c-border);
 }
 
 .field {
@@ -473,13 +473,13 @@ onMounted(async () => {
 .field span {
   font-size: 13px;
   font-weight: 600;
-  color: #475569;
+  color: var(--c-text);
 }
 
 .field input,
 .field select {
   height: 40px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 8px;
   padding: 0 12px;
   font-size: 14px;
@@ -515,8 +515,8 @@ onMounted(async () => {
 }
 
 .btn--ghost {
-  background: #f1f5f9;
-  color: #334155;
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 
 .btn--danger {
@@ -533,9 +533,9 @@ onMounted(async () => {
 
 .table-wrap {
   overflow-x: auto;
-  background: white;
+  background: var(--c-surface);
   border-radius: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--c-border);
 }
 
 table {
@@ -544,7 +544,7 @@ table {
 }
 
 thead {
-  background: #f8fafc;
+  background: var(--c-surface-2);
 }
 
 th {
@@ -552,21 +552,21 @@ th {
   text-align: left;
   font-size: 13px;
   font-weight: 700;
-  color: #475569;
+  color: var(--c-text);
 }
 
 td {
   padding: 14px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--c-border);
 }
 
 tbody tr:hover {
-  background: #fafafa;
+  background: var(--c-surface-2);
 }
 
 .empty {
   text-align: center;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   padding: 35px;
 }
 
@@ -579,7 +579,7 @@ tbody tr:hover {
 .desc-text {
   margin-top: 4px;
 
-  color: #64748b;
+  color: var(--c-text-muted);
 
   font-size: 12px;
 
@@ -625,18 +625,26 @@ tbody tr:hover {
 }
 
 .badge--draft {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 
+/* Nền rgba mờ hòa được cả theme sáng/tối; chữ chỉnh riêng cho nền tối bên dưới */
 .badge--pub {
-  background: #dcfce7;
+  background: rgba(34, 197, 94, 0.15);
   color: #15803d;
 }
 
 .badge--arch {
-  background: #fef9c3;
+  background: rgba(245, 158, 11, 0.16);
   color: #a16207;
+}
+
+:root[data-theme='dark'] .badge--pub {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge--arch {
+  color: #fbbf24;
 }
 
 /* ================= Action ================= */
@@ -660,11 +668,11 @@ tbody tr:hover {
 }
 
 .act-btn:hover {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
 }
 
 .act-btn--del:hover {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.12);
 }
 
 /* ================= Pagination ================= */
@@ -686,11 +694,11 @@ tbody tr:hover {
 
   height: 38px;
 
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--c-border);
 
   border-radius: 8px;
 
-  background: white;
+  background: var(--c-surface);
 
   cursor: pointer;
 
@@ -717,7 +725,7 @@ tbody tr:hover {
 
   height: 38px;
 
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
 
   border-radius: 8px;
 
@@ -742,7 +750,7 @@ tbody tr:hover {
 .modal {
   width: 420px;
 
-  background: white;
+  background: var(--c-surface);
 
   border-radius: 16px;
 
@@ -771,13 +779,16 @@ tbody tr:hover {
 }
 
 .msg--error {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
 }
 
 .total {
   margin-bottom: 14px;
-  color: #64748b;
+  color: var(--c-text-muted);
 }
 
 /* ================= Responsive ================= */

@@ -640,7 +640,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 .sc-readonly-note {
   margin: 4px 0 0;
   font-size: 0.8rem;
-  color: #6b7280;
+  color: var(--c-text-muted);
 }
 .sc-toolbar {
   display: flex;
@@ -650,13 +650,13 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 .input-search {
   flex: 1;
   padding: 0.45rem 0.75rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 6px;
   font-size: 0.9rem;
 }
 .sc-table-wrap {
   overflow-x: auto;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--c-border);
   border-radius: 8px;
 }
 .sc-table {
@@ -665,11 +665,11 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   font-size: 0.9rem;
 }
 .sc-table th {
-  background: #f9fafb;
+  background: var(--c-surface-2);
   padding: 0.6rem 1rem;
   text-align: left;
   font-weight: 600;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--c-border);
 }
 .expand-col {
   width: 28px;
@@ -693,7 +693,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 }
 .chevron {
   display: inline-block;
-  color: #9ca3af;
+  color: var(--c-text-muted);
   font-size: 1rem;
   transition: transform 0.15s ease;
 }
@@ -702,12 +702,12 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   color: #f97316;
 }
 .row-expanded:hover td {
-  background: #f9fafb;
+  background: var(--c-surface-2);
 }
 .row-expanded td {
-  background: #f9fafb;
+  background: var(--c-surface-2);
   padding: 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--c-border);
 }
 .subj-panel {
   padding: 14px 20px 16px 46px;
@@ -722,7 +722,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   margin: 0;
   font-size: 0.88rem;
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text);
 }
 .subj-loading,
 .subj-empty {
@@ -732,8 +732,8 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
-  background: #fff;
-  border: 1px solid #e5e7eb;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -742,8 +742,8 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   padding: 0.45rem 0.75rem;
   text-align: left;
   font-weight: 600;
-  color: #4b5563;
-  border-bottom: 1px solid #e5e7eb;
+  color: var(--c-text);
+  border-bottom: 1px solid var(--c-border);
 }
 .subj-table td {
   padding: 0.45rem 0.75rem;
@@ -778,7 +778,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 }
 .badge-gray {
   background: #f3f4f6;
-  color: #6b7280;
+  color: var(--c-text-muted);
 }
 
 .modal-overlay {
@@ -791,7 +791,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   z-index: 200;
 }
 .modal-box {
-  background: white;
+  background: var(--c-surface);
   border-radius: 12px;
   padding: 1.5rem;
   width: 100%;
@@ -814,20 +814,20 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   font-size: 0.85rem;
   font-weight: 500;
   margin-bottom: 0.25rem;
-  color: #374151;
+  color: var(--c-text);
 }
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
   padding: 0.4rem 0.7rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 6px;
   font-size: 0.9rem;
   box-sizing: border-box;
 }
 .form-group small {
-  color: #6b7280;
+  color: var(--c-text-muted);
   font-size: 0.78rem;
 }
 .input-error {
@@ -868,12 +868,12 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   background: #1d4ed8;
 }
 .btn-outline {
-  background: white;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  background: var(--c-surface);
+  border: 1px solid var(--c-input-border);
+  color: var(--c-text);
 }
 .btn-outline:hover {
-  background: #f9fafb;
+  background: var(--c-surface-2);
 }
 .btn-danger {
   background: #dc2626;
@@ -895,7 +895,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   text-align: center;
 }
 .text-muted {
-  color: #9ca3af;
+  color: var(--c-text-muted);
 }
 .font-medium {
   font-weight: 500;

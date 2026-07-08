@@ -150,7 +150,7 @@ async function onSubmit() {
   font-size: 14px;
 }
 .card {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border, #e2e8f0);
   border-radius: 14px;
   padding: 22px;
@@ -165,7 +165,7 @@ async function onSubmit() {
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-  color: #334155;
+  color: var(--c-text);
 }
 .field--full {
   grid-column: 1 / -1;
@@ -173,11 +173,12 @@ async function onSubmit() {
 .field input,
 .field select {
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--c-input-border);
   border-radius: 10px;
   font-size: 15px;
   outline: none;
-  background: #fff;
+  background: var(--c-surface);
+  color: var(--c-text);
   transition: border-color 0.15s;
 }
 .field input:focus,
@@ -209,13 +210,20 @@ async function onSubmit() {
   border-radius: 8px;
   padding: 10px 12px;
 }
+/* Nền rgba mờ tự hòa với cả 2 theme; chữ chỉnh riêng cho nền tối ở dưới */
 .msg--error {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
 }
 .msg--ok {
-  background: #ecfdf5;
+  background: rgba(34, 197, 94, 0.12);
   color: #047857;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
 }
 @media (max-width: 560px) {
   .grid {

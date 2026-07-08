@@ -36,14 +36,15 @@ const nav = [
     title: 'Hệ thống',
     items: [
       { label: 'Trợ lý AI', icon: 'ai', to: '#' },
-      { label: 'Cài đặt', icon: 'settings', to: '#' },
+      { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
     ],
   },
 ]
+// "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>
 
 <template>
-  <PortalShell :nav="nav">
+  <PortalShell :nav="nav" settings-to="/settings">
     <slot />
   </PortalShell>
 </template>

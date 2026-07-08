@@ -88,7 +88,7 @@ const modules = computed(() => accessibleModules(auth.user?.perms ?? []))
   display: flex;
   gap: 0.85rem;
   padding: 1.1rem;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--c-border, #e2e8f0);
   border-radius: 14px;
   box-shadow: 0 6px 18px rgba(15, 40, 80, 0.06);
@@ -136,7 +136,7 @@ const modules = computed(() => accessibleModules(auth.user?.perms ?? []))
   padding: 2rem;
   text-align: center;
   color: var(--c-text-muted, #64748b);
-  background: #fff;
+  background: var(--c-surface);
   border: 1px dashed var(--c-border, #e2e8f0);
   border-radius: 14px;
 }

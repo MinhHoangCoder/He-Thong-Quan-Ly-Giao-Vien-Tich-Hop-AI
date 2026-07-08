@@ -279,12 +279,12 @@ onMounted(() => {
 .page__title {
   margin: 0;
   font-size: 24px;
-  color: #0f172a;
+  color: var(--c-text);
 }
 
 .page__sub {
   margin-top: 6px;
-  color: #64748b;
+  color: var(--c-text-muted);
   font-size: 14px;
 }
 
@@ -294,8 +294,8 @@ onMounted(() => {
   gap: 14px;
   padding: 18px;
   margin-bottom: 18px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: 12px;
 }
 
@@ -311,14 +311,14 @@ onMounted(() => {
 
 .field span {
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   font-weight: 600;
 }
 
 .field input {
   height: 40px;
   padding: 0 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 8px;
 }
 
@@ -345,13 +345,13 @@ onMounted(() => {
 
 .btn--ghost {
   background: #e2e8f0;
-  color: #334155;
+  color: var(--c-text);
 }
 
 .table-wrap {
   overflow-x: auto;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
   border-radius: 12px;
 }
 
@@ -361,28 +361,28 @@ table {
 }
 
 thead {
-  background: #f8fafc;
+  background: var(--c-surface-2);
 }
 
 th {
   padding: 14px;
   text-align: left;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
 }
 
 td {
   padding: 14px;
-  border-top: 1px solid #f1f5f9;
+  border-top: 1px solid var(--c-border);
 }
 
 tbody tr:hover {
-  background: #fafafa;
+  background: var(--c-surface-2);
 }
 
 .empty {
   text-align: center;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   padding: 30px;
 }
 
@@ -392,7 +392,7 @@ tbody tr:hover {
 
 .desc-text {
   margin-top: 5px;
-  color: #64748b;
+  color: var(--c-text-muted);
   font-size: 12px;
 }
 
@@ -432,7 +432,7 @@ tbody tr:hover {
 }
 
 .act-btn:hover {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
 }
 
 .pagination {
@@ -448,8 +448,8 @@ tbody tr:hover {
   height: 38px;
   min-width: 38px;
   padding: 0 12px;
-  border: 1px solid #e2e8f0;
-  background: white;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
   border-radius: 8px;
   cursor: pointer;
 }
@@ -473,7 +473,7 @@ tbody tr:hover {
   width: 70px;
   height: 38px;
   text-align: center;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 8px;
 }
 
@@ -490,7 +490,7 @@ tbody tr:hover {
 
 .total {
   margin-bottom: 14px;
-  color: #64748b;
+  color: var(--c-text-muted);
 }
 
 @media (max-width: 900px) {

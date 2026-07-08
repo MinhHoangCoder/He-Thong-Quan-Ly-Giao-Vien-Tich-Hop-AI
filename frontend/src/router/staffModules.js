@@ -159,5 +159,6 @@ export function buildStaffNav(perms = []) {
     bySection.get(m.section).push({ label: m.label, icon: m.icon, to: m.to })
   }
   for (const [title, items] of bySection) nav.push({ title, items })
+  // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
   return nav
 }

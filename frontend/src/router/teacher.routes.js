@@ -29,4 +29,11 @@ export const teacherRoutes = [
     },
     props: true,
   },
+  // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
+  {
+    path: '/teacher/settings',
+    name: 'teacher-settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
+  },
 ]

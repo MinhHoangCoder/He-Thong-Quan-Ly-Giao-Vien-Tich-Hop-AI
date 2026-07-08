@@ -1522,7 +1522,7 @@ function formatDate(d) {
   padding: 0.5rem 1rem;
   border: 1.5px solid var(--a-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--c-surface);
   color: var(--a-text-muted);
   font-size: 0.86rem;
   font-weight: 600;
@@ -1550,7 +1550,7 @@ function formatDate(d) {
   gap: 0.65rem;
   margin-bottom: 1.4rem;
   padding: 1rem 1.1rem;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
 }
@@ -1651,7 +1651,7 @@ function formatDate(d) {
 /* ── Bảng danh sách giáo viên ── */
 .table-wrap {
   overflow-x: auto;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
 }
@@ -1690,7 +1690,7 @@ function formatDate(d) {
   display: grid; place-items: center;
   width: 20px; height: 20px;
   border: 2px solid var(--a-border);
-  border-radius: 6px; background: #fff;
+  border-radius: 6px; background: var(--c-surface);
   transition: all 0.15s; cursor: pointer;
 }
 .tick--checked { background: #dc2626; border-color: #dc2626; color: #fff; }
@@ -1726,7 +1726,7 @@ function formatDate(d) {
   white-space: nowrap;
 }
 .badge--active { background: #dcfce7; color: #166534; }
-.badge--retired { background: #f1f5f9; color: #64748b; }
+.badge--retired { background: var(--c-surface-2); color: #64748b; }
 .badge--suspended { background: #fef9c3; color: #854d0e; }
 .badge--emp { background: #eff6ff; color: #1d4ed8; }
 .badge--branch { background: #eff6ff; color: #1d4ed8; }
@@ -1771,7 +1771,7 @@ function formatDate(d) {
   padding: 1.5rem;
 }
 .modal {
-  background: #fff; border-radius: 18px;
+  background: var(--c-surface); border-radius: 18px;
   box-shadow: 0 20px 60px rgba(0,0,0,.18);
   width: 100%; max-height: 90vh;
   overflow-y: auto; padding: 1.75rem 2rem;
@@ -1829,7 +1829,7 @@ function formatDate(d) {
   font-size: 0.84rem; font-weight: 600; text-align: left;
   cursor: pointer; transition: all 0.15s;
 }
-.create-nav__item:hover { background: #fff; color: var(--c-primary); }
+.create-nav__item:hover { background: var(--c-surface); color: var(--c-primary); }
 .create-nav__item--active { background: var(--grad-primary); color: #fff; }
 .create-form { padding: 1.25rem 2rem; }
 .create-section-title { font-size: 0.95rem; font-weight: 700; color: var(--a-text); margin: 0 0 0.2rem; }
@@ -1952,7 +1952,7 @@ function formatDate(d) {
 .form-input:focus {
   border-color: var(--c-primary);
   box-shadow: 0 0 0 3px rgba(249,115,22,.12);
-  background: #fff;
+  background: var(--c-surface);
 }
 .form-textarea { resize: vertical; font-family: inherit; line-height: 1.5; }
 .form-error {

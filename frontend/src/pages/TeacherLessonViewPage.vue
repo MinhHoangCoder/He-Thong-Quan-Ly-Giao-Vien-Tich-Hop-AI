@@ -102,7 +102,7 @@ onMounted(load)
 }
 
 .description {
-  background: #fff;
+  background: var(--c-surface);
 
   padding: 20px;
 
@@ -112,7 +112,7 @@ onMounted(load)
 }
 
 .files {
-  background: #fff;
+  background: var(--c-surface);
 
   padding: 20px;
 

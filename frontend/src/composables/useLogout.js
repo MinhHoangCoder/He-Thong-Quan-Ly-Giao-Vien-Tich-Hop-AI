@@ -1,9 +1,12 @@
 import { useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { roleHome } from '@/router/roleHome'
 
 // Trả về hàm logout dùng chung cho mọi nơi (topbar admin, trang trường/giáo viên...).
 // Gọi trong setup() của component.
+// Multi-account: chỉ đăng xuất tài khoản ĐANG DÙNG; nếu còn tài khoản khác đã đăng nhập
+// thì rơi về tài khoản đó (giống Google), hết mới về trang login.
 export function useLogout() {
   const auth = useAuthStore()
   const router = useRouter()
@@ -16,10 +19,16 @@ export function useLogout() {
         await authApi.logout(auth.refreshToken)
       }
     } catch {
-      // bỏ qua: dù sao cũng clear phiên ở dưới
+      // bỏ qua: dù sao cũng gỡ phiên ở dưới
     } finally {
-      auth.clear()
-      router.push({ name: 'login' })
+      const next = auth.dropActiveAccount()
+      if (next) {
+        // Điều hướng cứng (reload) để mọi trang nạp lại dữ liệu theo tài khoản mới,
+        // không dính state cũ của tài khoản vừa đăng xuất.
+        window.location.assign(router.resolve(roleHome(next.user?.roles ?? [])).fullPath)
+      } else {
+        router.push({ name: 'login' })
+      }
     }
   }
 }

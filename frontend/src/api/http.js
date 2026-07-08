@@ -48,8 +48,9 @@ http.interceptors.response.use(
       return http(original) // phát lại request gốc
     } catch (e) {
       refreshingPromise = null
-      auth.clear()
-      // Hết phiên -> về trang đăng nhập (dùng location để tránh phụ thuộc vòng router).
+      // Chỉ gỡ tài khoản có refresh token chết; các tài khoản khác (nếu có) giữ nguyên.
+      // Reload về /login: guard sẽ tự đưa về "nhà" của tài khoản kế tiếp, hết thì ở login.
+      auth.dropActiveAccount()
       window.location.assign('/login')
       return Promise.reject(e)
     }
