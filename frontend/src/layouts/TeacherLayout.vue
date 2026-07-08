@@ -17,11 +17,8 @@ const nav = [
     ],
   },
   {
-    label: 'Kho bài giảng',
-    icon: '📚',
-    to: {
-      name: 'teacher-lessons',
-    },
+    title: 'Kho bài giảng',
+    items: [{ label: 'Bài giảng', icon: 'subject', to: '/teacher/lessons' }],
   },
   {
     title: 'Cá nhân',

@@ -17,11 +17,47 @@ export const adminRoutes = [
     component: () => import('@/pages/RegisterUserPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE', 'HR', 'SALES'] },
   },
-    {
+  {
     path: '/dashboard/teacher',
     name: 'teacher-list',
     component: () => import('@/pages/TeacherListPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/admin/lessons',
+    name: 'admin-lesson-list',
+    component: () => import('@/pages/LessonListPage.vue'),
+    meta: {
+      layout: 'admin',
+      roles: ['ADMIN', 'EMPLOYEE'],
+    },
+  },
+  {
+    path: '/admin/lessons/new',
+    name: 'admin-lesson-new',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: {
+      layout: 'admin',
+      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+    },
+  },
+  {
+    path: '/admin/lessons/:id/edit',
+    name: 'admin-lesson-edit',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: {
+      layout: 'admin',
+      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+    },
+  },
+  {
+    path: '/staff/settings',
+    name: 'staff-settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: {
+      layout: 'admin',
+      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+    },
   },
   // ── Khu CÀI ĐẶT ──────────────────────────────────────────────────
   {
