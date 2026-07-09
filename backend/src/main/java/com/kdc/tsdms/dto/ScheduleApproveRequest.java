@@ -22,8 +22,7 @@ public record ScheduleApproveRequest(
          * Không cho phép đổi trực tiếp sang CANCELLED qua endpoint này —
          * hủy lịch đã duyệt dùng endpoint DELETE riêng.
          */
-        @NotBlank(message = "Vui lòng chọn hành động duyệt")
-        @Pattern(
+        @NotBlank(message = "Vui lòng chọn hành động duyệt") @Pattern(
                 regexp = "APPROVED|REJECTED",
                 message = "Hành động không hợp lệ — chỉ chấp nhận APPROVED hoặc REJECTED")
         String action,
@@ -32,6 +31,4 @@ public record ScheduleApproveRequest(
          * Lý do từ chối — bắt buộc khi action = REJECTED, tùy chọn khi APPROVED.
          * Service validate: nếu action = REJECTED mà rejectionReason trống → ném ApiException.
          */
-        String rejectionReason
-
-) {}
+        String rejectionReason) {}

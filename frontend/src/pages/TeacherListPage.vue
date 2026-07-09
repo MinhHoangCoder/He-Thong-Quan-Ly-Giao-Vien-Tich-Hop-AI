@@ -231,7 +231,7 @@ function validatePhone() {
     return true
   }
   if (!PHONE_RE.test(v)) {
-    createFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'
+    createFieldErrors.phone = 'SĐT phải tồn tại'
     return false
   }
   createFieldErrors.phone = ''
@@ -245,7 +245,7 @@ function validateIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    createFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
+    createFieldErrors.idCardNo = 'CCCD phải có 12 chữ số'
     return false
   }
   createFieldErrors.idCardNo = ''
@@ -281,7 +281,7 @@ function validateAllCreateFields() {
     return false
   }
   if (!results.every(Boolean)) {
-    createModal.error = 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ.'
+    createModal.error = 'Vui lòng kiểm tra lại các lỗi trên.'
     createModal.activeTab = 'profile'
     return false
   }
@@ -371,17 +371,20 @@ async function submitCreate() {
       address: p.address || null,
     })
 
-    // 3) Bằng cấp + chứng chỉ — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
+    // 3) Bằng cấp + chứng chỉ — tạo certificate rồi upload file nếu có
     const allDocs = [...createModal.degrees, ...createModal.certificates].filter((d) =>
       d.name.trim(),
     )
     for (const d of allDocs) {
-      await teacherApi.addCertificate(created.id, {
+      const { data: cert } = await teacherApi.addCertificate(created.id, {
         name: d.name.trim(),
         issuer: d.issuer || null,
         issueDate: d.issueDate || null,
-        fileUrl: d.file?.name || null,
+        fileUrl: null,
       })
+      if (d.file) {
+        await teacherApi.uploadCertificateFile(created.id, cert.id, d.file)
+      }
     }
 
     createModal.open = false
@@ -605,7 +608,7 @@ function validateEditIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    editFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
+    editFieldErrors.idCardNo = 'CCCD phải có 12 chữ số'
     return false
   }
   editFieldErrors.idCardNo = ''
@@ -692,12 +695,15 @@ async function saveEdit() {
     // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
     const newOnes = [...editModal.newDegrees, ...editModal.newCerts].filter((d) => d.name.trim())
     for (const d of newOnes) {
-      await teacherApi.addCertificate(editModal.id, {
+      const { data: cert } = await teacherApi.addCertificate(editModal.id, {
         name: d.name.trim(),
         issuer: d.issuer || null,
         issueDate: d.issueDate || null,
-        fileUrl: d.file?.name || null,
+        fileUrl: null,
       })
+      if (d.file) {
+        await teacherApi.uploadCertificateFile(editModal.id, cert.id, d.file)
+      }
     }
     editModal.open = false
     showToast('Cập nhật giáo viên thành công')
@@ -782,6 +788,23 @@ async function confirmDoDelete() {
 async function restore(id) {
   try {
     await teacherApi.restore(id)
+
+    // Chuyển trạng thái GV vừa khôi phục sang "Đang hoạt động".
+    const { data: t } = await teacherApi.get(id)
+    await teacherApi.update(id, {
+      branchId: t.branchId,
+      firstName: t.firstName,
+      lastName: t.lastName,
+      status: 'ACTIVE',
+      employmentType: t.employmentType,
+      dateOfBirth: t.dateOfBirth,
+      gender: t.gender,
+      idCardNo: t.idCardNo,
+      phone: t.phone,
+      address: t.address,
+      hireDate: t.hireDate,
+    })
+
     showToast('Đã khôi phục giáo viên thành công')
     await loadTrash()
     await loadTeachers()
@@ -1234,7 +1257,7 @@ function formatDate(d) {
                           v-model="createModal.profile.idCardNo"
                           class="form-input"
                           :class="{ 'form-input--error': createFieldErrors.idCardNo }"
-                          placeholder="9 hoặc 12 chữ số"
+                          placeholder="12 chữ số"
                           @blur="validateIdCard"
                         />
                       </label>
@@ -1561,6 +1584,15 @@ function formatDate(d) {
                     <span v-if="c.issuer"> · {{ c.issuer }}</span>
                     <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
                     <span v-if="c.expiryDate"> → {{ formatDate(c.expiryDate) }}</span>
+                    <a
+                      v-if="c.fileUrl"
+                      :href="c.fileUrl"
+                      target="_blank"
+                      class="cert-file-link"
+                      title="Xem file PDF"
+                    >
+                      <i class="fa-solid fa-file-pdf" style="color: #dc2626"></i> Xem file
+                    </a>
                   </div>
                 </div>
               </div>
@@ -1796,6 +1828,15 @@ function formatDate(d) {
                       <strong>{{ c.name }}</strong>
                       <span v-if="c.issuer"> · {{ c.issuer }}</span>
                       <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
+                      <a
+                        v-if="c.fileUrl"
+                        :href="c.fileUrl"
+                        target="_blank"
+                        class="cert-file-link"
+                        title="Xem file PDF"
+                      >
+                        <i class="fa-solid fa-file-pdf" style="color: #dc2626"></i> Xem file
+                      </a>
                     </div>
                     <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
                       <SvgIcon name="trash" :size="14" />
@@ -1973,7 +2014,7 @@ function formatDate(d) {
   border-radius: 12px;
   position: sticky;
   top: 60px;
-  z-index: 1000;
+  z-index: 10;
   padding: 15px;
 }
 .filter-total {
@@ -2687,6 +2728,27 @@ function formatDate(d) {
   border-radius: 8px;
   font-size: 0.84rem;
   color: var(--a-text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cert-file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: auto;
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.cert-file-link:hover {
+  background: #fee2e2;
 }
 
 /* ── Edit / Create form ── */

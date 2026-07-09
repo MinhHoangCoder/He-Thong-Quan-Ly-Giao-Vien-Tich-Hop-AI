@@ -2,7 +2,7 @@ import http from './http'
 
 // API quản lý Giáo viên — ánh xạ tới TeacherController /api/v1/teacher
 export const teacherApi = {
-  /** Lấy toàn bộ GV active (FE tự lọc). */
+  /** Lấy toàn bộ GV active (frontend tự lọc). */
   list() {
     return http.get('/teacher')
   },
@@ -40,5 +40,27 @@ export const teacherApi = {
   /** Khôi phục GV*/
   restore(id) {
     return http.post(`/teacher/trash/${id}/restore`)
+  },
+
+  //thêm chứng chỉ
+  addCertificate(teacherId, data) {
+    return http.post(`/teacher/${teacherId}/certificates`, data)
+  },
+
+  deleteCertificate(teacherId, certId) {
+    return http.delete(`/teacher/${teacherId}/certificates/${certId}`)
+  },
+
+  updateCertificate(teacherId, certId, data) {
+    return http.put(`/teacher/${teacherId}/certificates/${certId}`, data)
+  },
+
+  // Upload file chứng chỉ
+  uploadCertificateFile(teacherId, certId, file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.post(`/teacher/${teacherId}/certificates/${certId}/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
   },
 }

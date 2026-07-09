@@ -56,7 +56,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password")
+                                "/api/v1/auth/reset-password",
+                                "/uploads/**")
                         .permitAll()
                         // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
                         // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
