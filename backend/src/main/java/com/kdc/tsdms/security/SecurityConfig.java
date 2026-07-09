@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -57,6 +58,13 @@ public class SecurityConfig {
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password")
+                        .permitAll()
+                        // File đính kèm bài giảng phục vụ như tài nguyên tĩnh CÔNG KHAI: FE mở
+                        // bằng thẻ <a>/<img> nên KHÔNG gửi được Bearer token. FileUrl mà
+                        // LessonService sinh ra luôn có dạng /uploads/lessons/{id}/... nên chỉ
+                        // mở ĐÚNG thư mục con này — các thư mục uploads khác (nếu sau này chứa
+                        // scan hợp đồng/CCCD…) vẫn phải đăng nhập, tránh lộ file nhạy cảm.
+                        .requestMatchers(HttpMethod.GET, "/uploads/lessons/**")
                         .permitAll()
                         // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
                         // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
