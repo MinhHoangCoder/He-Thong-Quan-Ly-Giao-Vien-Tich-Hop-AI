@@ -1,0 +1,57 @@
+package com.kdc.tsdms.dto;
+
+import com.kdc.tsdms.entity.Attendance;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+/**
+ * DTO chi tiết 1 dòng chấm công — kèm tên GV + số giờ làm (tự tính từ giờ vào/ra)
+ * để frontend hiển thị trực tiếp.
+ */
+public class AttendanceResponse {
+
+    public Long id;
+    public Integer teacherId;
+    public String teacherName;
+    public Long scheduleId;
+    public LocalDate workDate;
+    public LocalTime checkIn;
+    public LocalTime checkOut;
+
+    /** Số giờ làm = checkOut − checkIn (0 nếu thiếu / vắng). */
+    public BigDecimal hours;
+
+    /** PRESENT | ABSENT | LATE | LEAVE */
+    public String status;
+
+    public String checkInMethod;
+    public String note;
+
+    public static AttendanceResponse fromEntity(Attendance a, String teacherName) {
+        AttendanceResponse r = new AttendanceResponse();
+        r.id = a.getId();
+        r.teacherId = a.getTeacherId();
+        r.teacherName = teacherName;
+        r.scheduleId = a.getScheduleId();
+        r.workDate = a.getWorkDate();
+        r.checkIn = a.getCheckIn();
+        r.checkOut = a.getCheckOut();
+        r.hours = computeHours(a.getCheckIn(), a.getCheckOut());
+        r.status = a.getStatus();
+        r.checkInMethod = a.getCheckInMethod();
+        r.note = a.getNote();
+        return r;
+    }
+
+    /** Số giờ giữa 2 mốc, làm tròn 2 chữ số; null/âm → 0. */
+    public static BigDecimal computeHours(LocalTime in, LocalTime out) {
+        if (in == null || out == null || !out.isAfter(in)) {
+            return BigDecimal.ZERO;
+        }
+        long minutes = Duration.between(in, out).toMinutes();
+        return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
+    }
+}
