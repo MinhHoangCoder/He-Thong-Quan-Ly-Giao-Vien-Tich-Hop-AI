@@ -53,6 +53,9 @@ const confirmDelete = reactive({ open: false })
 // Notification toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
 
+
+
+
 /* ══════════════════════════════════════════════════════════
    REGEX / HẰNG SỐ VALIDATE DÙNG CHUNG (Tạo + Sửa)
 ══════════════════════════════════════════════════════════ */
@@ -78,6 +81,10 @@ function checkDobHirePair(dobStr, hireStr) {
   if (dobStr) {
     const dob = new Date(dobStr)
     if (dob > today) return { field: 'dateOfBirth', msg: 'Ngày sinh không được ở tương lai.' }
+  }
+   if (hireStr) {
+    const hire = new Date(hireStr)
+    if (hire > today) return { field: 'hireDate', msg: 'Ngày vào làm không được ở tương lai.' }
   }
   if (dobStr && hireStr) {
     const dob = new Date(dobStr)
@@ -897,8 +904,6 @@ function formatDate(d) {
 
         <select v-model="filters.employmentType" class="filter-select">
           <option value="">Tất cả loại hình</option>
-          <option value="FULL_TIME">Toàn thời gian</option>
-          <option value="PART_TIME">Bán thời gian</option>
           <option value="CONTRACT">Hợp đồng</option>
         </select>
 
@@ -1302,8 +1307,6 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="createModal.profile.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
                       <option value="CONTRACT">Hợp đồng</option>
                     </select>
                   </label>
@@ -1764,8 +1767,6 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="editModal.form.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
                       <option value="CONTRACT">Hợp đồng</option>
                     </select>
                   </label>
