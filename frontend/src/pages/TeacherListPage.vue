@@ -63,7 +63,7 @@ const NAME_RE = /^[\p{L} ]+$/u
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^(\+84|0)\d{9,10}$/
 const CCCD_RE = /^\d{9}(\d{3})?$/
-const MIN_WORKING_AGE = 18 // tuổi lao động tối thiểu — dùng để so ngày sinh với ngày vào làm
+const MIN_WORKING_AGE = 18 
 
 /**
  * So sánh cặp Ngày sinh / Ngày vào làm — dùng chung cho cả 2 form (Tạo & Sửa).
@@ -334,6 +334,7 @@ function onPickFile(doc, e) {
   }
   doc.file = file
 }
+
 
 async function submitCreate() {
   if (!validateAllCreateFields()) return
@@ -1134,9 +1135,6 @@ function formatDate(d) {
                 <!-- Tab: Hồ sơ giáo viên -->
                 <template v-if="createModal.activeTab === 'profile'">
                   <h4 class="create-section-title">Tài khoản đăng nhập</h4>
-                  <p class="create-section-hint">
-                    Giáo viên cần 1 tài khoản để đăng nhập hệ thống.
-                  </p>
                   <div class="form-row">
                     <div class="form-field">
                       <label class="form-label"
@@ -1323,9 +1321,6 @@ function formatDate(d) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="createModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Bằng cấp</h4>
-                  <p class="create-section-hint">
-                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
-                  </p>
                   <div v-for="(d, i) in createModal.degrees" :key="i" class="doc-row">
                     <input
                       v-model="d.name"
@@ -1360,9 +1355,7 @@ function formatDate(d) {
                 <!-- Tab: Chứng chỉ -->
                 <template v-else-if="createModal.activeTab === 'cert'">
                   <h4 class="create-section-title">Chứng chỉ</h4>
-                  <p class="create-section-hint">
-                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
-                  </p>
+                  <p class="create-section-hint">                  </p>
                   <div v-for="(c, i) in createModal.certificates" :key="i" class="doc-row">
                     <input
                       v-model="c.name"
@@ -1397,9 +1390,6 @@ function formatDate(d) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="createModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
-                  <p class="create-section-hint">
-                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
-                  </p>
                   <textarea
                     v-model="createModal.experience"
                     class="form-input form-textarea"
@@ -1412,9 +1402,7 @@ function formatDate(d) {
                 <template v-else-if="createModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
                   <p class="create-section-hint">
-                    Giáo viên mới luôn khởi tạo ở trạng thái <strong>Đang hoạt động</strong>. Khi bị
-                    ẩn khỏi danh sách, hệ thống tự chuyển sang <strong>Ngừng hoạt động</strong> và
-                    chuyển vào mục Lịch sử.
+                    
                   </p>
                   <span class="badge badge--active badge--lg">Đang hoạt động</span>
                 </template>
@@ -1783,10 +1771,6 @@ function formatDate(d) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="editModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Thêm bằng cấp mới</h4>
-                  <p class="create-section-hint">
-                    Danh sách bằng cấp/chứng chỉ ĐÃ LƯU xem ở tab "Chứng chỉ" (hệ thống lưu chung 1
-                    bảng, không phân biệt 2 loại này).
-                  </p>
                   <div v-for="(d, i) in editModal.newDegrees" :key="i" class="doc-row">
                     <input
                       v-model="d.name"
@@ -1879,9 +1863,6 @@ function formatDate(d) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="editModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
-                  <p class="create-section-hint">
-                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
-                  </p>
                   <textarea
                     v-model="editModal.experience"
                     class="form-input form-textarea"
@@ -1893,9 +1874,6 @@ function formatDate(d) {
                 <!-- Tab: Trạng thái -->
                 <template v-else-if="editModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
-                  <p class="create-section-hint">
-                    Chuyển tay nếu cần — bình thường hệ thống tự đổi khi Xóa/Khôi phục.
-                  </p>
                   <select
                     v-model="editModal.form.status"
                     class="form-input"
