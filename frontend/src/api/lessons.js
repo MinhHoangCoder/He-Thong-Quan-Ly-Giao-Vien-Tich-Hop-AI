@@ -52,4 +52,14 @@ export const lessonApi = {
   removeFile(lessonId, fileId) {
     return http.delete(`/lessons/${lessonId}/files/${fileId}`)
   },
+
+  /**
+   * Tải nội dung file đính kèm (KHÔNG dùng cho fileType 'canva' — canva chỉ
+   * cần window.open() thẳng fileUrl vì đã là link Canva ngoài, không cần đi
+   * qua API). Dùng responseType 'blob' để FE tự tạo <a download> ép trình
+   * duyệt tải file về máy (xem TeacherLessonViewPage.vue / dev-notes).
+   */
+  downloadFile(lessonId, fileId) {
+    return http.get(`/lessons/${lessonId}/files/${fileId}/download`, { responseType: 'blob' })
+  },
 }
