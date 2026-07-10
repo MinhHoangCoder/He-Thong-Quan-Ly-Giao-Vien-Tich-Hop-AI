@@ -28,13 +28,23 @@ public class TeacherController {
 
     // Danh sách + tìm kiếm ===================================
 
-    /** Toàn bộ GV active. Tìm kiếm do FRONTEND tự lọc trên mảng này. */
+    /**
+     * Toàn bộ GV active. Tìm kiếm do FRONTEND tự lọc trên mảng này.
+     *
+     * <p>Chỉ staff (hoặc quyền TEACHER_VIEW) — hồ sơ chứa CCCD/địa chỉ/ngày sinh,
+     * KHÔNG để mọi tài khoản đăng nhập (trường, GV khác) đọc được.
+     */
     @GetMapping
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAuthority('TEACHER_VIEW')")
     public List<TeacherResponse.Response> getAllTeachers() {
         return teacherService.getAllTeachers();
     }
 
-    /** Xem chi tiết 1 GV (kèm chứng chỉ + hợp đồng hiện tại). */
+    /**
+     * Xem chi tiết 1 GV (kèm chứng chỉ + hợp đồng hiện tại).
+     * Staff/TEACHER_VIEW xem mọi hồ sơ; GV thường chỉ xem được CHÍNH MÌNH
+     * (chốt chặn sở hữu nằm trong service — chống IDOR).
+     */
     @GetMapping("/{id}")
     public TeacherResponse.Response getTeacherById(@PathVariable Integer id) {
         return teacherService.getTeacherById(id);

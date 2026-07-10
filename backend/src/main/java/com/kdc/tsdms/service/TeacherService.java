@@ -39,9 +39,23 @@ public class TeacherService {
 
     // Xem chi tiết thông tin gv + chứng chỉ + hợp đồng
 
-    /** Xem đầy đủ thông tin 1 GV, kèm danh sách chứng chỉ + hợp đồng hiện tại. */
+    /**
+     * Xem đầy đủ thông tin 1 GV, kèm danh sách chứng chỉ + hợp đồng hiện tại.
+     *
+     * <p>Chống IDOR: hồ sơ chứa CCCD + lương hợp đồng nên chỉ staff
+     * (ADMIN/EMPLOYEE hoặc quyền TEACHER_VIEW) hoặc CHÍNH CHỦ mới được xem —
+     * đúng mẫu chuẩn mô tả ở {@link SecurityUtils}.
+     */
     public TeacherResponse.Response getTeacherById(Integer id) {
-        return toResponse(findActiveOrThrow(id), true);
+        Teacher t = findActiveOrThrow(id);
+        boolean isStaff = SecurityUtils.hasRole("ADMIN")
+                || SecurityUtils.hasRole("EMPLOYEE")
+                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
+        if (!isStaff && !isOwner) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem hồ sơ này");
+        }
+        return toResponse(t, true);
     }
 
     // Create

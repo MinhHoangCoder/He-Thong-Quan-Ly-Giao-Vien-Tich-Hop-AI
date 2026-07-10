@@ -3,6 +3,7 @@
 // để dễ đọc / dễ sửa, không tách nhỏ ra nhiều component.
 // Giao diện danh sách dạng BẢNG (giống trang Quản lý Nhân viên) thay cho card cũ.
 import { ref, computed, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
@@ -424,7 +425,12 @@ async function loadTrash() {
   }
 }
 
+const route = useRoute()
 onMounted(async () => {
+  // Ô tìm kiếm chung (topbar) điều hướng tới đây kèm ?q=... — prefill bộ lọc.
+  if (route.query.q) {
+    filters.keyword = String(route.query.q)
+  }
   await Promise.all([loadTeachers(), loadBranches()])
 })
 
