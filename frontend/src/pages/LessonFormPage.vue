@@ -19,6 +19,16 @@ const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
 const lessonId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 
+// FIX (2026-07-10): trang này cũng được dùng chung cho 2 khu vực, giống
+// LessonListPage.vue (xem ghi chú ở đó). route.name ở đây là
+// 'admin-lesson-new' / 'admin-lesson-edit' (khu ADMIN) hoặc
+// 'lesson-new' / 'lesson-edit' (khu STAFF) tuỳ nơi người dùng bấm vào.
+// Trước đây mọi điều hướng (nút "Danh sách", sau khi Tạo mới) đều push cứng
+// sang tên route khu STAFF -> ADMIN bị route guard đá về dashboard.
+const isAdminArea = computed(() => route.name?.toString().startsWith('admin-'))
+const listRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-list' : 'lesson-list'))
+const editRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-edit' : 'lesson-edit'))
+
 const subjects = ref([]) // tất cả subject ACTIVE
 const gradeLevels = ref([])
 
@@ -161,7 +171,7 @@ async function onSubmit() {
     } else {
       const { data } = await lessonApi.create(body)
       successMsg.value = 'Tạo bài giảng thành công!'
-      router.replace({ name: 'lesson-edit', params: { id: data.id } })
+      router.replace({ name: editRouteName, params: { id: data.id } })
     }
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'Lưu thất bại, thử lại sau.'
@@ -254,7 +264,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div class="page__head">
-      <button class="back-btn" @click="router.push({ name: 'lesson-list' })">← Danh sách</button>
+      <button class="back-btn" @click="router.push({ name: listRouteName })">← Danh sách</button>
       <h1 class="page__title">{{ isEdit ? 'Sửa bài giảng' : 'Thêm bài giảng' }}</h1>
     </div>
     <div v-if="loadingPage" class="loading">Đang tải dữ liệu…</div>
@@ -356,7 +366,7 @@ onMounted(async () => {
             <button
               class="btn btn--ghost"
               type="button"
-              @click="router.push({ name: 'lesson-list' })"
+              @click="router.push({ name: listRouteName })"
             >
               Hủy
             </button>
