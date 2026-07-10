@@ -7,4 +7,11 @@ export const schoolRoutes = [
     component: () => import('@/pages/SchoolDashboardPage.vue'),
     meta: { layout: 'school', roles: ['SCHOOL'] },
   },
+  // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
+  {
+    path: '/school/settings',
+    name: 'school-settings',
+    component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'school', roles: ['SCHOOL'] },
+  },
 ]

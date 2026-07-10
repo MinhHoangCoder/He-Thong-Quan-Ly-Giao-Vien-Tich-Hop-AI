@@ -167,7 +167,7 @@ const todaySchedule = [
   margin-bottom: 1.4rem;
 }
 .card {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 16px;
   padding: 1.3rem;

@@ -113,7 +113,7 @@ async function onSubmit() {
   max-width: 380px;
   padding: 32px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--c-surface);
   box-shadow: 0 18px 50px rgba(15, 40, 80, 0.12);
   border: 1px solid var(--c-border);
 }
@@ -140,7 +140,7 @@ async function onSubmit() {
   flex-direction: column;
   gap: 6px;
   font-size: 14px;
-  color: #334155;
+  color: var(--c-text);
 }
 .field input {
   padding: 10px 12px;
@@ -171,7 +171,7 @@ async function onSubmit() {
   height: 32px;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   cursor: pointer;
   border-radius: 8px;
 }

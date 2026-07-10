@@ -48,7 +48,7 @@ const year = new Date().getFullYear()
   position: sticky;
   top: 0;
   z-index: 10;
-  background: #fff;
+  background: var(--c-surface);
   border-bottom: 1px solid var(--c-border);
 }
 .layout__bar {

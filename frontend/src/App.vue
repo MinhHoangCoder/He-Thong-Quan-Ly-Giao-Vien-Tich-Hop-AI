@@ -23,6 +23,7 @@ import StaffLayout from '@/layouts/StaffLayout.vue'
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { refreshSession } from '@/api/http'
+import { useUiStore } from '@/stores/ui'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
@@ -41,6 +42,10 @@ const layouts = {
 const layout = computed(() => layouts[route.meta.layout] || DefaultLayout)
 const auth = useAuthStore()
 
+// Khởi động store giao diện NGAY khi app chạy (không đợi trang nào dùng tới):
+// store tự áp data-theme/data-fontsize/data-motion lên <html> từ localStorage.
+useUiStore()
+
 onMounted(async () => {
   // Có refreshToken nhưng mất accessToken (do F5) → xin lại.
   // DÙNG CHUNG refreshSession() với interceptor http.js: backend xoay refresh token
@@ -50,8 +55,10 @@ onMounted(async () => {
     try {
       await refreshSession()
     } catch {
-      // refreshToken hết hạn → clear, về login
-      auth.clear()
+      // refreshToken của tài khoản active hết hạn → chỉ gỡ tài khoản đó; reload về
+      // /login để guard đưa về "nhà" tài khoản kế tiếp (nếu còn), hết thì ở login.
+      auth.dropActiveAccount()
+      window.location.assign('/login')
     }
   }
 })

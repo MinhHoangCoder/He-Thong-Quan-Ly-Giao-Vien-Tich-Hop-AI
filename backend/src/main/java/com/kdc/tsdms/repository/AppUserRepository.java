@@ -2,7 +2,11 @@ package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.AppUser;
 import java.util.Optional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface AppUserRepository extends JpaRepository<AppUser, Integer> {
 
@@ -14,4 +18,12 @@ public interface AppUserRepository extends JpaRepository<AppUser, Integer> {
     boolean existsByUsernameAndDeletedFalse(String username);
 
     boolean existsByEmailAndDeletedFalse(String email);
+
+    /** Danh sách tài khoản (trang quản trị) — phân trang, chưa xóa mềm. */
+    Page<AppUser> findByDeletedFalse(Pageable pageable);
+
+    /** Tìm tài khoản theo username/email chứa từ khóa (trang quản trị). */
+    @Query("SELECT u FROM AppUser u WHERE u.deleted = false "
+            + "AND (u.username LIKE CONCAT('%', :kw, '%') OR u.email LIKE CONCAT('%', :kw, '%'))")
+    Page<AppUser> searchByKeyword(@Param("kw") String keyword, Pageable pageable);
 }

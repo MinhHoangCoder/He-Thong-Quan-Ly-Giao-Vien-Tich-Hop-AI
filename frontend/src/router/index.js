@@ -26,7 +26,9 @@ router.beforeEach((to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   // 2) Đã đăng nhập mà vào /login -> về thẳng "nhà" theo vai trò.
-  if (to.name === 'login' && auth.isLoggedIn) {
+  //    NGOẠI LỆ ?add=1: chế độ "Thêm tài khoản" (account switcher) — cho phép vào
+  //    trang login để đăng nhập THÊM tài khoản, các phiên đang có giữ nguyên.
+  if (to.name === 'login' && auth.isLoggedIn && to.query.add !== '1') {
     return roleHome(auth.roles)
   }
   // 3) Vào trang không thuộc vai trò của mình -> chuyển về "nhà" của vai trò.

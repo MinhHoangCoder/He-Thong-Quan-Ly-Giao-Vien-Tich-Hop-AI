@@ -62,7 +62,7 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
   display: flex;
   align-items: center;
   gap: 0.9rem;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 14px;
   padding: 1.15rem 1.25rem;

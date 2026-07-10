@@ -16,6 +16,17 @@ const nav = [
     ],
   },
   {
+    title: 'Kho bài giảng',
+    items: [{ label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' }],
+  },
+  {
+    title: 'Khách hàng',
+    items: [
+      { label: 'Trường', icon: 'school', to: '#' },
+      { label: 'Lớp & Học sinh', icon: 'attendance', to: '#' },
+    ],
+  },
+  {
     title: 'Điều phối',
     items: [
       { label: 'Phân công', icon: 'assignment', to: '/assignments' },
@@ -26,13 +37,17 @@ const nav = [
   },
   {
     title: 'Hệ thống',
-    items: [{ label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' }],
+    items: [
+      { label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' },
+      { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
+    ],
   },
 ]
+// "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>
 
 <template>
-  <PortalShell :nav="nav">
+  <PortalShell :nav="nav" settings-to="/settings">
     <slot />
   </PortalShell>
 </template>
