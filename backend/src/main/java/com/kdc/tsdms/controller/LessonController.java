@@ -95,8 +95,8 @@ public class LessonController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        Pageable pageable =
-                PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1),
+                Sort.by(Sort.Direction.DESC, "updatedAt"));
         return lessonService.search(category, gradeLevel, status, keyword, isTeacherOnly(), pageable);
     }
 
@@ -158,6 +158,21 @@ public class LessonController {
     public ResponseEntity<Void> deleteFile(@PathVariable Integer id, @PathVariable Integer fileId) {
         lessonService.deleteFile(id, fileId);
         return ResponseEntity.noContent().build();
+    }
+
+    /*
+     * ── 9. MỞ / TẢI FILE ĐÍNH KÈM ────────────────────────────────────
+     * FIX (2026-07-10): endpoint mới — dùng chung cho cả 2 trường hợp:
+     * - fileType = "canva" -> server trả 302 redirect sang link Canva.
+     * - file vật lý (pdf/png/jpg...) -> server trả về nội dung file kèm
+     * header Content-Disposition: attachment để trình duyệt TỰ ĐỘNG TẢI VỀ.
+     * Cùng quyền LESSON_VIEW như xem chi tiết bài giảng; TEACHER chỉ tải được
+     * file của bài giảng đã PUBLISHED (chặn trong LessonService.openFile).
+     */
+    @GetMapping("/{id}/files/{fileId}/download")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
+    public ResponseEntity<?> downloadFile(@PathVariable Integer id, @PathVariable Integer fileId) {
+        return lessonService.openFile(id, fileId, isTeacherOnly());
     }
 
     /* ── Helper ──────────────────────────────────────────────────────── */

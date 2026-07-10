@@ -19,16 +19,23 @@ import com.kdc.tsdms.security.SecurityUtils;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+
+import org.springframework.core.io.UrlResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -46,11 +53,29 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final String UPLOAD_ROOT = "uploads/lessons";
+    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
+
+    /**
+     * Whitelist đuôi file cho tài liệu bài giảng — CHỈ nhận định dạng tài liệu/ảnh
+     * tĩnh,
+     * không nhận file có thể thực thi (.exe/.sh/.jsp...) hay chứa script
+     * (.html/.svg...).
+     * FE hiện chỉ cho chọn .pdf (xem LessonFormPage.vue, input accept=".pdf") nhưng
+     * accept chỉ là gợi ý phía client — BẮT BUỘC validate lại ở server. Nới thêm
+     * ảnh
+     * (png/jpg) để chấp nhận ảnh scan tài liệu nếu cần, vẫn an toàn vì chỉ là
+     * raster tĩnh.
+     */
+    private static final Set<String> ALLOWED_UPLOAD_EXTENSIONS = Set.of("pdf", "png", "jpg", "jpeg");
+
+    /**
+     * Giới hạn kích thước 1 file — khớp với spring.servlet.multipart.max-file-size.
+     */
+    private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS =
-            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
+            "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -213,7 +238,7 @@ public class LessonService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn ít nhất 1 file");
         }
 
-        Path dir = Path.of(UPLOAD_ROOT, String.valueOf(lessonId));
+        Path dir = UPLOAD_ROOT.resolve(String.valueOf(lessonId));
         try {
             Files.createDirectories(dir);
         } catch (IOException e) {
@@ -224,7 +249,8 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty()) continue;
+            if (f.isEmpty())
+                continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
             int dot = original.lastIndexOf('.');
             String ext = dot >= 0 ? original.substring(dot) : "";
@@ -263,13 +289,33 @@ public class LessonService {
     public LessonFileResponse addCanvaLink(Integer lessonId, CanvaLinkRequest req) {
         Lesson lesson = getOrThrow(lessonId);
 
-        LessonFile lf = new LessonFile();
+        // FIX (2026-07-10): mỗi bài giảng chỉ nên có 1 link Canva "chính".
+        // Trước đây mỗi lần bấm "Thêm" lại INSERT một LessonFile mới, nên khi
+        // GV sửa/cập nhật link Canva của 1 bài giảng đã có, hệ thống tồn tại
+        // song song NHIỀU bản ghi fileType=canva (cũ lẫn mới). Phía GV (chỉ xem)
+        // hiển thị tất cả các file này -> bấm "Xem" có thể trúng link Canva CŨ
+        // đã lỗi thời thay vì link vừa cập nhật.
+        // -> Nếu bài giảng đã có sẵn 1 file canva, CẬP NHẬT lại file đó (UPDATE)
+        // thay vì tạo thêm bản ghi mới. Nếu chưa có thì mới INSERT.
+        LessonFile lf = lessonFileRepo.findByLessonId(lessonId).stream()
+                .filter(f -> "canva".equalsIgnoreCase(f.getFileType()))
+                .findFirst()
+                .orElseGet(LessonFile::new);
+
+        boolean isNew = lf.getId() == null;
+
         lf.setLessonId(lessonId);
         lf.setFileName(req.fileName());
         lf.setFileUrl(req.canvaUrl());
         lf.setFileType("canva");
         lf.setFileSizeKb(null);
-        lf.setCreatedBy(SecurityUtils.currentUserId());
+
+        if (isNew) {
+            lf.setCreatedBy(SecurityUtils.currentUserId());
+        } else {
+            lf.setUpdatedAt(Instant.now());
+            lf.setUpdatedBy(SecurityUtils.currentUserId());
+        }
 
         lesson.setUpdatedAt(Instant.now());
         lesson.setUpdatedBy(SecurityUtils.currentUserId());
@@ -352,7 +398,74 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty()) return Map.of();
+        if (ids.isEmpty())
+            return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
+    }
+
+    /**
+     * Mở / tải 1 file đính kèm của bài giảng.
+     *
+     * FIX (2026-07-10): trước đây method này KHÔNG được controller nào gọi tới
+     * (dead code) nên FE không có cách nào tải file PDF về máy một cách an toàn
+     * (có kiểm tra quyền) — phải trỏ thẳng vào đường dẫn tĩnh "/uploads/..." vốn
+     * chưa được cấu hình proxy ở môi trường dev nên xem/tải bị lỗi âm thầm.
+     * Nay được gọi từ
+     * {@code GET /api/v1/lessons/{lessonId}/files/{fileId}/download}.
+     *
+     * @param lessonId       id bài giảng — dùng để xác thực file thực sự thuộc
+     *                       bài giảng này (chặn dò fileId của bài giảng khác).
+     * @param fileId         id file đính kèm cần mở.
+     * @param forcePublished true nếu người gọi là TEACHER (chỉ được phép mở file
+     *                       của bài giảng đã PUBLISHED, khớp rule ở getDetail()).
+     */
+    @Transactional(readOnly = true)
+    public ResponseEntity<?> openFile(Integer lessonId, Integer fileId, boolean forcePublished) {
+
+        Lesson lesson = getOrThrow(lessonId);
+        if (forcePublished && !"PUBLISHED".equals(lesson.getStatus())) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bài giảng id=" + lessonId);
+        }
+
+        LessonFile file = lessonFileRepo.findByIdAndDeletedFalse(fileId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file"));
+
+        if (!file.getLessonId().equals(lessonId)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "File không thuộc bài giảng này");
+        }
+
+        // Nếu là Canva -> trả về redirect (FE thường tự window.open() thẳng
+        // fileUrl nên ít khi cần gọi endpoint này cho canva, nhưng vẫn hỗ trợ
+        // để link chia sẻ trực tiếp /download cũng mở đúng).
+        if ("canva".equalsIgnoreCase(file.getFileType())) {
+
+            return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, file.getFileUrl())
+                    .build();
+        }
+
+        try {
+            // fileUrl dạng: /uploads/lessons/{lessonId}/{storedFileName} -> lấy phần
+            // storedFileName cuối cùng
+            String storedFileName = file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
+            Path path = UPLOAD_ROOT.resolve(String.valueOf(lessonId)).resolve(storedFileName);
+
+            Resource resource = new UrlResource(path.toUri());
+
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "File không tồn tại trên server: " + file.getFileName());
+            }
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + file.getFileName() + "\"")
+                    .body(resource);
+
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file");
+        }
+
     }
 }
