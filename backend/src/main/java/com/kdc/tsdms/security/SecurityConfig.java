@@ -4,7 +4,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -22,7 +21,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Cấu hình bảo mật:
  * - Stateless (không session, mỗi request tự mang JWT).
  * - Tắt CSRF (API token, không dùng cookie session).
- * - Mở các endpoint auth công khai; /register chỉ cho ADMIN & EMPLOYEE; còn lại cần đăng nhập.
+ * - Mở các endpoint auth công khai; /register chỉ cho ADMIN & EMPLOYEE; còn lại
+ * cần đăng nhập.
  * - Cắm JwtAuthenticationFilter trước filter username/password mặc định.
  */
 @Configuration
@@ -59,13 +59,16 @@ public class SecurityConfig {
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password")
                         .permitAll()
-                        // File đính kèm bài giảng phục vụ như tài nguyên tĩnh CÔNG KHAI: FE mở
-                        // bằng thẻ <a>/<img> nên KHÔNG gửi được Bearer token. FileUrl mà
-                        // LessonService sinh ra luôn có dạng /uploads/lessons/{id}/... nên chỉ
-                        // mở ĐÚNG thư mục con này — các thư mục uploads khác (nếu sau này chứa
-                        // scan hợp đồng/CCCD…) vẫn phải đăng nhập, tránh lộ file nhạy cảm.
-                        .requestMatchers(HttpMethod.GET, "/uploads/lessons/**")
-                        .permitAll()
+                        // FIX (2026-07-10): TRƯỚC ĐÂY mở public /uploads/lessons/** vì FE dùng
+                        // thẻ <a href="..."> trực tiếp trỏ vào file tĩnh, mà <a> thường không
+                        // gửi kèm Bearer token được. Nhược điểm: BẤT KỲ AI có link cũng tải được
+                        // tài liệu bài giảng mà không cần đăng nhập/không cần quyền LESSON_VIEW.
+                        // Nay FE đã chuyển sang gọi
+                        // GET /api/v1/lessons/{lessonId}/files/{fileId}/download (có gửi Bearer
+                        // token, kiểm tra LESSON_VIEW + TEACHER chỉ tải được bài PUBLISHED) rồi
+                        // tự tạo blob để tải về — nên KHÔNG cần mở public đường dẫn tĩnh này
+                        // nữa. Mọi request tới /uploads/** giờ bắt buộc phải đăng nhập (rơi vào
+                        // nhánh anyRequest().authenticated() phía dưới).
                         // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
                         // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
                         // ADMIN đi tắt) do @PreAuthorize trên AuthController.register + kiểm tra

@@ -54,21 +54,28 @@ export const adminRoutes = [
     },
   },
   {
+    // FIX (2026-07-10): route này bị copy-paste nhầm roles của khu STAFF
+    // (['ACCOUNTANT','HR','ACADEMIC','SALES']) trong khi path/tên route lại
+    // thuộc khu ADMIN. Vì route guard (router/index.js, bước 3) so khớp
+    // to.meta.roles với role hiện tại rồi mới cho vào trang, ADMIN/EMPLOYEE
+    // KHÔNG nằm trong danh sách cũ -> bấm "Sửa"/"Thêm bài giảng" ở /admin/lessons
+    // luôn bị đá về roleHome() = trang dashboard. Phải khớp với 'admin-lesson-list'.
     path: '/admin/lessons/new',
     name: 'admin-lesson-new',
     component: () => import('@/pages/LessonFormPage.vue'),
     meta: {
       layout: 'admin',
-      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+      roles: ['ADMIN', 'EMPLOYEE'],
     },
   },
   {
+    // FIX (2026-07-10): tương tự route phía trên — trả lại đúng roles ADMIN/EMPLOYEE.
     path: '/admin/lessons/:id/edit',
     name: 'admin-lesson-edit',
     component: () => import('@/pages/LessonFormPage.vue'),
     meta: {
       layout: 'admin',
-      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+      roles: ['ADMIN', 'EMPLOYEE'],
     },
   },
   {

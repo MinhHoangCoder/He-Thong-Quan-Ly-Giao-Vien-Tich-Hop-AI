@@ -1,10 +1,25 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 import { subjectCategoryApi } from '@/api/subjectCategories'
 
 const router = useRouter()
+const route = useRoute()
+
+// FIX (2026-07-10): trang này được DÙNG CHUNG cho 2 khu vực (2 bộ route khác
+// tên/khác meta.roles):
+//   - Khu ADMIN:  /admin/lessons        (name: 'admin-lesson-list', roles ADMIN/EMPLOYEE)
+//   - Khu STAFF:  /staff/lessons        (name: 'lesson-list', roles ACCOUNTANT/HR/ACADEMIC/SALES)
+// Trước đây nút "Sửa"/"+ Thêm bài giảng" LUÔN push cứng sang tên route của khu
+// STAFF ('lesson-edit' / 'lesson-new'). Khi ADMIN đang ở /admin/lessons bấm
+// "Sửa", router điều hướng sang /staff/lessons/:id/edit — route này không cho
+// phép role ADMIN/EMPLOYEE vào -> route guard tự động đá về dashboard.
+// -> Phải chọn ĐÚNG tên route theo khu vực đang đứng, dựa vào tiền tố route
+// hiện tại ('admin-lesson-list' vs 'lesson-list').
+const isAdminArea = computed(() => route.name === 'admin-lesson-list')
+const editRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-edit' : 'lesson-edit'))
+const newRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-new' : 'lesson-new'))
 
 /* =========================
    State
@@ -209,7 +224,7 @@ onMounted(async () => {
         <p class="page__sub">Quản lý bài giảng theo danh mục và khối lớp</p>
       </div>
 
-      <button class="btn" @click="router.push({ name: 'lesson-new' })">+ Thêm bài giảng</button>
+      <button class="btn" @click="router.push({ name: newRouteName })">+ Thêm bài giảng</button>
     </div>
 
     <!-- ================= FILTER ================= -->
@@ -341,7 +356,7 @@ onMounted(async () => {
                 title="Sửa"
                 @click="
                   router.push({
-                    name: 'lesson-edit',
+                    name: editRouteName,
                     params: { id: lesson.id },
                   })
                 "
