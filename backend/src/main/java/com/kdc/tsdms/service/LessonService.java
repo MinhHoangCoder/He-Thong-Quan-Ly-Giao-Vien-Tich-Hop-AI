@@ -29,11 +29,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.core.io.Resource;
-import org.springframework.http.HttpHeaders;
-
 import org.springframework.core.io.UrlResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -53,7 +52,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
+    private static final Path UPLOAD_ROOT =
+            Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
     /**
      * Whitelist đuôi file cho tài liệu bài giảng — CHỈ nhận định dạng tài liệu/ảnh
@@ -74,8 +74,8 @@ public class LessonService {
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
-            "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -249,8 +249,7 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty())
-                continue;
+            if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
             int dot = original.lastIndexOf('.');
             String ext = dot >= 0 ? original.substring(dot) : "";
@@ -398,8 +397,7 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty())
-            return Map.of();
+        if (ids.isEmpty()) return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 
@@ -427,7 +425,8 @@ public class LessonService {
             throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bài giảng id=" + lessonId);
         }
 
-        LessonFile file = lessonFileRepo.findByIdAndDeletedFalse(fileId)
+        LessonFile file = lessonFileRepo
+                .findByIdAndDeletedFalse(fileId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file"));
 
         if (!file.getLessonId().equals(lessonId)) {
@@ -447,7 +446,8 @@ public class LessonService {
         try {
             // fileUrl dạng: /uploads/lessons/{lessonId}/{storedFileName} -> lấy phần
             // storedFileName cuối cùng
-            String storedFileName = file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
+            String storedFileName =
+                    file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
             Path path = UPLOAD_ROOT.resolve(String.valueOf(lessonId)).resolve(storedFileName);
 
             Resource resource = new UrlResource(path.toUri());
@@ -457,8 +457,7 @@ public class LessonService {
             }
 
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION,
-                            "attachment; filename=\"" + file.getFileName() + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFileName() + "\"")
                     .body(resource);
 
         } catch (ApiException e) {
@@ -466,6 +465,5 @@ public class LessonService {
         } catch (Exception e) {
             throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file");
         }
-
     }
 }

@@ -50,14 +50,14 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // ✅ THÊM: trả 401 khi anonymous, thay vì 403
-                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) -> response
-                        .sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
+                .exceptionHandling(ex -> ex.authenticationEntryPoint((request, response, authException) ->
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Unauthorized")))
                 .authorizeHttpRequests(auth -> auth.requestMatchers(
-                        "/api/v1/auth/login",
-                        "/api/v1/auth/refresh",
-                        "/api/v1/auth/logout",
-                        "/api/v1/auth/forgot-password",
-                        "/api/v1/auth/reset-password")
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout",
+                                "/api/v1/auth/forgot-password",
+                                "/api/v1/auth/reset-password")
                         .permitAll()
                         // FIX (2026-07-10): TRƯỚC ĐÂY mở public /uploads/lessons/** vì FE dùng
                         // thẻ <a href="..."> trực tiếp trỏ vào file tĩnh, mà <a> thường không

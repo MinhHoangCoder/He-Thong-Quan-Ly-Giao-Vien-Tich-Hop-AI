@@ -95,8 +95,8 @@ public class LessonController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1),
-                Sort.by(Sort.Direction.DESC, "updatedAt"));
+        Pageable pageable =
+                PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
         return lessonService.search(category, gradeLevel, status, keyword, isTeacherOnly(), pageable);
     }
 
