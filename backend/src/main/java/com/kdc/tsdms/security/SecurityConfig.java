@@ -58,6 +58,11 @@ public class SecurityConfig {
                                 "/api/v1/auth/forgot-password",
                                 "/api/v1/auth/reset-password")
                         .permitAll()
+                        // File đính kèm bài giảng: chỉ GET (xem/tải) là công khai — khớp thiết kế
+                        // WebConfig; tên file đã ngẫu nhiên hóa (UUID) + upload whitelist ở
+                        // LessonService nên không serve được nội dung thực thi/HTML.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/uploads/**")
+                        .permitAll()
                         // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
                         // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
                         // ADMIN đi tắt) do @PreAuthorize trên AuthController.register + kiểm tra

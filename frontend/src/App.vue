@@ -22,7 +22,7 @@ import SchoolLayout from '@/layouts/SchoolLayout.vue'
 import StaffLayout from '@/layouts/StaffLayout.vue'
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { authApi } from '@/api/auth'
+import { refreshSession } from '@/api/http'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
@@ -42,15 +42,13 @@ const layout = computed(() => layouts[route.meta.layout] || DefaultLayout)
 const auth = useAuthStore()
 
 onMounted(async () => {
-  // Có refreshToken nhưng mất accessToken (do F5) → xin lại
+  // Có refreshToken nhưng mất accessToken (do F5) → xin lại.
+  // DÙNG CHUNG refreshSession() với interceptor http.js: backend xoay refresh token
+  // (dùng 1 lần), nếu App.vue và một request 401 cùng gọi /refresh song song bằng
+  // token cũ thì cuộc gọi thứ 2 bị reuse-detection thu hồi TOÀN BỘ phiên.
   if (auth.refreshToken && !auth.accessToken) {
     try {
-      const { data } = await authApi.refresh(auth.refreshToken)
-      auth.setSession({
-        accessToken: data.accessToken,
-        refreshToken: data.refreshToken,
-        user: data.user,
-      })
+      await refreshSession()
     } catch {
       // refreshToken hết hạn → clear, về login
       auth.clear()
