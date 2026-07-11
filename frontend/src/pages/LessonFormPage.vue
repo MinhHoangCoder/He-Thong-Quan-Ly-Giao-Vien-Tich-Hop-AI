@@ -69,7 +69,6 @@ const form = reactive({
   teacherId: null,
   title: '',
   description: '',
-  content: '',
   gradeLevel: '',
   status: 'DRAFT',
 })
@@ -120,7 +119,6 @@ async function loadLesson() {
     form.teacherId = data.teacherId
     form.title = data.title
     form.description = data.description || ''
-    form.content = data.content || ''
     form.gradeLevel = data.gradeLevel || ''
     form.status = data.status
     attachedFiles.value = data.files || []
@@ -158,7 +156,6 @@ async function onSubmit() {
     teacherId: form.teacherId ? Number(form.teacherId) : null,
     title: form.title.trim(),
     description: form.description.trim() || null,
-    content: form.content.trim() || null,
     gradeLevel: form.gradeLevel || null,
     status: form.status,
   }
@@ -337,16 +334,6 @@ onMounted(async () => {
             ></textarea>
           </label>
 
-          <!-- Hàng 4: Nội dung chi tiết -->
-          <label class="field field--full">
-            <span>Nội dung chi tiết <span class="hint">(Markdown / Rich text)</span></span>
-            <textarea
-              v-model="form.content"
-              rows="8"
-              placeholder="## Mục tiêu&#10;- ...&#10;&#10;## Hoạt động&#10;1. ..."
-            ></textarea>
-          </label>
-
           <!-- Hàng 5: Trạng thái -->
           <div class="grid-1">
             <label class="field field--req">
@@ -379,10 +366,9 @@ onMounted(async () => {
 
       <!-- Cột phải: file đính kèm (chỉ hiện khi đang sửa) -->
       <div v-if="isEdit" class="col-side">
-        <!-- PDF Upload -->
+        <!-- Giáo án -->
         <div class="card">
-          <h2 class="card__title">📄 Tải lên file PDF</h2>
-          <p class="card__sub">Chỉ chấp nhận file .pdf (nhiều file cùng lúc).</p>
+          <h2 class="card__title">📄 Tải lên giáo án</h2>
 
           <input
             ref="pdfInput"
@@ -404,9 +390,9 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- Link Canva -->
+        <!-- Bài giảng (link Canva) -->
         <div class="card">
-          <h2 class="card__title">🎨 Thêm link Canva</h2>
+          <h2 class="card__title">🎨 Tải lên bài giảng</h2>
           <p class="card__sub">Dán link trình chiếu Canva đã publish để xem trực tiếp.</p>
 
           <button
@@ -414,7 +400,7 @@ onMounted(async () => {
             class="btn btn--ghost btn--full"
             @click="showCanvaForm = true"
           >
-            + Thêm link Canva
+            + Tải lên bài giảng
           </button>
 
           <div v-else class="canva-form">
@@ -608,11 +594,6 @@ onMounted(async () => {
 .field select:focus,
 .field textarea:focus {
   border-color: var(--c-primary, #f97316);
-}
-.hint {
-  font-weight: 400;
-  color: var(--c-text-muted);
-  font-size: 12px;
 }
 
 .form-footer {

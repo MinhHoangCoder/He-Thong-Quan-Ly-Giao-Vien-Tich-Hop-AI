@@ -686,7 +686,10 @@ onMounted(loadProfile)
                 >
                   Mặc định
                 </button>
-                <button :class="{ active: ui.fontSize === 'large' }" @click="ui.setFontSize('large')">
+                <button
+                  :class="{ active: ui.fontSize === 'large' }"
+                  @click="ui.setFontSize('large')"
+                >
                   Lớn
                 </button>
               </div>
@@ -747,7 +750,9 @@ onMounted(loadProfile)
             :class="{ current: acc.user?.username === auth.user?.username }"
             @click="switchTo(acc)"
           >
-            <span class="acct__avatar">{{ initialsOf(acc.user?.fullName || acc.user?.username) }}</span>
+            <span class="acct__avatar">{{
+              initialsOf(acc.user?.fullName || acc.user?.username)
+            }}</span>
             <span class="acct__info">
               <strong>{{ acc.user?.fullName || acc.user?.username }}</strong>
               <small>@{{ acc.user?.username }}</small>
