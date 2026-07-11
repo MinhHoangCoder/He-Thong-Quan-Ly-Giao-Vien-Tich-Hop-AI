@@ -221,4 +221,3 @@ onMounted(load)
   text-decoration: none;
 }
 </style>
-a
