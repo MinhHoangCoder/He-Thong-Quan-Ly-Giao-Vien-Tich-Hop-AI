@@ -349,7 +349,7 @@ onMounted(() => {
 <style scoped>
 .viewtoggle {
   display: inline-flex;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 10px;
   overflow: hidden;
@@ -394,7 +394,7 @@ onMounted(() => {
   width: 34px;
   height: 34px;
   border: 1px solid var(--c-border);
-  background: #fff;
+  background: var(--c-surface);
   border-radius: 8px;
   font-size: 1.2rem;
   line-height: 1;
@@ -444,7 +444,7 @@ onMounted(() => {
   min-height: 78px;
   border: 1px solid var(--c-border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--c-surface);
   padding: 0.4rem 0.5rem;
   text-align: left;
   cursor: pointer;
@@ -461,8 +461,9 @@ onMounted(() => {
   transform: translateY(-1px);
 }
 .daycell.out {
-  background: #f8fafc;
-  color: #cbd5e1;
+  background: var(--c-bg);
+  color: var(--c-text-muted);
+  opacity: 0.65;
 }
 .daycell.today {
   border-color: var(--c-accent);
@@ -482,9 +483,9 @@ onMounted(() => {
   font-weight: 700;
   padding: 0.08rem 0.45rem;
   border-radius: 9999px;
-  background: #fff4ec;
+  background: rgba(249, 115, 22, 0.09);
   color: var(--c-primary-dark);
-  border: 1px solid #fed7aa;
+  border: 1px solid rgba(249, 115, 22, 0.3);
 }
 
 /* Chi tiết ngày */
@@ -527,8 +528,8 @@ onMounted(() => {
   justify-content: space-between;
   gap: 0.6rem;
   padding: 0.55rem 0.8rem;
-  background: #fff4ec;
-  border-bottom: 1px solid #fed7aa;
+  background: rgba(249, 115, 22, 0.09);
+  border-bottom: 1px solid rgba(249, 115, 22, 0.3);
 }
 .schoolgroup__name {
   font-weight: 700;
@@ -539,8 +540,8 @@ onMounted(() => {
   font-size: 0.74rem;
   font-weight: 700;
   color: var(--c-primary-dark);
-  background: #fff;
-  border: 1px solid #fed7aa;
+  background: var(--c-surface);
+  border: 1px solid rgba(249, 115, 22, 0.3);
   border-radius: 9999px;
   padding: 0.08rem 0.5rem;
   white-space: nowrap;
@@ -572,7 +573,7 @@ onMounted(() => {
   align-items: center;
   padding: 0.5rem 0.7rem;
   border-radius: 9px;
-  background: #f8fafc;
+  background: var(--c-surface-2);
   border-left: 3px solid var(--c-primary);
   font-size: 0.86rem;
 }
@@ -611,12 +612,12 @@ onMounted(() => {
   border: 1px solid var(--c-border);
 }
 .wtable thead th {
-  background: #f7fafc;
+  background: var(--c-surface-2);
   padding: 0.5rem;
   text-align: center;
 }
 .wtable thead th.today {
-  background: #eff6ff;
+  background: rgba(37, 99, 235, 0.12);
 }
 .wday {
   font-size: 0.8rem;
@@ -636,7 +637,7 @@ onMounted(() => {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--c-text-muted);
-  background: #f7fafc;
+  background: var(--c-surface-2);
 }
 .wcell {
   vertical-align: top;
@@ -650,13 +651,13 @@ onMounted(() => {
   padding: 0.3rem 0.45rem;
   border-radius: 7px;
   margin-bottom: 3px;
-  background: #fff4ec;
+  background: rgba(249, 115, 22, 0.09);
   border-left: 3px solid var(--c-primary);
   font-size: 0.72rem;
   line-height: 1.25;
 }
 .wchip.pm {
-  background: #eff6ff;
+  background: rgba(37, 99, 235, 0.1);
   border-left-color: var(--c-accent);
 }
 .wchip__subj {

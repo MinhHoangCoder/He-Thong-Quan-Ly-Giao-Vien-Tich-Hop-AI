@@ -336,7 +336,7 @@ function toneClass(tone) {
   align-items: center;
   gap: 0.4rem;
   border: 1px solid var(--a-border);
-  background: #fff;
+  background: var(--c-surface);
   color: var(--a-text-muted);
   cursor: pointer;
   padding: 0.6rem 0.95rem;
@@ -351,7 +351,7 @@ function toneClass(tone) {
 .btn-ghost:hover:not(:disabled) {
   border-color: var(--c-primary);
   color: var(--c-primary);
-  background: #fff7ed;
+  background: rgba(249, 115, 22, 0.08);
 }
 .btn-ghost:disabled {
   opacity: 0.6;
@@ -369,14 +369,17 @@ function toneClass(tone) {
 }
 .state--loading {
   color: var(--a-text-muted);
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
 }
 .state--error {
   color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   flex-wrap: wrap;
+}
+:root[data-theme='dark'] .state--error {
+  color: #f87171;
 }
 .state--error .btn-ghost {
   margin-left: auto;
@@ -445,7 +448,7 @@ function toneClass(tone) {
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .card__head {
   display: flex;
@@ -570,6 +573,13 @@ function toneClass(tone) {
 .mini-card__trend.is-down {
   color: #dc2626;
 }
+/* Chữ xanh/đỏ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .mini-card__trend.is-up {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .mini-card__trend.is-down {
+  color: #f87171;
+}
 .mini-card__value {
   font-size: 1.5rem;
   font-weight: 700;
@@ -646,6 +656,15 @@ function toneClass(tone) {
   color: #dc2626;
   background: #ef44441f;
 }
+:root[data-theme='dark'] .badge.is-ok {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge.is-wait {
+  color: #fbbf24;
+}
+:root[data-theme='dark'] .badge.is-no {
+  color: #f87171;
+}
 
 /* Timeline lịch hôm nay */
 .timeline {
@@ -688,7 +707,7 @@ function toneClass(tone) {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid var(--c-surface);
   box-shadow: 0 0 0 2px currentColor;
   z-index: 1;
   transition: transform var(--t);
@@ -730,7 +749,7 @@ function toneClass(tone) {
 .teacher:hover {
   transform: translateY(-3px);
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .teacher:hover .teacher__avatar {
   transform: scale(1.07);

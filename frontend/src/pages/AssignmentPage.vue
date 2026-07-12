@@ -332,7 +332,7 @@ async function confirmCancel() {
 <style scoped>
 .slots-block {
   margin-top: 0.5rem;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--c-border);
   padding-top: 0.9rem;
 }
 .slots-label {
@@ -340,7 +340,7 @@ async function confirmCancel() {
   font-size: 0.85rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: #374151;
+  color: var(--c-text);
 }
 .slot-add {
   display: flex;
@@ -350,9 +350,11 @@ async function confirmCancel() {
 }
 .slot-add select {
   padding: 0.4rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 6px;
   font-size: 0.88rem;
+  background: var(--c-surface);
+  color: var(--c-text);
 }
 .chips {
   display: flex;
@@ -363,7 +365,7 @@ async function confirmCancel() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #eef2ff;
+  background: rgba(99, 102, 241, 0.12);
   color: #3730a3;
   border-radius: 9999px;
   padding: 0.12rem 0.55rem;
@@ -384,7 +386,14 @@ async function confirmCancel() {
   line-height: 1;
 }
 .badge-blue {
-  background: #dbeafe;
+  background: rgba(37, 99, 235, 0.12);
   color: #1e40af;
+}
+/* Chữ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .chip {
+  color: #a5b4fc;
+}
+:root[data-theme='dark'] .badge-blue {
+  color: #93c5fd;
 }
 </style>

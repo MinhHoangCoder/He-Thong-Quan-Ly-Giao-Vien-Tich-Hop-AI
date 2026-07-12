@@ -127,7 +127,7 @@ async function onSubmit() {
 .sub {
   margin: 0 0 16px;
   text-align: center;
-  color: #64748b;
+  color: var(--c-text-muted);
   font-size: 14px;
 }
 .form {
@@ -144,7 +144,7 @@ async function onSubmit() {
 }
 .field input {
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--c-input-border);
   border-radius: 10px;
   font-size: 15px;
   outline: none;
@@ -215,12 +215,18 @@ async function onSubmit() {
   padding: 8px 10px;
 }
 .msg--error {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
 }
 .msg--ok {
-  background: #ecfdf5;
+  background: rgba(34, 197, 94, 0.12);
   color: #047857;
   margin-bottom: 14px;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
 }
 </style>

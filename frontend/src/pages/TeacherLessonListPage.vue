@@ -344,7 +344,7 @@ onMounted(() => {
 }
 
 .btn--ghost {
-  background: #e2e8f0;
+  background: var(--c-surface-2);
   color: var(--c-text);
 }
 
@@ -398,11 +398,14 @@ tbody tr:hover {
 
 .cat-badge {
   display: inline-block;
-  background: #dbeafe;
+  background: rgba(37, 99, 235, 0.12);
   color: #2563eb;
   padding: 4px 10px;
   border-radius: 999px;
   font-size: 12px;
+}
+:root[data-theme='dark'] .cat-badge {
+  color: #93c5fd;
 }
 
 .badge {
@@ -414,8 +417,11 @@ tbody tr:hover {
 }
 
 .badge--pub {
-  background: #dcfce7;
+  background: rgba(34, 197, 94, 0.15);
   color: #15803d;
+}
+:root[data-theme='dark'] .badge--pub {
+  color: #4ade80;
 }
 
 .col-actions {
@@ -484,8 +490,11 @@ tbody tr:hover {
 }
 
 .msg--error {
-  background: #fee2e2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
 }
 
 .total {

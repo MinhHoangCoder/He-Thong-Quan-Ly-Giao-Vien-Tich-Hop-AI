@@ -186,7 +186,7 @@ onMounted(load)
 
   padding: 10px 0;
 
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--c-border-soft);
 }
 
 .file-item:last-child {
@@ -216,7 +216,7 @@ onMounted(load)
 }
 
 .btn-view:disabled {
-  color: #999;
+  color: var(--c-text-muted);
   cursor: default;
   text-decoration: none;
 }

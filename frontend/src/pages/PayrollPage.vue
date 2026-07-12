@@ -273,11 +273,14 @@ const totalNet = computed(() =>
 .preview {
   margin-top: 0.4rem;
   padding: 0.6rem 0.8rem;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: rgba(249, 115, 22, 0.09);
+  border: 1px solid rgba(249, 115, 22, 0.3);
   border-radius: 8px;
   font-size: 0.9rem;
   color: #9a3412;
+}
+:root[data-theme='dark'] .preview {
+  color: #fdba74;
 }
 tfoot td {
   padding: 0.7rem 1rem;

@@ -213,12 +213,14 @@ function switchTo(acc) {
       <nav class="sidebar__nav">
         <div v-for="group in nav" :key="group.title" class="navgroup">
           <p class="navgroup__title">{{ group.title }}</p>
+          <!-- to: '#' = trang chưa làm -> không gán active-class, kẻo vue-router
+               coi '#' là trang hiện tại và thắp sáng CẢ LOẠT mục menu -->
           <RouterLink
             v-for="item in group.items"
             :key="item.label"
             :to="item.to"
             class="navlink"
-            active-class="is-active"
+            :active-class="item.to === '#' ? '' : 'is-active'"
           >
             <span class="navlink__icon"><SvgIcon :name="item.icon" :size="19" /></span>
             <span class="navlink__label">{{ item.label }}</span>
@@ -630,7 +632,7 @@ function switchTo(acc) {
   font-weight: 700;
   color: #fff;
   background: var(--c-primary);
-  border: 2px solid #fff;
+  border: 2px solid var(--c-surface);
   border-radius: 20px;
   line-height: 1;
 }
@@ -640,7 +642,7 @@ function switchTo(acc) {
   right: 0;
   width: 360px;
   max-width: calc(100vw - 2rem);
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 14px;
   box-shadow: var(--a-shadow-lg);
@@ -673,7 +675,7 @@ function switchTo(acc) {
   transition: background var(--t-fast);
 }
 .notif__markall:hover {
-  background: #fff7ed;
+  background: rgba(249, 115, 22, 0.1);
 }
 .notif__list {
   list-style: none;
@@ -696,10 +698,10 @@ function switchTo(acc) {
   background: var(--a-bg);
 }
 .notif__item.is-unread {
-  background: #fff7ed80;
+  background: rgba(249, 115, 22, 0.07);
 }
 .notif__item.is-unread:hover {
-  background: #ffedd5;
+  background: rgba(249, 115, 22, 0.16);
 }
 .notif__icon {
   flex: 0 0 auto;

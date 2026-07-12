@@ -2061,7 +2061,7 @@ function formatDate(d) {
   gap: 0.4rem;
   padding: 0.45rem 0.9rem;
   background: transparent;
-  border: 1.5px solid #fca5a5;
+  border: 1.5px solid rgba(239, 68, 68, 0.45);
   border-radius: 8px;
   color: #dc2626;
   font-size: 0.84rem;
@@ -2072,8 +2072,11 @@ function formatDate(d) {
 }
 .btn-delete-toggle:hover,
 .btn-delete-toggle--active {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.09);
   border-color: #dc2626;
+}
+:root[data-theme='dark'] .btn-delete-toggle {
+  color: #f87171;
 }
 .btn-confirm-delete {
   padding: 0.45rem 1rem;
@@ -2171,7 +2174,7 @@ function formatDate(d) {
   background: var(--a-bg);
 }
 .t-row--selected {
-  background: #fff5f5;
+  background: rgba(239, 68, 68, 0.07);
 }
 .col-check {
   width: 36px;
@@ -2223,7 +2226,7 @@ function formatDate(d) {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  border: 2px solid #fff;
+  border: 2px solid var(--c-surface);
 }
 .dot--active {
   background: #22c55e;
