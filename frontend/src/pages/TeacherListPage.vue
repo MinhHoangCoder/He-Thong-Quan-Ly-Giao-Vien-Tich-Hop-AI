@@ -362,7 +362,7 @@ async function submitCreate() {
     const { data: allTeachers } = await teacherApi.list()
     const created = allTeachers.find((t) => t.appUserId === userInfo.id)
     if (!created)
-      throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
+      throw new Error('Tạo thành công nhưng không thấy giáo viên vừa tạo.')
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
@@ -479,6 +479,8 @@ async function loadBranches() {
     // Bỏ qua lỗi branch — không cản trang chính
   }
 }
+
+
 
 async function loadTrash() {
   trashLoading.value = true
@@ -839,6 +841,11 @@ function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('vi-VN')
 }
+function absoluteFileUrl(url) {
+  if (!url) return ''
+  return url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL}${url}`
+}
+
 </script>
 
 <template>
@@ -1577,7 +1584,7 @@ function formatDate(d) {
                     <span v-if="c.expiryDate"> → {{ formatDate(c.expiryDate) }}</span>
                     <a
                       v-if="c.fileUrl"
-                      :href="c.fileUrl"
+                      :href="absoluteFileUrl(c.fileUrl)"
                       target="_blank"
                       class="cert-file-link"
                       title="Xem file PDF"
@@ -1815,7 +1822,7 @@ function formatDate(d) {
                       <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
                       <a
                         v-if="c.fileUrl"
-                        :href="c.fileUrl"
+                        :href="absoluteFileUrl(c.fileUrl)"
                         target="_blank"
                         class="cert-file-link"
                         title="Xem file PDF"
