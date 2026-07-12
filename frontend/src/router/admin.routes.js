@@ -79,6 +79,31 @@ export const adminRoutes = [
     },
   },
   {
+    path: '/admin/lessons',
+    name: 'admin-lesson-list',
+    component: () => import('@/pages/LessonListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/admin/lessons/new',
+    name: 'admin-lesson-new',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/admin/lessons/:id/edit',
+    name: 'admin-lesson-edit',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  // ── Nhóm môn (SubjectCategory) — quản lý danh mục ───────────────
+  {
+    path: '/admin/subject-categories',
+    name: 'admin-subject-category-list',
+    component: () => import('@/pages/SubjectCategoryListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
     path: '/staff/settings',
     name: 'staff-settings',
     component: () => import('@/pages/SettingsPage.vue'),
