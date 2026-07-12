@@ -25,7 +25,7 @@ const nav = [
     items: [
       { label: 'Phiếu lương', icon: 'payroll', to: '#' },
       { label: 'Hồ sơ của tôi', icon: 'teacher', to: '#' },
-      { label: 'Đánh giá', icon: 'evaluation', to: '#' },
+      { label: 'Đánh giá', icon: 'evaluation', to: '/teacher/evaluations' },
     ],
   },
   {

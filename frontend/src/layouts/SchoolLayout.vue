@@ -19,6 +19,7 @@ const nav = [
   {
     title: 'Báo cáo',
     items: [
+      { label: 'Đánh giá GV', icon: 'evaluation', to: '/school/evaluations' },
       { label: 'Thống kê', icon: 'evaluation', to: '#' },
       { label: 'Phản hồi', icon: 'mail', to: '#' },
     ],

@@ -29,6 +29,13 @@ export const teacherRoutes = [
     },
     props: true,
   },
+  // ── Đánh giá (chỉ xem về chính mình) ────────────────────────────
+  {
+    path: '/teacher/evaluations',
+    name: 'teacher-evaluations',
+    component: () => import('@/pages/EvaluationPage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'], evaluationPortal: 'teacher' },
+  },
   // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/teacher/settings',
