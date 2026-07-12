@@ -28,10 +28,7 @@ const nav = [
       { label: 'Đánh giá', icon: 'evaluation', to: '#' },
     ],
   },
-  {
-    title: 'Hệ thống',
-    items: [{ label: 'Thông báo', icon: 'bell', to: '#' }],
-  },
+  // Thông báo KHÔNG để ở sidebar: đã có chuông thông báo trên topbar (PortalShell).
 ]
 // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>

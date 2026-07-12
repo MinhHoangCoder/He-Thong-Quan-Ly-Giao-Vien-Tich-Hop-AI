@@ -107,7 +107,6 @@ const sessionStyle = (s) => ({
 <template>
   <div class="page-head">
     <h1 class="page-head__title">Xin chào, {{ firstName }}</h1>
-    <button class="btn-primary"><SvgIcon name="clock" :size="18" /> Check-in</button>
   </div>
 
   <section class="stat-grid">
@@ -193,27 +192,6 @@ const sessionStyle = (s) => ({
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--a-text);
-}
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  border: none;
-  cursor: pointer;
-  padding: 0.65rem 1.15rem;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #fff;
-  background: var(--grad-primary);
-  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.32);
-  transition:
-    transform var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.42);
 }
 .stat-grid {
   display: grid;
