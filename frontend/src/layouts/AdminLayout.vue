@@ -16,8 +16,11 @@ const nav = [
     ],
   },
   {
-    title: 'Kho bài giảng',
-    items: [{ label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' }],
+    title: 'Môn học',
+    items: [
+      { label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' },
+      { label: 'Nhóm môn học', icon: 'subject', to: '/admin/subject-categories' },
+    ],
   },
   {
     title: 'Khách hàng',
