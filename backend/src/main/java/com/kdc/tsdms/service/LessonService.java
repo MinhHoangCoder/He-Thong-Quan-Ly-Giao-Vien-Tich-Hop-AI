@@ -74,8 +74,10 @@ public class LessonService {
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
 
     /**
-     * Whitelist đuôi file cho phép upload. KHÔNG cho html/svg/js... vì /uploads/** được
-     * serve same-origin — file HTML độc hại sẽ thành stored-XSS chạy trên domain của app.
+     * Whitelist đuôi file cho phép upload. KHÔNG cho html/svg/js... vì /uploads/**
+     * được
+     * serve same-origin — file HTML độc hại sẽ thành stored-XSS chạy trên domain
+     * của app.
      */
     private static final Set<String> ALLOWED_EXTENSIONS =
             Set.of("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "png", "jpg", "jpeg", "gif", "mp4", "zip");
@@ -259,6 +261,12 @@ public class LessonService {
             if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
 
+            if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
+                throw new ApiException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "File \"" + original + "\" vượt quá dung lượng cho phép (tối đa 20MB)");
+            }
+
             // BẢO MẬT: ext lấy từ tên file do CLIENT gửi — không sanitize thì tên dạng
             // "x.a/b" cho ra ext chứa dấu "/" -> dir.resolve() GHI FILE RA NGOÀI thư mục
             // uploads (path traversal). Chỉ nhận đuôi chữ+số và phải nằm trong whitelist.
@@ -270,7 +278,8 @@ public class LessonService {
                         "Định dạng file không được hỗ trợ: " + original + " (chỉ nhận "
                                 + String.join(
                                         ", ",
-                                        ALLOWED_EXTENSIONS.stream().sorted().toList()) + ")");
+                                        ALLOWED_EXTENSIONS.stream().sorted().toList())
+                                + ")");
             }
             String stored = UUID.randomUUID() + "." + ext;
 

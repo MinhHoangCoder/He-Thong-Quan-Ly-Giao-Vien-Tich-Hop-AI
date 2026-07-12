@@ -42,6 +42,16 @@ spring:
     # DB rỗng (máy mới): baseline không kích hoạt → chạy đủ V1→V4.
     baseline-version: 1
 
+  # Giới hạn upload file — PHẢI khai rõ, nếu không Spring Boot dùng mặc định
+  # max-file-size=1MB/max-request-size=10MB. File giáo án (PDF báo cáo, ảnh scan...)
+  # thường lớn hơn 1MB -> bị Tomcat/Spring cắt request giữa chừng, FE không nhận được
+  # response JSON (chỉ thấy network error) thay vì thông báo lỗi rõ ràng.
+  # Khớp với MAX_UPLOAD_FILE_SIZE_BYTES trong LessonService.java.
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 25MB # nhỉnh hơn max-file-size vì có thể upload nhiều file 1 lần
+
   # Gửi email (luồng quên mật khẩu). Điền tài khoản Gmail + App Password qua biến môi trường.
   # Tạo App Password: Google Account -> Security -> 2-Step Verification -> App passwords.
   mail:
@@ -61,16 +71,16 @@ tsdms:
   jwt:
     # QUAN TRỌNG: đổi secret ở môi trường thật. Tối thiểu 32 byte cho HS256.
     secret: ${JWT_SECRET:tsdms-dev-secret-change-me-please-at-least-32-bytes-long-0123456789}
-    access-token-ttl: 15m      # access token sống ngắn
-    refresh-token-ttl: 7d      # refresh token sống dài, lưu hash ở DB để thu hồi được
+    access-token-ttl: 15m # access token sống ngắn
+    refresh-token-ttl: 7d # refresh token sống dài, lưu hash ở DB để thu hồi được
     issuer: tsdms
   reset:
-    token-ttl: 30m             # link đặt lại mật khẩu hết hạn sau 30 phút
-    base-url: ${APP_BASE_URL:http://localhost:5173}   # FE base url để ghép link reset
+    token-ttl: 30m # link đặt lại mật khẩu hết hạn sau 30 phút
+    base-url: ${APP_BASE_URL:http://localhost:5173} # FE base url để ghép link reset
   rate-limit:
     enabled: true
-    capacity: 5                # tối đa 5 lần thử dồn dập / IP / endpoint (login, forgot/reset-password)
-    refill-period: 1m          # hồi đầy lại sau 1 phút → ~5 request/phút/IP
+    capacity: 5 # tối đa 5 lần thử dồn dập / IP / endpoint (login, forgot/reset-password)
+    refill-period: 1m # hồi đầy lại sau 1 phút → ~5 request/phút/IP
     # CHỈ bật true khi deploy sau reverse-proxy tin cậy (nginx) có gắn X-Forwarded-For.
     # Để false, client tự gửi header này sẽ KHÔNG né được rate limit (chống giả mạo IP).
     trust-forwarded-header: false
