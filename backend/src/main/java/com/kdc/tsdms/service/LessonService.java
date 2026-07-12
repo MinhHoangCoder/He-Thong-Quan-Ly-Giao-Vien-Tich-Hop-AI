@@ -52,7 +52,8 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
+    private static final Path UPLOAD_ROOT =
+            Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
     /**
      * Whitelist đuôi file cho tài liệu bài giảng — CHỈ nhận định dạng tài liệu/ảnh
@@ -78,12 +79,12 @@ public class LessonService {
      * serve same-origin — file HTML độc hại sẽ thành stored-XSS chạy trên domain
      * của app.
      */
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
-            "png", "jpg", "jpeg", "gif", "mp4", "zip");
+    private static final Set<String> ALLOWED_EXTENSIONS =
+            Set.of("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "png", "jpg", "jpeg", "gif", "mp4", "zip");
 
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
-            "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -257,8 +258,7 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty())
-                continue;
+            if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
 
             if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
@@ -431,8 +431,7 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty())
-            return Map.of();
+        if (ids.isEmpty()) return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 
@@ -481,7 +480,8 @@ public class LessonService {
         try {
             // fileUrl dạng: /uploads/lessons/{lessonId}/{storedFileName} -> lấy phần
             // storedFileName cuối cùng
-            String storedFileName = file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
+            String storedFileName =
+                    file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
             Path path = UPLOAD_ROOT.resolve(String.valueOf(lessonId)).resolve(storedFileName);
 
             Resource resource = new UrlResource(path.toUri());
