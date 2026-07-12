@@ -56,11 +56,10 @@ public class Teacher extends SoftDeletableEntity {
     @Column(name = "HireDate")
     private LocalDate hireDate;
 
-    /** FULL_TIME | PART_TIME | CONTRACT (nullable). */
+    /** Cơ hữu | thỉnh giảng  */
     @Column(name = "EmploymentType")
     private String employmentType;
 
-    /** ACTIVE | RETIRED | SUSPENDED */
     @Column(name = "Status", nullable = false)
     private String status = "ACTIVE";
 }

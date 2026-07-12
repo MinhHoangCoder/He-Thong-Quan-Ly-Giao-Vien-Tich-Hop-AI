@@ -3,6 +3,7 @@
 // để dễ đọc / dễ sửa, không tách nhỏ ra nhiều component.
 // Giao diện danh sách dạng BẢNG (giống trang Quản lý Nhân viên) thay cho card cũ.
 import { ref, computed, reactive, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
@@ -253,6 +254,7 @@ function validateIdCard() {
   }
   if (!CCCD_RE.test(v)) {
     createFieldErrors.idCardNo = 'CCCD phải có 12 chữ số'
+
     return false
   }
   createFieldErrors.idCardNo = ''
@@ -379,7 +381,7 @@ async function submitCreate() {
       address: p.address || null,
     })
 
-    // 3) Bằng cấp + chứng chỉ — tạo certificate rồi upload file nếu có
+
     const allDocs = [...createModal.degrees, ...createModal.certificates].filter((d) =>
       d.name.trim(),
     )
@@ -494,7 +496,12 @@ async function loadTrash() {
   }
 }
 
+const route = useRoute()
 onMounted(async () => {
+  // Ô tìm kiếm chung (topbar) điều hướng tới đây kèm ?q=... — prefill bộ lọc.
+  if (route.query.q) {
+    filters.keyword = String(route.query.q)
+  }
   await Promise.all([loadTeachers(), loadBranches()])
 })
 
@@ -618,7 +625,7 @@ function validateEditIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    editFieldErrors.idCardNo = 'CCCD phải có 12 chữ số'
+
     return false
   }
   editFieldErrors.idCardNo = ''
@@ -879,6 +886,7 @@ function absoluteFileUrl(url) {
           title="Lịch sử (giáo viên đã bị ẩn)"
         >
           ⏳ Lịch sử
+
         </button>
 
         <button v-if="canManage" class="btn-add" @click="openCreate">
@@ -1021,6 +1029,7 @@ function absoluteFileUrl(url) {
                   </button>
                   <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">
                     🔧
+
                   </button>
                   <button
                     v-if="canManage"
@@ -1268,6 +1277,7 @@ function absoluteFileUrl(url) {
                           class="form-input"
                           :class="{ 'form-input--error': createFieldErrors.idCardNo }"
                           placeholder="12 chữ số"
+
                           @blur="validateIdCard"
                         />
                       </label>
@@ -1949,7 +1959,7 @@ function absoluteFileUrl(url) {
   padding: 0.5rem 1rem;
   border: 1.5px solid var(--a-border);
   border-radius: 9px;
-  background: #fff;
+  background: var(--c-surface);
   color: var(--a-text-muted);
   font-size: 0.86rem;
   font-weight: 600;
@@ -1995,7 +2005,7 @@ function absoluteFileUrl(url) {
   gap: 0.65rem;
   margin-bottom: 1.4rem;
   padding: 1rem 1.1rem;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
   position: sticky;
@@ -2149,7 +2159,7 @@ function absoluteFileUrl(url) {
 /* ── Bảng danh sách giáo viên ── */
 .table-wrap {
   overflow-x: auto;
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
 }
@@ -2204,7 +2214,9 @@ function absoluteFileUrl(url) {
   height: 20px;
   border: 2px solid var(--a-border);
   border-radius: 6px;
+
   background: #fff;
+
   transition: all 0.15s;
   cursor: pointer;
 }
@@ -2283,7 +2295,6 @@ function absoluteFileUrl(url) {
 }
 .badge--retired {
   background: #f1f5f9;
-  color: #64748b;
 }
 .badge--suspended {
   background: #fef9c3;
@@ -2498,7 +2509,7 @@ function absoluteFileUrl(url) {
 }
 .create-nav__item:hover {
   background: #fff;
-  color: var(--c-primary);
+
 }
 .create-nav__item--active {
   background: var(--grad-primary);
@@ -2714,27 +2725,7 @@ function absoluteFileUrl(url) {
   border-radius: 8px;
   font-size: 0.84rem;
   color: var(--a-text);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-.cert-file-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-left: auto;
-  padding: 0.2rem 0.6rem;
-  border-radius: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #dc2626;
-  background: #fef2f2;
-  text-decoration: none;
-  transition: background 0.15s;
-}
-.cert-file-link:hover {
-  background: #fee2e2;
+
 }
 
 /* ── Edit / Create form ── */
@@ -2785,6 +2776,7 @@ function absoluteFileUrl(url) {
   font-family: inherit;
   line-height: 1.5;
 }
+
 .form-error {
   font-size: 0.84rem;
   color: #dc2626;
