@@ -3,7 +3,7 @@ import http from './http'
 /**
  * API module Bài giảng.
  * Category: 1 trong 4 giá trị cố định "Tin học" | "Tiếng Anh" | "STEM - AI" | "Kĩ năng sống".
- * FileType: 'pptx' = file PPT upload, 'canva' = link Canva.
+ * FileType: 'pdf' = file PDF upload, 'canva' = link Canva.
  */
 export const lessonApi = {
   /* ── Metadata ──────────────────────────────────────── */
@@ -51,5 +51,15 @@ export const lessonApi = {
   },
   removeFile(lessonId, fileId) {
     return http.delete(`/lessons/${lessonId}/files/${fileId}`)
+  },
+
+  /**
+   * Tải nội dung file đính kèm (KHÔNG dùng cho fileType 'canva' — canva chỉ
+   * cần window.open() thẳng fileUrl vì đã là link Canva ngoài, không cần đi
+   * qua API). Dùng responseType 'blob' để FE tự tạo <a download> ép trình
+   * duyệt tải file về máy (xem TeacherLessonViewPage.vue / dev-notes).
+   */
+  downloadFile(lessonId, fileId) {
+    return http.get(`/lessons/${lessonId}/files/${fileId}/download`, { responseType: 'blob' })
   },
 }

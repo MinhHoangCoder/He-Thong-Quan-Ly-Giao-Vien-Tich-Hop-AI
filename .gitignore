@@ -44,6 +44,12 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+### File người dùng upload lúc chạy app (LessonService ghi vào uploads/lessons/...) ###
+# Dữ liệu runtime, không phải source — PR #60 từng lỡ commit 8 file pdf/pptx thật.
+# Pattern không có "/" đầu nên khớp mọi cấp: backend/uploads/ (chạy từ backend/)
+# lẫn uploads/ ở root (nếu chạy app từ root repo).
+uploads/
+
 ### Env / secrets ###
 .env
 .env.local

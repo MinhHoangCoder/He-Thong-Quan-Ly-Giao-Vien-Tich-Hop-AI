@@ -29,6 +29,11 @@
   --c-text-muted: #64748b;
   --c-border: #e6ebf2;
   --c-bg: #f5f8fc;
+  --c-surface: #ffffff; /* nền card / topbar / panel nổi */
+  --c-surface-2: #f1f5f9; /* nền phụ trong card (icon, hover, khối nhấn) */
+  --c-border-soft: #f1f5f9; /* kẻ dòng mảnh trong card */
+  --c-input-border: #d5dde8; /* viền ô nhập liệu */
+  color-scheme: light; /* báo trình duyệt vẽ scrollbar/ô nhập theo tông sáng */
 
   /* --- Khu vực quản trị (admin) --- */
   --a-bg: #f5f8fc;
@@ -45,6 +50,54 @@
   --t-fast: 0.15s var(--ease);
   --t: 0.22s var(--ease);
   --t-slow: 0.35s var(--ease);
+}
+
+/* ============================================================================
+   🌙 DARK MODE — stores/ui.js gắn data-theme="dark" lên <html>, khối này LẬT
+   toàn bộ token nền/chữ/viền sang tông navy đậm; màu thương hiệu (cam/xanh lam)
+   GIỮ NGUYÊN để nhận diện không đổi. Component nào dùng var() là tự đổi theo —
+   đó là lý do tuyệt đối không hard-code màu nền/chữ trong component.
+   ============================================================================ */
+:root[data-theme='dark'] {
+  --c-text: #e7edf6;
+  --c-text-muted: #8fa1bb;
+  --c-border: #263752;
+  --c-bg: #0b1523;
+  --c-surface: #111f33;
+  --c-surface-2: #1a2b44;
+  --c-border-soft: #1e2f49;
+  --c-input-border: #33486a;
+
+  --a-bg: #0b1523;
+  --a-sidebar: #081426; /* sidebar vẫn đậm hơn nền để giữ cấu trúc 2 lớp */
+  --a-sidebar-2: #050d1a;
+  --a-text: #e7edf6;
+  --a-text-muted: #8fa1bb;
+  --a-border: #263752;
+  --a-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --a-shadow-lg: 0 14px 32px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
+}
+
+/* ============================================================================
+   🔠 CỠ CHỮ — data-fontsize="large" phóng font gốc của <html>: mọi kích thước
+   khai bằng rem (đa số trong app) tự to theo, KHÔNG phải sửa từng component.
+   ============================================================================ */
+:root[data-fontsize='large'] {
+  font-size: 17.5px; /* mặc định trình duyệt 16px */
+}
+
+/* ============================================================================
+   🎬 GIẢM HIỆU ỨNG — data-motion="reduced" (bật trong Cài đặt → Giao diện):
+   tác dụng y hệt prefers-reduced-motion của hệ điều hành nhưng do người dùng
+   chọn trong app. Ai bị chóng mặt với chuyển động sẽ cần cái này.
+   ============================================================================ */
+:root[data-motion='reduced'] *,
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
 }
 
 * {

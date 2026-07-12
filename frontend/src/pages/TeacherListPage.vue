@@ -239,7 +239,7 @@ function validatePhone() {
     return true
   }
   if (!PHONE_RE.test(v)) {
-    createFieldErrors.phone = 'SĐT phải tồn tại'
+    createFieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'
     return false
   }
   createFieldErrors.phone = ''
@@ -253,8 +253,7 @@ function validateIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    createFieldErrors.idCardNo = 'CCCD phải có 12 chữ số'
-
+    createFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
     return false
   }
   createFieldErrors.idCardNo = ''
@@ -364,7 +363,7 @@ async function submitCreate() {
     const { data: allTeachers } = await teacherApi.list()
     const created = allTeachers.find((t) => t.appUserId === userInfo.id)
     if (!created)
-      throw new Error('Tạo thành công nhưng không thấy giáo viên vừa tạo.')
+      throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
@@ -381,7 +380,7 @@ async function submitCreate() {
       address: p.address || null,
     })
 
-
+    // 3) Bằng cấp + chứng chỉ — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
     const allDocs = [...createModal.degrees, ...createModal.certificates].filter((d) =>
       d.name.trim(),
     )
@@ -625,7 +624,7 @@ function validateEditIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-
+    editFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
     return false
   }
   editFieldErrors.idCardNo = ''
@@ -885,8 +884,7 @@ function absoluteFileUrl(url) {
           @click="switchView('trash')"
           title="Lịch sử (giáo viên đã bị ẩn)"
         >
-          ⏳ Lịch sử
-
+          <i class="fa-solid fa-arrow-rotate-left"></i> Lịch sử
         </button>
 
         <button v-if="canManage" class="btn-add" @click="openCreate">
@@ -935,7 +933,7 @@ function absoluteFileUrl(url) {
           @click="toggleDeleteMode"
           title="Chọn giáo viên để xóa"
         >
-          ❌
+          <i class="fa-solid fa-trash" style="color: rgb(255, 59, 59)"></i>
           {{ deleteMode ? 'Hủy chọn' : 'Xóa' }}
         </button>
 
@@ -1025,11 +1023,10 @@ function absoluteFileUrl(url) {
               <td class="col-action" @click.stop>
                 <div class="row-actions">
                   <button class="ra-btn ra-btn--view" title="Xem chi tiết" @click="openDetail(t)">
-                    👁️
+                    <i class="fa-solid fa-eye" style="color: rgb(99, 230, 190)"></i>
                   </button>
                   <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">
-                    🔧
-
+                    <i class="fa-solid fa-wrench" style="color: rgb(255, 212, 59)"></i>
                   </button>
                   <button
                     v-if="canManage"
@@ -1037,7 +1034,10 @@ function absoluteFileUrl(url) {
                     title="Xóa giáo viên"
                     @click="quickDelete(t.id)"
                   >
-                    🗑️
+                    <i
+                      class="fa-solid fa-delete-left fa-width-auto"
+                      style="color: rgb(255, 59, 59)"
+                    ></i>
                   </button>
                 </div>
               </td>
@@ -1151,6 +1151,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Hồ sơ giáo viên -->
                 <template v-if="createModal.activeTab === 'profile'">
                   <h4 class="create-section-title">Tài khoản đăng nhập</h4>
+                  <p class="create-section-hint">
+                    Giáo viên cần 1 tài khoản để đăng nhập hệ thống.
+                  </p>
                   <div class="form-row">
                     <div class="form-field">
                       <label class="form-label"
@@ -1276,8 +1279,7 @@ function absoluteFileUrl(url) {
                           v-model="createModal.profile.idCardNo"
                           class="form-input"
                           :class="{ 'form-input--error': createFieldErrors.idCardNo }"
-                          placeholder="12 chữ số"
-
+                          placeholder="9 hoặc 12 chữ số"
                           @blur="validateIdCard"
                         />
                       </label>
@@ -1338,6 +1340,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="createModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Bằng cấp</h4>
+                  <p class="create-section-hint">
+                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
+                  </p>
                   <div v-for="(d, i) in createModal.degrees" :key="i" class="doc-row">
                     <input
                       v-model="d.name"
@@ -1372,7 +1377,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Chứng chỉ -->
                 <template v-else-if="createModal.activeTab === 'cert'">
                   <h4 class="create-section-title">Chứng chỉ</h4>
-                  <p class="create-section-hint">                  </p>
+                  <p class="create-section-hint">
+                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
+                  </p>
                   <div v-for="(c, i) in createModal.certificates" :key="i" class="doc-row">
                     <input
                       v-model="c.name"
@@ -1407,6 +1414,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="createModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
+                  <p class="create-section-hint">
+                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
+                  </p>
                   <textarea
                     v-model="createModal.experience"
                     class="form-input form-textarea"
@@ -1419,7 +1429,9 @@ function absoluteFileUrl(url) {
                 <template v-else-if="createModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
                   <p class="create-section-hint">
-                    
+                    Giáo viên mới luôn khởi tạo ở trạng thái <strong>Đang hoạt động</strong>. Khi bị
+                    ẩn khỏi danh sách, hệ thống tự chuyển sang <strong>Ngừng hoạt động</strong> và
+                    chuyển vào mục Lịch sử.
                   </p>
                   <span class="badge badge--active badge--lg">Đang hoạt động</span>
                 </template>
@@ -1788,6 +1800,10 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="editModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Thêm bằng cấp mới</h4>
+                  <p class="create-section-hint">
+                    Danh sách bằng cấp/chứng chỉ ĐÃ LƯU xem ở tab "Chứng chỉ" (hệ thống lưu chung 1
+                    bảng, không phân biệt 2 loại này).
+                  </p>
                   <div v-for="(d, i) in editModal.newDegrees" :key="i" class="doc-row">
                     <input
                       v-model="d.name"
@@ -1880,6 +1896,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="editModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
+                  <p class="create-section-hint">
+                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
+                  </p>
                   <textarea
                     v-model="editModal.experience"
                     class="form-input form-textarea"
@@ -1891,6 +1910,9 @@ function absoluteFileUrl(url) {
                 <!-- Tab: Trạng thái -->
                 <template v-else-if="editModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
+                  <p class="create-section-hint">
+                    Chuyển tay nếu cần — bình thường hệ thống tự đổi khi Xóa/Khôi phục.
+                  </p>
                   <select
                     v-model="editModal.form.status"
                     class="form-input"
@@ -2214,9 +2236,7 @@ function absoluteFileUrl(url) {
   height: 20px;
   border: 2px solid var(--a-border);
   border-radius: 6px;
-
-  background: #fff;
-
+  background: var(--c-surface);
   transition: all 0.15s;
   cursor: pointer;
 }
@@ -2294,7 +2314,8 @@ function absoluteFileUrl(url) {
   color: #166534;
 }
 .badge--retired {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
+  color: #64748b;
 }
 .badge--suspended {
   background: #fef9c3;
@@ -2396,7 +2417,7 @@ function absoluteFileUrl(url) {
   padding: 1.5rem;
 }
 .modal {
-  background: #fff;
+  background: var(--c-surface);
   border-radius: 18px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
   width: 100%;
@@ -2508,8 +2529,8 @@ function absoluteFileUrl(url) {
   transition: all 0.15s;
 }
 .create-nav__item:hover {
-  background: #fff;
-
+  background: var(--c-surface);
+  color: var(--c-primary);
 }
 .create-nav__item--active {
   background: var(--grad-primary);
@@ -2725,7 +2746,6 @@ function absoluteFileUrl(url) {
   border-radius: 8px;
   font-size: 0.84rem;
   color: var(--a-text);
-
 }
 
 /* ── Edit / Create form ── */
@@ -2769,14 +2789,13 @@ function absoluteFileUrl(url) {
 .form-input:focus {
   border-color: var(--c-primary);
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
-  background: #fff;
+  background: var(--c-surface);
 }
 .form-textarea {
   resize: vertical;
   font-family: inherit;
   line-height: 1.5;
 }
-
 .form-error {
   font-size: 0.84rem;
   color: #dc2626;

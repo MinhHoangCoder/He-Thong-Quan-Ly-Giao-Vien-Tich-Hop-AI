@@ -1,7 +1,7 @@
 # TSDMS — Từ điển & Hướng dẫn đọc Database (tiếng Việt)
 
 > Tài liệu dành cho cả nhóm, kể cả thành viên chưa quen thuật ngữ tiếng Anh chuyên ngành.
-> Đọc kèm hai file: `TSDMS_Schema.sql` (lõi, 27 bảng) và `TSDMS_Schema_AI.sql` (6 bảng AI, làm sau).
+> Đọc kèm hai file: `TSDMS_Schema.sql` (lõi, 35 bảng) và `TSDMS_Schema_AI.sql` (6 bảng AI, làm sau).
 
 ---
 
@@ -66,12 +66,16 @@
 | Certificate / Contract | Bằng cấp - chứng chỉ / Hợp đồng |
 | School | Trường (khách hàng) |
 | Room | Phòng học |
+| Period | Khung tiết (giờ mỗi tiết, theo từng trường) |
 | SchoolClass | Lớp học |
 | Student | Học sinh |
 | Enrollment | Ghi danh (vào lớp) |
 | Assignment | Phân công |
+| AssignmentSlot | Mẫu lặp tuần của phân công (thứ + tiết) |
 | Schedule | Lịch dạy (từng buổi) |
 | Attendance | Chấm công |
+| PartTimeShiftRequest | Đăng ký ca làm (nhân viên bán thời gian) |
+| EmployeeSchedule | Lịch làm việc thực tế của nhân viên |
 | Payroll | Bảng lương |
 | Evaluation | Đánh giá |
 | Feedback | Phản hồi |
@@ -94,12 +98,14 @@
 **5. Luồng điều phối — phần quan trọng nhất:**
 
 ```
-Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──►  Schedule
-(toàn quyền phân công)          (phân công)               (từng buổi dạy)
+Employee (TRUNG TÂM) ─tạo─► Assignment ─có nhiều─► AssignmentSlot ─generator nở ra─► Schedule
+(toàn quyền phân công)      (mức KỲ)              (mẫu lặp tuần)                    (từng buổi dạy)
 ```
 
-- `Assignment`: nhân viên **trung tâm** chốt **giáo viên nào** dạy **trường/môn/lớp nào** trong **giai đoạn nào**. Trung tâm **toàn quyền** quyết định — trường KHÔNG gửi yêu cầu. Một giáo viên có thể được phân công cho **nhiều trường**.
-- `Schedule`: từ một phân công, tạo ra **các buổi dạy cụ thể** (ngày, giờ, phòng) với trạng thái duyệt `PENDING → APPROVED/REJECTED/CANCELLED`.
+- `Assignment`: nhân viên **trung tâm** chốt **giáo viên nào** dạy **trường/môn/lớp nào** trong **giai đoạn nào** (mức **KỲ**, có thể vài tháng). Trung tâm **toàn quyền** quyết định — trường KHÔNG gửi yêu cầu. Một giáo viên có thể được phân công cho **nhiều trường**.
+- `AssignmentSlot` *(Flyway V9)*: **mẫu lặp theo tuần** của một phân công — mỗi ô là (thứ, tiết[, phòng]). Một `Assignment` mức KỲ ôm **nhiều** slot; đây là bảng CON để không phá grain "mức kỳ" của `Assignment`.
+- `Period` *(Flyway V9)*: khung **tiết** riêng của **từng trường** (mỗi trường số tiết & giờ vào/ra khác nhau; dữ liệu seed theo từng trường). `Schedule` ghi thêm `PeriodId` (buổi thuộc tiết nào) + `SourceSlotId` (buổi sinh từ slot nào).
+- `Schedule`: generator (tầng Service) **nở** các slot ra thành **buổi dạy cụ thể** (ngày, giờ, phòng, tiết) với trạng thái duyệt `PENDING → APPROVED/REJECTED/CANCELLED`.
 - **Trường** (School) chỉ **xem thống kê & báo cáo**, không tạo dữ liệu điều phối.
 
 **6. Sau buổi dạy.** Mỗi buổi `Schedule` có thể gắn một `Attendance` (chấm công). Mỗi lần `Schedule` đổi trạng thái, hệ thống tự ghi vào `ScheduleStatusLog` (qua trigger).
@@ -107,6 +113,8 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 **7. Vận hành khác.** `Payroll` (lương theo tháng, mỗi giáo viên), `TeacherEvaluation` (đánh giá giáo viên), `Feedback` (phản hồi), `Notification` (thông báo), `AuditLog` (nhật ký toàn hệ thống).
 
 **8. Bài giảng (module V2).** `Lesson` thuộc một `Subject` + một `Branch`, có thể gắn `Teacher` phụ trách soạn. Nhân viên trung tâm tạo/sửa; trường & giáo viên chỉ XEM bài đã `PUBLISHED` (vòng đời `DRAFT → PUBLISHED → ARCHIVED`). Một bài giảng có nhiều `LessonFile` (file đính kèm: PDF, PPTX, link video...).
+
+**9. Ca làm nhân viên (Flyway V10).** Nhân viên có `EmploymentType` là `FULL_TIME` (làm cố định, mặc định T2–T6) hoặc `PART_TIME` (đăng ký ca theo tuần). Nhân viên part-time gửi `PartTimeShiftRequest` (đăng ký ca theo ngày/buổi) → HR duyệt (`PENDING → APPROVED/REJECTED`). Lịch làm **thực tế** nằm ở `EmployeeSchedule` với `Source` = `FIXED` (full-time cố định) | `FROM_REQUEST` (sinh từ đăng ký đã duyệt) | `MANUAL` — **song song** mô hình `AssignmentSlot → Schedule` của lịch dạy giáo viên.
 
 ---
 
@@ -131,13 +139,17 @@ Employee (TRUNG TÂM)  ──tạo──►  Assignment  ──sinh ra──► 
 13. **Contract** — hợp đồng giáo viên.
 14. **School** — trường khách hàng.
 15. **Room** — phòng học (thuộc trường).
+    - **15b. Period** *(Flyway V9)* — khung tiết theo TỪNG TRƯỜNG (số tiết & giờ vào/ra riêng mỗi trường); seed theo từng trường.
 16. **SchoolClass** — lớp học (thuộc trường).
 17. **Student** — học sinh (không điểm/học phí).
 18. **ClassEnrollment** — nối lớp ⇄ học sinh.
-19. **Assignment** — phân công giáo viên.
-20. **Schedule** — lịch dạy từng buổi (bảng trung tâm).
+19. **Assignment** — phân công giáo viên (mức KỲ).
+    - **19b. AssignmentSlot** *(Flyway V9)* — mẫu lặp tuần của phân công (thứ + tiết[+ phòng]); generator nở ra `Schedule`.
+20. **Schedule** — lịch dạy từng buổi (bảng trung tâm); thêm `PeriodId` + `SourceSlotId` ở V9.
 21. **ScheduleStatusLog** — nhật ký đổi trạng thái lịch.
 22. **Attendance** — chấm công.
+    - **22b. PartTimeShiftRequest** *(Flyway V10)* — nhân viên bán thời gian đăng ký ca; HR duyệt/từ chối.
+    - **22c. EmployeeSchedule** *(Flyway V10)* — lịch làm việc thực tế của nhân viên theo buổi (FIXED / FROM_REQUEST / MANUAL).
 23. **Payroll** — bảng lương theo tháng.
 24. **TeacherEvaluation** — đánh giá giáo viên.
 25. **Feedback** — phản hồi.

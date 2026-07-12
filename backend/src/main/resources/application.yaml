@@ -18,8 +18,18 @@ spring:
         physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.SQLServerDialect
+        # KHÔNG khai dialect tường minh: Hibernate 7 tự chọn SQLServerDialect từ JDBC
+        # metadata; khai thừa sẽ bị cảnh báo deprecation HHH90000025.
         format_sql: true
+        type:
+          # Hibernate 6+ mặc định map Instant -> DATETIMEOFFSET, nhưng quy ước schema (V1)
+          # là "DATETIME2 lưu giờ UTC" -> ép về TIMESTAMP (datetime2) cho khớp cột thật.
+          # Thiếu dòng này Hibernate validate sẽ đỏ toàn bộ cột CreatedAt/UpdatedAt/DeletedAt...
+          preferred_instant_jdbc_type: TIMESTAMP
+        jdbc:
+          # Đi kèm dòng trên: bind Instant theo UTC (không theo múi giờ JVM +07) — để giá trị
+          # ghi xuống datetime2 đúng quy ước UTC, khớp DEFAULT SYSUTCDATETIME() của DB.
+          time_zone: UTC
     open-in-view: false
 
   flyway:

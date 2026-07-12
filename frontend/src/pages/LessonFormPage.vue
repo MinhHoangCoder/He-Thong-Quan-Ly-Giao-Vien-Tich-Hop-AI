@@ -3,7 +3,7 @@
  * Trang thêm / sửa bài giảng.
  * Chọn Danh mục (từ bảng SubjectCategory) → lọc Môn học trong danh mục đó.
  * GradeLevel là text tự do (chọn từ dropdown gợi ý).
- * Hỗ trợ: upload file PPT (multipart), thêm link Canva (JSON), xóa file đính kèm.
+ * Hỗ trợ: upload file PDF (multipart), thêm link Canva (JSON), xóa file đính kèm.
  */
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -18,6 +18,16 @@ const router = useRouter()
 
 const isEdit = computed(() => !!route.params.id)
 const lessonId = computed(() => (isEdit.value ? Number(route.params.id) : null))
+
+// FIX (2026-07-10): trang này cũng được dùng chung cho 2 khu vực, giống
+// LessonListPage.vue (xem ghi chú ở đó). route.name ở đây là
+// 'admin-lesson-new' / 'admin-lesson-edit' (khu ADMIN) hoặc
+// 'lesson-new' / 'lesson-edit' (khu STAFF) tuỳ nơi người dùng bấm vào.
+// Trước đây mọi điều hướng (nút "Danh sách", sau khi Tạo mới) đều push cứng
+// sang tên route khu STAFF -> ADMIN bị route guard đá về dashboard.
+const isAdminArea = computed(() => route.name?.toString().startsWith('admin-'))
+const listRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-list' : 'lesson-list'))
+const editRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-edit' : 'lesson-edit'))
 
 const subjects = ref([]) // tất cả subject ACTIVE
 const gradeLevels = ref([])
@@ -47,12 +57,6 @@ const closeCanvaForm = () => {
   canvaError.value = ''
 }
 
-const DIFFICULTY_OPTIONS = [
-  { value: 'BASIC', label: 'Cơ bản' },
-  { value: 'INTERMEDIATE', label: 'Trung cấp' },
-  { value: 'ADVANCED', label: 'Nâng cao' },
-]
-
 const STATUS_OPTIONS = [
   { value: 'DRAFT', label: 'Bản nháp (DRAFT)' },
   { value: 'PUBLISHED', label: 'Đã đăng (PUBLISHED)' },
@@ -61,14 +65,11 @@ const STATUS_OPTIONS = [
 
 const form = reactive({
   subjectId: null,
-  branchId: 1, // mặc định chi nhánh đầu — thay bằng dropdown Branch nếu cần
+  branchId: null,
   teacherId: null,
   title: '',
   description: '',
-  content: '',
   gradeLevel: '',
-  duration: '',
-  difficultyLevel: '',
   status: 'DRAFT',
 })
 
@@ -79,10 +80,10 @@ const successMsg = ref('')
 
 const attachedFiles = ref([])
 
-const pptInput = ref(null)
-const pptFiles = ref([])
-const uploadingPPT = ref(false)
-const pptError = ref('')
+const pdfInput = ref(null)
+const pdfFiles = ref([])
+const uploadingPDF = ref(false)
+const pdfError = ref('')
 
 const showCanvaForm = ref(false)
 const canvaForm = reactive({ fileName: '', canvaUrl: '' })
@@ -118,10 +119,7 @@ async function loadLesson() {
     form.teacherId = data.teacherId
     form.title = data.title
     form.description = data.description || ''
-    form.content = data.content || ''
     form.gradeLevel = data.gradeLevel || ''
-    form.duration = data.duration || ''
-    form.difficultyLevel = data.difficultyLevel || ''
     form.status = data.status
     attachedFiles.value = data.files || []
     // Khôi phục category dựa trên category trả về từ API
@@ -139,6 +137,10 @@ async function onSubmit() {
   errorMsg.value = ''
   successMsg.value = ''
 
+  if (!form.branchId) {
+    errorMsg.value = 'Vui lòng chọn chi nhánh.'
+    return
+  }
   if (!form.subjectId) {
     errorMsg.value = 'Vui lòng chọn môn học.'
     return
@@ -154,10 +156,7 @@ async function onSubmit() {
     teacherId: form.teacherId ? Number(form.teacherId) : null,
     title: form.title.trim(),
     description: form.description.trim() || null,
-    content: form.content.trim() || null,
     gradeLevel: form.gradeLevel || null,
-    duration: form.duration ? Number(form.duration) : null,
-    difficultyLevel: form.difficultyLevel || null,
     status: form.status,
   }
 
@@ -169,7 +168,7 @@ async function onSubmit() {
     } else {
       const { data } = await lessonApi.create(body)
       successMsg.value = 'Tạo bài giảng thành công!'
-      router.replace({ name: 'lesson-edit', params: { id: data.id } })
+      router.replace({ name: editRouteName, params: { id: data.id } })
     }
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'Lưu thất bại, thử lại sau.'
@@ -178,26 +177,26 @@ async function onSubmit() {
   }
 }
 
-function onPptChange(e) {
-  pptFiles.value = Array.from(e.target.files || [])
+function onPdfChange(e) {
+  pdfFiles.value = Array.from(e.target.files || [])
 }
 
-async function uploadPPT() {
-  if (!pptFiles.value.length) {
-    pptError.value = 'Chọn ít nhất 1 file PPT.'
+async function uploadPDF() {
+  if (!pdfFiles.value.length) {
+    pdfError.value = 'Chọn ít nhất 1 file PDF.'
     return
   }
-  pptError.value = ''
-  uploadingPPT.value = true
+  pdfError.value = ''
+  uploadingPDF.value = true
   try {
-    const { data } = await lessonApi.uploadFiles(lessonId.value, pptFiles.value)
+    const { data } = await lessonApi.uploadFiles(lessonId.value, pdfFiles.value)
     attachedFiles.value.push(...data)
-    pptFiles.value = []
-    if (pptInput.value) pptInput.value.value = ''
+    pdfFiles.value = []
+    if (pdfInput.value) pdfInput.value.value = ''
   } catch (e) {
-    pptError.value = e.response?.data?.message || 'Upload thất bại.'
+    pdfError.value = e.response?.data?.message || 'Upload thất bại.'
   } finally {
-    uploadingPPT.value = false
+    uploadingPDF.value = false
   }
 }
 
@@ -262,16 +261,9 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div class="page__head">
-      <button class="back-btn" @click="router.push({ name: 'lesson-list' })">← Danh sách</button>
+      <button class="back-btn" @click="router.push({ name: listRouteName })">← Danh sách</button>
       <h1 class="page__title">{{ isEdit ? 'Sửa bài giảng' : 'Thêm bài giảng' }}</h1>
     </div>
-    <label class="field">
-      <span>Chi nhánh <span class="req">*</span></span>
-      <select v-model="form.branchId" required>
-        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-      </select>
-    </label>
-
     <div v-if="loadingPage" class="loading">Đang tải dữ liệu…</div>
 
     <div v-else class="layout">
@@ -279,6 +271,17 @@ onMounted(async () => {
       <div class="col-main">
         <form class="card" @submit.prevent="onSubmit">
           <h2 class="card__title">Thông tin bài giảng</h2>
+
+          <!-- Hàng 0: Chi nhánh -->
+          <div class="grid-1">
+            <label class="field">
+              <span>Chi nhánh <span class="req">*</span></span>
+              <select v-model="form.branchId" required>
+                <option :value="null">-- Chọn chi nhánh --</option>
+                <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+              </select>
+            </label>
+          </div>
 
           <!-- Hàng 1: Danh mục + Môn học (lọc theo danh mục) -->
           <div class="grid-2">
@@ -331,33 +334,8 @@ onMounted(async () => {
             ></textarea>
           </label>
 
-          <!-- Hàng 4: Nội dung chi tiết -->
-          <label class="field field--full">
-            <span>Nội dung chi tiết <span class="hint">(Markdown / Rich text)</span></span>
-            <textarea
-              v-model="form.content"
-              rows="8"
-              placeholder="## Mục tiêu&#10;- ...&#10;&#10;## Hoạt động&#10;1. ..."
-            ></textarea>
-          </label>
-
-          <!-- Hàng 5: Thời lượng + Độ khó + Trạng thái -->
-          <div class="grid-3">
-            <label class="field">
-              <span>Thời lượng (phút)</span>
-              <input v-model="form.duration" type="number" min="1" placeholder="VD: 45" required />
-            </label>
-
-            <label class="field">
-              <span>Độ khó</span>
-              <select v-model="form.difficultyLevel" required>
-                <option value="">— Chọn —</option>
-                <option v-for="d in DIFFICULTY_OPTIONS" :key="d.value" :value="d.value">
-                  {{ d.label }}
-                </option>
-              </select>
-            </label>
-
+          <!-- Hàng 5: Trạng thái -->
+          <div class="grid-1">
             <label class="field field--req">
               <span>Trạng thái</span>
               <select v-model="form.status" required>
@@ -375,7 +353,7 @@ onMounted(async () => {
             <button
               class="btn btn--ghost"
               type="button"
-              @click="router.push({ name: 'lesson-list' })"
+              @click="router.push({ name: listRouteName })"
             >
               Hủy
             </button>
@@ -388,34 +366,33 @@ onMounted(async () => {
 
       <!-- Cột phải: file đính kèm (chỉ hiện khi đang sửa) -->
       <div v-if="isEdit" class="col-side">
-        <!-- PPT Upload -->
+        <!-- Giáo án -->
         <div class="card">
-          <h2 class="card__title">📊 Tải lên file PPT</h2>
-          <p class="card__sub">Chỉ chấp nhận file .pptx / .ppt (nhiều file cùng lúc).</p>
+          <h2 class="card__title">📄 Tải lên giáo án</h2>
 
           <input
-            ref="pptInput"
+            ref="pdfInput"
             type="file"
-            accept=".pptx,.ppt"
+            accept=".pdf"
             multiple
             class="file-input"
-            @change="onPptChange"
+            @change="onPdfChange"
           />
 
-          <div v-if="pptFiles.length" class="file-preview">
-            <span v-for="f in pptFiles" :key="f.name" class="file-chip">📊 {{ f.name }}</span>
+          <div v-if="pdfFiles.length" class="file-preview">
+            <span v-for="f in pdfFiles" :key="f.name" class="file-chip">📄 {{ f.name }}</span>
           </div>
 
-          <p v-if="pptError" class="msg msg--error">{{ pptError }}</p>
+          <p v-if="pdfError" class="msg msg--error">{{ pdfError }}</p>
 
-          <button class="btn" :disabled="uploadingPPT || !pptFiles.length" @click="uploadPPT">
-            {{ uploadingPPT ? 'Đang tải…' : 'Tải lên' }}
+          <button class="btn" :disabled="uploadingPDF || !pdfFiles.length" @click="uploadPDF">
+            {{ uploadingPDF ? 'Đang tải…' : 'Tải lên' }}
           </button>
         </div>
 
-        <!-- Link Canva -->
+        <!-- Bài giảng (link Canva) -->
         <div class="card">
-          <h2 class="card__title">🎨 Thêm link Canva</h2>
+          <h2 class="card__title">🎨 Tải lên bài giảng</h2>
           <p class="card__sub">Dán link trình chiếu Canva đã publish để xem trực tiếp.</p>
 
           <button
@@ -423,7 +400,7 @@ onMounted(async () => {
             class="btn btn--ghost btn--full"
             @click="showCanvaForm = true"
           >
-            + Thêm link Canva
+            + Tải lên bài giảng
           </button>
 
           <div v-else class="canva-form">
@@ -535,7 +512,7 @@ onMounted(async () => {
 }
 
 .card {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border, #e2e8f0);
   border-radius: 14px;
   padding: 20px;
@@ -548,7 +525,7 @@ onMounted(async () => {
   margin: 0 0 4px;
   font-size: 16px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--c-text);
 }
 .card__sub {
   margin: 0 0 14px;
@@ -582,7 +559,7 @@ onMounted(async () => {
 }
 .field-hint {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   margin-top: 2px;
 }
 
@@ -591,7 +568,7 @@ onMounted(async () => {
   flex-direction: column;
   gap: 5px;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   margin-bottom: 14px;
 }
 .field--full {
@@ -609,7 +586,7 @@ onMounted(async () => {
   border-radius: 9px;
   font-size: 14px;
   outline: none;
-  background: #fff;
+  background: var(--c-surface);
   resize: vertical;
   font-family: inherit;
 }
@@ -617,11 +594,6 @@ onMounted(async () => {
 .field select:focus,
 .field textarea:focus {
   border-color: var(--c-primary, #f97316);
-}
-.hint {
-  font-weight: 400;
-  color: #94a3b8;
-  font-size: 12px;
 }
 
 .form-footer {
@@ -634,7 +606,7 @@ onMounted(async () => {
 .file-input {
   display: block;
   font-size: 13px;
-  color: #475569;
+  color: var(--c-text);
   margin-bottom: 10px;
   width: 100%;
 }
@@ -645,11 +617,11 @@ onMounted(async () => {
   margin-bottom: 10px;
 }
 .file-chip {
-  background: #f1f5f9;
+  background: var(--c-surface-2);
   border-radius: 6px;
   padding: 3px 8px;
   font-size: 12px;
-  color: #334155;
+  color: var(--c-text);
 }
 
 .canva-form {
@@ -663,7 +635,7 @@ onMounted(async () => {
 }
 
 .empty-files {
-  color: #94a3b8;
+  color: var(--c-text-muted);
   font-size: 13px;
   padding: 8px 0;
 }
@@ -695,7 +667,7 @@ onMounted(async () => {
   display: block;
   font-size: 13px;
   font-weight: 500;
-  color: #1e293b;
+  color: var(--c-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -707,12 +679,12 @@ a.file-name:hover {
 }
 .file-meta {
   font-size: 11px;
-  color: #94a3b8;
+  color: var(--c-text-muted);
 }
 .del-btn {
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--c-text-muted);
   cursor: pointer;
   font-size: 14px;
   padding: 2px 6px;
@@ -746,8 +718,8 @@ a.file-name:hover {
   cursor: not-allowed;
 }
 .btn--ghost {
-  background: #f1f5f9;
-  color: #475569;
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 .btn--ghost:hover:not(:disabled) {
   background: #e2e8f0;

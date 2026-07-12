@@ -21,7 +21,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Cấu hình bảo mật:
  * - Stateless (không session, mỗi request tự mang JWT).
  * - Tắt CSRF (API token, không dùng cookie session).
- * - Mở các endpoint auth công khai; /register chỉ cho ADMIN & EMPLOYEE; còn lại cần đăng nhập.
+ * - Mở các endpoint auth công khai; /register chỉ cho ADMIN & EMPLOYEE; còn lại
+ * cần đăng nhập.
  * - Cắm JwtAuthenticationFilter trước filter username/password mặc định.
  */
 @Configuration
@@ -59,6 +60,16 @@ public class SecurityConfig {
                                 "/api/v1/auth/reset-password",
                                 "/uploads/**")
                         .permitAll()
+                        // FIX (2026-07-10): TRƯỚC ĐÂY mở public /uploads/lessons/** vì FE dùng
+                        // thẻ <a href="..."> trực tiếp trỏ vào file tĩnh, mà <a> thường không
+                        // gửi kèm Bearer token được. Nhược điểm: BẤT KỲ AI có link cũng tải được
+                        // tài liệu bài giảng mà không cần đăng nhập/không cần quyền LESSON_VIEW.
+                        // Nay FE đã chuyển sang gọi
+                        // GET /api/v1/lessons/{lessonId}/files/{fileId}/download (có gửi Bearer
+                        // token, kiểm tra LESSON_VIEW + TEACHER chỉ tải được bài PUBLISHED) rồi
+                        // tự tạo blob để tải về — nên KHÔNG cần mở public đường dẫn tĩnh này
+                        // nữa. Mọi request tới /uploads/** giờ bắt buộc phải đăng nhập (rơi vào
+                        // nhánh anyRequest().authenticated() phía dưới).
                         // /register: KHÔNG chặn theo role ở đây nữa. Chỉ cần đã đăng nhập;
                         // quyền chi tiết (tạo GV cần TEACHER_MANAGE / tạo trường cần SCHOOL_MANAGE,
                         // ADMIN đi tắt) do @PreAuthorize trên AuthController.register + kiểm tra

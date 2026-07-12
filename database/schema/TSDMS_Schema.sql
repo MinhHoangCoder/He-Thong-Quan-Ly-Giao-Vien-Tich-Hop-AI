@@ -1,4 +1,12 @@
 /* =====================================================================
+   ⚠⚠⚠  FILE NÀY CHỈ ĐỂ ĐỌC — KHÔNG CHẠY ĐỂ DỰNG DB DEV  ⚠⚠⚠
+   Đây là bản MIRROR trạng thái schema CUỐI (sau V10) phục vụ đọc/review.
+   Muốn dựng/reset DB: tạo database RỖNG rồi chạy backend — Flyway tự dựng
+   V1→V11 + seed. Chạy tay file này trước sẽ làm Flyway baseline nhầm ở V1
+   và chạy đè V2+ lên schema cuối → vỡ migration ("chồng lấn").
+   Chi tiết: database/README.md mục "Reset DB đúng cách".
+   =====================================================================
+
    TSDMS - HỆ THỐNG QUẢN LÝ & ĐIỀU PHỐI GIÁO VIÊN  (PHẦN LÕI)
    ---------------------------------------------------------------------
    MÔ HÌNH: Trung tâm giáo dục ĐIỀU PHỐI giáo viên đi dạy cho các trường
@@ -941,9 +949,9 @@ AS
 BEGIN
     SET NOCOUNT ON;
     INSERT INTO ScheduleStatusLog (ScheduleId, OldStatus, NewStatus, ChangedByUserId, ChangedAt)
-    SELECT i.ScheduleId, d.Status, i.Status, i.UpdatedBy, SYSUTCDATETIME()
+    SELECT i.Id, d.Status, i.Status, i.UpdatedBy, SYSUTCDATETIME()
     FROM inserted i
-    JOIN deleted  d ON i.ScheduleId = d.ScheduleId
+    JOIN deleted  d ON i.Id = d.Id
     WHERE i.Status <> d.Status;   -- chỉ ghi khi trạng thái THỰC SỰ thay đổi
 END;
 GO
@@ -978,7 +986,7 @@ GO
 
 -- Gán vai trò cho từng tài khoản (tra theo tên, không phụ thuộc Id)
 INSERT INTO UserRole (AppUserId, RoleId)
-SELECT u.AppUserId, r.RoleId
+SELECT u.Id, r.Id
 FROM AppUser u
 JOIN Role r ON (u.Username = 'admin'    AND r.Name = 'ADMIN')
             OR (u.Username = 'employee' AND r.Name = 'EMPLOYEE')
@@ -988,21 +996,21 @@ GO
 
 -- Hồ sơ Nhân viên (1-1 với AppUser 'employee', gắn chi nhánh)
 INSERT INTO Employee (AppUserId, BranchId, FirstName, LastName, Phone, Position)
-SELECT u.AppUserId, b.BranchId, N'Tâm', N'Nhân Viên Trung', '0900000002', N'Điều phối viên'
+SELECT u.Id, b.Id, N'Tâm', N'Nhân Viên Trung', '0900000002', N'Điều phối viên'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'employee' AND b.Name = N'Chi nhánh trung tâm';
 GO
 
 -- Hồ sơ Giáo viên (1-1 với AppUser 'teacher')
 INSERT INTO Teacher (AppUserId, BranchId, FirstName, LastName, EmploymentType)
-SELECT u.AppUserId, b.BranchId, N'Demo', N'Giáo Viên', 'FULL_TIME'
+SELECT u.Id, b.Id, N'Demo', N'Giáo Viên', 'FULL_TIME'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'teacher' AND b.Name = N'Chi nhánh trung tâm';
 GO
 
 -- Hồ sơ Trường (1-1 với AppUser 'school')
 INSERT INTO School (BranchId, Name, AppUserId, ContactPerson)
-SELECT b.BranchId, N'Trường THPT Demo', u.AppUserId, N'Thầy Hiệu trưởng'
+SELECT b.Id, N'Trường THPT Demo', u.Id, N'Thầy Hiệu trưởng'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'school' AND b.Name = N'Chi nhánh trung tâm';
 GO
