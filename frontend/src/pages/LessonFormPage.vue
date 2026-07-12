@@ -134,6 +134,12 @@ async function loadLesson() {
 }
 
 async function onSubmit() {
+  // Chặn double-submit: click 2 lần liên tiếp/double-click trước khi Vue kịp
+  // re-render nút :disabled="saving" có thể khiến onSubmit() chạy 2 lần, gửi
+  // 2 request POST/PUT chồng nhau (1 thành công set successMsg, 1 fail set
+  // errorMsg) -> UI hiện đồng thời cả 2 thông báo trái ngược nhau.
+  if (saving.value) return
+
   errorMsg.value = ''
   successMsg.value = ''
 
@@ -168,7 +174,13 @@ async function onSubmit() {
     } else {
       const { data } = await lessonApi.create(body)
       successMsg.value = 'Tạo bài giảng thành công!'
-      router.replace({ name: editRouteName, params: { id: data.id } })
+      // FIX: editRouteName là computed ref — trong <script setup> (không phải
+      // template) Vue KHÔNG tự unwrap ref, nên phải lấy .value. Thiếu .value
+      // khiến router.replace() nhận cả object ComputedRefImpl làm "name",
+      // Vue Router không khớp được route -> throw lỗi ngay tại đây (dù POST
+      // /lessons vừa mới THÀNH CÔNG) -> rơi xuống catch bên dưới -> UI hiện
+      // đồng thời "Tạo bài giảng thành công!" VÀ "Lưu thất bại, thử lại sau."
+      router.replace({ name: editRouteName.value, params: { id: data.id } })
     }
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'Lưu thất bại, thử lại sau.'
@@ -182,6 +194,7 @@ function onPdfChange(e) {
 }
 
 async function uploadPDF() {
+  if (uploadingPDF.value) return
   if (!pdfFiles.value.length) {
     pdfError.value = 'Chọn ít nhất 1 file PDF.'
     return
@@ -201,6 +214,7 @@ async function uploadPDF() {
 }
 
 async function addCanva() {
+  if (addingCanva.value) return
   canvaError.value = ''
   if (!canvaForm.fileName.trim()) {
     canvaError.value = 'Nhập tên hiển thị.'
@@ -228,6 +242,7 @@ async function addCanva() {
 }
 
 async function deleteFile(fileId) {
+  if (deletingFileId.value !== null) return
   deletingFileId.value = fileId
   try {
     await lessonApi.removeFile(lessonId.value, fileId)
