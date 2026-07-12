@@ -676,7 +676,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 }
 .sc-table td {
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--c-border-soft);
   vertical-align: middle;
 }
 .sc-table tbody tr:last-child td {
@@ -686,7 +686,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   cursor: pointer;
 }
 .row-clickable:hover td {
-  background: #fafafa;
+  background: var(--c-surface-2);
 }
 .expand-cell {
   width: 28px;
@@ -738,7 +738,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   overflow: hidden;
 }
 .subj-table th {
-  background: #f3f4f6;
+  background: var(--c-surface-2);
   padding: 0.45rem 0.75rem;
   text-align: left;
   font-weight: 600;
@@ -747,7 +747,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 }
 .subj-table td {
   padding: 0.45rem 0.75rem;
-  border-bottom: 1px solid #f3f4f6;
+  border-bottom: 1px solid var(--c-border-soft);
   vertical-align: middle;
 }
 .subj-table tbody tr:last-child td {
@@ -773,11 +773,14 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   font-weight: 600;
 }
 .badge-green {
-  background: #dcfce7;
+  background: rgba(34, 197, 94, 0.14);
   color: #166534;
 }
+:root[data-theme='dark'] .badge-green {
+  color: #4ade80;
+}
 .badge-gray {
-  background: #f3f4f6;
+  background: var(--c-surface-2);
   color: var(--c-text-muted);
 }
 
@@ -904,7 +907,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
   font-size: 0.83rem;
 }
 code {
-  background: #f3f4f6;
+  background: var(--c-surface-2);
   padding: 0.1rem 0.35rem;
   border-radius: 4px;
   font-size: 0.82rem;

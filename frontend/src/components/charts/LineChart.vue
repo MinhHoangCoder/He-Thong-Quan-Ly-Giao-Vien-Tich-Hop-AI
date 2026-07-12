@@ -150,7 +150,7 @@ const points = computed(() =>
           :cy="d.cy"
           r="3.2"
           :fill="s.color"
-          stroke="#fff"
+          style="stroke: var(--c-surface)"
           stroke-width="1.5"
         />
       </g>
