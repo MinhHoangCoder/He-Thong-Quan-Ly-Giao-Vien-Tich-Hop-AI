@@ -5,33 +5,46 @@ import http from './http'
  * Scope theo role do backend enforce (TEACHER chỉ thấy của mình, SCHOOL chỉ trường mình).
  */
 export const evaluationApi = {
-  /** Gợi ý kỳ đánh giá (dropdown). */
   periodPresets() {
     return http.get('/evaluations/period-presets')
   },
 
-  /** Dropdown GV khi tạo/sửa (cần EVALUATION_MANAGE). */
-  teachers() {
-    return http.get('/evaluations/teachers')
+  /** { presets: string[], suggested: string } */
+  periodMeta() {
+    return http.get('/evaluations/period-meta')
   },
 
   /**
-   * KPI: totalCount, averageScore, highScoreCount, teacherCountEvaluated, score1..score5
-   * @param {{ teacherId?: number, schoolId?: number, source?: 'CENTER'|'SCHOOL' }} params
+   * @param {{ teacherId: number, periodNote: string, excludeId?: number }} params
    */
+  duplicateCheck(params) {
+    return http.get('/evaluations/duplicate-check', { params })
+  },
+
+  /**
+   * Dropdown GV thông minh.
+   * @param {{ periodNote?: string, keyword?: string }} params
+   */
+  teachers(params = {}) {
+    return http.get('/evaluations/teachers', { params })
+  },
+
+  /**
+   * GV chưa đánh giá trong kỳ.
+   * @param {{ periodNote?: string, keyword?: string }} params
+   */
+  unevaluatedTeachers(params = {}) {
+    return http.get('/evaluations/teachers/unevaluated', { params })
+  },
+
   stats(params = {}) {
     return http.get('/evaluations/stats', { params })
   },
 
-  /** Tổng hợp theo 1 GV. */
   teacherSummary(teacherId) {
     return http.get(`/evaluations/teachers/${teacherId}/summary`)
   },
 
-  /**
-   * Danh sách phân trang.
-   * @param {{ teacherId?, schoolId?, score?, periodNote?, source?, keyword?, page?, size? }} params
-   */
   list(params = {}) {
     return http.get('/evaluations', { params })
   },

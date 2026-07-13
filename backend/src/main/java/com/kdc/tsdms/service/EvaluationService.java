@@ -2,9 +2,6 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
-import com.kdc.tsdms.dto.EvaluationStatsResponse;
-import com.kdc.tsdms.dto.EvaluationTeacherOption;
-import com.kdc.tsdms.dto.TeacherEvaluationSummaryResponse;
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
@@ -18,6 +15,7 @@ import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -46,10 +44,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class EvaluationService {
 
-    /** Gợi ý kỳ đánh giá cho dropdown FE (text tự do, không ràng buộc DB). */
-    private static final List<String> PERIOD_PRESETS = List.of(
-            "HK1 2025-2026", "HK2 2025-2026", "Tổng kết năm 2025-2026", "Tổng kết hợp đồng", "Đánh giá thử việc");
-
     private final TeacherEvaluationRepository evaluationRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
@@ -74,40 +68,86 @@ public class EvaluationService {
 
     /* ── Metadata ─────────────────────────────────────────────────── */
 
+    /**
+     * Preset kỳ theo năm học hiện tại + vài mục cố định.
+     * Vẫn là text lưu vào PeriodNote (không có bảng danh mục riêng).
+     */
     @Transactional(readOnly = true)
     public List<String> periodPresets() {
-        return PERIOD_PRESETS;
+        String ay = academicYearLabel(LocalDate.now());
+        return List.of("HK1 " + ay, "HK2 " + ay, "Tổng kết năm " + ay, "Tổng kết hợp đồng", "Đánh giá thử việc");
+    }
+
+    /** Preset + kỳ gợi ý theo tháng (HK1: 8–12, HK2: 1–5, 6–7: tổng kết năm). */
+    @Transactional(readOnly = true)
+    public EvaluationResponse.PeriodMeta periodMeta() {
+        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(LocalDate.now()));
     }
 
     /**
-     * Dropdown GV: staff/admin = mọi GV ACTIVE; school = GV từng được phân công tại trường
-     * (fallback: mọi GV ACTIVE nếu trường chưa có assignment — vẫn chặn khi submit).
+     * Kiểm tra trùng: cùng GV + người chấm hiện tại + kỳ (so khớp sau normalize).
+     * {@code excludeId} dùng khi sửa phiếu (bỏ qua chính nó).
      */
     @Transactional(readOnly = true)
-    public List<EvaluationTeacherOption> teacherOptions() {
+    public EvaluationResponse.DuplicateCheck checkDuplicate(Integer teacherId, String periodNote, Integer excludeId) {
+        if (teacherId == null || periodNote == null || periodNote.isBlank()) {
+            return new EvaluationResponse.DuplicateCheck(false, 0, null);
+        }
+        assertCanManage();
+        Integer evaluatorId = requireCurrentUserId();
+        long count = countDuplicates(teacherId, evaluatorId, periodNote, excludeId);
+        if (count == 0) {
+            return new EvaluationResponse.DuplicateCheck(false, 0, null);
+        }
+        String msg = "Bạn đã đánh giá giáo viên này trong kỳ \""
+                + periodNote.trim()
+                + "\" ("
+                + count
+                + " phiếu). Vẫn muốn lưu thêm?";
+        return new EvaluationResponse.DuplicateCheck(true, count, msg);
+    }
+
+    /**
+     * Dropdown GV thông minh: kèm TB / số lượt / đã chấm kỳ chưa.
+     * {@code periodNote} rỗng → dùng kỳ gợi ý hiện tại.
+     * {@code keyword} lọc tên (không phân biệt hoa thường).
+     * Sắp xếp: chưa chấm kỳ trước, rồi theo tên.
+     */
+    @Transactional(readOnly = true)
+    public List<EvaluationResponse.TeacherOption> teacherOptions(String periodNote, String keyword) {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không tạo đánh giá");
         }
-        List<Teacher> all = teacherRepo.findByDeletedFalse().stream()
-                .filter(t -> "ACTIVE".equals(t.getStatus()))
-                .toList();
+        String period = resolvePeriod(periodNote);
+        List<Teacher> source = filterByKeyword(resolveCandidateTeachers(), keyword);
+        return buildTeacherOptions(source, period, /*onlyUnevaluated*/ false);
+    }
 
-        if (isSchoolActor()) {
-            Integer schoolId = requireMySchool().getId();
-            Set<Integer> assigned = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(schoolId));
-            List<Teacher> scoped =
-                    all.stream().filter(t -> assigned.contains(t.getId())).toList();
-            // Demo/seed có thể chưa gán assignment đủ — vẫn trả full ACTIVE để form dùng được,
-            // create() sẽ soft-warn bằng check exists (không chặn cứng nếu không có assignment).
-            List<Teacher> source = scoped.isEmpty() ? all : scoped;
-            return source.stream()
-                    .map(t -> new EvaluationTeacherOption(t.getId(), teacherFullName(t), t.getStatus()))
-                    .toList();
+    /**
+     * GV chưa có đánh giá trong kỳ (phạm vi role). Dùng KPI + panel “còn bao nhiêu người”.
+     */
+    @Transactional(readOnly = true)
+    public EvaluationResponse.Unevaluated unevaluatedTeachers(String periodNote, String keyword) {
+        if (isTeacherOnly()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không xem danh sách này");
         }
-
-        return all.stream()
-                .map(t -> new EvaluationTeacherOption(t.getId(), teacherFullName(t), t.getStatus()))
+        // VIEW cũng được xem (ACADEMIC/SCHOOL có VIEW); manage không bắt buộc
+        if (!isStaffOrAdmin() && !isSchoolActor() && !SecurityUtils.hasAuthority("EVALUATION_VIEW")) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền xem");
+        }
+        String period = resolvePeriod(periodNote);
+        List<Teacher> candidates = resolveCandidateTeachers();
+        long total = candidates.size();
+        List<EvaluationResponse.TeacherOption> allOpts = buildTeacherOptions(candidates, period, false);
+        long evaluated = allOpts.stream()
+                .filter(EvaluationResponse.TeacherOption::evaluatedInPeriod)
+                .count();
+        List<EvaluationResponse.TeacherOption> uneval = allOpts.stream()
+                .filter(o -> !o.evaluatedInPeriod())
+                .filter(o -> matchKeyword(o.name(), keyword))
+                .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                 .toList();
+        return new EvaluationResponse.Unevaluated(period, total, evaluated, uneval.size(), uneval);
     }
 
     /* ── List / detail ────────────────────────────────────────────── */
@@ -143,6 +183,7 @@ public class EvaluationService {
     public EvaluationResponse create(EvaluationRequest req) {
         assertCanManage();
         Teacher teacher = requireActiveTeacher(req.teacherId());
+        String period = requirePeriodNote(req.periodNote());
 
         Integer evaluatorId = requireCurrentUserId();
         Integer schoolId = null;
@@ -150,12 +191,23 @@ public class EvaluationService {
         if (isSchoolActor()) {
             School school = requireMySchool();
             schoolId = school.getId();
-            // Gợi ý nghiệp vụ: ưu tiên GV đã phân công tại trường (không chặn cứng nếu chưa có data).
-            // Không throw — seed/demo có thể thiếu Assignment.
         } else if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không được gửi đánh giá");
         }
-        // Staff/ADMIN: schoolId = null (đánh giá nội bộ trung tâm)
+
+        // Cảnh báo trùng kỳ — client gửi forceDuplicate=true sau khi user xác nhận.
+        if (!Boolean.TRUE.equals(req.forceDuplicate())) {
+            long dup = countDuplicates(teacher.getId(), evaluatorId, period, null);
+            if (dup > 0) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Bạn đã đánh giá giáo viên này trong kỳ \""
+                                + period
+                                + "\" ("
+                                + dup
+                                + " phiếu). Gửi lại kèm xác nhận để lưu thêm.");
+            }
+        }
 
         TeacherEvaluation e = new TeacherEvaluation();
         e.setTeacherId(teacher.getId());
@@ -163,7 +215,7 @@ public class EvaluationService {
         e.setSchoolId(schoolId);
         e.setScore(req.score());
         e.setComment(trimToNull(req.comment()));
-        e.setPeriodNote(trimToNull(req.periodNote()));
+        e.setPeriodNote(period);
         e.setCreatedBy(evaluatorId);
 
         TeacherEvaluation saved = evaluationRepo.save(e);
@@ -176,6 +228,7 @@ public class EvaluationService {
         assertCanEdit(e);
 
         requireActiveTeacher(req.teacherId());
+        String period = requirePeriodNote(req.periodNote());
         // Không cho đổi sang GV khác nếu là SCHOOL (tránh "chuyển" đánh giá sang GV ngoài phạm vi)
         if (isSchoolActor() && !Objects.equals(e.getTeacherId(), req.teacherId())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được đổi giáo viên của phiếu đánh giá");
@@ -184,7 +237,7 @@ public class EvaluationService {
         e.setTeacherId(req.teacherId());
         e.setScore(req.score());
         e.setComment(trimToNull(req.comment()));
-        e.setPeriodNote(trimToNull(req.periodNote()));
+        e.setPeriodNote(period);
         e.setUpdatedAt(Instant.now());
         e.setUpdatedBy(requireCurrentUserId());
 
@@ -205,7 +258,7 @@ public class EvaluationService {
     /* ── Stats / summary ──────────────────────────────────────────── */
 
     @Transactional(readOnly = true)
-    public EvaluationStatsResponse stats(Integer teacherId, Integer schoolId, String source) {
+    public EvaluationResponse.Stats stats(Integer teacherId, Integer schoolId, String source) {
         Scope scope = resolveReadScope(teacherId, schoolId, source);
         List<Object[]> rows = evaluationRepo.countByScoreGrouped(
                 scope.teacherId(), scope.schoolId(), scope.centerOnly(), scope.schoolOnly());
@@ -229,11 +282,11 @@ public class EvaluationService {
                 scope.teacherId(), scope.schoolId(), scope.centerOnly(), scope.schoolOnly());
         Double avg = total == 0 ? null : Math.round((sum / total) * 100.0) / 100.0;
 
-        return new EvaluationStatsResponse(total, avg, high, teachers, dist[1], dist[2], dist[3], dist[4], dist[5]);
+        return new EvaluationResponse.Stats(total, avg, high, teachers, dist[1], dist[2], dist[3], dist[4], dist[5]);
     }
 
     @Transactional(readOnly = true)
-    public TeacherEvaluationSummaryResponse teacherSummary(Integer teacherId) {
+    public EvaluationResponse.Summary teacherSummary(Integer teacherId) {
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(teacherId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy giáo viên"));
@@ -269,7 +322,7 @@ public class EvaluationService {
             }
         }
         Double avg = total == 0 ? null : Math.round((sum / total) * 100.0) / 100.0;
-        return new TeacherEvaluationSummaryResponse(
+        return new EvaluationResponse.Summary(
                 teacher.getId(), teacherFullName(teacher), total, avg, dist[1], dist[2], dist[3], dist[4], dist[5]);
     }
 
@@ -511,6 +564,143 @@ public class EvaluationService {
         if (s == null) return null;
         String t = s.trim();
         return t.isEmpty() ? null : t;
+    }
+
+    private String resolvePeriod(String periodNote) {
+        String t = trimToNull(periodNote);
+        return t != null ? t : suggestedPeriod(LocalDate.now());
+    }
+
+    /**
+     * Staff/admin: mọi GV ACTIVE. School: ưu tiên GV đã phân công; fallback full ACTIVE (demo).
+     */
+    private List<Teacher> resolveCandidateTeachers() {
+        List<Teacher> all = teacherRepo.findByDeletedFalse().stream()
+                .filter(t -> "ACTIVE".equals(t.getStatus()))
+                .toList();
+        if (isSchoolActor() && !isStaffOrAdmin()) {
+            Integer schoolId = requireMySchool().getId();
+            Set<Integer> assigned = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(schoolId));
+            List<Teacher> scoped =
+                    all.stream().filter(t -> assigned.contains(t.getId())).toList();
+            return scoped.isEmpty() ? all : scoped;
+        }
+        return all;
+    }
+
+    private List<Teacher> filterByKeyword(List<Teacher> teachers, String keyword) {
+        if (keyword == null || keyword.isBlank()) return teachers;
+        return teachers.stream()
+                .filter(t -> matchKeyword(teacherFullName(t), keyword))
+                .toList();
+    }
+
+    private static boolean matchKeyword(String name, String keyword) {
+        if (keyword == null || keyword.isBlank()) return true;
+        if (name == null) return false;
+        return name.toLowerCase().contains(keyword.trim().toLowerCase());
+    }
+
+    /**
+     * Build options kèm thống kê. Scope đánh giá: SCHOOL chỉ tính phiếu SchoolId = trường mình.
+     */
+    private List<EvaluationResponse.TeacherOption> buildTeacherOptions(
+            List<Teacher> teachers, String periodNote, boolean onlyUnevaluated) {
+        if (teachers.isEmpty()) return List.of();
+        Integer schoolFilter =
+                isSchoolActor() && !isStaffOrAdmin() ? requireMySchool().getId() : null;
+        String normPeriod = normalizePeriod(periodNote);
+
+        Set<Integer> ids = teachers.stream().map(Teacher::getId).collect(Collectors.toSet());
+        List<TeacherEvaluation> evals = evaluationRepo.findByTeacherIdInAndDeletedFalse(ids);
+        if (schoolFilter != null) {
+            evals = evals.stream()
+                    .filter(e -> Objects.equals(e.getSchoolId(), schoolFilter))
+                    .toList();
+        }
+
+        Map<Integer, List<TeacherEvaluation>> byTeacher =
+                evals.stream().collect(Collectors.groupingBy(TeacherEvaluation::getTeacherId));
+
+        List<EvaluationResponse.TeacherOption> result = new ArrayList<>();
+        for (Teacher t : teachers) {
+            List<TeacherEvaluation> list = byTeacher.getOrDefault(t.getId(), List.of());
+            long total = 0;
+            double sum = 0;
+            long inPeriod = 0;
+            for (TeacherEvaluation e : list) {
+                if (e.getScore() != null && e.getScore() >= 1 && e.getScore() <= 5) {
+                    total++;
+                    sum += e.getScore();
+                }
+                if (normPeriod.equals(normalizePeriod(e.getPeriodNote()))) {
+                    inPeriod++;
+                }
+            }
+            boolean evaluated = inPeriod > 0;
+            if (onlyUnevaluated && evaluated) continue;
+            Double avg = total == 0 ? null : Math.round((sum / total) * 100.0) / 100.0;
+            result.add(new EvaluationResponse.TeacherOption(
+                    t.getId(), teacherFullName(t), t.getStatus(), total, avg, evaluated, inPeriod));
+        }
+        // Chưa chấm kỳ trước, rồi theo tên
+        result.sort((a, b) -> {
+            if (a.evaluatedInPeriod() != b.evaluatedInPeriod()) {
+                return a.evaluatedInPeriod() ? 1 : -1;
+            }
+            return a.name().compareToIgnoreCase(b.name());
+        });
+        return result;
+    }
+
+    private static String requirePeriodNote(String periodNote) {
+        String t = trimToNull(periodNote);
+        if (t == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Kỳ đánh giá không được để trống");
+        }
+        if (t.length() > 50) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Kỳ đánh giá tối đa 50 ký tự");
+        }
+        return t;
+    }
+
+    /** So khớp kỳ: trim, gộp khoảng trắng, không phân biệt hoa thường. */
+    private static String normalizePeriod(String periodNote) {
+        if (periodNote == null) return "";
+        return periodNote.trim().replaceAll("\\s+", " ").toLowerCase();
+    }
+
+    private long countDuplicates(Integer teacherId, Integer evaluatorId, String periodNote, Integer excludeId) {
+        String norm = normalizePeriod(periodNote);
+        if (norm.isEmpty()) return 0;
+        return evaluationRepo.findByTeacherIdAndEvaluatorUserIdAndDeletedFalse(teacherId, evaluatorId).stream()
+                .filter(e -> excludeId == null || !Objects.equals(e.getId(), excludeId))
+                .filter(e -> normalizePeriod(e.getPeriodNote()).equals(norm))
+                .count();
+    }
+
+    /** Năm học dạng 2025-2026 (bắt đầu tháng 8). */
+    static String academicYearLabel(LocalDate date) {
+        int y = date.getYear();
+        int m = date.getMonthValue();
+        if (m >= 8) {
+            return y + "-" + (y + 1);
+        }
+        return (y - 1) + "-" + y;
+    }
+
+    /** Gợi ý kỳ theo tháng lịch. */
+    static String suggestedPeriod(LocalDate date) {
+        String ay = academicYearLabel(date);
+        int m = date.getMonthValue();
+        if (m >= 8 && m <= 12) {
+            return "HK1 " + ay;
+        }
+        if (m >= 1 && m <= 5) {
+            return "HK2 " + ay;
+        }
+        // 6–7: cuối năm học
+        return "Tổng kết năm " + ay;
     }
 
     private boolean isStaffOrAdmin() {

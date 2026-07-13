@@ -2,9 +2,6 @@ package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
-import com.kdc.tsdms.dto.EvaluationStatsResponse;
-import com.kdc.tsdms.dto.EvaluationTeacherOption;
-import com.kdc.tsdms.dto.TeacherEvaluationSummaryResponse;
 import com.kdc.tsdms.service.EvaluationService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -47,18 +44,53 @@ public class EvaluationController {
 
     /* ── Metadata ─────────────────────────────────────────────────── */
 
-    /** Gợi ý kỳ đánh giá cho dropdown form. */
+    /** Gợi ý kỳ đánh giá cho dropdown form (giữ tương thích). */
     @GetMapping("/period-presets")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW') or hasAuthority('EVALUATION_MANAGE')")
     public List<String> periodPresets() {
         return evaluationService.periodPresets();
     }
 
-    /** Dropdown giáo viên khi tạo đánh giá (SCHOOL được scope theo phân công nếu có). */
+    /** Preset + kỳ gợi ý theo tháng hiện tại. */
+    @GetMapping("/period-meta")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW') or hasAuthority('EVALUATION_MANAGE')")
+    public EvaluationResponse.PeriodMeta periodMeta() {
+        return evaluationService.periodMeta();
+    }
+
+    /**
+     * Kiểm tra trùng phiếu (cùng GV + người chấm + kỳ).
+     * excludeId: khi sửa, bỏ qua phiếu hiện tại.
+     */
+    @GetMapping("/duplicate-check")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_MANAGE')")
+    public EvaluationResponse.DuplicateCheck duplicateCheck(
+            @RequestParam Integer teacherId,
+            @RequestParam String periodNote,
+            @RequestParam(required = false) Integer excludeId) {
+        return evaluationService.checkDuplicate(teacherId, periodNote, excludeId);
+    }
+
+    /**
+     * Dropdown GV thông minh (tìm theo keyword, đánh dấu đã chấm kỳ).
+     * periodNote rỗng → kỳ gợi ý hiện tại.
+     */
     @GetMapping("/teachers")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_MANAGE')")
-    public List<EvaluationTeacherOption> teachers() {
-        return evaluationService.teacherOptions();
+    public List<EvaluationResponse.TeacherOption> teachers(
+            @RequestParam(required = false) String periodNote, @RequestParam(required = false) String keyword) {
+        return evaluationService.teacherOptions(periodNote, keyword);
+    }
+
+    /**
+     * GV chưa được đánh giá trong kỳ — KPI + panel chi tiết.
+     * VIEW cũng được (Staff/School xem coverage).
+     */
+    @GetMapping("/teachers/unevaluated")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW') or hasAuthority('EVALUATION_MANAGE')")
+    public EvaluationResponse.Unevaluated unevaluatedTeachers(
+            @RequestParam(required = false) String periodNote, @RequestParam(required = false) String keyword) {
+        return evaluationService.unevaluatedTeachers(periodNote, keyword);
     }
 
     /* ── KPI / summary ────────────────────────────────────────────── */
@@ -69,7 +101,7 @@ public class EvaluationController {
      */
     @GetMapping("/stats")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW')")
-    public EvaluationStatsResponse stats(
+    public EvaluationResponse.Stats stats(
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(required = false) String source) {
@@ -79,7 +111,7 @@ public class EvaluationController {
     /** Tổng hợp theo 1 GV: điểm TB + phân bố sao. */
     @GetMapping("/teachers/{teacherId}/summary")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW')")
-    public TeacherEvaluationSummaryResponse teacherSummary(@PathVariable Integer teacherId) {
+    public EvaluationResponse.Summary teacherSummary(@PathVariable Integer teacherId) {
         return evaluationService.teacherSummary(teacherId);
     }
 

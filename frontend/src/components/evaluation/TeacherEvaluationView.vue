@@ -29,9 +29,37 @@ const highPct = computed(() => {
   return `${Math.round((stats.value.highScoreCount / stats.value.totalCount) * 100)}% lượt ≥ 4 sao`
 })
 
+/** Insight 1 dòng theo rule đơn giản (không cần AI). */
+const insight = computed(() => {
+  const s = stats.value
+  if (!s || !s.totalCount) {
+    return 'Chưa có đánh giá — khi trường hoặc trung tâm chấm điểm, gợi ý sẽ hiện tại đây.'
+  }
+  const avg = s.averageScore != null ? Number(s.averageScore) : null
+  const highRatio = Math.round((s.highScoreCount / s.totalCount) * 100)
+  if (avg == null) return `Bạn có ${s.totalCount} lượt đánh giá.`
+  if (avg >= 4.5) {
+    return `Xuất sắc — điểm TB ${avg.toFixed(1)}/5, ${highRatio}% lượt ≥ 4 sao. Giữ vững phong độ!`
+  }
+  if (avg >= 4) {
+    return `Tốt — điểm TB ${avg.toFixed(1)}/5, ${highRatio}% lượt ≥ 4 sao. Tiếp tục phát huy.`
+  }
+  if (avg >= 3) {
+    return `Khá — điểm TB ${avg.toFixed(1)}/5. Nên xem nhận xét chi tiết để cải thiện.`
+  }
+  return `Cần cải thiện — điểm TB ${avg.toFixed(1)}/5. Đọc kỹ nhận xét và trao đổi với trung tâm nếu cần.`
+})
+
 function sourceLabel(row) {
   if (row.source === 'CENTER') return 'Trung tâm'
   return row.schoolName || 'Trường'
+}
+
+function isNew(row) {
+  if (!row?.createdAt) return false
+  const t = new Date(row.createdAt).getTime()
+  if (Number.isNaN(t)) return false
+  return Date.now() - t < 7 * 24 * 60 * 60 * 1000
 }
 
 async function load() {
@@ -84,6 +112,10 @@ onMounted(load)
       />
     </section>
 
+    <div class="insight" role="status">
+      <strong>Gợi ý:</strong> {{ insight }}
+    </div>
+
     <div v-if="stats && stats.totalCount" class="dist">
       <span class="dist__label">Phân bố điểm nhận được</span>
       <div v-for="n in [5, 4, 3, 2, 1]" :key="n" class="dist__row">
@@ -117,6 +149,7 @@ onMounted(load)
         <div class="card__top">
           <StarRating :model-value="row.score" :size="18" />
           <span class="card__score">{{ row.score }}/5</span>
+          <span v-if="isNew(row)" class="badge badge--new">Mới</span>
           <span class="badge" :class="row.source === 'CENTER' ? 'badge--center' : 'badge--school'">
             {{ sourceLabel(row) }}
           </span>
@@ -187,6 +220,23 @@ onMounted(load)
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.85rem;
   margin-bottom: 1rem;
+}
+.insight {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fff7ed 0%, #eff6ff 100%);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.insight strong {
+  color: var(--c-primary, #f97316);
+}
+.badge--new {
+  background: #ecfdf5;
+  color: #047857;
 }
 .dist {
   background: var(--c-surface);

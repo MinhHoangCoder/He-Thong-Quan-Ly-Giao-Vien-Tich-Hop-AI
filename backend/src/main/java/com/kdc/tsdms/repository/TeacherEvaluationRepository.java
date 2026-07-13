@@ -16,6 +16,13 @@ public interface TeacherEvaluationRepository
 
     List<TeacherEvaluation> findByTeacherIdAndDeletedFalseOrderByCreatedAtDesc(Integer teacherId);
 
+    /** Dùng check trùng kỳ (normalize period ở tầng service). */
+    List<TeacherEvaluation> findByTeacherIdAndEvaluatorUserIdAndDeletedFalse(
+            Integer teacherId, Integer evaluatorUserId);
+
+    /** Load đánh giá của nhiều GV (dùng cho dropdown / chưa chấm kỳ). */
+    List<TeacherEvaluation> findByTeacherIdInAndDeletedFalse(java.util.Collection<Integer> teacherIds);
+
     @Query("SELECT e.score, COUNT(e) FROM TeacherEvaluation e WHERE e.deleted = false "
             + "AND (:teacherId IS NULL OR e.teacherId = :teacherId) "
             + "AND (:schoolId IS NULL OR e.schoolId = :schoolId) "
