@@ -112,6 +112,13 @@ export const adminRoutes = [
       roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
     },
   },
+  // ── Đánh giá giáo viên ──────────────────────────────────────────
+  {
+    path: '/admin/evaluations',
+    name: 'admin-evaluations',
+    component: () => import('@/pages/EvaluationPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'], evaluationPortal: 'admin' },
+  },
   // ── Khu CÀI ĐẶT ──────────────────────────────────────────────────
   {
     // Cài đặt CÁ NHÂN của người đang đăng nhập (hồ sơ / mật khẩu / thiết bị).

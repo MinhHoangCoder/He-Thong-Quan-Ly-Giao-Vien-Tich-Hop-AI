@@ -7,6 +7,13 @@ export const schoolRoutes = [
     component: () => import('@/pages/SchoolDashboardPage.vue'),
     meta: { layout: 'school', roles: ['SCHOOL'] },
   },
+  // ── Đánh giá giáo viên ──────────────────────────────────────────
+  {
+    path: '/school/evaluations',
+    name: 'school-evaluations',
+    component: () => import('@/pages/EvaluationPage.vue'),
+    meta: { layout: 'school', roles: ['SCHOOL'], evaluationPortal: 'school' },
+  },
   // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/school/settings',

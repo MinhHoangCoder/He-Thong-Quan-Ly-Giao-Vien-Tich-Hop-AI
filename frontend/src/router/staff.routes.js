@@ -34,6 +34,13 @@ export const staffRoutes = [
     component: () => import('@/pages/SubjectCategoryListPage.vue'),
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
+  // ── Đánh giá giáo viên ──────────────────────────────────────────
+  {
+    path: '/staff/evaluations',
+    name: 'staff-evaluations',
+    component: () => import('@/pages/EvaluationPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'], evaluationPortal: 'staff' },
+  },
   // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/staff/settings',
