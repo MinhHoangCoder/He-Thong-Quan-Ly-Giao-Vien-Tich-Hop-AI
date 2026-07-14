@@ -1,0 +1,280 @@
+/* ============================================================================
+   Style DÙNG CHUNG cho các trang nghiệp vụ mới (Phân công / Chấm công / Bảng lương
+   / Trợ lý AI). Import 1 lần ở main.js. Dùng class riêng (.page, .title…)
+   để không đụng style scoped của các trang cũ.
+   ============================================================================ */
+.page {
+  max-width: 1200px;
+}
+.page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 1.2rem;
+}
+.page-head .title,
+.page .title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--c-text);
+}
+.page .subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.86rem;
+  color: var(--c-text-muted);
+}
+
+/* ── Toolbar ── */
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.toolbar label {
+  font-size: 0.82rem;
+  color: var(--c-text-muted);
+  font-weight: 600;
+}
+.toolbar select,
+.toolbar input {
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+
+/* ── Buttons ── */
+.btn {
+  padding: 0.5rem 1.05rem;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--grad-primary);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(249, 115, 22, 0.28);
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.btn-outline {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  color: var(--c-text);
+}
+.btn-outline:hover:not(:disabled) {
+  background: var(--c-bg);
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+.btn-danger {
+  background: var(--c-danger);
+  color: #fff;
+}
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+.btn-sm {
+  padding: 0.32rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+/* ── Card ── */
+/* Nền/kẻ dòng phải theo token: nền sáng cứng + chữ token = trắng trên trắng ở dark. */
+.card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  box-shadow: var(--a-shadow);
+}
+
+/* ── Table ── */
+.table-wrap {
+  overflow-x: auto;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  box-shadow: var(--a-shadow);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+.table th {
+  background: var(--c-surface-2);
+  padding: 0.7rem 1rem;
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  color: var(--c-text-muted);
+  border-bottom: 1px solid var(--c-border);
+}
+.table td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--c-border-soft);
+  vertical-align: middle;
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+.table tbody tr:hover td {
+  background: var(--c-bg);
+}
+.actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* ── Badge ── */
+.badge {
+  display: inline-block;
+  padding: 0.16rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+/* Nền rgba mờ hòa được cả theme sáng/tối; chữ chỉnh riêng cho nền tối bên dưới */
+.badge-green {
+  background: rgba(34, 197, 94, 0.14);
+  color: #166534;
+}
+.badge-gray {
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+}
+.badge-amber {
+  background: rgba(245, 158, 11, 0.16);
+  color: #92400e;
+}
+.badge-red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #991b1b;
+}
+:root[data-theme='dark'] .badge-green {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge-amber {
+  color: #fbbf24;
+}
+:root[data-theme='dark'] .badge-red {
+  color: #f87171;
+}
+
+/* ── Form ── */
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem 1rem;
+}
+.form-group {
+  margin-bottom: 0.75rem;
+}
+.form-group label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 600;
+  margin-bottom: 0.28rem;
+  color: var(--c-text);
+}
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+.form-group small {
+  color: var(--c-text-muted);
+  font-size: 0.76rem;
+}
+.error-msg {
+  color: var(--c-danger);
+  font-size: 0.85rem;
+  margin: 0.6rem 0 0;
+}
+
+/* ── Modal ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 42, 74, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1rem;
+}
+.modal-box {
+  background: var(--c-surface);
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: 100%;
+  max-width: 460px;
+  box-shadow: 0 24px 60px rgba(11, 42, 74, 0.3);
+  max-height: 92vh;
+  overflow-y: auto;
+}
+.modal-lg {
+  max-width: 640px;
+}
+.modal-sm {
+  max-width: 380px;
+}
+.modal-box h3 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1.2rem;
+}
+
+/* ── Utils ── */
+.text-center {
+  text-align: center;
+}
+.text-muted {
+  color: var(--c-text-muted);
+}
+.font-medium {
+  font-weight: 600;
+}
+.small {
+  font-size: 0.82rem;
+}
+.mono {
+  font-variant-numeric: tabular-nums;
+}

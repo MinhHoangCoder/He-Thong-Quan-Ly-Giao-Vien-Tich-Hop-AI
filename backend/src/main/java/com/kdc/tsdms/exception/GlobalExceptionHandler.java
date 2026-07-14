@@ -37,12 +37,13 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Lỗi không lường trước: message gốc (SQL, stacktrace…) chỉ ghi LOG server,
-     * KHÔNG trả về client — tránh lộ cấu trúc DB/hệ thống cho kẻ dò lỗi.
+     * Lỗi không lường trước: KHÔNG trả ex.getMessage() cho client — message của
+     * SQLException/Hibernate lộ tên bảng, câu query, cấu trúc nội bộ (information
+     * disclosure). Log đầy đủ ở server để debug, client chỉ nhận thông báo chung.
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleOther(Exception ex) {
-        log.error("Lỗi hệ thống chưa xử lý", ex);
+        log.error("Lỗi không xử lý được", ex);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi hệ thống, vui lòng thử lại sau");
     }
 

@@ -141,4 +141,11 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
   color: #dc2626;
   background: #ef44441f;
 }
+/* Chữ xanh/đỏ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .stat__trend.is-up {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .stat__trend.is-down {
+  color: #f87171;
+}
 </style>

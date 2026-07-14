@@ -6,7 +6,7 @@
  * (route đăng ký riêng ở mỗi file *.routes.js theo quy ước chống conflict).
  *
  * Bố cục: HERO hồ sơ + LƯỚI 2 CỘT — cột trái là 4 tab nội dung, cột phải là "rail"
- * tiện ích luôn hiển thị (Quyền của tôi / Tài khoản trên máy này / Mẹo bảo mật):
+ * tiện ích luôn hiển thị (Quyền của tôi / Tài khoản trên máy này):
  *  - Hồ sơ     : 2 card tách bạch "của ai quản cái gì" — Thông tin cơ bản CHỈ ĐỌC
  *                (phòng Nhân sự quản) và Thông tin liên hệ theo pattern XEM-TRƯỚC-
  *                SỬA-SAU (bấm icon bút mới thành form; PUT /me/profile).
@@ -686,7 +686,10 @@ onMounted(loadProfile)
                 >
                   Mặc định
                 </button>
-                <button :class="{ active: ui.fontSize === 'large' }" @click="ui.setFontSize('large')">
+                <button
+                  :class="{ active: ui.fontSize === 'large' }"
+                  @click="ui.setFontSize('large')"
+                >
                   Lớn
                 </button>
               </div>
@@ -747,7 +750,9 @@ onMounted(loadProfile)
             :class="{ current: acc.user?.username === auth.user?.username }"
             @click="switchTo(acc)"
           >
-            <span class="acct__avatar">{{ initialsOf(acc.user?.fullName || acc.user?.username) }}</span>
+            <span class="acct__avatar">{{
+              initialsOf(acc.user?.fullName || acc.user?.username)
+            }}</span>
             <span class="acct__info">
               <strong>{{ acc.user?.fullName || acc.user?.username }}</strong>
               <small>@{{ acc.user?.username }}</small>
@@ -759,21 +764,6 @@ onMounted(loadProfile)
           <RouterLink :to="{ name: 'login', query: { add: '1' } }" class="rail-link">
             <SvgIcon name="plus" :size="15" /> Thêm tài khoản
           </RouterLink>
-        </section>
-
-        <!-- Mẹo bảo mật -->
-        <section class="card rail-card rail-tips">
-          <header class="rail-head">
-            <span class="rail-ico rail-ico--green"><SvgIcon name="attendance" :size="18" /></span>
-            <div>
-              <h4>Mẹo bảo mật</h4>
-            </div>
-          </header>
-          <ul>
-            <li>Không dùng lại mật khẩu của tài khoản khác.</li>
-            <li>Kiểm tra tab <em>Thiết bị đăng nhập</em> định kỳ, đăng xuất phiên lạ.</li>
-            <li>Đổi mật khẩu ngay nếu nghi ngờ bị lộ — mọi thiết bị khác sẽ bị đăng xuất.</li>
-          </ul>
         </section>
       </aside>
     </div>
@@ -952,7 +942,12 @@ onMounted(loadProfile)
   gap: 0.25rem;
   border-bottom: 1px solid var(--c-border);
   margin-bottom: 1.1rem;
+  /* overflow-x:auto (cuộn ngang khi màn hẹp) kéo theo overflow-y tự thành auto
+     (spec CSS không cho 1 trục visible khi trục kia cuộn). Trước đây nút tab có
+     margin-bottom:-1px làm nội dung tràn dọc đúng 1px → Windows vẽ scrollbar dọc
+     tí hon = 2 mũi tên ▲▼ vô nghĩa ở cuối thanh tab. Khóa trục dọc để khỏi tái phát. */
   overflow-x: auto;
+  overflow-y: hidden;
 }
 .st-tabs button {
   border: none;
@@ -963,7 +958,6 @@ onMounted(loadProfile)
   color: var(--c-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
   white-space: nowrap;
   transition:
     color var(--t-fast),
@@ -1452,10 +1446,6 @@ onMounted(loadProfile)
   background: rgba(249, 115, 22, 0.12);
   color: var(--c-primary);
 }
-.rail-ico--green {
-  background: rgba(34, 197, 94, 0.14);
-  color: var(--c-success);
-}
 .rail-chips {
   display: flex;
   flex-wrap: wrap;
@@ -1574,20 +1564,6 @@ onMounted(loadProfile)
 }
 .rail-link:hover {
   background: var(--c-surface-2);
-}
-
-/* Mẹo bảo mật */
-.rail-tips ul {
-  margin: 0;
-  padding-left: 1.1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-}
-.rail-tips li {
-  font-size: 0.8rem;
-  color: var(--c-text-muted);
-  line-height: 1.45;
 }
 
 /* ══════════ Nút (theo tông CTA cam của site) ══════════ */

@@ -1,6 +1,7 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.TeacherEvaluation;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -21,7 +22,10 @@ public interface TeacherEvaluationRepository
             Integer teacherId, Integer evaluatorUserId);
 
     /** Load đánh giá của nhiều GV (dùng cho dropdown / chưa chấm kỳ). */
-    List<TeacherEvaluation> findByTeacherIdInAndDeletedFalse(java.util.Collection<Integer> teacherIds);
+    List<TeacherEvaluation> findByTeacherIdInAndDeletedFalse(Collection<Integer> teacherIds);
+
+    /** Mọi đánh giá còn hiệu lực — dùng tính điểm trung bình cho dashboard. */
+    List<TeacherEvaluation> findByDeletedFalse();
 
     @Query("SELECT e.score, COUNT(e) FROM TeacherEvaluation e WHERE e.deleted = false "
             + "AND (:teacherId IS NULL OR e.teacherId = :teacherId) "

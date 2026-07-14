@@ -535,17 +535,27 @@ VALUES (@SubCD2, NULL, @BrHCM, N'Nhận diện lừa đảo trực tuyến (bả
 SET @Les6 = SCOPE_IDENTITY();
 
 /* =====================================================================
-   26) LessonFile — 8 file đính kèm
+   26) LessonFile — link Canva demo (tối đa 1 link/bài giảng)
+
+   Vì sao KHÔNG seed file vật lý (pdf/pptx) nữa (đổi 2026-07-11):
+   - Endpoint tải file (GET /api/v1/lessons/{id}/files/{fileId}/download)
+     đọc file thật trên đĩa tại uploads/lessons/{LessonId}/<tên file> —
+     seed cũ trỏ đường dẫn phẳng /uploads/lessons/<tên> và cũng không có
+     file nào trên đĩa ⇒ bấm "Tải về" trong demo luôn 404.
+   - Thư mục uploads/ đã gitignore (không ship binary theo repo) nên seed
+     file vật lý là bất khả thi. Muốn demo file thật: upload qua UI.
+   - Loại 'link' (youtube) cũ cũng bỏ: FE hiện chỉ window.open cho
+     fileType='canva', loại khác đều bị đẩy vào luồng tải file vật lý.
+   - Mỗi bài tối đa 1 dòng canva — khớp logic update-in-place của
+     LessonService.addCanvaLink (mỗi bài giảng 1 link Canva "chính").
    ===================================================================== */
 INSERT INTO LessonFile (LessonId, FileName, FileUrl, FileType, FileSizeKb, CreatedBy) VALUES
- (@Les1, N'scratch-bai1-slide.pptx',        '/uploads/lessons/scratch-bai1-slide.pptx',        'pptx', 2048, @UEmp1),
- (@Les1, N'scratch-bai1-phieu-bai-tap.pdf', '/uploads/lessons/scratch-bai1-phieu-bai-tap.pdf', 'pdf',   512, @UEmp1),
- (@Les2, N'scratch-vong-lap-slide.pptx',    '/uploads/lessons/scratch-vong-lap-slide.pptx',    'pptx', 1843, @UEmp2),
- (@Les3, N'robot-lap-rap-huong-dan.pdf',    '/uploads/lessons/robot-lap-rap-huong-dan.pdf',    'pdf',  3120, @UEmp4),
- (@Les3, N'Video hướng dẫn lắp ráp',        'https://youtu.be/demo-robot-lap-rap',             'link',  NULL, @UEmp4),
- (@Les4, N'python-bien-kieu-du-lieu.pdf',   '/uploads/lessons/python-bien-kieu-du-lieu.pdf',   'pdf',   780, @UEmp3),
- (@Les5, N'dau-chan-so-slide.pdf',          '/uploads/lessons/dau-chan-so-slide.pdf',          'pdf',   950, @UEmp2),
- (@Les6, N'lua-dao-truc-tuyen-2025.pptx',   '/uploads/lessons/lua-dao-truc-tuyen-2025.pptx',   'pptx', 2400, @UEmp5);
+ (@Les1, N'Slide Canva — Giới thiệu Scratch',           'https://www.canva.com/', 'canva', NULL, @UEmp1),
+ (@Les2, N'Slide Canva — Vòng lặp và điều kiện',        'https://www.canva.com/', 'canva', NULL, @UEmp2),
+ (@Les3, N'Slide Canva — Lắp ráp robot đầu tiên',       'https://www.canva.com/', 'canva', NULL, @UEmp4),
+ (@Les4, N'Slide Canva — Python: Biến và kiểu dữ liệu', 'https://www.canva.com/', 'canva', NULL, @UEmp3),
+ (@Les5, N'Slide Canva — Định danh số và dấu chân số',  'https://www.canva.com/', 'canva', NULL, @UEmp2),
+ (@Les6, N'Slide Canva — Nhận diện lừa đảo (2025)',     'https://www.canva.com/', 'canva', NULL, @UEmp5);
 
 /* =====================================================================
    27) Ca làm nhân viên (V10): loại hình + đăng ký ca (part-time) + lịch thực tế

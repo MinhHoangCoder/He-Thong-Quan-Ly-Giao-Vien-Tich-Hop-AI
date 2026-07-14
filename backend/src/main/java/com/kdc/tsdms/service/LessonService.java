@@ -73,6 +73,15 @@ public class LessonService {
      */
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
 
+    /**
+     * Whitelist đuôi file cho phép upload. KHÔNG cho html/svg/js... vì /uploads/**
+     * được
+     * serve same-origin — file HTML độc hại sẽ thành stored-XSS chạy trên domain
+     * của app.
+     */
+    private static final Set<String> ALLOWED_EXTENSIONS =
+            Set.of("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "png", "jpg", "jpeg", "gif", "mp4", "zip");
+
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
     private static final List<String> GRADE_LEVELS =
             List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
@@ -251,12 +260,37 @@ public class LessonService {
         for (MultipartFile f : files) {
             if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
+
+            if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
+                throw new ApiException(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "File \"" + original + "\" vượt quá dung lượng cho phép (tối đa 20MB)");
+            }
+
+            // BẢO MẬT: ext lấy từ tên file do CLIENT gửi — không sanitize thì tên dạng
+            // "x.a/b" cho ra ext chứa dấu "/" -> dir.resolve() GHI FILE RA NGOÀI thư mục
+            // uploads (path traversal). Chỉ nhận đuôi chữ+số và phải nằm trong whitelist.
             int dot = original.lastIndexOf('.');
-            String ext = dot >= 0 ? original.substring(dot) : "";
-            String stored = UUID.randomUUID() + ext;
+            String ext = dot >= 0 ? original.substring(dot + 1).toLowerCase() : "";
+            if (!ext.matches("[a-z0-9]{1,10}") || !ALLOWED_EXTENSIONS.contains(ext)) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Định dạng file không được hỗ trợ: " + original + " (chỉ nhận "
+                                + String.join(
+                                        ", ",
+                                        ALLOWED_EXTENSIONS.stream().sorted().toList())
+                                + ")");
+            }
+            String stored = UUID.randomUUID() + "." + ext;
+
+            // Phòng thủ nhiều lớp: khẳng định đường dẫn đích vẫn nằm TRONG thư mục upload.
+            Path target = dir.resolve(stored).normalize();
+            if (!target.startsWith(dir.normalize())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Tên file không hợp lệ");
+            }
 
             try {
-                Files.copy(f.getInputStream(), dir.resolve(stored), StandardCopyOption.REPLACE_EXISTING);
+                Files.copy(f.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
                 throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + original);
             }
@@ -265,7 +299,7 @@ public class LessonService {
             lf.setLessonId(lessonId);
             lf.setFileName(original);
             lf.setFileUrl("/" + UPLOAD_ROOT + "/" + lessonId + "/" + stored);
-            lf.setFileType(ext.isBlank() ? "file" : ext.substring(1).toLowerCase());
+            lf.setFileType(ext);
             lf.setFileSizeKb((int) Math.max(1, f.getSize() / 1024));
             lf.setCreatedBy(uid);
             saved.add(lessonFileRepo.save(lf));

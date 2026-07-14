@@ -83,9 +83,16 @@ const yTicks = computed(() => {
   })
 })
 
+// Id gradient PHẢI hợp lệ (không dấu cách/ký tự đặc biệt) — trước đây ghép từ tên nhóm môn
+// (vd "NLS-STEM - AI") nên url(#...) không phân giải được → vùng tô bị đổ MÀU ĐEN mặc định.
+// Dùng uid theo từng biểu đồ + chỉ số series để id vừa hợp lệ vừa không đụng nhau.
+const uid = Math.random().toString(36).slice(2, 8)
+const gradId = (i) => `grad-${uid}-${i}`
+
 const points = computed(() =>
-  props.series.map((s) => ({
+  props.series.map((s, si) => ({
     ...s,
+    gid: gradId(si),
     dots: s.data.map((v, i) => ({ cx: x(i, s.data.length), cy: y(v) })),
     line: smoothPath(s.data),
     area: areaPath(s.data),
@@ -98,9 +105,9 @@ const points = computed(() =>
     <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" class="chart__svg">
       <defs>
         <linearGradient
-          v-for="s in series"
-          :key="'g-' + s.name"
-          :id="'grad-' + s.name"
+          v-for="(s, i) in series"
+          :key="'g-' + i"
+          :id="gradId(i)"
           x1="0"
           y1="0"
           x2="0"
@@ -134,7 +141,7 @@ const points = computed(() =>
 
       <!-- Vùng tô + đường + điểm -->
       <g v-for="s in points" :key="s.name">
-        <path :d="s.area" :fill="`url(#grad-${s.name})`" />
+        <path :d="s.area" :fill="`url(#${s.gid})`" />
         <path :d="s.line" :stroke="s.color" fill="none" stroke-width="2.5" />
         <circle
           v-for="(d, i) in s.dots"
@@ -143,7 +150,7 @@ const points = computed(() =>
           :cy="d.cy"
           r="3.2"
           :fill="s.color"
-          stroke="#fff"
+          style="stroke: var(--c-surface)"
           stroke-width="1.5"
         />
       </g>

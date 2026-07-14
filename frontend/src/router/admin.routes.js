@@ -9,18 +9,39 @@ export const adminRoutes = [
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
   {
-    // Tạo tài khoản GV/Trường. Backend chặn theo QUYỀN: HR (TEACHER_MANAGE) tạo GV,
-    // SALES (SCHOOL_MANAGE) tạo trường, ADMIN tạo cả hai (employee gộp 4 phòng nên cũng vào được).
-    // meta.roles ở FE chỉ để HIỆN trang — chốt chặn thật nằm ở @PreAuthorize + RegistrationService.
-    path: '/users/new',
-    name: 'user-create',
-    component: () => import('@/pages/RegisterUserPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE', 'HR', 'SALES'] },
-  },
-  {
     path: '/dashboard/teacher',
     name: 'teacher-list',
     component: () => import('@/pages/TeacherListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/assignments',
+    name: 'assignments',
+    component: () => import('@/pages/AssignmentPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/schedule',
+    name: 'schedule',
+    component: () => import('@/pages/SchedulePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/attendance',
+    name: 'attendance',
+    component: () => import('@/pages/AttendancePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/payroll',
+    name: 'payroll',
+    component: () => import('@/pages/PayrollPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/ai-assistant',
+    name: 'ai-assistant',
+    component: () => import('@/pages/AiAssistantPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
   {
@@ -56,6 +77,31 @@ export const adminRoutes = [
       layout: 'admin',
       roles: ['ADMIN', 'EMPLOYEE'],
     },
+  },
+  {
+    path: '/admin/lessons',
+    name: 'admin-lesson-list',
+    component: () => import('@/pages/LessonListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/admin/lessons/new',
+    name: 'admin-lesson-new',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/admin/lessons/:id/edit',
+    name: 'admin-lesson-edit',
+    component: () => import('@/pages/LessonFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  // ── Nhóm môn (SubjectCategory) — quản lý danh mục ───────────────
+  {
+    path: '/admin/subject-categories',
+    name: 'admin-subject-category-list',
+    component: () => import('@/pages/SubjectCategoryListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
   {
     path: '/staff/settings',

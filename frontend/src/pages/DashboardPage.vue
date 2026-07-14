@@ -1,164 +1,104 @@
 <script setup>
-// Dashboard quản trị TSDMS — dữ liệu mẫu (sau này thay bằng API).
+// Dashboard quản trị TSDMS — DỮ LIỆU THẬT từ /api/v1/dashboard.
+// Mọi số liệu tính trực tiếp từ DB; chỗ chưa có dữ liệu hiển thị 0 / "—".
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import LineChart from '@/components/charts/LineChart.vue'
 import MiniBars from '@/components/charts/MiniBars.vue'
+import { dashboardApi } from '@/api/dashboard'
 
-const stats = [
-  {
-    icon: 'teacher',
-    label: 'Giáo viên đang dạy',
-    value: 128,
-    hint: 'so với tháng trước',
-    trend: 8,
-    color: '#f97316',
-  },
-  {
-    icon: 'school',
-    label: 'Trường khách hàng',
-    value: 42,
-    hint: 'so với tháng trước',
-    trend: 5,
-    color: '#2563eb',
-  },
-  {
-    icon: 'assignment',
-    label: 'Phân công đang chạy',
-    value: 96,
-    hint: 'so với tháng trước',
-    trend: 6,
-    color: '#f59e0b',
-  },
-  {
-    icon: 'schedule',
-    label: 'Buổi dạy tuần này',
-    value: 318,
-    hint: 'so với tuần trước',
-    trend: 14,
-    color: '#0ea5e9',
-  },
+const router = useRouter()
+
+const loading = ref(true)
+const refreshing = ref(false)
+const error = ref('')
+const data = ref(null)
+const months = ref(8)
+
+const periodOptions = [
+  { label: '6 tháng gần nhất', value: 6 },
+  { label: '8 tháng gần nhất', value: 8 },
+  { label: '12 tháng gần nhất', value: 12 },
 ]
 
-// Biểu đồ: số buổi dạy theo tháng cho 3 mảng môn.
-const chartLabels = ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8']
-const chartSeries = [
-  { name: 'STEM', color: '#f97316', data: [120, 145, 138, 170, 162, 190, 210, 235] },
-  { name: 'Công dân số', color: '#0ea5e9', data: [80, 92, 110, 138, 150, 142, 168, 180] },
-  { name: 'Ngoại ngữ', color: '#2563eb', data: [60, 72, 85, 90, 120, 132, 128, 150] },
-]
+// Nhãn thẻ thống kê (ghi rõ "tổng ..."); đồng thời bỏ dòng "so với ..." và % thay đổi.
+const STAT_LABELS = {
+  teachers: 'Tổng giáo viên',
+  schools: 'Tổng trường',
+  assignments: 'Tổng phân công trong tháng',
+  lessons: 'Tổng số buổi dạy trong tuần này',
+}
+const statLabel = (s) => STAT_LABELS[s.key] || s.label
 
-const sideStats = [
-  {
-    label: 'Giờ dạy tháng này',
-    value: '4.820',
-    data: [4, 6, 5, 8, 7, 9, 11],
-    color: '#f97316',
-    trend: 12,
-  },
-  {
-    label: 'Tỉ lệ chấm công đúng giờ',
-    value: '96%',
-    data: [7, 8, 6, 9, 8, 9, 10],
-    color: '#2563eb',
-    trend: 3,
-  },
-  {
-    label: 'Điểm đánh giá trung bình',
-    value: '4.6/5',
-    data: [6, 7, 7, 8, 9, 8, 9],
-    color: '#0ea5e9',
-    trend: 2,
-  },
-  {
-    label: 'Buổi dạy chờ duyệt',
-    value: '8',
-    data: [9, 7, 8, 5, 6, 4, 3],
-    color: '#f59e0b',
-    trend: -18,
-  },
-]
+async function load(isRefresh = false) {
+  if (isRefresh) refreshing.value = true
+  else loading.value = true
+  error.value = ''
+  try {
+    const { data: res } = await dashboardApi.summary(months.value)
+    data.value = res
+  } catch (e) {
+    error.value = e?.response?.data?.message || 'Không tải được dữ liệu bảng điều khiển. Vui lòng thử lại.'
+  } finally {
+    loading.value = false
+    refreshing.value = false
+  }
+}
 
-// Phân công gần đây (trung tâm tự tạo — không còn yêu cầu từ trường).
-const assignments = [
-  {
-    teacher: 'Nguyễn Minh',
-    school: 'THCS Lê Quý Đôn',
-    subject: 'Robotics',
-    date: '06/06',
-    status: 'Đang dạy',
-  },
-  {
-    teacher: 'Trần Lan',
-    school: 'TH Nguyễn Du',
-    subject: 'Scratch',
-    date: '05/06',
-    status: 'Đang dạy',
-  },
-  {
-    teacher: 'Phạm Hùng',
-    school: 'THPT Trần Phú',
-    subject: 'AI cơ bản',
-    date: '05/06',
-    status: 'Sắp bắt đầu',
-  },
-  {
-    teacher: 'Lê Hoa',
-    school: 'TH Kim Đồng',
-    subject: 'Tiếng Anh STEM',
-    date: '04/06',
-    status: 'Đang dạy',
-  },
-  {
-    teacher: 'Võ Nam',
-    school: 'THCS Chu Văn An',
-    subject: 'Lập trình Python',
-    date: '03/06',
-    status: 'Đã hủy',
-  },
-]
+onMounted(() => load())
 
-const statusClass = (s) => (s === 'Đang dạy' ? 'is-ok' : s === 'Sắp bắt đầu' ? 'is-wait' : 'is-no')
+// Đổi khoảng thời gian biểu đồ -> nạp lại từ server.
+function onPeriodChange() {
+  load(true)
+}
 
-// Lịch dạy hôm nay (mẫu).
-const todaySchedule = [
-  {
-    time: '08:00',
-    teacher: 'Nguyễn Minh',
-    subject: 'Robotics',
-    school: 'THCS Lê Quý Đôn',
-    color: '#f97316',
-  },
-  {
-    time: '09:30',
-    teacher: 'Trần Lan',
-    subject: 'Scratch',
-    school: 'TH Nguyễn Du',
-    color: '#0ea5e9',
-  },
-  {
-    time: '13:00',
-    teacher: 'Phạm Hùng',
-    subject: 'AI cơ bản',
-    school: 'THPT Trần Phú',
-    color: '#2563eb',
-  },
-  {
-    time: '15:00',
-    teacher: 'Lê Hoa',
-    subject: 'Python',
-    school: 'THCS Chu Văn An',
-    color: '#f59e0b',
-  },
-]
+/* ─── Điều hướng (mọi thẻ/nút đều bấm được) ─── */
+const statRoutes = {
+  teachers: '/dashboard/teacher',
+  schools: '/dashboard/teacher',
+  assignments: '/assignments',
+  lessons: '/schedule',
+}
+const sideRoutes = {
+  hours: '/attendance',
+  ontime: '/attendance',
+  rating: '/dashboard/teacher',
+  pending: '/schedule',
+}
+function goStat(key) {
+  const to = statRoutes[key]
+  if (to) router.push(to)
+}
+function goSide(key) {
+  const to = sideRoutes[key]
+  if (to) router.push(to)
+}
+function goCreateAssignment() {
+  router.push('/assignments')
+}
+function goAssignments() {
+  router.push('/assignments')
+}
+function goSchedule() {
+  router.push('/schedule')
+}
+function goTeachers() {
+  router.push('/dashboard/teacher')
+}
 
-// Top giáo viên theo giờ dạy.
-const topTeachers = [
-  { name: 'Nguyễn Minh', subject: 'Robotics', hours: 86, img: 5 },
-  { name: 'Trần Lan', subject: 'Scratch', hours: 78, img: 32 },
-  { name: 'Phạm Hùng', subject: 'AI cơ bản', hours: 74, img: 13 },
-  { name: 'Lê Hoa', subject: 'Tiếng Anh', hours: 69, img: 45 },
-]
+const chartLabels = computed(() => data.value?.chart?.labels ?? [])
+const chartSeries = computed(() => data.value?.chart?.series ?? [])
+const hasChart = computed(() => chartSeries.value.some((s) => (s.data ?? []).some((v) => v > 0)))
+
+const recentAssignments = computed(() => data.value?.recentAssignments ?? [])
+const todaySchedule = computed(() => data.value?.todaySchedule ?? [])
+const topTeachers = computed(() => data.value?.topTeachers ?? [])
+
+function toneClass(tone) {
+  return tone === 'ok' ? 'is-ok' : tone === 'wait' ? 'is-wait' : 'is-no'
+}
 </script>
 
 <template>
@@ -166,115 +106,178 @@ const topTeachers = [
   <div class="page-head">
     <div>
       <h1 class="page-head__title">Bảng điều khiển</h1>
-      <p class="page-head__crumb">Tổng quan / Dashboard</p>
     </div>
-    <button class="btn-primary"><SvgIcon name="plus" :size="18" /> Tạo phân công</button>
+    <div class="page-head__actions">
+      <button class="btn-primary" @click="goCreateAssignment">
+        <SvgIcon name="plus" :size="18" /> Tạo phân công
+      </button>
+    </div>
   </div>
 
-  <!-- Thẻ thống kê -->
-  <section class="stat-grid">
-    <StatCard v-for="s in stats" :key="s.label" v-bind="s" />
-  </section>
+  <!-- Lỗi -->
+  <div v-if="error" class="state state--error">
+    <SvgIcon name="bell" :size="20" />
+    <span>{{ error }}</span>
+    <button class="btn-ghost" @click="load()">Thử lại</button>
+  </div>
 
-  <!-- Biểu đồ + chỉ số phụ -->
-  <section class="main-grid">
-    <div class="card chart-card">
-      <div class="card__head">
-        <div>
-          <h2 class="card__title">Buổi dạy theo tháng</h2>
-          <p class="card__sub">Thống kê số buổi dạy theo nhóm môn (năm 2026)</p>
-        </div>
-        <select class="select">
-          <option>8 tháng gần nhất</option>
-          <option>Cả năm</option>
-        </select>
-      </div>
-      <LineChart :labels="chartLabels" :series="chartSeries" :height="300" />
-    </div>
+  <!-- Đang tải -->
+  <div v-else-if="loading" class="state state--loading">
+    <span class="spinner" /> Đang tải dữ liệu…
+  </div>
 
-    <div class="side-stats">
-      <div v-for="s in sideStats" :key="s.label" class="card mini-card">
-        <div class="mini-card__top">
-          <span class="mini-card__label">{{ s.label }}</span>
-          <span class="mini-card__trend" :class="s.trend >= 0 ? 'is-up' : 'is-down'">
-            <SvgIcon :name="s.trend >= 0 ? 'up' : 'down'" :size="13" />{{ Math.abs(s.trend) }}%
-          </span>
-        </div>
-        <div class="mini-card__value">{{ s.value }}</div>
-        <MiniBars :data="s.data" :color="s.color" />
-      </div>
-    </div>
-  </section>
+  <template v-else-if="data">
+    <!-- Thẻ thống kê -->
+    <section class="stat-grid">
+      <button
+        v-for="s in data.stats"
+        :key="s.key"
+        class="stat-link fade-up"
+        @click="goStat(s.key)"
+      >
+        <StatCard :icon="s.icon" :label="statLabel(s)" :value="s.value" :color="s.color" />
+      </button>
+    </section>
 
-  <!-- Bảng phân công + lịch hôm nay -->
-  <section class="bottom-grid">
-    <div class="card">
-      <div class="card__head">
-        <h2 class="card__title">Phân công gần đây</h2>
-        <a href="#" class="card__more">Xem tất cả</a>
-      </div>
-      <div class="table-wrap">
-        <table class="table">
-          <thead>
-            <tr>
-              <th>Giáo viên</th>
-              <th>Trường</th>
-              <th>Môn</th>
-              <th>Ngày</th>
-              <th>Trạng thái</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in assignments" :key="r.teacher + r.subject">
-              <td class="td-strong">{{ r.teacher }}</td>
-              <td>{{ r.school }}</td>
-              <td>{{ r.subject }}</td>
-              <td>{{ r.date }}</td>
-              <td>
-                <span class="badge" :class="statusClass(r.status)">{{ r.status }}</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card__head">
-        <h2 class="card__title">Lịch dạy hôm nay</h2>
-        <a href="#" class="card__more">Lịch tuần</a>
-      </div>
-      <ul class="timeline">
-        <li v-for="t in todaySchedule" :key="t.time + t.teacher" class="timeline__item">
-          <span class="timeline__time">{{ t.time }}</span>
-          <span class="timeline__dot" :style="{ background: t.color }" />
-          <div class="timeline__body">
-            <strong>{{ t.subject }}</strong>
-            <small>{{ t.teacher }} · {{ t.school }}</small>
+    <!-- Biểu đồ + chỉ số phụ -->
+    <section class="main-grid">
+      <div class="card chart-card">
+        <div class="card__head">
+          <div>
+            <h2 class="card__title">Buổi dạy theo tháng</h2>
+            <p class="card__sub">Thống kê số buổi dạy theo nhóm môn</p>
           </div>
-        </li>
-      </ul>
-    </div>
-  </section>
-
-  <!-- Top giáo viên -->
-  <section class="card">
-    <div class="card__head">
-      <h2 class="card__title">Giáo viên nổi bật tháng này</h2>
-      <a href="#" class="card__more">Bảng xếp hạng</a>
-    </div>
-    <div class="teacher-grid">
-      <div v-for="(t, i) in topTeachers" :key="t.name" class="teacher">
-        <span class="teacher__rank">#{{ i + 1 }}</span>
-        <img :src="`https://i.pravatar.cc/80?img=${t.img}`" :alt="t.name" />
-        <div>
-          <strong>{{ t.name }}</strong>
-          <small>{{ t.subject }}</small>
+          <select v-model.number="months" class="select" @change="onPeriodChange">
+            <option v-for="o in periodOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+          </select>
         </div>
-        <span class="teacher__hours">{{ t.hours }}h</span>
+        <div class="chart-wrap">
+          <LineChart v-if="hasChart" :labels="chartLabels" :series="chartSeries" :height="300" />
+          <div v-else class="state state--empty chart-empty">
+            <SvgIcon name="schedule" :size="26" />
+            <p>Chưa có buổi dạy nào trong khoảng thời gian này.</p>
+          </div>
+          <span v-if="refreshing" class="chart-refresh"><span class="spinner spinner--sm" /></span>
+        </div>
       </div>
-    </div>
-  </section>
+
+      <div class="side-stats">
+        <button
+          v-for="s in data.sideStats"
+          :key="s.key"
+          class="card mini-card"
+          @click="goSide(s.key)"
+        >
+          <div class="mini-card__top">
+            <span class="mini-card__label">{{ s.label }}</span>
+            <span
+              v-if="s.trend !== null && s.trend !== undefined"
+              class="mini-card__trend"
+              :class="s.trend >= 0 ? 'is-up' : 'is-down'"
+            >
+              <SvgIcon :name="s.trend >= 0 ? 'up' : 'down'" :size="13" />{{ Math.abs(s.trend) }}%
+            </span>
+          </div>
+          <div class="mini-card__value">{{ s.value }}</div>
+          <MiniBars :data="s.data" :color="s.color" />
+        </button>
+      </div>
+    </section>
+
+    <!-- Bảng phân công + lịch hôm nay -->
+    <section class="bottom-grid">
+      <div class="card">
+        <div class="card__head">
+          <h2 class="card__title">Phân công gần đây</h2>
+          <button class="card__more" @click="goAssignments">Xem tất cả</button>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Giáo viên</th>
+                <th>Trường</th>
+                <th>Môn</th>
+                <th>Ngày</th>
+                <th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="r in recentAssignments"
+                :key="r.id"
+                class="row-link"
+                @click="goAssignments"
+              >
+                <td class="td-strong">{{ r.teacher }}</td>
+                <td>{{ r.school }}</td>
+                <td>{{ r.subject }}</td>
+                <td>{{ r.date }}</td>
+                <td><span class="badge" :class="toneClass(r.tone)">{{ r.statusLabel }}</span></td>
+              </tr>
+              <tr v-if="!recentAssignments.length">
+                <td colspan="5" class="td-empty">Chưa có phân công nào.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card__head">
+          <h2 class="card__title">Lịch dạy hôm nay</h2>
+          <button class="card__more" @click="goSchedule">Lịch tuần</button>
+        </div>
+        <ul v-if="todaySchedule.length" class="timeline">
+          <li
+            v-for="t in todaySchedule"
+            :key="t.id"
+            class="timeline__item"
+            @click="goSchedule"
+          >
+            <span class="timeline__time">{{ t.time }}</span>
+            <span class="timeline__dot" :style="{ background: t.color, color: t.color }" />
+            <div class="timeline__body">
+              <strong>{{ t.subject }}</strong>
+              <small>{{ t.teacher }}{{ t.school ? ' · ' + t.school : '' }}</small>
+            </div>
+          </li>
+        </ul>
+        <div v-else class="state state--empty">
+          <SvgIcon name="clock" :size="26" />
+          <p>Hôm nay chưa có buổi dạy nào.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Top giáo viên -->
+    <section class="card">
+      <div class="card__head">
+        <h2 class="card__title">Giáo viên nổi bật tháng này</h2>
+        <button class="card__more" @click="goTeachers">Danh sách GV</button>
+      </div>
+      <div v-if="topTeachers.length" class="teacher-grid">
+        <div
+          v-for="(t, i) in topTeachers"
+          :key="t.id"
+          class="teacher"
+          @click="goTeachers"
+        >
+          <span class="teacher__rank">#{{ i + 1 }}</span>
+          <span class="teacher__avatar">{{ t.initials }}</span>
+          <div class="teacher__info">
+            <strong>{{ t.name }}</strong>
+            <small>{{ t.subject }}</small>
+          </div>
+          <span class="teacher__hours">{{ t.hours }}h</span>
+        </div>
+      </div>
+      <div v-else class="state state--empty">
+        <SvgIcon name="teacher" :size="26" />
+        <p>Chưa có dữ liệu giờ dạy trong tháng này.</p>
+      </div>
+    </section>
+  </template>
 </template>
 
 <style scoped>
@@ -293,10 +296,10 @@ const topTeachers = [
   font-weight: 700;
   color: var(--a-text);
 }
-.page-head__crumb {
-  margin: 0.2rem 0 0;
-  font-size: 0.82rem;
-  color: var(--a-text-muted);
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
 }
 .btn-primary {
   display: inline-flex;
@@ -324,10 +327,93 @@ const topTeachers = [
 .btn-primary:active {
   transform: translateY(0);
 }
-/* icon "+" quay nhẹ khi rê chuột */
 .btn-primary:hover :deep(svg) {
   transform: rotate(90deg);
   transition: transform var(--t);
+}
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--a-border);
+  background: var(--c-surface);
+  color: var(--a-text-muted);
+  cursor: pointer;
+  padding: 0.6rem 0.95rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.86rem;
+  transition:
+    border-color var(--t-fast),
+    color var(--t-fast),
+    background var(--t-fast);
+}
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  background: rgba(249, 115, 22, 0.08);
+}
+.btn-ghost:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Trạng thái tải / lỗi / rỗng */
+.state {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 1.2rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+}
+.state--loading {
+  color: var(--a-text-muted);
+  background: var(--c-surface);
+  border: 1px solid var(--a-border);
+}
+.state--error {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  flex-wrap: wrap;
+}
+:root[data-theme='dark'] .state--error {
+  color: #f87171;
+}
+.state--error .btn-ghost {
+  margin-left: auto;
+}
+.state--empty {
+  flex-direction: column;
+  color: var(--a-text-muted);
+  text-align: center;
+  padding: 2.2rem 1rem;
+}
+.state--empty p {
+  margin: 0.2rem 0 0;
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  border: 2.5px solid var(--a-border);
+  border-top-color: var(--c-primary);
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.7s linear infinite;
+}
+.spinner--sm {
+  width: 15px;
+  height: 15px;
+  border-width: 2px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinning {
+  animation: spin 0.8s linear infinite;
 }
 
 /* Lưới thẻ */
@@ -336,6 +422,16 @@ const topTeachers = [
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 1.1rem;
   margin-bottom: 1.4rem;
+}
+.stat-link {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  display: block;
+  width: 100%;
 }
 
 /* Card chung */
@@ -352,7 +448,7 @@ const topTeachers = [
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .card__head {
   display: flex;
@@ -376,11 +472,14 @@ const topTeachers = [
   position: relative;
   font-size: 0.82rem;
   color: var(--c-primary);
+  background: none;
+  border: none;
+  cursor: pointer;
   text-decoration: none;
   font-weight: 600;
   white-space: nowrap;
+  padding: 0;
 }
-/* gạch chân chạy từ trái sang khi rê chuột (mượt hơn underline mặc định) */
 .card__more::after {
   content: '';
   position: absolute;
@@ -424,6 +523,19 @@ const topTeachers = [
   gap: 1.1rem;
   margin-bottom: 1.4rem;
 }
+.chart-wrap {
+  position: relative;
+  min-height: 300px;
+}
+.chart-empty {
+  min-height: 300px;
+  justify-content: center;
+}
+.chart-refresh {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
 .side-stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -431,6 +543,12 @@ const topTeachers = [
 }
 .mini-card {
   padding: 1.1rem;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.mini-card:hover {
+  transform: translateY(-3px);
 }
 .mini-card__top {
   display: flex;
@@ -454,6 +572,13 @@ const topTeachers = [
 }
 .mini-card__trend.is-down {
   color: #dc2626;
+}
+/* Chữ xanh/đỏ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .mini-card__trend.is-up {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .mini-card__trend.is-down {
+  color: #f87171;
 }
 .mini-card__value {
   font-size: 1.5rem;
@@ -497,11 +622,20 @@ const topTeachers = [
 .table tbody tr:last-child td {
   border-bottom: none;
 }
-.table tbody tr:hover {
+.row-link {
+  cursor: pointer;
+  transition: background var(--t-fast);
+}
+.row-link:hover {
   background: var(--a-bg);
 }
 .td-strong {
   font-weight: 600;
+}
+.td-empty {
+  text-align: center;
+  color: var(--a-text-muted);
+  padding: 1.6rem 0.7rem;
 }
 .badge {
   display: inline-block;
@@ -522,6 +656,15 @@ const topTeachers = [
   color: #dc2626;
   background: #ef44441f;
 }
+:root[data-theme='dark'] .badge.is-ok {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge.is-wait {
+  color: #fbbf24;
+}
+:root[data-theme='dark'] .badge.is-no {
+  color: #f87171;
+}
 
 /* Timeline lịch hôm nay */
 .timeline {
@@ -534,9 +677,10 @@ const topTeachers = [
   grid-template-columns: 48px 16px 1fr;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.6rem 0;
+  padding: 0.6rem 0.4rem;
   position: relative;
   border-radius: 8px;
+  cursor: pointer;
   transition: background var(--t-fast);
 }
 .timeline__item:hover {
@@ -563,7 +707,7 @@ const topTeachers = [
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid var(--c-surface);
   box-shadow: 0 0 0 2px currentColor;
   z-index: 1;
   transition: transform var(--t);
@@ -596,6 +740,7 @@ const topTeachers = [
   border: 1px solid var(--a-border);
   border-radius: 12px;
   position: relative;
+  cursor: pointer;
   transition:
     box-shadow var(--t),
     transform var(--t),
@@ -604,9 +749,9 @@ const topTeachers = [
 .teacher:hover {
   transform: translateY(-3px);
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
-.teacher:hover img {
+.teacher:hover .teacher__avatar {
   transform: scale(1.07);
 }
 .teacher__rank {
@@ -617,17 +762,29 @@ const topTeachers = [
   font-weight: 800;
   color: var(--a-text-muted);
 }
-.teacher img {
+.teacher__avatar {
   width: 46px;
   height: 46px;
+  flex: 0 0 auto;
   border-radius: 50%;
-  object-fit: cover;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #fff;
+  background: var(--grad-primary);
   transition: transform var(--t);
+}
+.teacher__info {
+  min-width: 0;
 }
 .teacher strong {
   display: block;
   font-size: 0.9rem;
   color: var(--a-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .teacher small {
   font-size: 0.78rem;
@@ -652,6 +809,9 @@ const topTeachers = [
 @media (max-width: 520px) {
   .side-stats {
     grid-template-columns: 1fr;
+  }
+  .page-head__actions {
+    width: 100%;
   }
 }
 </style>

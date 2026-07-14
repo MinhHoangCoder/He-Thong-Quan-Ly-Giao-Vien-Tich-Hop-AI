@@ -616,13 +616,17 @@ tbody tr:hover {
 
   border-radius: 999px;
 
-  background: #dbeafe;
+  background: rgba(37, 99, 235, 0.12);
 
   color: #2563eb;
 
   font-size: 12px;
 
   font-weight: 600;
+}
+
+:root[data-theme='dark'] .cat-badge {
+  color: #93c5fd;
 }
 
 /* ================= Status ================= */

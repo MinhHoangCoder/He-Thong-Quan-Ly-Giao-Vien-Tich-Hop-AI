@@ -10,15 +10,17 @@ const nav = [
   {
     title: 'Nhân sự',
     items: [
-      { label: 'Tạo tài khoản', icon: 'plus', to: '/users/new' },
       { label: 'Giáo viên', icon: 'teacher', to: '/dashboard/teacher', badge: '128' },
       { label: 'Môn học', icon: 'subject', to: '#' },
       { label: 'Đánh giá', icon: 'evaluation', to: '/admin/evaluations' },
     ],
   },
   {
-    title: 'Kho bài giảng',
-    items: [{ label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' }],
+    title: 'Môn học',
+    items: [
+      { label: 'Bài giảng', icon: 'subject', to: '/admin/lessons' },
+      { label: 'Nhóm môn học', icon: 'subject', to: '/admin/subject-categories' },
+    ],
   },
   {
     title: 'Khách hàng',
@@ -30,16 +32,16 @@ const nav = [
   {
     title: 'Điều phối',
     items: [
-      { label: 'Phân công', icon: 'assignment', to: '#' },
-      { label: 'Lịch dạy', icon: 'schedule', to: '#' },
-      { label: 'Chấm công', icon: 'clock', to: '#' },
-      { label: 'Bảng lương', icon: 'payroll', to: '#' },
+      { label: 'Phân công', icon: 'assignment', to: '/assignments' },
+      { label: 'Lịch dạy', icon: 'schedule', to: '/schedule' },
+      { label: 'Chấm công', icon: 'clock', to: '/attendance' },
+      { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
     ],
   },
   {
     title: 'Hệ thống',
     items: [
-      { label: 'Trợ lý AI', icon: 'ai', to: '#' },
+      { label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' },
       { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
     ],
   },

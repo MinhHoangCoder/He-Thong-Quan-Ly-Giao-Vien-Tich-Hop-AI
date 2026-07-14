@@ -69,7 +69,6 @@ const form = reactive({
   teacherId: null,
   title: '',
   description: '',
-  content: '',
   gradeLevel: '',
   status: 'DRAFT',
 })
@@ -120,7 +119,6 @@ async function loadLesson() {
     form.teacherId = data.teacherId
     form.title = data.title
     form.description = data.description || ''
-    form.content = data.content || ''
     form.gradeLevel = data.gradeLevel || ''
     form.status = data.status
     attachedFiles.value = data.files || []
@@ -136,6 +134,12 @@ async function loadLesson() {
 }
 
 async function onSubmit() {
+  // Chặn double-submit: click 2 lần liên tiếp/double-click trước khi Vue kịp
+  // re-render nút :disabled="saving" có thể khiến onSubmit() chạy 2 lần, gửi
+  // 2 request POST/PUT chồng nhau (1 thành công set successMsg, 1 fail set
+  // errorMsg) -> UI hiện đồng thời cả 2 thông báo trái ngược nhau.
+  if (saving.value) return
+
   errorMsg.value = ''
   successMsg.value = ''
 
@@ -158,7 +162,6 @@ async function onSubmit() {
     teacherId: form.teacherId ? Number(form.teacherId) : null,
     title: form.title.trim(),
     description: form.description.trim() || null,
-    content: form.content.trim() || null,
     gradeLevel: form.gradeLevel || null,
     status: form.status,
   }
@@ -171,7 +174,13 @@ async function onSubmit() {
     } else {
       const { data } = await lessonApi.create(body)
       successMsg.value = 'Tạo bài giảng thành công!'
-      router.replace({ name: editRouteName, params: { id: data.id } })
+      // FIX: editRouteName là computed ref — trong <script setup> (không phải
+      // template) Vue KHÔNG tự unwrap ref, nên phải lấy .value. Thiếu .value
+      // khiến router.replace() nhận cả object ComputedRefImpl làm "name",
+      // Vue Router không khớp được route -> throw lỗi ngay tại đây (dù POST
+      // /lessons vừa mới THÀNH CÔNG) -> rơi xuống catch bên dưới -> UI hiện
+      // đồng thời "Tạo bài giảng thành công!" VÀ "Lưu thất bại, thử lại sau."
+      router.replace({ name: editRouteName.value, params: { id: data.id } })
     }
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'Lưu thất bại, thử lại sau.'
@@ -185,6 +194,7 @@ function onPdfChange(e) {
 }
 
 async function uploadPDF() {
+  if (uploadingPDF.value) return
   if (!pdfFiles.value.length) {
     pdfError.value = 'Chọn ít nhất 1 file PDF.'
     return
@@ -204,6 +214,7 @@ async function uploadPDF() {
 }
 
 async function addCanva() {
+  if (addingCanva.value) return
   canvaError.value = ''
   if (!canvaForm.fileName.trim()) {
     canvaError.value = 'Nhập tên hiển thị.'
@@ -231,6 +242,7 @@ async function addCanva() {
 }
 
 async function deleteFile(fileId) {
+  if (deletingFileId.value !== null) return
   deletingFileId.value = fileId
   try {
     await lessonApi.removeFile(lessonId.value, fileId)
@@ -337,16 +349,6 @@ onMounted(async () => {
             ></textarea>
           </label>
 
-          <!-- Hàng 4: Nội dung chi tiết -->
-          <label class="field field--full">
-            <span>Nội dung chi tiết <span class="hint">(Markdown / Rich text)</span></span>
-            <textarea
-              v-model="form.content"
-              rows="8"
-              placeholder="## Mục tiêu&#10;- ...&#10;&#10;## Hoạt động&#10;1. ..."
-            ></textarea>
-          </label>
-
           <!-- Hàng 5: Trạng thái -->
           <div class="grid-1">
             <label class="field field--req">
@@ -379,10 +381,9 @@ onMounted(async () => {
 
       <!-- Cột phải: file đính kèm (chỉ hiện khi đang sửa) -->
       <div v-if="isEdit" class="col-side">
-        <!-- PDF Upload -->
+        <!-- Giáo án -->
         <div class="card">
-          <h2 class="card__title">📄 Tải lên file PDF</h2>
-          <p class="card__sub">Chỉ chấp nhận file .pdf (nhiều file cùng lúc).</p>
+          <h2 class="card__title">📄 Tải lên giáo án</h2>
 
           <input
             ref="pdfInput"
@@ -404,9 +405,9 @@ onMounted(async () => {
           </button>
         </div>
 
-        <!-- Link Canva -->
+        <!-- Bài giảng (link Canva) -->
         <div class="card">
-          <h2 class="card__title">🎨 Thêm link Canva</h2>
+          <h2 class="card__title">🎨 Tải lên bài giảng</h2>
           <p class="card__sub">Dán link trình chiếu Canva đã publish để xem trực tiếp.</p>
 
           <button
@@ -414,7 +415,7 @@ onMounted(async () => {
             class="btn btn--ghost btn--full"
             @click="showCanvaForm = true"
           >
-            + Thêm link Canva
+            + Tải lên bài giảng
           </button>
 
           <div v-else class="canva-form">
@@ -508,7 +509,7 @@ onMounted(async () => {
   text-decoration: underline;
 }
 .loading {
-  color: #64748b;
+  color: var(--c-text-muted);
   padding: 32px;
   text-align: center;
 }
@@ -544,7 +545,7 @@ onMounted(async () => {
 .card__sub {
   margin: 0 0 14px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--c-text-muted);
 }
 
 .grid-1 {
@@ -596,7 +597,7 @@ onMounted(async () => {
 .field select,
 .field textarea {
   padding: 9px 11px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--c-input-border);
   border-radius: 9px;
   font-size: 14px;
   outline: none;
@@ -608,11 +609,6 @@ onMounted(async () => {
 .field select:focus,
 .field textarea:focus {
   border-color: var(--c-primary, #f97316);
-}
-.hint {
-  font-weight: 400;
-  color: var(--c-text-muted);
-  font-size: 12px;
 }
 
 .form-footer {
@@ -668,7 +664,7 @@ onMounted(async () => {
   align-items: flex-start;
   gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--c-border-soft);
 }
 .file-item:last-child {
   border-bottom: none;
@@ -711,7 +707,7 @@ a.file-name:hover {
   flex-shrink: 0;
 }
 .del-btn:hover:not(:disabled) {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
 .del-btn:disabled {
@@ -741,7 +737,7 @@ a.file-name:hover {
   color: var(--c-text);
 }
 .btn--ghost:hover:not(:disabled) {
-  background: #e2e8f0;
+  background: var(--c-border);
   filter: none;
 }
 .btn--full {
@@ -755,11 +751,17 @@ a.file-name:hover {
   margin: 10px 0 0;
 }
 .msg--error {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
 }
 .msg--ok {
-  background: #ecfdf5;
+  background: rgba(34, 197, 94, 0.12);
   color: #047857;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
 }
 </style>

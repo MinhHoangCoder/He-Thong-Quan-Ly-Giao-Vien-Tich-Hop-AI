@@ -178,7 +178,7 @@ const todaySchedule = [
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .card__head {
   display: flex;
@@ -275,6 +275,16 @@ const todaySchedule = [
   color: #dc2626;
   background: #ef44441f;
 }
+/* Chữ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .badge.is-ok {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge.is-wait {
+  color: #fbbf24;
+}
+:root[data-theme='dark'] .badge.is-no {
+  color: #f87171;
+}
 
 /* Timeline */
 .timeline {
@@ -313,7 +323,7 @@ const todaySchedule = [
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid var(--c-surface);
   box-shadow: 0 0 0 2px currentColor;
   z-index: 1;
 }
