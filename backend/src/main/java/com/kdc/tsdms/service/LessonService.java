@@ -27,7 +27,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.core.io.Resource;
@@ -54,12 +53,13 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
+    private static final Path UPLOAD_ROOT =
+            Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
-            "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -233,8 +233,7 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty())
-                continue;
+            if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
 
             if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
@@ -245,9 +244,7 @@ public class LessonService {
 
             // Kiểm tra Content-Type
             if (!"application/pdf".equalsIgnoreCase(f.getContentType())) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Chỉ cho phép upload file PDF");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ cho phép upload file PDF");
             }
             try (InputStream is = f.getInputStream()) {
                 byte[] header = new byte[4];
@@ -258,14 +255,10 @@ public class LessonService {
                         || header[2] != 'D'
                         || header[3] != 'F') {
 
-                    throw new ApiException(
-                            HttpStatus.BAD_REQUEST,
-                            "File không phải PDF hợp lệ");
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "File không phải PDF hợp lệ");
                 }
             } catch (IOException e) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Không thể đọc file PDF");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể đọc file PDF");
             }
 
             // Kiểm tra phần mở rộng
@@ -273,9 +266,7 @@ public class LessonService {
             String ext = dot >= 0 ? original.substring(dot + 1).toLowerCase() : "";
 
             if (!"pdf".equals(ext)) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Chỉ cho phép upload file PDF");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ cho phép upload file PDF");
             }
             String stored = UUID.randomUUID() + "." + ext;
 
@@ -428,8 +419,7 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty())
-            return Map.of();
+        if (ids.isEmpty()) return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 
@@ -479,19 +469,15 @@ public class LessonService {
 
             String host = uri.getHost();
 
-            if (host == null ||
-                    !(host.equalsIgnoreCase("canva.com")
+            if (host == null
+                    || !(host.equalsIgnoreCase("canva.com")
                             || host.equalsIgnoreCase("www.canva.com")
                             || host.equalsIgnoreCase("canva.link"))) {
 
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Chỉ cho phép liên kết Canva");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ cho phép liên kết Canva");
             }
 
-            return ResponseEntity.status(HttpStatus.FOUND)
-                    .location(uri)
-                    .build();
+            return ResponseEntity.status(HttpStatus.FOUND).location(uri).build();
         }
 
         try {
