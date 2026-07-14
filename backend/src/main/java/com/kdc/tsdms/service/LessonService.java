@@ -17,6 +17,8 @@ import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -52,39 +54,12 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final Path UPLOAD_ROOT =
-            Paths.get("uploads/lessons").toAbsolutePath().normalize();
+    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
-    /**
-     * Whitelist đuôi file cho tài liệu bài giảng — CHỈ nhận định dạng tài liệu/ảnh
-     * tĩnh,
-     * không nhận file có thể thực thi (.exe/.sh/.jsp...) hay chứa script
-     * (.html/.svg...).
-     * FE hiện chỉ cho chọn .pdf (xem LessonFormPage.vue, input accept=".pdf") nhưng
-     * accept chỉ là gợi ý phía client — BẮT BUỘC validate lại ở server. Nới thêm
-     * ảnh
-     * (png/jpg) để chấp nhận ảnh scan tài liệu nếu cần, vẫn an toàn vì chỉ là
-     * raster tĩnh.
-     */
-    private static final Set<String> ALLOWED_UPLOAD_EXTENSIONS = Set.of("pdf", "png", "jpg", "jpeg");
-
-    /**
-     * Giới hạn kích thước 1 file — khớp với spring.servlet.multipart.max-file-size.
-     */
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
-
-    /**
-     * Whitelist đuôi file cho phép upload. KHÔNG cho html/svg/js... vì /uploads/**
-     * được
-     * serve same-origin — file HTML độc hại sẽ thành stored-XSS chạy trên domain
-     * của app.
-     */
-    private static final Set<String> ALLOWED_EXTENSIONS =
-            Set.of("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "png", "jpg", "jpeg", "gif", "mp4", "zip");
-
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS =
-            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
+            "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -258,7 +233,8 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty()) continue;
+            if (f.isEmpty())
+                continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
 
             if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
@@ -267,19 +243,39 @@ public class LessonService {
                         "File \"" + original + "\" vượt quá dung lượng cho phép (tối đa 20MB)");
             }
 
-            // BẢO MẬT: ext lấy từ tên file do CLIENT gửi — không sanitize thì tên dạng
-            // "x.a/b" cho ra ext chứa dấu "/" -> dir.resolve() GHI FILE RA NGOÀI thư mục
-            // uploads (path traversal). Chỉ nhận đuôi chữ+số và phải nằm trong whitelist.
-            int dot = original.lastIndexOf('.');
-            String ext = dot >= 0 ? original.substring(dot + 1).toLowerCase() : "";
-            if (!ext.matches("[a-z0-9]{1,10}") || !ALLOWED_EXTENSIONS.contains(ext)) {
+            // Kiểm tra Content-Type
+            if (!"application/pdf".equalsIgnoreCase(f.getContentType())) {
                 throw new ApiException(
                         HttpStatus.BAD_REQUEST,
-                        "Định dạng file không được hỗ trợ: " + original + " (chỉ nhận "
-                                + String.join(
-                                        ", ",
-                                        ALLOWED_EXTENSIONS.stream().sorted().toList())
-                                + ")");
+                        "Chỉ cho phép upload file PDF");
+            }
+            try (InputStream is = f.getInputStream()) {
+                byte[] header = new byte[4];
+
+                if (is.read(header) != 4
+                        || header[0] != '%'
+                        || header[1] != 'P'
+                        || header[2] != 'D'
+                        || header[3] != 'F') {
+
+                    throw new ApiException(
+                            HttpStatus.BAD_REQUEST,
+                            "File không phải PDF hợp lệ");
+                }
+            } catch (IOException e) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Không thể đọc file PDF");
+            }
+
+            // Kiểm tra phần mở rộng
+            int dot = original.lastIndexOf('.');
+            String ext = dot >= 0 ? original.substring(dot + 1).toLowerCase() : "";
+
+            if (!"pdf".equals(ext)) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Chỉ cho phép upload file PDF");
             }
             String stored = UUID.randomUUID() + "." + ext;
 
@@ -298,7 +294,8 @@ public class LessonService {
             LessonFile lf = new LessonFile();
             lf.setLessonId(lessonId);
             lf.setFileName(original);
-            lf.setFileUrl("/" + UPLOAD_ROOT + "/" + lessonId + "/" + stored);
+            String relativePath = lessonId + "/" + stored;
+            lf.setFileUrl(relativePath);
             lf.setFileType(ext);
             lf.setFileSizeKb((int) Math.max(1, f.getSize() / 1024));
             lf.setCreatedBy(uid);
@@ -431,7 +428,8 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty()) return Map.of();
+        if (ids.isEmpty())
+            return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 
@@ -472,18 +470,38 @@ public class LessonService {
         // để link chia sẻ trực tiếp /download cũng mở đúng).
         if ("canva".equalsIgnoreCase(file.getFileType())) {
 
+            URI uri;
+            try {
+                uri = URI.create(file.getFileUrl());
+            } catch (IllegalArgumentException e) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "URL Canva không hợp lệ");
+            }
+
+            String host = uri.getHost();
+
+            if (host == null ||
+                    !(host.equalsIgnoreCase("canva.com")
+                            || host.equalsIgnoreCase("www.canva.com")
+                            || host.equalsIgnoreCase("canva.link"))) {
+
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Chỉ cho phép liên kết Canva");
+            }
+
             return ResponseEntity.status(HttpStatus.FOUND)
-                    .header(HttpHeaders.LOCATION, file.getFileUrl())
+                    .location(uri)
                     .build();
         }
 
         try {
             // fileUrl dạng: /uploads/lessons/{lessonId}/{storedFileName} -> lấy phần
             // storedFileName cuối cùng
-            String storedFileName =
-                    file.getFileUrl().substring(file.getFileUrl().lastIndexOf('/') + 1);
-            Path path = UPLOAD_ROOT.resolve(String.valueOf(lessonId)).resolve(storedFileName);
+            Path path = UPLOAD_ROOT.resolve(file.getFileUrl()).normalize();
 
+            if (!path.startsWith(UPLOAD_ROOT)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Đường dẫn file không hợp lệ");
+            }
             Resource resource = new UrlResource(path.toUri());
 
             if (!resource.exists() || !resource.isReadable()) {
