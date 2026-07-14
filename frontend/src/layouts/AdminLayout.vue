@@ -42,7 +42,9 @@ const nav = [
     title: 'Hệ thống',
     items: [
       { label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' },
-      { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
+      // TẠM ẨN cho đợt bảo vệ (demo chỉ dùng admin + teacher). Trang /settings/roles
+      // vẫn hoạt động — mở lại bằng cách bỏ comment dòng dưới.
+      // { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
     ],
   },
 ]
