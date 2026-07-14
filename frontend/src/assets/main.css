@@ -100,6 +100,17 @@
   transition-duration: 0.001ms !important;
 }
 
+/* Cuộn mượt tới anchor (menu trang chủ) — tắt theo cả cài đặt hệ điều hành
+   lẫn tùy chọn "giảm hiệu ứng" trong app. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+:root[data-motion='reduced'] {
+  scroll-behavior: auto;
+}
+
 * {
   box-sizing: border-box;
 }
