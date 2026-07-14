@@ -2,37 +2,33 @@ import http from './http'
 
 /**
  * API module Đánh giá giáo viên (TeacherEvaluation).
- * Scope theo role do backend enforce (TEACHER chỉ thấy của mình, SCHOOL chỉ trường mình).
  */
 export const evaluationApi = {
   periodPresets() {
     return http.get('/evaluations/period-presets')
   },
 
-  /** { presets: string[], suggested: string } */
   periodMeta() {
     return http.get('/evaluations/period-meta')
   },
 
-  /**
-   * @param {{ teacherId: number, periodNote: string, excludeId?: number }} params
-   */
+  /** { schools: [{id,name}], branches: [{id,name}], schoolScoped: boolean } */
+  filterMeta() {
+    return http.get('/evaluations/filter-meta')
+  },
+
   duplicateCheck(params) {
     return http.get('/evaluations/duplicate-check', { params })
   },
 
   /**
-   * Dropdown GV thông minh.
-   * @param {{ periodNote?: string, keyword?: string }} params
+   * Tìm GV phân trang.
+   * @returns {{ content, page, size, totalElements, totalPages }}
    */
   teachers(params = {}) {
     return http.get('/evaluations/teachers', { params })
   },
 
-  /**
-   * GV chưa đánh giá trong kỳ.
-   * @param {{ periodNote?: string, keyword?: string }} params
-   */
   unevaluatedTeachers(params = {}) {
     return http.get('/evaluations/teachers/unevaluated', { params })
   },

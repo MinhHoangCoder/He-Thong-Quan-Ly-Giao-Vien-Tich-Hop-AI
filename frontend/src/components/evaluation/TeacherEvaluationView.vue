@@ -225,18 +225,20 @@ onMounted(load)
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   border-radius: 10px;
-  background: linear-gradient(135deg, #fff7ed 0%, #eff6ff 100%);
-  border: 1px solid var(--c-border);
+  /* Mix token theme — tránh nền #fff7ed/#eff6ff cứng, dark mode không đọc được */
+  background: color-mix(in srgb, var(--c-primary, #f97316) 12%, var(--c-surface));
+  border: 1px solid color-mix(in srgb, var(--c-primary, #f97316) 35%, var(--c-border));
   color: var(--c-text);
   font-size: 0.92rem;
   line-height: 1.45;
 }
 .insight strong {
   color: var(--c-primary, #f97316);
+  margin-right: 0.25rem;
 }
 .badge--new {
-  background: #ecfdf5;
-  color: #047857;
+  background: color-mix(in srgb, #22c55e 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #22c55e 75%, var(--c-text));
 }
 .dist {
   background: var(--c-surface);
@@ -284,8 +286,9 @@ onMounted(load)
   font-size: 0.9rem;
 }
 .msg--error {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: color-mix(in srgb, #ef4444 80%, var(--c-text));
+  background: color-mix(in srgb, #ef4444 14%, var(--c-surface));
+  border: 1px solid color-mix(in srgb, #ef4444 30%, var(--c-border));
   padding: 0.55rem 0.75rem;
   border-radius: 8px;
 }
@@ -324,12 +327,12 @@ onMounted(load)
   font-weight: 600;
 }
 .badge--center {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: color-mix(in srgb, #2563eb 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #60a5fa 70%, var(--c-text));
 }
 .badge--school {
-  background: #fff7ed;
-  color: #c2410c;
+  background: color-mix(in srgb, #f97316 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #fb923c 70%, var(--c-text));
 }
 .card__period {
   margin: 0 0 0.35rem;

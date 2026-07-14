@@ -3,12 +3,15 @@ package com.kdc.tsdms.service;
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
 import com.kdc.tsdms.entity.AppUser;
+import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.entity.TeacherEvaluation;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherEvaluationRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -17,8 +20,10 @@ import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -47,6 +52,7 @@ public class EvaluationService {
     private final TeacherEvaluationRepository evaluationRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
+    private final BranchRepository branchRepo;
     private final AppUserRepository userRepo;
     private final AssignmentRepository assignmentRepo;
     private final DisplayNameResolver displayNameResolver;
@@ -55,12 +61,14 @@ public class EvaluationService {
             TeacherEvaluationRepository evaluationRepo,
             TeacherRepository teacherRepo,
             SchoolRepository schoolRepo,
+            BranchRepository branchRepo,
             AppUserRepository userRepo,
             AssignmentRepository assignmentRepo,
             DisplayNameResolver displayNameResolver) {
         this.evaluationRepo = evaluationRepo;
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
+        this.branchRepo = branchRepo;
         this.userRepo = userRepo;
         this.assignmentRepo = assignmentRepo;
         this.displayNameResolver = displayNameResolver;
@@ -108,45 +116,82 @@ public class EvaluationService {
     }
 
     /**
-     * Dropdown GV thông minh: kèm TB / số lượt / đã chấm kỳ chưa.
-     * {@code periodNote} rỗng → dùng kỳ gợi ý hiện tại.
-     * {@code keyword} lọc tên (không phân biệt hoa thường).
-     * Sắp xếp: chưa chấm kỳ trước, rồi theo tên.
+     * Tìm GV có phân trang + lọc trường/chi nhánh/tên/SĐT.
+     * SCHOOL: chỉ GV đã phân công tại trường mình (không fallback toàn hệ thống).
      */
     @Transactional(readOnly = true)
-    public List<EvaluationResponse.TeacherOption> teacherOptions(String periodNote, String keyword) {
+    public EvaluationResponse.TeacherPage teacherOptions(
+            String periodNote,
+            String keyword,
+            Integer schoolId,
+            Integer branchId,
+            Boolean onlyUnevaluated,
+            int page,
+            int size) {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không tạo đánh giá");
         }
         String period = resolvePeriod(periodNote);
-        List<Teacher> source = filterByKeyword(resolveCandidateTeachers(), keyword);
-        return buildTeacherOptions(source, period, /*onlyUnevaluated*/ false);
+        List<Teacher> source = filterByKeyword(resolveCandidateTeachers(schoolId, branchId), keyword);
+        List<EvaluationResponse.TeacherOption> all = buildTeacherOptions(source, period);
+        if (Boolean.TRUE.equals(onlyUnevaluated)) {
+            all = all.stream().filter(o -> !o.evaluatedInPeriod()).toList();
+        }
+        int p = Math.max(page, 0);
+        int s = Math.min(Math.max(size, 1), 50);
+        long total = all.size();
+        int from = (int) Math.min((long) p * s, total);
+        int to = (int) Math.min(from + s, total);
+        List<EvaluationResponse.TeacherOption> slice = all.subList(from, to);
+        int totalPages = s == 0 ? 0 : (int) Math.ceil(total / (double) s);
+        return new EvaluationResponse.TeacherPage(slice, p, s, total, totalPages);
+    }
+
+    /** Dropdown lọc trường / chi nhánh cho form tìm GV. */
+    @Transactional(readOnly = true)
+    public EvaluationResponse.FilterMeta filterMeta() {
+        if (isTeacherOnly()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền");
+        }
+        if (isSchoolActor() && !isStaffOrAdmin()) {
+            School me = requireMySchool();
+            return new EvaluationResponse.FilterMeta(
+                    List.of(new EvaluationResponse.IdName(me.getId(), me.getName())), List.of(), true);
+        }
+        List<EvaluationResponse.IdName> schools = schoolRepo.findAll().stream()
+                .filter(s -> !s.isDeleted() && "ACTIVE".equals(s.getStatus()))
+                .sorted(Comparator.comparing(School::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(s -> new EvaluationResponse.IdName(s.getId(), s.getName()))
+                .toList();
+        List<EvaluationResponse.IdName> branches = branchRepo.findAll().stream()
+                .filter(b -> !b.isDeleted() && "ACTIVE".equals(b.getStatus()))
+                .sorted(Comparator.comparing(Branch::getName, String.CASE_INSENSITIVE_ORDER))
+                .map(b -> new EvaluationResponse.IdName(b.getId(), b.getName()))
+                .toList();
+        return new EvaluationResponse.FilterMeta(schools, branches, false);
     }
 
     /**
-     * GV chưa có đánh giá trong kỳ (phạm vi role). Dùng KPI + panel “còn bao nhiêu người”.
+     * GV chưa có đánh giá trong kỳ (phạm vi role + optional lọc trường/CN).
      */
     @Transactional(readOnly = true)
-    public EvaluationResponse.Unevaluated unevaluatedTeachers(String periodNote, String keyword) {
+    public EvaluationResponse.Unevaluated unevaluatedTeachers(
+            String periodNote, String keyword, Integer schoolId, Integer branchId) {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không xem danh sách này");
         }
-        // VIEW cũng được xem (ACADEMIC/SCHOOL có VIEW); manage không bắt buộc
         if (!isStaffOrAdmin() && !isSchoolActor() && !SecurityUtils.hasAuthority("EVALUATION_VIEW")) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền xem");
         }
         String period = resolvePeriod(periodNote);
-        List<Teacher> candidates = resolveCandidateTeachers();
-        long total = candidates.size();
-        List<EvaluationResponse.TeacherOption> allOpts = buildTeacherOptions(candidates, period, false);
+        List<Teacher> candidates = filterByKeyword(resolveCandidateTeachers(schoolId, branchId), keyword);
+        List<EvaluationResponse.TeacherOption> allOpts = buildTeacherOptions(candidates, period);
+        long total = allOpts.size();
         long evaluated = allOpts.stream()
                 .filter(EvaluationResponse.TeacherOption::evaluatedInPeriod)
                 .count();
-        List<EvaluationResponse.TeacherOption> uneval = allOpts.stream()
-                .filter(o -> !o.evaluatedInPeriod())
-                .filter(o -> matchKeyword(o.name(), keyword))
-                .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
-                .toList();
+        List<EvaluationResponse.TeacherOption> uneval =
+                allOpts.stream().filter(o -> !o.evaluatedInPeriod()).toList();
         return new EvaluationResponse.Unevaluated(period, total, evaluated, uneval.size(), uneval);
     }
 
@@ -191,6 +236,11 @@ public class EvaluationService {
         if (isSchoolActor()) {
             School school = requireMySchool();
             schoolId = school.getId();
+            // Chỉ chấm GV đã/đang phân công tại trường mình
+            if (!assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalse(teacher.getId(), schoolId)) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST, "Chỉ đánh giá giáo viên đã được phân công tại trường bạn");
+            }
         } else if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không được gửi đánh giá");
         }
@@ -572,40 +622,60 @@ public class EvaluationService {
     }
 
     /**
-     * Staff/admin: mọi GV ACTIVE. School: ưu tiên GV đã phân công; fallback full ACTIVE (demo).
+     * Ứng viên chấm điểm:
+     * - SCHOOL: CHỈ GV có Assignment tại trường mình (không fallback toàn hệ thống).
+     * - Staff/Admin: mọi GV ACTIVE; optional lọc theo trường (qua Assignment) / chi nhánh.
      */
-    private List<Teacher> resolveCandidateTeachers() {
+    private List<Teacher> resolveCandidateTeachers(Integer schoolIdFilter, Integer branchIdFilter) {
         List<Teacher> all = teacherRepo.findByDeletedFalse().stream()
                 .filter(t -> "ACTIVE".equals(t.getStatus()))
                 .toList();
+
         if (isSchoolActor() && !isStaffOrAdmin()) {
-            Integer schoolId = requireMySchool().getId();
-            Set<Integer> assigned = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(schoolId));
-            List<Teacher> scoped =
-                    all.stream().filter(t -> assigned.contains(t.getId())).toList();
-            return scoped.isEmpty() ? all : scoped;
+            Integer mySchoolId = requireMySchool().getId();
+            Set<Integer> assigned = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(mySchoolId));
+            return all.stream()
+                    .filter(t -> assigned.contains(t.getId()))
+                    .filter(t -> branchIdFilter == null || Objects.equals(t.getBranchId(), branchIdFilter))
+                    .toList();
         }
-        return all;
+
+        // staff / admin
+        Set<Integer> atSchool = null;
+        if (schoolIdFilter != null) {
+            atSchool = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(schoolIdFilter));
+        }
+        final Set<Integer> schoolSet = atSchool;
+        return all.stream()
+                .filter(t -> branchIdFilter == null || Objects.equals(t.getBranchId(), branchIdFilter))
+                .filter(t -> schoolSet == null || schoolSet.contains(t.getId()))
+                .toList();
     }
 
     private List<Teacher> filterByKeyword(List<Teacher> teachers, String keyword) {
         if (keyword == null || keyword.isBlank()) return teachers;
+        String kw = keyword.trim().toLowerCase();
         return teachers.stream()
-                .filter(t -> matchKeyword(teacherFullName(t), keyword))
+                .filter(t -> {
+                    if (matchKeyword(teacherFullName(t), kw)) return true;
+                    String phone = t.getPhone();
+                    return phone != null && phone.toLowerCase().contains(kw);
+                })
                 .toList();
     }
 
     private static boolean matchKeyword(String name, String keyword) {
         if (keyword == null || keyword.isBlank()) return true;
         if (name == null) return false;
-        return name.toLowerCase().contains(keyword.trim().toLowerCase());
+        String kw = keyword.trim().toLowerCase();
+        return name.toLowerCase().contains(kw);
     }
 
     /**
-     * Build options kèm thống kê. Scope đánh giá: SCHOOL chỉ tính phiếu SchoolId = trường mình.
+     * Build options: TB, kỳ, <b>trường đã phân công</b>, chi nhánh.
+     * SCHOOL: chỉ tính phiếu đánh giá SchoolId = trường mình.
      */
-    private List<EvaluationResponse.TeacherOption> buildTeacherOptions(
-            List<Teacher> teachers, String periodNote, boolean onlyUnevaluated) {
+    private List<EvaluationResponse.TeacherOption> buildTeacherOptions(List<Teacher> teachers, String periodNote) {
         if (teachers.isEmpty()) return List.of();
         Integer schoolFilter =
                 isSchoolActor() && !isStaffOrAdmin() ? requireMySchool().getId() : null;
@@ -618,9 +688,34 @@ public class EvaluationService {
                     .filter(e -> Objects.equals(e.getSchoolId(), schoolFilter))
                     .toList();
         }
-
         Map<Integer, List<TeacherEvaluation>> byTeacher =
                 evals.stream().collect(Collectors.groupingBy(TeacherEvaluation::getTeacherId));
+
+        // Trường đang/đã dạy (Assignment)
+        List<Assignment> assigns = assignmentRepo.findByTeacherIdInAndDeletedFalse(ids);
+        Set<Integer> schoolIds = assigns.stream()
+                .map(Assignment::getSchoolId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Integer, String> schoolNames = new HashMap<>();
+        if (!schoolIds.isEmpty()) {
+            schoolRepo.findAllById(schoolIds).forEach(s -> schoolNames.put(s.getId(), s.getName()));
+        }
+        Map<Integer, LinkedHashSet<Integer>> teacherSchools = new HashMap<>();
+        for (Assignment a : assigns) {
+            teacherSchools
+                    .computeIfAbsent(a.getTeacherId(), k -> new LinkedHashSet<>())
+                    .add(a.getSchoolId());
+        }
+
+        Set<Integer> branchIds = teachers.stream()
+                .map(Teacher::getBranchId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Integer, String> branchNames = new HashMap<>();
+        if (!branchIds.isEmpty()) {
+            branchRepo.findAllById(branchIds).forEach(b -> branchNames.put(b.getId(), b.getName()));
+        }
 
         List<EvaluationResponse.TeacherOption> result = new ArrayList<>();
         for (Teacher t : teachers) {
@@ -637,13 +732,29 @@ public class EvaluationService {
                     inPeriod++;
                 }
             }
-            boolean evaluated = inPeriod > 0;
-            if (onlyUnevaluated && evaluated) continue;
             Double avg = total == 0 ? null : Math.round((sum / total) * 100.0) / 100.0;
+
+            List<Integer> sIds = new ArrayList<>(teacherSchools.getOrDefault(t.getId(), new LinkedHashSet<>()));
+            List<String> sNames = sIds.stream()
+                    .map(id -> schoolNames.getOrDefault(id, "Trường #" + id))
+                    .toList();
+            String schoolsLabel = sNames.isEmpty() ? "Chưa phân công trường" : String.join(" · ", sNames);
+
             result.add(new EvaluationResponse.TeacherOption(
-                    t.getId(), teacherFullName(t), t.getStatus(), total, avg, evaluated, inPeriod));
+                    t.getId(),
+                    teacherFullName(t),
+                    t.getStatus(),
+                    t.getPhone(),
+                    t.getBranchId(),
+                    branchNames.getOrDefault(t.getBranchId(), null),
+                    sIds,
+                    sNames,
+                    schoolsLabel,
+                    total,
+                    avg,
+                    inPeriod > 0,
+                    inPeriod));
         }
-        // Chưa chấm kỳ trước, rồi theo tên
         result.sort((a, b) -> {
             if (a.evaluatedInPeriod() != b.evaluatedInPeriod()) {
                 return a.evaluatedInPeriod() ? 1 : -1;

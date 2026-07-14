@@ -20,6 +20,9 @@ const props = defineProps({
 
 const isSchool = computed(() => props.portal === 'school')
 const PAGE_SIZE = 10
+const coverageSchoolId = ref('')
+const coverageBranchId = ref('')
+const filterMeta = ref({ schools: [], branches: [], schoolScoped: false })
 
 const loading = ref(false)
 const error = ref('')
@@ -69,10 +72,21 @@ const avgLabel = computed(() => {
 const coveragePeriod = computed(() => filter.periodNote || suggestedPeriod.value || '')
 
 const unevalCount = computed(() => uneval.data?.unevaluatedCount ?? null)
-const unevalHint = computed(() => {
-  if (!uneval.data) return coveragePeriod.value ? `Kỳ: ${coveragePeriod.value}` : ''
+
+/** % đã chấm trong kỳ (0–100). */
+const coveragePct = computed(() => {
   const d = uneval.data
-  return `${d.evaluatedCount}/${d.totalTeachers} đã chấm · ${d.periodNote}`
+  if (!d || !d.totalTeachers) return 0
+  return Math.round((d.evaluatedCount / d.totalTeachers) * 100)
+})
+
+const coverageDone = computed(() => uneval.data != null && uneval.data.unevaluatedCount === 0)
+
+const coverageTitle = computed(() => {
+  if (unevalCount.value == null) return 'Đang tải coverage kỳ…'
+  if (coverageDone.value) return 'Đã chấm đủ mọi giáo viên trong kỳ'
+  if (unevalCount.value === 1) return 'Còn 1 giáo viên chưa được đánh giá'
+  return `Còn ${unevalCount.value} giáo viên chưa được đánh giá`
 })
 
 /** Chưa có filter + chưa có data → empty “lần đầu”. */
@@ -96,17 +110,22 @@ function isNew(row) {
 
 async function loadMeta() {
   try {
-    const tasks = [evaluationApi.periodMeta(), evaluationApi.stats(buildStatsParams())]
-    const [metaRes, statsRes] = await Promise.all(tasks)
+    const tasks = [
+      evaluationApi.periodMeta(),
+      evaluationApi.stats(buildStatsParams()),
+      evaluationApi.filterMeta().catch(() => ({ data: null })),
+    ]
+    const [metaRes, statsRes, filterRes] = await Promise.all(tasks)
     periodPresets.value = metaRes.data?.presets || []
     suggestedPeriod.value = metaRes.data?.suggested || ''
     stats.value = statsRes.data
-    // teachers load kèm period gợi ý (form tự load lại khi mở)
+    if (filterRes?.data) filterMeta.value = filterRes.data
+    // preload 1 trang GV (form tự load đầy đủ khi mở)
     const period = filter.periodNote || metaRes.data?.suggested
     const { data: teacherData } = await evaluationApi
-      .teachers({ periodNote: period })
-      .catch(() => ({ data: [] }))
-    teachers.value = teacherData || []
+      .teachers({ periodNote: period, page: 0, size: 20 })
+      .catch(() => ({ data: { content: [] } }))
+    teachers.value = teacherData?.content || teacherData || []
     await loadUnevaluated()
   } catch (e) {
     console.error(e)
@@ -122,10 +141,17 @@ async function loadMeta() {
 async function loadUnevaluated() {
   uneval.loading = true
   try {
-    const { data } = await evaluationApi.unevaluatedTeachers({
+    const params = {
       periodNote: coveragePeriod.value || undefined,
       keyword: uneval.keyword || undefined,
-    })
+    }
+    if (!isSchool.value && coverageSchoolId.value) {
+      params.schoolId = Number(coverageSchoolId.value)
+    }
+    if (coverageBranchId.value) {
+      params.branchId = Number(coverageBranchId.value)
+    }
+    const { data } = await evaluationApi.unevaluatedTeachers(params)
     uneval.data = data
   } catch (e) {
     console.error(e)
@@ -334,18 +360,53 @@ onMounted(async () => {
         :value="stats.teacherCountEvaluated"
         color="#0ea5e9"
       />
-      <!-- Click → panel danh sách chưa chấm kỳ -->
-      <button type="button" class="kpi-click" @click="openUnevaluatedPanel">
-        <StatCard
-          icon="teacher"
-          label="Chưa đánh giá (kỳ)"
-          :value="unevalCount == null ? '…' : unevalCount"
-          :hint="unevalHint"
-          color="#ef4444"
-        />
-        <span class="kpi-click__hint">Bấm để xem danh sách →</span>
-      </button>
     </section>
+
+    <!--
+      Coverage kỳ: thẻ hành động full-width — số còn lại + progress + chevron.
+      Không dùng chữ “bấm để xem…”; clickability = layout + hover + mũi tên.
+    -->
+    <button
+      type="button"
+      class="coverage"
+      :class="{
+        'coverage--alert': unevalCount > 0,
+        'coverage--ok': coverageDone,
+        'coverage--loading': unevalCount == null,
+      }"
+      :disabled="unevalCount == null"
+      :aria-label="coverageTitle"
+      @click="openUnevaluatedPanel"
+    >
+      <div class="coverage__icon" aria-hidden="true">
+        <SvgIcon :name="coverageDone ? 'attendance' : 'teacher'" :size="22" />
+      </div>
+      <div class="coverage__body">
+        <div class="coverage__top">
+          <span class="coverage__title">{{ coverageTitle }}</span>
+          <span v-if="uneval.data?.periodNote || coveragePeriod" class="coverage__period">
+            {{ uneval.data?.periodNote || coveragePeriod }}
+          </span>
+        </div>
+        <div class="coverage__bar" aria-hidden="true">
+          <div class="coverage__fill" :style="{ width: coveragePct + '%' }" />
+        </div>
+        <div class="coverage__meta">
+          <template v-if="uneval.data">
+            Đã chấm <strong>{{ uneval.data.evaluatedCount }}</strong>
+            /
+            {{ uneval.data.totalTeachers }}
+            · {{ coveragePct }}%
+          </template>
+          <template v-else>Đang tính theo kỳ hiện tại…</template>
+        </div>
+      </div>
+      <div class="coverage__side">
+        <span v-if="unevalCount > 0" class="coverage__count">{{ unevalCount }}</span>
+        <span v-else-if="coverageDone" class="coverage__check">✓</span>
+        <span class="coverage__chev" aria-hidden="true">›</span>
+      </div>
+    </button>
 
     <!-- Phân bố sao -->
     <div v-if="stats && stats.totalCount" class="dist card-soft">
@@ -523,63 +584,97 @@ onMounted(async () => {
       :saving="modal.saving"
       :error="modal.error"
       :lock-teacher="isSchool"
+      :school-scoped="isSchool"
       @close="modal.open = false"
       @save="saveModal"
     />
 
     <!-- Panel: GV chưa đánh giá trong kỳ -->
     <div v-if="uneval.open" class="modal-backdrop" @click.self="uneval.open = false">
-      <div class="modal uneval-modal">
+      <div class="modal uneval-modal" role="dialog" aria-modal="true">
         <div class="modal__head">
-          <h2 class="modal__title">
-            Chưa đánh giá
-            <small v-if="uneval.data" class="modal__sub">· {{ uneval.data.periodNote }}</small>
-          </h2>
+          <div>
+            <h2 class="modal__title">
+              {{
+                uneval.data?.unevaluatedCount === 0
+                  ? 'Coverage kỳ này'
+                  : 'Giáo viên cần đánh giá'
+              }}
+            </h2>
+            <p v-if="uneval.data" class="modal__lead">
+              <span class="modal__period-tag">{{ uneval.data.periodNote }}</span>
+              · Đã chấm {{ uneval.data.evaluatedCount }}/{{ uneval.data.totalTeachers }}
+              · Còn <strong>{{ uneval.data.unevaluatedCount }}</strong>
+            </p>
+          </div>
           <button type="button" class="modal__x" @click="uneval.open = false">×</button>
         </div>
         <div class="modal__body">
-          <p v-if="uneval.data" class="uneval-summary">
-            Còn <strong>{{ uneval.data.unevaluatedCount }}</strong> /
-            {{ uneval.data.totalTeachers }} giáo viên chưa có phiếu trong kỳ này
-            (đã chấm {{ uneval.data.evaluatedCount }}).
-          </p>
-          <label class="field field--wide uneval-search">
-            <span>Tìm trong danh sách</span>
+          <div class="uneval-filters">
+            <select
+              v-if="!isSchool && filterMeta.schools?.length"
+              v-model="coverageSchoolId"
+              class="uneval-select"
+              @change="onUnevalSearch"
+            >
+              <option value="">Mọi trường</option>
+              <option v-for="s in filterMeta.schools" :key="s.id" :value="String(s.id)">
+                {{ s.name }}
+              </option>
+            </select>
+            <select
+              v-if="filterMeta.branches?.length"
+              v-model="coverageBranchId"
+              class="uneval-select"
+              @change="onUnevalSearch"
+            >
+              <option value="">Mọi chi nhánh</option>
+              <option v-for="b in filterMeta.branches" :key="b.id" :value="String(b.id)">
+                {{ b.name }}
+              </option>
+            </select>
+          </div>
+          <div class="uneval-search-row">
             <input
               v-model="uneval.keyword"
-              placeholder="Gõ tên giáo viên…"
+              type="search"
+              class="uneval-search-input"
+              placeholder="Tìm theo tên / SĐT…"
               @keyup.enter="onUnevalSearch"
             />
-          </label>
-          <div class="uneval-actions">
-            <button type="button" class="btn btn--ghost" @click="onUnevalSearch">Tìm</button>
+            <button type="button" class="btn btn--ghost" @click="onUnevalSearch">Lọc</button>
           </div>
           <div v-if="uneval.loading" class="empty">Đang tải…</div>
           <ul v-else-if="uneval.data?.teachers?.length" class="uneval-list">
             <li v-for="t in uneval.data.teachers" :key="t.id" class="uneval-item">
-              <div>
+              <div class="uneval-item__avatar" aria-hidden="true">
+                {{ (t.name || '?').trim().charAt(0).toUpperCase() }}
+              </div>
+              <div class="uneval-item__info">
                 <div class="title-text">{{ t.name }}</div>
+                <div class="uneval-item__schools">{{ t.schoolsLabel || 'Chưa phân công trường' }}</div>
                 <div class="muted">
+                  <template v-if="t.branchName">{{ t.branchName }} · </template>
                   <template v-if="t.totalCount">
-                    Tổng TB {{ t.averageScore != null ? Number(t.averageScore).toFixed(1) : '—' }}/5 ·
-                    {{ t.totalCount }} lượt (các kỳ)
+                    TB {{ t.averageScore != null ? Number(t.averageScore).toFixed(1) : '—' }}/5 ·
+                    {{ t.totalCount }} lượt
                   </template>
-                  <template v-else>Chưa từng được đánh giá</template>
+                  <template v-else>Chưa từng có đánh giá</template>
                 </div>
               </div>
-              <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">Đánh giá</button>
+              <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">Chấm điểm</button>
             </li>
           </ul>
-          <div v-else class="empty">
+          <div v-else class="empty empty--ok">
             {{
               uneval.data?.unevaluatedCount === 0
-                ? 'Tuyệt vời — mọi giáo viên trong phạm vi đã được đánh giá kỳ này!'
-                : 'Không tìm thấy giáo viên phù hợp.'
+                ? 'Không còn ai trong hàng đợi — kỳ này đã phủ đủ.'
+                : 'Không khớp tên tìm kiếm.'
             }}
           </div>
         </div>
         <div class="modal__foot">
-          <button type="button" class="btn" @click="uneval.open = false">Đóng</button>
+          <button type="button" class="btn btn--ghost" @click="uneval.open = false">Đóng</button>
         </div>
       </div>
     </div>
@@ -666,45 +761,195 @@ onMounted(async () => {
   gap: 0.85rem;
   margin-bottom: 1rem;
 }
-.kpi-click {
-  border: 0;
-  padding: 0;
-  background: transparent;
+/* —— Coverage strip (chưa đánh giá) —— */
+.coverage {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.9rem;
+  align-items: center;
   text-align: left;
+  margin: 0 0 1rem;
+  padding: 0.95rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  box-shadow: var(--a-shadow);
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  border-radius: 12px;
+  font: inherit;
+  color: var(--c-text);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 }
-.kpi-click:hover {
-  outline: 2px solid var(--c-primary, #f97316);
-  outline-offset: 2px;
+.coverage:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: var(--a-shadow-lg);
+  border-color: color-mix(in srgb, var(--c-primary, #f97316) 55%, var(--c-border));
 }
-.kpi-click__hint {
-  font-size: 0.75rem;
+.coverage:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+/* Dùng color-mix với --c-surface → sáng/tối đều đọc được, không hard-code #fff */
+.coverage--alert {
+  border-color: color-mix(in srgb, #f97316 45%, var(--c-border));
+  background: color-mix(in srgb, #f97316 14%, var(--c-surface));
+}
+.coverage--alert .coverage__icon {
+  background: color-mix(in srgb, #f97316 22%, var(--c-surface-2));
   color: var(--c-primary, #f97316);
-  font-weight: 600;
-  padding-left: 0.25rem;
 }
+.coverage--alert .coverage__fill {
+  background: linear-gradient(90deg, #fb923c, #ef4444);
+}
+.coverage--alert .coverage__count {
+  color: #f97316;
+}
+.coverage--ok {
+  border-color: color-mix(in srgb, #22c55e 40%, var(--c-border));
+  background: color-mix(in srgb, #22c55e 12%, var(--c-surface));
+}
+.coverage--ok .coverage__icon {
+  background: color-mix(in srgb, #22c55e 20%, var(--c-surface-2));
+  color: #22c55e;
+}
+.coverage--ok .coverage__fill {
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+}
+.coverage--ok .coverage__check {
+  color: #22c55e;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+.coverage__icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+}
+.coverage__body {
+  min-width: 0;
+}
+.coverage__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 0.4rem;
+}
+.coverage__title {
+  font-weight: 700;
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+.coverage__period {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+}
+.coverage__bar {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--c-surface-2);
+  overflow: hidden;
+}
+.coverage__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c-primary, #f97316);
+  min-width: 0;
+  transition: width 0.4s ease;
+}
+.coverage__meta {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+}
+.coverage__meta strong {
+  color: var(--c-text);
+}
+.coverage__side {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+.coverage__count {
+  font-size: 1.65rem;
+  font-weight: 800;
+  line-height: 1;
+  min-width: 1.5rem;
+  text-align: right;
+}
+.coverage__chev {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--c-text-muted);
+  line-height: 1;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+.coverage:hover:not(:disabled) .coverage__chev {
+  transform: translateX(3px);
+  color: var(--c-primary, #f97316);
+}
+
 .uneval-modal {
   width: min(520px, 100%);
 }
-.modal__sub {
-  font-weight: 500;
+.modal__lead {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
   color: var(--c-text-muted);
-  font-size: 0.9rem;
 }
-.uneval-summary {
-  margin: 0 0 0.75rem;
+.modal__period-tag {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--c-primary, #f97316);
+}
+.uneval-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+.uneval-select {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  background: var(--c-surface);
   color: var(--c-text);
-  font-size: 0.92rem;
+  font: inherit;
+  font-size: 0.88rem;
 }
-.uneval-search {
-  margin-bottom: 0.5rem;
+.uneval-search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
 }
-.uneval-actions {
-  margin-bottom: 0.75rem;
+.uneval-search-input {
+  flex: 1;
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font: inherit;
+}
+.uneval-item__schools {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--c-primary, #f97316);
+  margin: 0.1rem 0;
 }
 .uneval-list {
   list-style: none;
@@ -713,18 +958,54 @@ onMounted(async () => {
   max-height: 360px;
   overflow: auto;
   border: 1px solid var(--c-border);
-  border-radius: 10px;
+  border-radius: 12px;
+  background: var(--c-surface);
 }
 .uneval-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.7rem 0.85rem;
+  padding: 0.75rem 0.9rem;
   border-bottom: 1px solid var(--c-border-soft);
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+.uneval-item:hover {
+  background: var(--c-surface-2);
 }
 .uneval-item:last-child {
   border-bottom: 0;
+}
+.uneval-item__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-primary, #f97316) 22%, var(--c-surface-2));
+  color: var(--c-primary, #f97316);
+  font-weight: 700;
+  font-size: 0.95rem;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.uneval-item__info {
+  flex: 1;
+  min-width: 0;
+  color: var(--c-text);
+}
+.uneval-item__info .title-text {
+  color: var(--c-text);
+}
+.uneval-item__info .muted {
+  color: var(--c-text-muted);
+}
+.empty--ok {
+  color: color-mix(in srgb, #22c55e 85%, var(--c-text));
+  background: color-mix(in srgb, #22c55e 12%, var(--c-surface));
+  border: 1px solid color-mix(in srgb, #22c55e 35%, var(--c-border));
+  border-radius: 12px;
+  padding: 1.25rem;
+  text-align: center;
 }
 .btn--sm {
   padding: 0.35rem 0.7rem;
@@ -825,8 +1106,8 @@ onMounted(async () => {
 }
 .badge--new {
   margin-left: 0.4rem;
-  background: #ecfdf5;
-  color: #047857;
+  background: color-mix(in srgb, #22c55e 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #22c55e 75%, var(--c-text));
   vertical-align: middle;
 }
 .field input,
@@ -870,8 +1151,9 @@ onMounted(async () => {
   margin: 0 0 0.5rem;
 }
 .msg--error {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: color-mix(in srgb, #ef4444 80%, var(--c-text));
+  background: color-mix(in srgb, #ef4444 14%, var(--c-surface));
+  border: 1px solid color-mix(in srgb, #ef4444 30%, var(--c-border));
   padding: 0.55rem 0.75rem;
   border-radius: 8px;
 }
@@ -904,9 +1186,11 @@ th {
   text-align: center;
   color: var(--c-text-muted);
   padding: 2rem !important;
+  background: var(--c-surface);
 }
 .title-text {
   font-weight: 600;
+  color: var(--c-text);
 }
 .score-inline {
   margin-left: 0.35rem;
@@ -939,12 +1223,12 @@ th {
   font-weight: 600;
 }
 .badge--center {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: color-mix(in srgb, #2563eb 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #60a5fa 70%, var(--c-text));
 }
 .badge--school {
-  background: #fff7ed;
-  color: #c2410c;
+  background: color-mix(in srgb, #f97316 18%, var(--c-surface-2));
+  color: color-mix(in srgb, #fb923c 70%, var(--c-text));
 }
 .col-actions {
   white-space: nowrap;
@@ -956,9 +1240,10 @@ th {
   padding: 0.25rem 0.4rem;
   cursor: pointer;
   margin-right: 0.2rem;
+  color: var(--c-text);
 }
 .act-btn--del:hover {
-  background: #fee2e2;
+  background: color-mix(in srgb, #ef4444 22%, var(--c-surface-2));
 }
 .pagination {
   display: flex;
@@ -986,7 +1271,7 @@ th {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -999,6 +1284,7 @@ th {
   border-radius: 14px;
   border: 1px solid var(--c-border);
   box-shadow: var(--a-shadow-lg);
+  color: var(--c-text);
 }
 .modal__head {
   display: flex;
@@ -1010,6 +1296,7 @@ th {
 .modal__title {
   margin: 0;
   font-size: 1.05rem;
+  color: var(--c-text);
 }
 .modal__x {
   border: 0;

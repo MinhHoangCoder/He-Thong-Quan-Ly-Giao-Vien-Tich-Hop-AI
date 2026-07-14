@@ -72,25 +72,40 @@ public class EvaluationController {
     }
 
     /**
-     * Dropdown GV thông minh (tìm theo keyword, đánh dấu đã chấm kỳ).
-     * periodNote rỗng → kỳ gợi ý hiện tại.
+     * Tìm GV phân trang + lọc trường/CN/tên/SĐT.
+     * SCHOOL: chỉ GV đã phân công tại trường mình.
      */
     @GetMapping("/teachers")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_MANAGE')")
-    public List<EvaluationResponse.TeacherOption> teachers(
-            @RequestParam(required = false) String periodNote, @RequestParam(required = false) String keyword) {
-        return evaluationService.teacherOptions(periodNote, keyword);
+    public EvaluationResponse.TeacherPage teachers(
+            @RequestParam(required = false) String periodNote,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer schoolId,
+            @RequestParam(required = false) Integer branchId,
+            @RequestParam(required = false) Boolean onlyUnevaluated,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return evaluationService.teacherOptions(periodNote, keyword, schoolId, branchId, onlyUnevaluated, page, size);
+    }
+
+    /** Dropdown lọc: danh sách trường + chi nhánh. */
+    @GetMapping("/filter-meta")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW') or hasAuthority('EVALUATION_MANAGE')")
+    public EvaluationResponse.FilterMeta filterMeta() {
+        return evaluationService.filterMeta();
     }
 
     /**
      * GV chưa được đánh giá trong kỳ — KPI + panel chi tiết.
-     * VIEW cũng được (Staff/School xem coverage).
      */
     @GetMapping("/teachers/unevaluated")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('EVALUATION_VIEW') or hasAuthority('EVALUATION_MANAGE')")
     public EvaluationResponse.Unevaluated unevaluatedTeachers(
-            @RequestParam(required = false) String periodNote, @RequestParam(required = false) String keyword) {
-        return evaluationService.unevaluatedTeachers(periodNote, keyword);
+            @RequestParam(required = false) String periodNote,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Integer schoolId,
+            @RequestParam(required = false) Integer branchId) {
+        return evaluationService.unevaluatedTeachers(periodNote, keyword, schoolId, branchId);
     }
 
     /* ── KPI / summary ────────────────────────────────────────────── */

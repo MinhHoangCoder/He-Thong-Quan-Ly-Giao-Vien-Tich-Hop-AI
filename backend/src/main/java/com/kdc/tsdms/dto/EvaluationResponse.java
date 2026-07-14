@@ -6,16 +6,6 @@ import java.util.List;
 /**
  * Mọi DTO <b>trả về</b> của module đánh giá — gộp 1 file cho dễ theo dõi luồng.
  *
- * <ul>
- *   <li>{@code EvaluationResponse} — 1 phiếu (list / detail / create / update)</li>
- *   <li>{@link Stats} — KPI tổng quan</li>
- *   <li>{@link Summary} — tổng hợp theo 1 GV</li>
- *   <li>{@link TeacherOption} — option chọn GV (+ cờ đã chấm kỳ)</li>
- *   <li>{@link PeriodMeta} — preset + kỳ gợi ý</li>
- *   <li>{@link DuplicateCheck} — kiểm tra trùng kỳ</li>
- *   <li>{@link Unevaluated} — GV chưa đánh giá trong kỳ</li>
- * </ul>
- *
  * <p>INPUT nằm ở {@link EvaluationRequest}.
  */
 public record EvaluationResponse(
@@ -61,24 +51,38 @@ public record EvaluationResponse(
             long score5) {}
 
     /**
-     * Option chọn GV (dropdown / panel chưa chấm).
+     * Option chọn GV — kèm trường đang/đã dạy + chi nhánh để phân biệt khi nhiều người.
      *
-     * @param evaluatedInPeriod đã có phiếu trong kỳ đang xét
-     * @param evalsInPeriod số phiếu trong kỳ đó
+     * @param schoolNames tên các trường đã phân công (từ Assignment)
+     * @param schoolsLabel chuỗi gộp hiển thị, vd "THCS A · TH B"
      */
     public record TeacherOption(
             Integer id,
             String name,
             String status,
+            String phone,
+            Integer branchId,
+            String branchName,
+            List<Integer> schoolIds,
+            List<String> schoolNames,
+            String schoolsLabel,
             long totalCount,
             Double averageScore,
             boolean evaluatedInPeriod,
             long evalsInPeriod) {}
 
+    /** Trang kết quả tìm GV (phân trang server). */
+    public record TeacherPage(List<TeacherOption> content, int page, int size, long totalElements, int totalPages) {}
+
+    /** Dropdown lọc: trường / chi nhánh. */
+    public record FilterMeta(List<IdName> schools, List<IdName> branches, boolean schoolScoped) {}
+
+    public record IdName(Integer id, String name) {}
+
     /** Preset kỳ + gợi ý theo tháng. */
     public record PeriodMeta(List<String> presets, String suggested) {}
 
-    /** Kết quả check trùng kỳ (cùng GV + người chấm + kỳ). */
+    /** Kết quả check trùng kỳ. */
     public record DuplicateCheck(boolean duplicate, long count, String message) {}
 
     /** Báo cáo GV chưa đánh giá trong một kỳ. */
