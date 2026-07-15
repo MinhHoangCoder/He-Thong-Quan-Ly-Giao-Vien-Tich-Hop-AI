@@ -50,7 +50,7 @@ const nav = [
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/settings">
+  <PortalShell :nav="nav" settings-to="/settings" profile-to="/profile">
     <slot />
   </PortalShell>
 </template>

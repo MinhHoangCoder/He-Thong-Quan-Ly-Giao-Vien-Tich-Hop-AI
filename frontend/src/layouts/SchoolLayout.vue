@@ -33,7 +33,7 @@ const nav = [
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/school/settings">
+  <PortalShell :nav="nav" settings-to="/school/settings" profile-to="/school/profile">
     <slot />
   </PortalShell>
 </template>
