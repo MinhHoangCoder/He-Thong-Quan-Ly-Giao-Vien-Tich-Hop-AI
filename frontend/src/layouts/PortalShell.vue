@@ -12,12 +12,15 @@ import { useUiStore } from '@/stores/ui'
 import { useLogout } from '@/composables/useLogout'
 import { notificationApi } from '@/api/notifications'
 import { roleHome } from '@/router/roleHome'
+import { ROLE_LABELS } from '@/utils/labels'
 
 defineProps({
   // [{ title, items: [{ label, icon, to, badge }] }]
   nav: { type: Array, default: () => [] },
   // Route trang cài đặt của vai trò hiện tại (mỗi layout truyền path riêng).
   settingsTo: { type: String, default: '/settings' },
+  // Route trang HỒ SƠ (chỉ xem) — tách khỏi Cài đặt; mỗi layout truyền path riêng.
+  profileTo: { type: String, default: '/profile' },
 })
 
 const router = useRouter()
@@ -61,17 +64,7 @@ onBeforeUnmount(() => {
 const auth = useAuthStore()
 const ui = useUiStore() // nút mặt trời/mặt trăng trên topbar đảo theme sáng/tối
 const onLogout = useLogout()
-const roleLabels = {
-  ADMIN: 'Quản trị viên',
-  EMPLOYEE: 'Nhân viên',
-  SCHOOL: 'Trường',
-  TEACHER: 'Giáo viên',
-  ACCOUNTANT: 'Kế toán',
-  HR: 'Nhân sự',
-  ACADEMIC: 'Đào tạo',
-  SALES: 'Tuyển sinh',
-}
-const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng')
+const roleLabel = computed(() => ROLE_LABELS[auth.primaryRole] || 'Người dùng')
 
 /* ══════════════════ TÌM KIẾM CHUNG ══════════════════ */
 const searchQuery = ref('')
@@ -186,7 +179,7 @@ function initialsOf(u) {
 const initials = computed(() => initialsOf(auth.user))
 
 function labelOf(u) {
-  return roleLabels[u?.roles?.[0]] || 'Người dùng'
+  return ROLE_LABELS[u?.roles?.[0]] || 'Người dùng'
 }
 
 // Đổi sang tài khoản khác: điều hướng CỨNG (reload) về "nhà" của vai trò đó để mọi
@@ -335,6 +328,15 @@ function switchTo(acc) {
                   <small>@{{ auth.user?.username }} · {{ roleLabel }}</small>
                 </div>
                 <div class="usermenu__divider" />
+                <RouterLink
+                  :to="profileTo"
+                  class="usermenu__item"
+                  role="menuitem"
+                  @click="menuOpen = false"
+                >
+                  <SvgIcon name="teacher" :size="17" />
+                  Hồ sơ của tôi
+                </RouterLink>
                 <RouterLink
                   :to="settingsTo"
                   class="usermenu__item"

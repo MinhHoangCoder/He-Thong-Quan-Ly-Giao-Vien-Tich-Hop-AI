@@ -137,4 +137,11 @@ export const adminRoutes = [
     component: () => import('@/pages/RoleMatrixPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN'] },
   },
+  // ── Hồ sơ của tôi (chỉ xem — tách riêng khỏi Cài đặt) ─────────────
+  {
+    path: '/profile',
+    name: 'admin-profile',
+    component: () => import('@/pages/MyProfilePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]

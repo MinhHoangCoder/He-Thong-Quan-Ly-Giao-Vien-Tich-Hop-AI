@@ -12,7 +12,7 @@ const nav = computed(() => buildStaffNav(auth.user?.perms ?? []))
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/staff/settings">
+  <PortalShell :nav="nav" settings-to="/staff/settings" profile-to="/staff/profile">
     <slot />
   </PortalShell>
 </template>

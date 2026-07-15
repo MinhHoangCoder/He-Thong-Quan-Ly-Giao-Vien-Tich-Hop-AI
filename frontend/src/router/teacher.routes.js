@@ -36,11 +36,18 @@ export const teacherRoutes = [
     component: () => import('@/pages/EvaluationPage.vue'),
     meta: { layout: 'teacher', roles: ['TEACHER'], evaluationPortal: 'teacher' },
   },
-  // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
+  // ── Cài đặt cá nhân (liên hệ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/teacher/settings',
     name: 'teacher-settings',
     component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
+  },
+  // ── Hồ sơ của tôi (chỉ xem — tách riêng khỏi Cài đặt) ─────────────
+  {
+    path: '/teacher/profile',
+    name: 'teacher-profile',
+    component: () => import('@/pages/MyProfilePage.vue'),
     meta: { layout: 'teacher', roles: ['TEACHER'] },
   },
 ]

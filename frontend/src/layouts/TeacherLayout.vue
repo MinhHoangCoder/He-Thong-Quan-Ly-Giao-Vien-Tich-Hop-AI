@@ -24,7 +24,7 @@ const nav = [
     title: 'Cá nhân',
     items: [
       { label: 'Phiếu lương', icon: 'payroll', to: '#' },
-      { label: 'Hồ sơ của tôi', icon: 'teacher', to: '#' },
+      { label: 'Hồ sơ của tôi', icon: 'teacher', to: '/teacher/profile' },
       { label: 'Đánh giá', icon: 'evaluation', to: '/teacher/evaluations' },
     ],
   },
@@ -34,7 +34,7 @@ const nav = [
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/teacher/settings">
+  <PortalShell :nav="nav" settings-to="/teacher/settings" profile-to="/teacher/profile">
     <slot />
   </PortalShell>
 </template>

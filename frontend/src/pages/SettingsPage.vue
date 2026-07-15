@@ -31,6 +31,7 @@ import { useLogout } from '@/composables/useLogout'
 import { roleHome } from '@/router/roleHome'
 import { formatDateTime } from '@/utils/format'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
+import { permLabel, roleLabel } from '@/utils/labels'
 
 const auth = useAuthStore()
 const ui = useUiStore()
@@ -340,7 +341,9 @@ onMounted(loadProfile)
             </template>
           </p>
           <div class="hero__badges">
-            <span v-for="r in profile.data.roles" :key="r" class="chip chip--role">{{ r }}</span>
+            <span v-for="r in profile.data.roles" :key="r" class="chip chip--role">{{
+              roleLabel(r)
+            }}</span>
             <span v-if="!profile.data.roles.length" class="chip chip--warn">Chưa có vai trò</span>
           </div>
         </div>
@@ -721,16 +724,21 @@ onMounted(loadProfile)
             </div>
           </header>
           <div class="rail-chips">
-            <span v-for="r in auth.roles" :key="r" class="chip chip--role">{{ r }}</span>
+            <span v-for="r in auth.roles" :key="r" class="chip chip--role">{{ roleLabel(r) }}</span>
           </div>
           <button v-if="perms.length" class="rail-toggle" @click="permsOpen = !permsOpen">
-            {{ permsOpen ? 'Thu gọn' : `Xem ${perms.length} mã quyền` }}
+            {{ permsOpen ? 'Thu gọn' : `Xem chi tiết ${perms.length} quyền` }}
             <span class="rail-toggle__chev" :class="{ open: permsOpen }">
               <SvgIcon name="chevron" :size="14" />
             </span>
           </button>
+          <!-- Mã quyền dịch sang tiếng Việt (utils/labels.js) — SCHEDULE_VIEW đọc thành
+               "Xem lịch dạy" để người vận hành hiểu được mình làm được gì -->
           <ul v-if="permsOpen" class="perm-list">
-            <li v-for="p in perms" :key="p">{{ p }}</li>
+            <li v-for="p in perms" :key="p">
+              <SvgIcon name="check" :size="13" />
+              {{ permLabel(p) }}
+            </li>
           </ul>
         </section>
 
@@ -1472,7 +1480,7 @@ onMounted(loadProfile)
 .rail-toggle__chev.open {
   transform: rotate(180deg);
 }
-/* Danh sách mã quyền: chữ mono nhỏ, cuộn riêng để card không dài vô hạn */
+/* Danh sách quyền (đã dịch tiếng Việt): cuộn riêng để card không dài vô hạn */
 .perm-list {
   list-style: none;
   margin: 0.6rem 0 0;
@@ -1483,11 +1491,16 @@ onMounted(loadProfile)
   border-radius: 9px;
 }
 .perm-list li {
-  font-family: Consolas, 'Courier New', monospace;
-  font-size: 0.73rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
   color: var(--c-text);
-  padding: 2px 0;
-  overflow-wrap: anywhere;
+  padding: 2.5px 0;
+}
+.perm-list li svg {
+  flex: 0 0 auto;
+  color: var(--c-success);
 }
 
 /* Tài khoản trên máy này */
