@@ -34,6 +34,6 @@ public record DashboardResponse(
     /** Một buổi trong "Lịch dạy hôm nay". */
     public record ScheduleRow(Long id, String time, String teacher, String subject, String school, String color) {}
 
-    /** Giáo viên nổi bật theo giờ dạy trong tháng. */
-    public record TopTeacher(Integer id, String name, String subject, long hours, String initials) {}
+    /** Giáo viên nổi bật theo SỐ TIẾT dạy trong tháng. */
+    public record TopTeacher(Integer id, String name, String subject, long tiet, String initials) {}
 }

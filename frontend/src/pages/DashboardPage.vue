@@ -64,8 +64,8 @@ const statRoutes = {
 const sideRoutes = {
   hours: '/attendance',
   ontime: '/attendance',
-  rating: '/dashboard/teacher',
-  pending: '/schedule',
+  rating: '/admin/evaluations',
+  payroll: '/payroll',
 }
 function goStat(key) {
   const to = statRoutes[key]
@@ -84,6 +84,9 @@ function goAssignments() {
 function goSchedule() {
   router.push('/schedule')
 }
+function goScheduleWeek() {
+  router.push({ path: '/schedule', query: { view: 'week' } })
+}
 function goTeachers() {
   router.push('/dashboard/teacher')
 }
@@ -96,8 +99,9 @@ const recentAssignments = computed(() => data.value?.recentAssignments ?? [])
 const todaySchedule = computed(() => data.value?.todaySchedule ?? [])
 const topTeachers = computed(() => data.value?.topTeachers ?? [])
 
+const TONE_CLASS = { ok: 'is-ok', wait: 'is-wait', done: 'is-done', no: 'is-no' }
 function toneClass(tone) {
-  return tone === 'ok' ? 'is-ok' : tone === 'wait' ? 'is-wait' : 'is-no'
+  return TONE_CLASS[tone] || 'is-no'
 }
 </script>
 
@@ -226,7 +230,7 @@ function toneClass(tone) {
       <div class="card">
         <div class="card__head">
           <h2 class="card__title">Lịch dạy hôm nay</h2>
-          <button class="card__more" @click="goSchedule">Lịch tuần</button>
+          <button class="card__more" @click="goScheduleWeek">Lịch tuần</button>
         </div>
         <ul v-if="todaySchedule.length" class="timeline">
           <li
@@ -269,7 +273,7 @@ function toneClass(tone) {
             <strong>{{ t.name }}</strong>
             <small>{{ t.subject }}</small>
           </div>
-          <span class="teacher__hours">{{ t.hours }}h</span>
+          <span class="teacher__hours">{{ t.tiet }} tiết</span>
         </div>
       </div>
       <div v-else class="state state--empty">
@@ -664,6 +668,10 @@ function toneClass(tone) {
 }
 :root[data-theme='dark'] .badge.is-no {
   color: #f87171;
+}
+.badge.is-done {
+  color: #1d4ed8;
+  background: #2563eb1f;
 }
 
 /* Timeline lịch hôm nay */

@@ -10,8 +10,7 @@ const nav = [
   {
     title: 'Nhân sự',
     items: [
-      { label: 'Giáo viên', icon: 'teacher', to: '/dashboard/teacher', badge: '128' },
-      { label: 'Môn học', icon: 'subject', to: '#' },
+      { label: 'Giáo viên', icon: 'teacher', to: '/dashboard/teacher' },
       { label: 'Đánh giá', icon: 'evaluation', to: '/admin/evaluations' },
     ],
   },
@@ -23,10 +22,9 @@ const nav = [
     ],
   },
   {
-    title: 'Khách hàng',
+    title: 'Trường học',
     items: [
       { label: 'Trường', icon: 'school', to: '#' },
-      { label: 'Lớp & Học sinh', icon: 'attendance', to: '#' },
     ],
   },
   {

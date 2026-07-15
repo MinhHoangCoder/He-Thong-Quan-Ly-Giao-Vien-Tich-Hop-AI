@@ -4,8 +4,11 @@
  * theo từng ngày. Hai chế độ: Lịch THÁNG (bấm ngày → chi tiết) và Thời khóa biểu TUẦN
  * (Thứ × Tiết). Lọc linh hoạt theo Giáo viên / Trường / Lớp.
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { scheduleApi } from '@/api/schedules'
+import { tietLabel } from '@/utils/period'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] // index 0 = Thứ 2, cuối là Chủ nhật
 const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
@@ -26,11 +29,12 @@ const addMonths = (d, n) => {
 }
 // Đầu tuần = Thứ 2. getDay(): CN=0,T2=1..T7=6 → lùi (getDay()+6)%7 ngày về Thứ 2.
 const startOfWeek = (d) => addDays(d, -((d.getDay() + 6) % 7))
-const hhmm = (t) => (t ? t.slice(0, 5) : '')
 const TODAY_ISO = iso(new Date())
 
 /* ── State ── */
-const view = ref('month') // 'month' | 'week'
+const route = useRoute()
+// Chế độ ban đầu: cho phép mở thẳng Thời khóa biểu TUẦN qua query ?view=week (VD: từ Dashboard).
+const view = ref(route.query.view === 'week' ? 'week' : 'month') // 'month' | 'week'
 const anchor = ref(new Date())
 const filters = reactive({ teacherId: '', schoolId: '', classId: '' })
 const teachers = ref([])
@@ -119,31 +123,43 @@ function cellEvents(period, dayIso) {
   return (eventsByDate.value[dayIso] || []).filter((e) => e.periodNumber === period)
 }
 
-/* ── Chi tiết ngày (chế độ tháng) — GOM THEO TRƯỜNG ── */
+/* ── Chi tiết ngày (chế độ tháng) ── */
 const selectedEvents = computed(() => eventsByDate.value[selectedIso.value] || [])
-// Mỗi trường một nhóm; trong nhóm sắp buổi theo tiết tăng dần (rồi theo giờ bắt đầu).
-const selectedBySchool = computed(() => {
-  const groups = new Map()
-  for (const e of selectedEvents.value) {
-    const key = e.schoolId ?? e.schoolName
-    if (!groups.has(key)) groups.set(key, { key, schoolName: e.schoolName, events: [] })
-    groups.get(key).events.push(e)
-  }
-  const arr = [...groups.values()]
-  for (const g of arr) {
-    g.events.sort(
-      (a, b) =>
-        (a.periodNumber ?? 0) - (b.periodNumber ?? 0) ||
-        (a.startTime || '').localeCompare(b.startTime || ''),
-    )
-  }
-  arr.sort((a, b) => (a.schoolName || '').localeCompare(b.schoolName || '', 'vi'))
-  return arr
-})
-const selectedSchoolCount = computed(() => selectedBySchool.value.length)
+// Danh sách phẳng đã sắp xếp: theo trường (A→Z), rồi tiết tăng dần, rồi giờ bắt đầu.
+const selectedRows = computed(() =>
+  [...selectedEvents.value].sort(
+    (a, b) =>
+      (a.schoolName || '').localeCompare(b.schoolName || '', 'vi') ||
+      (a.periodNumber ?? 0) - (b.periodNumber ?? 0) ||
+      (a.startTime || '').localeCompare(b.startTime || ''),
+  ),
+)
+const selectedSchoolCount = computed(() => countSchools(selectedEvents.value))
 const selectedLabel = computed(() => {
   const [y, m, d] = selectedIso.value.split('-')
   return `${d}/${m}/${y}`
+})
+
+/* ── Phân trang chi tiết ngày: 10 DÒNG/trang; trong mỗi trang vẫn gom theo trường ── */
+const ROWS_PER_PAGE = 10
+const detailPage = ref(0)
+const detailTotalPages = computed(() => Math.ceil(selectedRows.value.length / ROWS_PER_PAGE))
+// Lấy đúng 10 dòng của trang hiện tại rồi gom lại theo trường (các dòng cùng trường đã liền nhau).
+const pagedSchoolGroups = computed(() => {
+  const start = detailPage.value * ROWS_PER_PAGE
+  const slice = selectedRows.value.slice(start, start + ROWS_PER_PAGE)
+  const groups = []
+  for (const e of slice) {
+    const key = e.schoolId ?? e.schoolName
+    const last = groups[groups.length - 1]
+    if (last && last.key === key) last.events.push(e)
+    else groups.push({ key, schoolName: e.schoolName, events: [e] })
+  }
+  return groups
+})
+// Đổi ngày đang chọn hoặc dữ liệu đổi → quay về trang 1 của phần chi tiết.
+watch([selectedIso, selectedRows], () => {
+  detailPage.value = 0
 })
 
 /* ── Tiêu đề + điều hướng ── */
@@ -211,7 +227,6 @@ onMounted(() => {
     <div class="page-head">
       <div>
         <h2 class="title">Lịch dạy</h2>
-        <p class="subtitle">Buổi dạy đã duyệt của giáo viên theo trường, lớp, tiết — theo từng ngày.</p>
       </div>
       <div class="viewtoggle">
         <button :class="{ on: view === 'month' }" @click="setView('month')">Tháng</button>
@@ -279,14 +294,14 @@ onMounted(() => {
         </h3>
         <div v-if="!selectedEvents.length" class="detail__empty text-muted">Không có buổi dạy.</div>
         <div v-else class="schoolgroups">
-          <div v-for="g in selectedBySchool" :key="g.key" class="schoolgroup">
+          <div v-for="g in pagedSchoolGroups" :key="g.key" class="schoolgroup">
             <div class="schoolgroup__head">
               <span class="schoolgroup__name">{{ g.schoolName }}</span>
               <span class="schoolgroup__count">{{ g.events.length }} buổi</span>
             </div>
             <ul class="evlist">
               <li class="evhead">
-                <span>Tiết</span>
+                <span>Buổi · Tiết</span>
                 <span>Môn</span>
                 <span>Giáo viên</span>
                 <span>Lớp</span>
@@ -297,7 +312,7 @@ onMounted(() => {
                 class="evrow"
                 :class="e.sessionType === 'AFTERNOON' ? 'pm' : 'am'"
               >
-                <span class="evrow__period">Tiết {{ e.periodNumber }}</span>
+                <span class="evrow__period">{{ tietLabel(e.periodNumber, e.sessionType) }}</span>
                 <span class="evrow__subject">{{ e.subjectName }}</span>
                 <span class="evrow__teacher">{{ e.teacherName }}</span>
                 <span class="evrow__class">{{ e.className }}</span>
@@ -305,6 +320,8 @@ onMounted(() => {
             </ul>
           </div>
         </div>
+
+        <Pagination v-model="detailPage" :total-pages="detailTotalPages" />
       </div>
     </div>
 
@@ -313,7 +330,7 @@ onMounted(() => {
       <table class="wtable">
         <thead>
           <tr>
-            <th class="wcorner">Tiết</th>
+            <th class="wcorner">Buổi · Tiết</th>
             <th v-for="d in weekDays" :key="d.iso" :class="{ today: d.isToday }">
               <div class="wday">{{ d.label }}</div>
               <div class="wdnum">{{ d.dnum }}</div>
@@ -321,19 +338,18 @@ onMounted(() => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in PERIODS" :key="p">
-            <td class="wperiod">Tiết {{ p }}</td>
+          <tr v-for="p in PERIODS" :key="p" :class="{ 'week-sep': p === 6 }">
+            <td class="wperiod">{{ tietLabel(p) }}</td>
             <td v-for="d in weekDays" :key="d.iso" class="wcell">
               <div
                 v-for="e in cellEvents(p, d.iso)"
                 :key="e.id"
                 class="wchip"
                 :class="e.sessionType === 'AFTERNOON' ? 'pm' : 'am'"
-                :title="`${hhmm(e.startTime)}–${hhmm(e.endTime)} · ${e.subjectName} · ${e.schoolName} ${e.className} · ${e.teacherName}`"
+                :title="`${tietLabel(e.periodNumber, e.sessionType)} · ${e.subjectName} · ${e.schoolName} ${e.className} · ${e.teacherName}`"
               >
                 <span class="wchip__subj">{{ e.subjectName }}</span>
                 <span class="wchip__meta">{{ e.className }} · {{ e.teacherName }}</span>
-                <span class="wchip__time">{{ hhmm(e.startTime) }}</span>
               </div>
             </td>
           </tr>
@@ -552,7 +568,7 @@ onMounted(() => {
 /* Hàng tiêu đề cột, canh đúng 4 cột như .evrow (viền trái trong suốt để thẳng hàng) */
 .evhead {
   display: grid;
-  grid-template-columns: 68px 1.4fr 1fr 0.7fr;
+  grid-template-columns: 108px 1.4fr 1fr 0.7fr;
   gap: 0.6rem;
   align-items: center;
   padding: 0.15rem 0.7rem 0.3rem;
@@ -568,7 +584,7 @@ onMounted(() => {
 }
 .evrow {
   display: grid;
-  grid-template-columns: 68px 1.4fr 1fr 0.7fr;
+  grid-template-columns: 108px 1.4fr 1fr 0.7fr;
   gap: 0.6rem;
   align-items: center;
   padding: 0.5rem 0.7rem;
@@ -629,15 +645,21 @@ onMounted(() => {
   font-weight: 800;
 }
 .wcorner {
-  width: 64px;
+  width: 104px;
 }
 .wperiod {
-  width: 64px;
-  text-align: center;
-  font-size: 0.78rem;
+  width: 104px;
+  text-align: left;
+  padding-left: 0.5rem;
+  font-size: 0.76rem;
   font-weight: 700;
   color: var(--c-text-muted);
   background: var(--c-surface-2);
+  white-space: nowrap;
+}
+/* Vạch ngăn giữa buổi Sáng và buổi Chiều trong thời khóa biểu tuần */
+.week-sep td {
+  border-top: 2px solid var(--c-primary-light);
 }
 .wcell {
   vertical-align: top;
