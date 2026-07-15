@@ -19,7 +19,15 @@ export const useAuthStore = defineStore('auth', () => {
 
   // Khôi phục phiên khi mở lại app / F5. Đọc được cả shape cũ {refreshToken, user}
   // (trước khi có multi-account) để người dùng không bị văng khi cập nhật code.
-  const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
+  // JSON hỏng (ghi dở, sửa tay trong devtools...) mà không bắt thì store nổ ngay
+  // lúc khởi tạo -> app trắng trang ở MỌI route và không tự hồi. Bắt lỗi: xóa key
+  // hỏng, coi như chưa đăng nhập -> người dùng chỉ việc đăng nhập lại.
+  let saved = null
+  try {
+    saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null')
+  } catch {
+    localStorage.removeItem(LS_KEY)
+  }
   if (saved?.accounts) {
     accounts.value = saved.accounts
     activeUsername.value = saved.activeUsername ?? saved.accounts[0]?.user?.username ?? null
