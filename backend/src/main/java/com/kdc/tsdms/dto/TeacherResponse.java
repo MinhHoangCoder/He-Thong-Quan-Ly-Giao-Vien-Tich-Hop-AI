@@ -34,7 +34,7 @@ public class TeacherResponse {
         private LocalDate dateOfBirth;
         private Boolean gender;
 
-        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 9 hoặc 12 chữ số")
+        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 12 số")
         private String idCardNo;
 
         @Pattern(regexp = "^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")
@@ -68,7 +68,7 @@ public class TeacherResponse {
         private LocalDate dateOfBirth;
         private Boolean gender;
 
-        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 9 hoặc 12 chữ số")
+        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 12 số")
         private String idCardNo;
 
         @Pattern(regexp = "^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")

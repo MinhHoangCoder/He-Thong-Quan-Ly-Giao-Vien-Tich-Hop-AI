@@ -73,6 +73,13 @@ public class TeacherController {
         return ResponseEntity.noContent().build();
     }
 
+    @DeleteMapping("/trash/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> deleteTeacherPermanently(@PathVariable Integer id) {
+    teacherService.deleteTrueTeacher(id);
+    return ResponseEntity.noContent().build();
+}
+
     // Certificate========================
     @PostMapping("/{id}/certificates")
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")

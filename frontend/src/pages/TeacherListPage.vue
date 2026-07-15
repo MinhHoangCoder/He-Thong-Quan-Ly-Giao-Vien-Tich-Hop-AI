@@ -45,9 +45,6 @@ const selectedIds = ref([])
 const trashItems = ref([])
 const trashLoading = ref(false)
 
-// Modal chi tiết
-const detailModal = reactive({ open: false, teacher: null })
-
 // Confirm xóa
 const confirmDelete = reactive({ open: false })
 
@@ -424,7 +421,7 @@ const statusClass = {
   RETIRED: 'badge--retired',
   SUSPENDED: 'badge--suspended',
 }
-const empLabel = { FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng' }
+const empLabel = { FULL_TIME: 'Cơ Hữu', PART_TIME: 'Thỉnh Giảng', CONTRACT: 'Hợp đồng' }
 // Bảng màu avatar xoay vòng theo id — chỉ để phân biệt trực quan giữa các dòng.
 const avatarPalette = ['#0ea5e9', '#22c55e', '#8b5cf6', '#f97316', '#ec4899', '#14b8a6', '#f43f5e']
 function avatarColor(id) {
@@ -511,18 +508,6 @@ function switchView(mode) {
   if (mode === 'trash') loadTrash()
 }
 
-/* ══════════════════════════════════════════════════════════
-   XEM CHI TIẾT
-══════════════════════════════════════════════════════════ */
-async function openDetail(teacher) {
-  try {
-    const res = await teacherApi.get(teacher.id)
-    detailModal.teacher = res.data
-    detailModal.open = true
-  } catch {
-    showToast('Không tải được chi tiết giáo viên', 'error')
-  }
-}
 
 /* ══════════════════════════════════════════════════════════
    SỬA — modal dùng LẠI cấu trúc tab trái/phải giống modal Tạo, để có
@@ -838,7 +823,8 @@ async function confirmDoPurge() {
     confirmPurge.open = false
     await loadTrash()
   } catch (e) {
-    showToast(e?.response?.data?.message || 'Xóa vĩnh viễn fail', 'error')
+    const msg = e?.response?.data?.message || 'Xóa vĩnh viễn thất bại'
+    showToast(msg, 'error')
   } finally {
     confirmPurge.purging = false
   }
@@ -980,8 +966,8 @@ function formatDate(d) {
               v-for="t in filtered"
               :key="t.id"
               :class="['t-row', deleteMode && selectedIds.includes(t.id) && 't-row--selected']"
-              :title="deleteMode ? '' : 'Bấm để xem chi tiết'"
-              @click="deleteMode ? toggleSelect(t.id) : openDetail(t)"
+               :title="deleteMode ? '' : 'Bấm để xem'"
+              @click="deleteMode ? toggleSelect(t.id) : openEdit(t)"
             >
               <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(t.id)">
                 <span :class="['tick', selectedIds.includes(t.id) && 'tick--checked']">
@@ -1498,145 +1484,6 @@ function formatDate(d) {
     </Teleport>
 
     <!-- ═══════════════════════════════════════════════
-         MODAL: CHI TIẾT GIÁO VIÊN
-    ═══════════════════════════════════════════════ -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="detailModal.open" class="overlay" @click.self="detailModal.open = false">
-          <div class="modal modal--lg">
-            <div class="modal__head">
-              <h3 class="modal__title">Chi tiết Giáo viên</h3>
-              <button class="modal__close" @click="detailModal.open = false">❌</button>
-            </div>
-
-            <template v-if="detailModal.teacher">
-              <div class="detail-hero">
-                <div
-                  class="detail-avatar"
-                  :style="{ background: avatarColor(detailModal.teacher.id) }"
-                >
-                  {{ (detailModal.teacher.firstName || '?')[0].toUpperCase() }}
-                </div>
-                <div>
-                  <div class="detail-name">{{ detailModal.teacher.fullName }}</div>
-                  <div class="detail-meta">
-                    <span :class="['badge', statusClass[detailModal.teacher.status]]">{{
-                      statusLabel[detailModal.teacher.status]
-                    }}</span>
-                    <span v-if="detailModal.teacher.employmentType" class="badge badge--emp">{{
-                      empLabel[detailModal.teacher.employmentType]
-                    }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="detail-grid">
-                <div class="dg-item">
-                  <span class="dg-label">Chi nhánh</span
-                  ><span>{{ branchName(detailModal.teacher.branchId) }}</span>
-                </div>
-                <div class="dg-item">
-                  <span class="dg-label">SĐT</span
-                  ><span>{{ detailModal.teacher.phone || '—' }}</span>
-                </div>
-                <div class="dg-item">
-                  <span class="dg-label">CCCD</span
-                  ><span>{{ detailModal.teacher.idCardNo || '—' }}</span>
-                </div>
-                <div class="dg-item">
-                  <span class="dg-label">Giới tính</span
-                  ><span>{{
-                    detailModal.teacher.gender === true
-                      ? 'Nam'
-                      : detailModal.teacher.gender === false
-                        ? 'Nữ'
-                        : '—'
-                  }}</span>
-                </div>
-                <div class="dg-item">
-                  <span class="dg-label">Ngày sinh</span
-                  ><span>{{ formatDate(detailModal.teacher.dateOfBirth) }}</span>
-                </div>
-                <div class="dg-item">
-                  <span class="dg-label">Ngày vào làm</span
-                  ><span>{{ formatDate(detailModal.teacher.hireDate) }}</span>
-                </div>
-                <div class="dg-item dg-item--full">
-                  <span class="dg-label">Địa chỉ</span
-                  ><span>{{ detailModal.teacher.address || '—' }}</span>
-                </div>
-              </div>
-
-              <!-- Hợp đồng -->
-              <div v-if="detailModal.teacher.contract" class="detail-section">
-                <h4 class="detail-section-title">
-                  <SvgIcon name="assignment" :size="15" /> Hợp đồng
-                </h4>
-                <div class="detail-grid">
-                  <div class="dg-item">
-                    <span class="dg-label">Số HĐ</span
-                    ><span>{{ detailModal.teacher.contract.contractNo }}</span>
-                  </div>
-                  <div class="dg-item">
-                    <span class="dg-label">Bắt đầu</span
-                    ><span>{{ formatDate(detailModal.teacher.contract.startDate) }}</span>
-                  </div>
-                  <div class="dg-item">
-                    <span class="dg-label">Kết thúc</span
-                    ><span>{{ formatDate(detailModal.teacher.contract.endDate) }}</span>
-                  </div>
-                  <div class="dg-item">
-                    <span class="dg-label">Lương cơ bản</span
-                    ><span
-                      >{{
-                        detailModal.teacher.contract.baseSalary?.toLocaleString('vi-VN') || '—'
-                      }}
-                      ₫</span
-                    >
-                  </div>
-                  <div class="dg-item">
-                    <span class="dg-label">Phụ cấp</span
-                    ><span
-                      >{{
-                        detailModal.teacher.contract.allowance?.toLocaleString('vi-VN') || '—'
-                      }}
-                      ₫</span
-                    >
-                  </div>
-                  <div class="dg-item">
-                    <span class="dg-label">Trạng thái</span
-                    ><span>{{ detailModal.teacher.contract.status }}</span>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Chứng chỉ -->
-              <div v-if="detailModal.teacher.certificates?.length" class="detail-section">
-                <h4 class="detail-section-title">
-                  <SvgIcon name="subject" :size="15" /> Chứng chỉ ({{
-                    detailModal.teacher.certificates.length
-                  }})
-                </h4>
-                <div class="cert-list">
-                  <div v-for="c in detailModal.teacher.certificates" :key="c.id" class="cert-item">
-                    <strong>{{ c.name }}</strong>
-                    <span v-if="c.issuer"> · {{ c.issuer }}</span>
-                    <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
-                    <span v-if="c.expiryDate"> → {{ formatDate(c.expiryDate) }}</span>
-                  </div>
-                </div>
-              </div>
-            </template>
-
-            <div class="modal__footer">
-              <button class="btn btn--primary" @click="detailModal.open = false">Đóng</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <!-- ═══════════════════════════════════════════════
          MODAL: SỬA GIÁO VIÊN (tab trái + form phải — giống hệt modal Tạo)
     ═══════════════════════════════════════════════ -->
     <Teleport to="body">
@@ -1811,15 +1658,11 @@ function formatDate(d) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="editModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Thêm bằng cấp mới</h4>
-                  <p class="create-section-hint">
-                    Danh sách bằng cấp/chứng chỉ ĐÃ LƯU xem ở tab "Chứng chỉ" (hệ thống lưu chung 1
-                    bảng, không phân biệt 2 loại này).
-                  </p>
                   <div v-for="(d, i) in editModal.newDegrees" :key="i" class="doc-row">
                     <input
                       v-model="d.name"
                       class="form-input"
-                      placeholder="Tên bằng cấp (VD: Cử nhân Sư phạm)"
+                      placeholder="Tên bằng cấp"
                     />
                     <input v-model="d.issuer" class="form-input" placeholder="Nơi cấp" />
                     <input v-model="d.issueDate" type="date" class="form-input" />
@@ -1848,10 +1691,6 @@ function formatDate(d) {
 
                 <!-- Tab: Chứng chỉ -->
                 <template v-else-if="editModal.activeTab === 'cert'">
-                  <h4 class="create-section-title">Đã lưu</h4>
-                  <p v-if="!editModal.existingCerts.length" class="create-section-hint">
-                    Chưa có bằng cấp/chứng chỉ nào.
-                  </p>
                   <div v-for="c in editModal.existingCerts" :key="c.id" class="existing-doc">
                     <div>
                       <strong>{{ c.name }}</strong>
@@ -2179,6 +2018,8 @@ function formatDate(d) {
   background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
+   max-height: 420px;   /* ~ 6 dòng */
+  overflow-y: auto;
 }
 .teacher-table {
   width: 100%;

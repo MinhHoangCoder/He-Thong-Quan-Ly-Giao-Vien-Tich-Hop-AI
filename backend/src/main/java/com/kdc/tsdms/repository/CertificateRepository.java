@@ -12,4 +12,7 @@ public interface CertificateRepository extends JpaRepository<Certificate, Intege
 
     /** Lấy 1 chứng chỉ thuộc đúng GV — tránh sửa/xóa nhầm chứng chỉ của người khác. */
     Optional<Certificate> findByIdAndTeacherIdAndDeletedFalse(Integer id, Integer teacherId);
+
+    List<Certificate> findByTeacherId(Integer teacherId);
+    
 }
