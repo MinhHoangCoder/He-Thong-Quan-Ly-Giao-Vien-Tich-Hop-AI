@@ -10,7 +10,6 @@ import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
-import '@fortawesome/fontawesome-free/css/all.min.css'
 
 /* ══════════════════════════════════════════════════════════
    PHÂN QUYỀN THEO VAI TRÒ
@@ -51,6 +50,9 @@ const detailModal = reactive({ open: false, teacher: null })
 
 // Confirm xóa
 const confirmDelete = reactive({ open: false })
+
+// Confirm xóa VĨNH VIỄN (từ thùng rác) — cần gõ lại tên để chắc chắn không bấm nhầm.
+const confirmPurge = reactive({ open: false, id: null, name: '', typedName: '', purging: false })
 
 // Notification toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
@@ -247,7 +249,7 @@ function validateIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    createFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
+    createFieldErrors.idCardNo = 'CCCD phải có 12 số'
     return false
   }
   createFieldErrors.idCardNo = ''
@@ -617,7 +619,7 @@ function validateEditIdCard() {
     return true
   }
   if (!CCCD_RE.test(v)) {
-    editFieldErrors.idCardNo = 'CCCD phải có đúng 9 hoặc 12 chữ số'
+    editFieldErrors.idCardNo = 'CCCD phải có  12 số'
     return false
   }
   editFieldErrors.idCardNo = ''
@@ -700,6 +702,7 @@ async function saveEdit() {
       ...editModal.form,
       branchId: Number(editModal.form.branchId),
       gender: editModal.form.gender === '' ? null : editModal.form.gender,
+      employmentType: editModal.form.employmentType || null,
     })
     // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
     const newOnes = [...editModal.newDegrees, ...editModal.newCerts].filter((d) => d.name.trim())
@@ -803,6 +806,45 @@ async function restore(id) {
 }
 
 /* ══════════════════════════════════════════════════════════
+   XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
+   Không thể hoàn tác nên bắt gõ lại đúng họ tên để xác nhận, giống
+   thao tác xóa vĩnh viễn ở các hệ thống khác (GitHub, Google...).
+══════════════════════════════════════════════════════════ */
+const isAdmin = computed(() => auth.roles.includes('ADMIN'))
+
+function requestPurge(item) {
+  if (!isAdmin.value) return
+  confirmPurge.open = true
+  confirmPurge.id = item.id
+  confirmPurge.name = item.fullName
+  confirmPurge.typedName = ''
+  confirmPurge.purging = false
+}
+
+function closePurge() {
+  confirmPurge.open = false
+}
+
+const purgeConfirmValid = computed(
+  () => confirmPurge.typedName.trim().toLowerCase() === confirmPurge.name.trim().toLowerCase(),
+)
+
+async function confirmDoPurge() {
+  if (!purgeConfirmValid.value || confirmPurge.purging) return
+  confirmPurge.purging = true
+  try {
+    await teacherApi.deleteTrue(confirmPurge.id)
+    showToast(`Đã xóa vĩnh viễn "${confirmPurge.name}" khỏi hệ thống`)
+    confirmPurge.open = false
+    await loadTrash()
+  } catch (e) {
+    showToast(e?.response?.data?.message || 'Xóa vĩnh viễn fail', 'error')
+  } finally {
+    confirmPurge.purging = false
+  }
+}
+
+/* ══════════════════════════════════════════════════════════
    HELPERS
 ══════════════════════════════════════════════════════════ */
 function showToast(msg, type = 'success') {
@@ -836,7 +878,6 @@ function formatDate(d) {
     <div class="tl__header">
       <div>
         <h1 class="tl__title">Quản lý Giáo viên</h1>
-        <p class="tl__sub">Tổng quan / Giáo viên</p>
       </div>
       <div class="tl__header-actions">
         <button
@@ -852,7 +893,7 @@ function formatDate(d) {
           @click="switchView('trash')"
           title="Lịch sử (giáo viên đã bị ẩn)"
         >
-          <i class="fa-solid fa-arrow-rotate-left"></i> Lịch sử
+          🕒 Lịch sử
         </button>
 
         <button v-if="canManage" class="btn-add" @click="openCreate">
@@ -886,9 +927,8 @@ function formatDate(d) {
 
         <select v-model="filters.employmentType" class="filter-select">
           <option value="">Tất cả loại hình</option>
-          <option value="FULL_TIME">Toàn thời gian</option>
-          <option value="PART_TIME">Bán thời gian</option>
-          <option value="CONTRACT">Hợp đồng</option>
+          <option value="FULL_TIME">Cơ hữu</option>
+          <option value="PART_TIME">Thỉnh giảng</option>
         </select>
 
         <select v-model="filters.branchId" class="filter-select">
@@ -903,8 +943,7 @@ function formatDate(d) {
           @click="toggleDeleteMode"
           title="Chọn giáo viên để xóa"
         >
-          <i class="fa-solid fa-trash" style="color: rgb(255, 59, 59)"></i>
-          {{ deleteMode ? 'Hủy chọn' : 'Xóa' }}
+          🗑️ {{ deleteMode ? 'Hủy chọn' : 'Xóa' }}
         </button>
 
         <button
@@ -976,8 +1015,7 @@ function formatDate(d) {
 
               <!-- Chi nhánh -->
               <td>
-                <span class="badge badge--branch"
-                  ><strong>Branch:</strong>{{ branchName(t.branchId) }}</span
+                <span class="badge badge--branch">{{ branchName(t.branchId) }}</span
                 >
               </td>
 
@@ -992,11 +1030,8 @@ function formatDate(d) {
               <!-- Hành động -->
               <td class="col-action" @click.stop>
                 <div class="row-actions">
-                  <button class="ra-btn ra-btn--view" title="Xem chi tiết" @click="openDetail(t)">
-                    <i class="fa-solid fa-eye" style="color: rgb(99, 230, 190)"></i>
-                  </button>
                   <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">
-                    <i class="fa-solid fa-wrench" style="color: rgb(255, 212, 59)"></i>
+                    Xem
                   </button>
                   <button
                     v-if="canManage"
@@ -1004,10 +1039,7 @@ function formatDate(d) {
                     title="Xóa giáo viên"
                     @click="quickDelete(t.id)"
                   >
-                    <i
-                      class="fa-solid fa-delete-left fa-width-auto"
-                      style="color: rgb(255, 59, 59)"
-                    ></i>
+                    Xóa
                   </button>
                 </div>
               </td>
@@ -1029,12 +1061,9 @@ function formatDate(d) {
     <template v-else>
       <div class="trash-header">
         <div>
-          <h2 class="trash-title">
-            <SvgIcon name="history" :size="20" /> Lịch sử giáo viên đã xóa
-          </h2>
+          <h2 class="trash-title"><i class="history" />📜 Lịch sử giáo viên đã xóa</h2>
           <p class="trash-sub">
-            Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Bạn có thể khôi phục bất kỳ lúc
-            nào.
+            Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Có thể khôi phục bất kỳ lúc nào.
           </p>
         </div>
       </div>
@@ -1071,9 +1100,14 @@ function formatDate(d) {
                 <span class="badge badge--branch">{{ branchName(item.branchId) }}</span>
               </td>
               <td>
-                <button class="btn-restore" @click="restore(item.id)">
-                  <SvgIcon name="restore" :size="14" /> Khôi phục
-                </button>
+                <div class="trash-actions">
+                  <button class="btn-restore" @click="restore(item.id)">
+                    <SvgIcon name="restore" :size="14" /> Khôi phục
+                  </button>
+                  <button v-if="isAdmin" class="btn-purge" @click="requestPurge(item)">
+                    <SvgIcon name="trash" :size="14" /> Xóa
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1081,7 +1115,6 @@ function formatDate(d) {
       </div>
 
       <div v-else class="tl__empty">
-        <SvgIcon name="history" :size="48" />
         <p>Chưa có giáo viên nào trong lịch sử</p>
       </div>
     </template>
@@ -1095,9 +1128,7 @@ function formatDate(d) {
           <div class="modal modal--xl">
             <div class="modal__head">
               <h3 class="modal__title">Thêm giáo viên mới</h3>
-              <button class="modal__close" @click="createModal.open = false">
-                <SvgIcon name="close" :size="18" />
-              </button>
+              <button class="modal__close" @click="createModal.open = false">❌</button>
             </div>
 
             <div class="create-body">
@@ -1249,7 +1280,7 @@ function formatDate(d) {
                           v-model="createModal.profile.idCardNo"
                           class="form-input"
                           :class="{ 'form-input--error': createFieldErrors.idCardNo }"
-                          placeholder="9 hoặc 12 chữ số"
+                          placeholder="12 số"
                           @blur="validateIdCard"
                         />
                       </label>
@@ -1293,10 +1324,9 @@ function formatDate(d) {
                   <label class="form-label"
                     >Loại hình
                     <select v-model="createModal.profile.employmentType" class="form-input">
-                      <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
-                      <option value="CONTRACT">Hợp đồng</option>
+                      <option value="">-- Chọn loại hình hợp đồng --</option>
+          <option value="FULL_TIME">Cơ hữu</option>
+          <option value="PART_TIME">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
@@ -1312,15 +1342,9 @@ function formatDate(d) {
                 <!-- Tab: Bằng cấp -->
                 <template v-else-if="createModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Bằng cấp</h4>
-                  <p class="create-section-hint">
-                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
-                  </p>
+                  <br />
                   <div v-for="(d, i) in createModal.degrees" :key="i" class="doc-row">
-                    <input
-                      v-model="d.name"
-                      class="form-input"
-                      placeholder="Tên bằng cấp (VD: Cử nhân Sư phạm)"
-                    />
+                    <input v-model="d.name" class="form-input" placeholder="Tên bằng cấp" />
                     <input v-model="d.issuer" class="form-input" placeholder="Nơi cấp" />
                     <input v-model="d.issueDate" type="date" class="form-input" />
                     <label class="doc-file">
@@ -1338,7 +1362,7 @@ function formatDate(d) {
                       class="doc-remove"
                       @click="removeDoc(createModal.degrees, i)"
                     >
-                      <SvgIcon name="close" :size="14" />
+                      ❌
                     </button>
                   </div>
                   <button class="btn-add-row" @click="addDoc(createModal.degrees)">
@@ -1375,7 +1399,7 @@ function formatDate(d) {
                       class="doc-remove"
                       @click="removeDoc(createModal.certificates, i)"
                     >
-                      <SvgIcon name="close" :size="14" />
+                      ❌
                     </button>
                   </div>
                   <button class="btn-add-row" @click="addDoc(createModal.certificates)">
@@ -1386,9 +1410,6 @@ function formatDate(d) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="createModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
-                  <p class="create-section-hint">
-                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
-                  </p>
                   <textarea
                     v-model="createModal.experience"
                     class="form-input form-textarea"
@@ -1400,11 +1421,6 @@ function formatDate(d) {
                 <!-- Tab: Trạng thái -->
                 <template v-else-if="createModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
-                  <p class="create-section-hint">
-                    Giáo viên mới luôn khởi tạo ở trạng thái <strong>Đang hoạt động</strong>. Khi bị
-                    ẩn khỏi danh sách, hệ thống tự chuyển sang <strong>Ngừng hoạt động</strong> và
-                    chuyển vào mục Lịch sử.
-                  </p>
                   <span class="badge badge--active badge--lg">Đang hoạt động</span>
                 </template>
 
@@ -1431,9 +1447,7 @@ function formatDate(d) {
       <Transition name="modal">
         <div v-if="confirmDelete.open" class="overlay" @click.self="confirmDelete.open = false">
           <div class="modal modal--sm">
-            <div class="modal__icon modal__icon--warn">
-              <SvgIcon name="trash" :size="28" />
-            </div>
+            <div class="modal__icon modal__icon--warn">❌</div>
             <h3 class="modal__title">Bạn chắc chắn muốn xóa không?</h3>
             <p class="modal__body">
               {{ selectedIds.length }} giáo viên sẽ bị xóa khỏi danh sách chính, và có thể khôi phục
@@ -1449,6 +1463,41 @@ function formatDate(d) {
     </Teleport>
 
     <!-- ═══════════════════════════════════════════════
+         MODAL: XÁC NHẬN XÓA VĨNH VIỄN (từ thùng rác)
+    ═══════════════════════════════════════════════ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="confirmPurge.open" class="overlay" @click.self="closePurge">
+          <div class="modal modal--sm">
+            <div class="modal__icon modal__icon--warn">⚠️</div>
+            <h3 class="modal__title">Xóa vĩnh viễn giáo viên?</h3>
+            <p class="modal__body">Are you <strong> SURE ?</strong></p>
+            <p class="modal__body">
+              Gõ lại họ tên <strong>"{{ confirmPurge.name }}"</strong> để xác nhận:
+            </p>
+            <input
+              v-model="confirmPurge.typedName"
+              type="text"
+              class="form-input"
+              :placeholder="confirmPurge.name"
+              @keyup.enter="confirmDoPurge"
+            />
+            <div class="modal__footer">
+              <button class="btn btn--ghost" @click="closePurge">Hủy</button>
+              <button
+                class="btn btn--danger"
+                :disabled="!purgeConfirmValid || confirmPurge.purging"
+                @click="confirmDoPurge"
+              >
+                {{ confirmPurge.purging ? 'Đang xóa…' : 'Xóa vĩnh viễn' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ═══════════════════════════════════════════════
          MODAL: CHI TIẾT GIÁO VIÊN
     ═══════════════════════════════════════════════ -->
     <Teleport to="body">
@@ -1457,9 +1506,7 @@ function formatDate(d) {
           <div class="modal modal--lg">
             <div class="modal__head">
               <h3 class="modal__title">Chi tiết Giáo viên</h3>
-              <button class="modal__close" @click="detailModal.open = false">
-                <SvgIcon name="close" :size="18" />
-              </button>
+              <button class="modal__close" @click="detailModal.open = false">❌</button>
             </div>
 
             <template v-if="detailModal.teacher">
@@ -1700,7 +1747,7 @@ function formatDate(d) {
                           v-model="editModal.form.idCardNo"
                           class="form-input"
                           :class="{ 'form-input--error': editFieldErrors.idCardNo }"
-                          placeholder="9 hoặc 12 chữ số"
+                          placeholder=" 12 số"
                           @blur="validateEditIdCard"
                         />
                       </label>
@@ -1746,10 +1793,9 @@ function formatDate(d) {
                   <label class="form-label"
                     >Loại hình
                     <select v-model="editModal.form.employmentType" class="form-input">
-                      <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
-                      <option value="CONTRACT">Hợp đồng</option>
+                      <option value="">-- Chọn loại hình hợp đồng --</option>
+          <option value="FULL_TIME">Cơ hữu</option>
+          <option value="PART_TIME">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
@@ -1792,7 +1838,7 @@ function formatDate(d) {
                       class="doc-remove"
                       @click="removeDoc(editModal.newDegrees, i)"
                     >
-                      <SvgIcon name="close" :size="14" />
+                      ➖
                     </button>
                   </div>
                   <button class="btn-add-row" @click="addDoc(editModal.newDegrees)">
@@ -1813,7 +1859,7 @@ function formatDate(d) {
                       <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
                     </div>
                     <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
-                      <SvgIcon name="trash" :size="14" />
+                      ➖
                     </button>
                   </div>
 
@@ -1841,7 +1887,7 @@ function formatDate(d) {
                       class="doc-remove"
                       @click="removeDoc(editModal.newCerts, i)"
                     >
-                      <SvgIcon name="close" :size="14" />
+                      ➖
                     </button>
                   </div>
                   <button class="btn-add-row" @click="addDoc(editModal.newCerts)">
@@ -1866,9 +1912,6 @@ function formatDate(d) {
                 <!-- Tab: Trạng thái -->
                 <template v-else-if="editModal.activeTab === 'status'">
                   <h4 class="create-section-title">Trạng thái</h4>
-                  <p class="create-section-hint">
-                    Chuyển tay nếu cần — bình thường hệ thống tự đổi khi Xóa/Khôi phục.
-                  </p>
                   <select
                     v-model="editModal.form.status"
                     class="form-input"
@@ -2356,6 +2399,28 @@ function formatDate(d) {
 .btn-restore:hover {
   background: #dcfce7;
 }
+.trash-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.btn-purge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-purge:hover {
+  background: #fee2e2;
+}
 
 /* ── Modal ── */
 .overlay {
@@ -2622,6 +2687,11 @@ function formatDate(d) {
 }
 .btn--danger:hover {
   background: #b91c1c;
+}
+.btn--danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #dc2626;
 }
 
 /* ── Detail modal ── */
