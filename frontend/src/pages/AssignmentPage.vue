@@ -6,6 +6,8 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { assignmentApi } from '@/api/assignments'
+import { tietLabel, tietShort } from '@/utils/period'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const DAYS = [
   { code: 'MON', label: 'Thứ 2' },
@@ -20,6 +22,15 @@ const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCEL
 
 const loading = ref(false)
 const items = ref([])
+
+/* ── Phân trang phía client ── */
+const PAGE_SIZE = 10
+const page = ref(0)
+const totalPages = computed(() => Math.ceil(items.value.length / PAGE_SIZE))
+const pagedItems = computed(() => {
+  const start = page.value * PAGE_SIZE
+  return items.value.slice(start, start + PAGE_SIZE)
+})
 
 const options = reactive({ teachers: [], subjects: [], schools: [] })
 const scoped = reactive({ classes: [], periods: [] })
@@ -44,6 +55,7 @@ const cancelTarget = ref(null)
 
 async function load() {
   loading.value = true
+  page.value = 0
   try {
     const { data } = await assignmentApi.list()
     items.value = data
@@ -114,7 +126,7 @@ function removeSlot(i) {
 function slotLabel(s) {
   const d = DAYS.find((x) => x.code === s.dayOfWeek)?.label ?? s.dayOfWeek
   const p = scoped.periods.find((x) => x.id === s.periodId)
-  return `${d} · ${p ? p.label : 'Tiết #' + s.periodId}`
+  return `${d} · ${p ? tietLabel(p.periodNumber, p.sessionType) : 'Tiết #' + s.periodId}`
 }
 
 const canSubmit = computed(
@@ -171,7 +183,6 @@ async function confirmCancel() {
     <div class="page-head">
       <div>
         <h2 class="title">Phân công giảng dạy</h2>
-        <p class="subtitle">Gán giáo viên ↔ trường ↔ lớp ↔ môn; hệ thống tự sinh buổi dạy hằng tuần.</p>
       </div>
       <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
     </div>
@@ -197,14 +208,16 @@ async function confirmCancel() {
           <tr v-else-if="!items.length">
             <td colspan="8" class="text-center text-muted">Chưa có phân công nào</td>
           </tr>
-          <tr v-for="a in items" :key="a.id">
+          <tr v-for="a in pagedItems" :key="a.id">
             <td class="font-medium">{{ a.teacherName }}</td>
             <td>{{ a.schoolName }}</td>
             <td>{{ a.className ?? '—' }}</td>
             <td>{{ a.subjectName }}</td>
             <td class="text-muted small">{{ a.startDate }} → {{ a.endDate ?? 'không giới hạn' }}</td>
             <td>
-              <span v-for="s in a.slots" :key="s.id" class="chip">{{ s.dayOfWeekLabel }} · T{{ s.periodNumber }}</span>
+              <span v-for="s in a.slots" :key="s.id" class="chip"
+                >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType) }}</span
+              >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
             <td>
@@ -231,6 +244,8 @@ async function confirmCancel() {
         </tbody>
       </table>
     </div>
+
+    <Pagination v-model="page" :total-pages="totalPages" />
 
     <!-- Modal tạo phân công -->
     <div v-if="modal.open" class="modal-overlay" @click.self="modal.open = false">
@@ -286,7 +301,9 @@ async function confirmCancel() {
             </select>
             <select v-model="modal.slotDraft.periodId" :disabled="!scoped.periods.length">
               <option value="">{{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}</option>
-              <option v-for="p in scoped.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
+              <option v-for="p in scoped.periods" :key="p.id" :value="p.id">
+                {{ tietLabel(p.periodNumber, p.sessionType) }}
+              </option>
             </select>
             <button class="btn btn-outline btn-sm" type="button" :disabled="!modal.slotDraft.periodId" @click="addSlot">
               + Thêm tiết
