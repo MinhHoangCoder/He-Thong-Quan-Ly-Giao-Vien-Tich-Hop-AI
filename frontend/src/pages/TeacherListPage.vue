@@ -508,7 +508,6 @@ function switchView(mode) {
   if (mode === 'trash') loadTrash()
 }
 
-
 /* ══════════════════════════════════════════════════════════
    SỬA — modal dùng LẠI cấu trúc tab trái/phải giống modal Tạo, để có
    ĐẦY ĐỦ thông tin y hệt lúc tạo (hồ sơ + bằng cấp + chứng chỉ + kinh
@@ -966,7 +965,7 @@ function formatDate(d) {
               v-for="t in filtered"
               :key="t.id"
               :class="['t-row', deleteMode && selectedIds.includes(t.id) && 't-row--selected']"
-               :title="deleteMode ? '' : 'Bấm để xem'"
+              :title="deleteMode ? '' : 'Bấm để xem'"
               @click="deleteMode ? toggleSelect(t.id) : openEdit(t)"
             >
               <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(t.id)">
@@ -1001,8 +1000,7 @@ function formatDate(d) {
 
               <!-- Chi nhánh -->
               <td>
-                <span class="badge badge--branch">{{ branchName(t.branchId) }}</span
-                >
+                <span class="badge badge--branch">{{ branchName(t.branchId) }}</span>
               </td>
 
               <!-- Loại hình -->
@@ -1311,8 +1309,8 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="createModal.profile.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình hợp đồng --</option>
-          <option value="FULL_TIME">Cơ hữu</option>
-          <option value="PART_TIME">Thỉnh giảng</option>
+                      <option value="FULL_TIME">Cơ hữu</option>
+                      <option value="PART_TIME">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
@@ -1641,8 +1639,8 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="editModal.form.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình hợp đồng --</option>
-          <option value="FULL_TIME">Cơ hữu</option>
-          <option value="PART_TIME">Thỉnh giảng</option>
+                      <option value="FULL_TIME">Cơ hữu</option>
+                      <option value="PART_TIME">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
@@ -1659,11 +1657,7 @@ function formatDate(d) {
                 <template v-else-if="editModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Thêm bằng cấp mới</h4>
                   <div v-for="(d, i) in editModal.newDegrees" :key="i" class="doc-row">
-                    <input
-                      v-model="d.name"
-                      class="form-input"
-                      placeholder="Tên bằng cấp"
-                    />
+                    <input v-model="d.name" class="form-input" placeholder="Tên bằng cấp" />
                     <input v-model="d.issuer" class="form-input" placeholder="Nơi cấp" />
                     <input v-model="d.issueDate" type="date" class="form-input" />
                     <label class="doc-file">
@@ -2018,7 +2012,7 @@ function formatDate(d) {
   background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
-   max-height: 420px;   /* ~ 6 dòng */
+  max-height: 420px; /* ~ 6 dòng */
   overflow-y: auto;
 }
 .teacher-table {

@@ -135,12 +135,12 @@ public class TeacherService {
         t.setDeleted(true);
         t.setDeletedAt(Instant.now());
         t.setDeletedBy(SecurityUtils.currentUserId());
-         t.setStatus("RETIRED"); // GV bị ẩn khỏi ds chính -> luôn hiện "Ngừng hoạt động" trong thùng rác
+        t.setStatus("RETIRED"); // GV bị ẩn khỏi ds chính -> luôn hiện "Ngừng hoạt động" trong thùng rác
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
         teacherRepo.save(t);
     }
-    
+
     // History
 
     public List<TeacherResponse.HistoryItem> getTrash() {
@@ -165,7 +165,7 @@ public class TeacherService {
         return toResponse(teacherRepo.save(t), false);
     }
 
-        /**
+    /**
      * Xóa VĨNH VIỄN khỏi DB — CHỈ áp dụng cho GV đang nằm trong thùng rác (deleted=true).
      * Không thể hoàn tác.
      */

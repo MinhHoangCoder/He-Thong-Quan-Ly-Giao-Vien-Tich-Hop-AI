@@ -111,7 +111,12 @@ const weekDays = computed(() => {
   const arr = []
   for (let i = 0; i < 7; i++) {
     const d = addDays(s, i)
-    arr.push({ iso: iso(d), label: DOW_LABELS[i], dnum: d.getDate(), isToday: iso(d) === TODAY_ISO })
+    arr.push({
+      iso: iso(d),
+      label: DOW_LABELS[i],
+      dnum: d.getDate(),
+      isToday: iso(d) === TODAY_ISO,
+    })
   }
   return arr
 })
@@ -156,7 +161,8 @@ const title = computed(() => {
   return `Tháng ${anchor.value.getMonth() + 1}, ${anchor.value.getFullYear()}`
 })
 function go(dir) {
-  anchor.value = view.value === 'week' ? addDays(anchor.value, dir * 7) : addMonths(anchor.value, dir)
+  anchor.value =
+    view.value === 'week' ? addDays(anchor.value, dir * 7) : addMonths(anchor.value, dir)
   load()
 }
 function goToday() {
@@ -211,7 +217,9 @@ onMounted(() => {
     <div class="page-head">
       <div>
         <h2 class="title">Lịch dạy</h2>
-        <p class="subtitle">Buổi dạy đã duyệt của giáo viên theo trường, lớp, tiết — theo từng ngày.</p>
+        <p class="subtitle">
+          Buổi dạy đã duyệt của giáo viên theo trường, lớp, tiết — theo từng ngày.
+        </p>
       </div>
       <div class="viewtoggle">
         <button :class="{ on: view === 'month' }" @click="setView('month')">Tháng</button>

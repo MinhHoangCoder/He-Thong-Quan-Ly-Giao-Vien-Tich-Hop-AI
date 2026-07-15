@@ -14,5 +14,4 @@ public interface CertificateRepository extends JpaRepository<Certificate, Intege
     Optional<Certificate> findByIdAndTeacherIdAndDeletedFalse(Integer id, Integer teacherId);
 
     List<Certificate> findByTeacherId(Integer teacherId);
-    
 }

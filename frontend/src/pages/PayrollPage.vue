@@ -106,9 +106,7 @@ async function finalize(r) {
   }
 }
 
-const totalNet = computed(() =>
-  rows.value.reduce((s, r) => s + Number(r.netAmount || 0), 0),
-)
+const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmount || 0), 0))
 </script>
 
 <template>
@@ -117,7 +115,8 @@ const totalNet = computed(() =>
       <div>
         <h2 class="title">Bảng lương</h2>
         <p class="subtitle">
-          Tính lương theo tiết — Tiểu học 115.000₫/tiết, THCS 125.000₫/tiết; tổng hợp từ chấm công theo tháng.
+          Tính lương theo tiết — Tiểu học 115.000₫/tiết, THCS 125.000₫/tiết; tổng hợp từ chấm công
+          theo tháng.
         </p>
       </div>
     </div>

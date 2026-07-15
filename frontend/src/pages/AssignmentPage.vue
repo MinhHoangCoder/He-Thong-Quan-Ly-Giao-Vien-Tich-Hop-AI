@@ -171,7 +171,9 @@ async function confirmCancel() {
     <div class="page-head">
       <div>
         <h2 class="title">Phân công giảng dạy</h2>
-        <p class="subtitle">Gán giáo viên ↔ trường ↔ lớp ↔ môn; hệ thống tự sinh buổi dạy hằng tuần.</p>
+        <p class="subtitle">
+          Gán giáo viên ↔ trường ↔ lớp ↔ môn; hệ thống tự sinh buổi dạy hằng tuần.
+        </p>
       </div>
       <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
     </div>
@@ -202,9 +204,13 @@ async function confirmCancel() {
             <td>{{ a.schoolName }}</td>
             <td>{{ a.className ?? '—' }}</td>
             <td>{{ a.subjectName }}</td>
-            <td class="text-muted small">{{ a.startDate }} → {{ a.endDate ?? 'không giới hạn' }}</td>
+            <td class="text-muted small">
+              {{ a.startDate }} → {{ a.endDate ?? 'không giới hạn' }}
+            </td>
             <td>
-              <span v-for="s in a.slots" :key="s.id" class="chip">{{ s.dayOfWeekLabel }} · T{{ s.periodNumber }}</span>
+              <span v-for="s in a.slots" :key="s.id" class="chip"
+                >{{ s.dayOfWeekLabel }} · T{{ s.periodNumber }}</span
+              >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
             <td>
@@ -262,7 +268,9 @@ async function confirmCancel() {
           <div class="form-group">
             <label>Lớp *</label>
             <select v-model="modal.form.classId" :disabled="!scoped.classes.length">
-              <option value="">{{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}</option>
+              <option value="">
+                {{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}
+              </option>
               <option v-for="c in scoped.classes" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
@@ -285,10 +293,17 @@ async function confirmCancel() {
               <option v-for="d in DAYS" :key="d.code" :value="d.code">{{ d.label }}</option>
             </select>
             <select v-model="modal.slotDraft.periodId" :disabled="!scoped.periods.length">
-              <option value="">{{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}</option>
+              <option value="">
+                {{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}
+              </option>
               <option v-for="p in scoped.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
             </select>
-            <button class="btn btn-outline btn-sm" type="button" :disabled="!modal.slotDraft.periodId" @click="addSlot">
+            <button
+              class="btn btn-outline btn-sm"
+              type="button"
+              :disabled="!modal.slotDraft.periodId"
+              @click="addSlot"
+            >
               + Thêm tiết
             </button>
           </div>
@@ -297,7 +312,9 @@ async function confirmCancel() {
               {{ slotLabel(s) }}
               <button class="chip-x" type="button" @click="removeSlot(i)">×</button>
             </span>
-            <span v-if="!modal.form.slots.length" class="text-muted small">Chưa thêm tiết nào.</span>
+            <span v-if="!modal.form.slots.length" class="text-muted small"
+              >Chưa thêm tiết nào.</span
+            >
           </div>
         </div>
 
