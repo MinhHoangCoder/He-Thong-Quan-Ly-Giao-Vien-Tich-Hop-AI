@@ -341,7 +341,9 @@ onMounted(loadProfile)
             </template>
           </p>
           <div class="hero__badges">
-            <span v-for="r in profile.data.roles" :key="r" class="chip chip--role">{{ r }}</span>
+            <span v-for="r in profile.data.roles" :key="r" class="chip chip--role">{{
+              roleLabel(r)
+            }}</span>
             <span v-if="!profile.data.roles.length" class="chip chip--warn">Chưa có vai trò</span>
           </div>
         </div>
