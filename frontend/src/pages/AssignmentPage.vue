@@ -22,14 +22,20 @@ const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCEL
 
 const loading = ref(false)
 const items = ref([])
+const trashItems = ref([])
 
-/* ── Phân trang phía client ── */
+/* Chế độ xem: 'list' = danh sách phân công | 'trash' = thùng rác (đã xóa mềm). */
+const view = ref('list')
+const inTrash = computed(() => view.value === 'trash')
+
+/* ── Phân trang phía client (áp cho danh sách đang xem) ── */
 const PAGE_SIZE = 10
 const page = ref(0)
-const totalPages = computed(() => Math.ceil(items.value.length / PAGE_SIZE))
+const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
+const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
 const pagedItems = computed(() => {
   const start = page.value * PAGE_SIZE
-  return items.value.slice(start, start + PAGE_SIZE)
+  return currentList.value.slice(start, start + PAGE_SIZE)
 })
 
 const options = reactive({ teachers: [], subjects: [], schools: [] })
@@ -52,6 +58,8 @@ const modal = reactive({
 })
 
 const cancelTarget = ref(null)
+const deleteTarget = ref(null) // xóa mềm → thùng rác
+const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 
 async function load() {
   loading.value = true
@@ -64,6 +72,29 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadTrash() {
+  loading.value = true
+  page.value = 0
+  try {
+    const { data } = await assignmentApi.trash()
+    trashItems.value = data
+  } catch {
+    trashItems.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+function showTrash() {
+  view.value = 'trash'
+  loadTrash()
+}
+
+function showList() {
+  view.value = 'list'
+  load()
 }
 
 onMounted(load)
@@ -176,15 +207,57 @@ async function confirmCancel() {
     cancelTarget.value = null
   }
 }
+
+/* Xóa mềm phân công đã hủy → thùng rác. */
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  try {
+    await assignmentApi.remove(deleteTarget.value.id)
+    deleteTarget.value = null
+    load()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa thất bại')
+    deleteTarget.value = null
+  }
+}
+
+/* Khôi phục từ thùng rác (thao tác an toàn, làm ngay không cần xác nhận). */
+async function restoreItem(a) {
+  try {
+    await assignmentApi.restore(a.id)
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Khôi phục thất bại')
+  }
+}
+
+/* Xóa vĩnh viễn khỏi hệ thống (không thể hoàn tác). */
+async function confirmPurge() {
+  if (!purgeTarget.value) return
+  try {
+    await assignmentApi.purge(purgeTarget.value.id)
+    purgeTarget.value = null
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
+    purgeTarget.value = null
+  }
+}
 </script>
 
 <template>
   <div class="page">
     <div class="page-head">
       <div>
-        <h2 class="title">Phân công giảng dạy</h2>
+        <h2 class="title">{{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}</h2>
       </div>
-      <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
+      <div class="head-actions">
+        <template v-if="!inTrash">
+          <button class="btn btn-outline" @click="showTrash">🗑 Thùng rác</button>
+          <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
+        </template>
+        <button v-else class="btn btn-outline" @click="showList">← Quay lại danh sách</button>
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -205,8 +278,10 @@ async function confirmCancel() {
           <tr v-if="loading">
             <td colspan="8" class="text-center text-muted">Đang tải…</td>
           </tr>
-          <tr v-else-if="!items.length">
-            <td colspan="8" class="text-center text-muted">Chưa có phân công nào</td>
+          <tr v-else-if="!currentList.length">
+            <td colspan="8" class="text-center text-muted">
+              {{ inTrash ? 'Thùng rác trống' : 'Chưa có phân công nào' }}
+            </td>
           </tr>
           <tr v-for="a in pagedItems" :key="a.id">
             <td class="font-medium">{{ a.teacherName }}</td>
@@ -232,13 +307,26 @@ async function confirmCancel() {
               >
             </td>
             <td class="actions">
-              <button
-                v-if="a.status === 'ACTIVE'"
-                class="btn btn-sm btn-danger"
-                @click="cancelTarget = a"
-              >
-                Hủy
-              </button>
+              <template v-if="!inTrash">
+                <button
+                  v-if="a.status === 'ACTIVE'"
+                  class="btn btn-sm btn-danger"
+                  @click="cancelTarget = a"
+                >
+                  Hủy
+                </button>
+                <button
+                  v-else-if="a.status === 'CANCELLED'"
+                  class="btn btn-sm btn-outline"
+                  @click="deleteTarget = a"
+                >
+                  Xóa
+                </button>
+              </template>
+              <template v-else>
+                <button class="btn btn-sm btn-outline" @click="restoreItem(a)">Khôi phục</button>
+                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">Xóa vĩnh viễn</button>
+              </template>
             </td>
           </tr>
         </tbody>
@@ -343,10 +431,46 @@ async function confirmCancel() {
         </div>
       </div>
     </div>
+
+    <!-- Confirm xóa mềm → thùng rác -->
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
+      <div class="modal-box modal-sm">
+        <h3>Xác nhận xóa</h3>
+        <p>
+          Đưa phân công của <strong>{{ deleteTarget.teacherName }}</strong> tại
+          {{ deleteTarget.schoolName }} vào <strong>thùng rác</strong>? Bạn có thể khôi phục lại sau.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="deleteTarget = null">Không</button>
+          <button class="btn btn-danger" @click="confirmDelete">Xóa</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm xóa vĩnh viễn -->
+    <div v-if="purgeTarget" class="modal-overlay" @click.self="purgeTarget = null">
+      <div class="modal-box modal-sm">
+        <h3>Xóa vĩnh viễn</h3>
+        <p>
+          Xóa <strong>vĩnh viễn</strong> phân công của <strong>{{ purgeTarget.teacherName }}</strong>
+          tại {{ purgeTarget.schoolName }} khỏi hệ thống? Hành động này
+          <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên quan.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="purgeTarget = null">Không</button>
+          <button class="btn btn-danger" @click="confirmPurge">Xóa vĩnh viễn</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.head-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
 .slots-block {
   margin-top: 0.5rem;
   border-top: 1px dashed var(--c-border);

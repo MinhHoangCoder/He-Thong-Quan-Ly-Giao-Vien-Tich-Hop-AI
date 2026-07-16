@@ -30,4 +30,10 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
 
     /** Chi tiết 1 phân công (chưa xóa mềm). */
     Optional<Assignment> findByIdAndDeletedFalse(Integer id);
+
+    /** Thùng rác: các phân công đã xóa mềm (mới nhất trước). */
+    List<Assignment> findByDeletedTrueOrderByIdDesc();
+
+    /** Một phân công trong thùng rác — cho khôi phục / xóa vĩnh viễn. */
+    Optional<Assignment> findByIdAndDeletedTrue(Integer id);
 }
