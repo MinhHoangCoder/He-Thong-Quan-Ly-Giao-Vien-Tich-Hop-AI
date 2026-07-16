@@ -2,25 +2,44 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
+import { subjectCategoryApi } from '@/api/subjectCategories'
 
 const router = useRouter()
+
+/* =========================
+   State
+========================= */
+
+const PAGE_SIZE = 10
 
 const loading = ref(false)
 const error = ref('')
 
 const lessons = ref([])
+const categories = ref([])
+const gradeLevels = ref([])
 
 const page = ref(0)
 const totalPages = ref(0)
 const totalItems = ref(0)
 
-const PAGE_SIZE = 10
-
 const pageInput = ref('')
 
+/* =========================
+   Filter
+========================= */
+
+// Teacher chỉ xem bài giảng đã xuất bản -> không có filter Trạng thái
+// (khác trang Admin, nơi có đủ 3 trạng thái Bản nháp/Đã đăng/Lưu kho).
 const filter = reactive({
+  category: '',
+  gradeLevel: '',
   keyword: '',
 })
+
+/* =========================
+   Constant
+========================= */
 
 const STATUS_MAP = {
   PUBLISHED: {
@@ -28,6 +47,10 @@ const STATUS_MAP = {
     cls: 'badge--pub',
   },
 }
+
+/* =========================
+   Pagination
+========================= */
 
 const visiblePages = computed(() => {
   const total = totalPages.value
@@ -38,61 +61,26 @@ const visiblePages = computed(() => {
 
   if (end - start < 4) {
     if (start === 1) {
-      end = Math.min(total, 5)
+      end = Math.min(5, total)
     } else if (end === total) {
       start = Math.max(1, total - 4)
     }
   }
 
-  const pages = []
+  const arr = []
 
   for (let i = start; i <= end; i++) {
-    pages.push(i)
+    arr.push(i)
   }
 
-  return pages
+  return arr
 })
 
-async function load() {
-  loading.value = true
-  error.value = ''
+function goPage(index) {
+  if (index < 0 || index >= totalPages.value) return
 
-  try {
-    const { data } = await lessonApi.list({
-      page: page.value,
-      size: PAGE_SIZE,
-      keyword: filter.keyword,
-      status: 'PUBLISHED',
-    })
-
-    lessons.value = data.content
-    totalPages.value = data.totalPages
-    totalItems.value = data.totalElements
-  } catch (e) {
-    console.error(e)
-    error.value = 'Không tải được danh sách bài giảng.'
-  } finally {
-    loading.value = false
-  }
-}
-
-function search() {
-  page.value = 0
-  load()
-}
-
-function clearSearch() {
-  filter.keyword = ''
-  page.value = 0
-  load()
-}
-
-function goPage(p) {
-  if (p < 0) return
-  if (p >= totalPages.value) return
-
-  page.value = p
-  load()
+  page.value = index
+  loadLessons()
 }
 
 function jumpPage() {
@@ -105,6 +93,71 @@ function jumpPage() {
   goPage(p - 1)
 }
 
+/* =========================
+   API
+========================= */
+
+async function loadMeta() {
+  try {
+    const [categoryRes, gradeRes] = await Promise.all([
+      subjectCategoryApi.listActive(),
+      lessonApi.gradeLevels(),
+    ])
+
+    categories.value = categoryRes.data
+    gradeLevels.value = gradeRes.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function loadLessons() {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const params = {
+      page: page.value,
+      size: PAGE_SIZE,
+      status: 'PUBLISHED',
+    }
+
+    if (filter.category) params.category = filter.category
+    if (filter.gradeLevel) params.gradeLevel = filter.gradeLevel
+    if (filter.keyword) params.keyword = filter.keyword
+
+    const { data } = await lessonApi.list(params)
+
+    lessons.value = data.content || []
+    totalPages.value = data.totalPages || 0
+    totalItems.value = data.totalElements || 0
+  } catch (err) {
+    console.error(err)
+    error.value = 'Không tải được danh sách bài giảng.'
+  } finally {
+    loading.value = false
+  }
+}
+
+/* =========================
+   Actions
+========================= */
+
+function applyFilter() {
+  page.value = 0
+  loadLessons()
+}
+
+function clearFilter() {
+  filter.category = ''
+  filter.gradeLevel = ''
+  filter.keyword = ''
+
+  page.value = 0
+
+  loadLessons()
+}
+
 function viewLesson(id) {
   router.push({
     name: 'teacher-lesson-view',
@@ -114,10 +167,16 @@ function viewLesson(id) {
   })
 }
 
-onMounted(() => {
-  load()
+/* =========================
+   Mounted
+========================= */
+
+onMounted(async () => {
+  await loadMeta()
+  await loadLessons()
 })
 </script>
+
 <template>
   <div class="page">
     <!-- Header -->
@@ -128,49 +187,78 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Filter -->
+    <!-- ================= FILTER ================= -->
+
     <div class="filter-bar">
+      <label class="field">
+        <span>Danh mục</span>
+
+        <select v-model="filter.category" @change="applyFilter">
+          <option value="">Tất cả</option>
+
+          <option v-for="item in categories" :key="item.id" :value="item.name">
+            {{ item.name }}
+          </option>
+        </select>
+      </label>
+
+      <label class="field">
+        <span>Khối</span>
+
+        <select v-model="filter.gradeLevel" @change="applyFilter">
+          <option value="">Tất cả</option>
+
+          <option v-for="g in gradeLevels" :key="g" :value="g">
+            {{ g }}
+          </option>
+        </select>
+      </label>
+
       <label class="field field--wide">
         <span>Tìm kiếm</span>
 
         <input
           v-model="filter.keyword"
-          type="text"
           placeholder="Nhập tiêu đề bài giảng..."
-          @keyup.enter="search"
+          @keyup.enter="applyFilter"
         />
       </label>
 
       <div class="filter-actions">
-        <button class="btn" @click="search">Tìm kiếm</button>
+        <button class="btn" @click="applyFilter">Lọc</button>
 
-        <button class="btn btn--ghost" @click="clearSearch">Xóa</button>
+        <button class="btn btn--ghost" @click="clearFilter">Xóa lọc</button>
       </div>
     </div>
 
-    <!-- Message -->
+    <!-- ================= INFO ================= -->
 
     <p v-if="error" class="msg msg--error">
       {{ error }}
     </p>
 
     <p v-if="!loading" class="total">
-      Có
+      Tổng cộng
       <strong>{{ totalItems }}</strong>
       bài giảng
     </p>
 
-    <!-- Table -->
+    <!-- ================= TABLE ================= -->
 
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
             <th>Tiêu đề</th>
+
             <th>Danh mục</th>
+
             <th>Môn học</th>
-            <th>Khối lớp</th>
+
+            <th>Khối</th>
+
             <th>Trạng thái</th>
+
             <th width="90">Xem</th>
           </tr>
         </thead>
@@ -181,7 +269,7 @@ onMounted(() => {
           </tr>
 
           <tr v-else-if="lessons.length === 0">
-            <td colspan="6" class="empty">Không có bài giảng.</td>
+            <td colspan="6" class="empty">Không có dữ liệu</td>
           </tr>
 
           <tr v-for="lesson in lessons" :key="lesson.id">
@@ -225,10 +313,10 @@ onMounted(() => {
       </table>
     </div>
 
-    <!-- Pagination -->
+    <!-- ================= PAGINATION ================= -->
 
     <div v-if="totalPages > 1" class="pagination">
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">Trang đầu</button>
+      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
 
       <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
 
@@ -236,7 +324,9 @@ onMounted(() => {
         v-for="p in visiblePages"
         :key="p"
         class="pg-btn"
-        :class="{ 'pg-btn--active': page === p - 1 }"
+        :class="{
+          'pg-btn--active': page === p - 1,
+        }"
         @click="goPage(p - 1)"
       >
         {{ p }}
@@ -247,14 +337,14 @@ onMounted(() => {
       </button>
 
       <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
-        Trang cuối
+        »
       </button>
 
       <input
         v-model="pageInput"
         class="page-input"
         type="number"
-        :min="1"
+        min="1"
         :max="totalPages"
         placeholder="Trang"
       />
@@ -263,11 +353,14 @@ onMounted(() => {
     </div>
   </div>
 </template>
+
 <style scoped>
 .page {
-  max-width: 1200px;
+  max-width: 1280px;
   margin: auto;
 }
+
+/* ================= Header ================= */
 
 .page__head {
   display: flex;
@@ -278,7 +371,8 @@ onMounted(() => {
 
 .page__title {
   margin: 0;
-  font-size: 24px;
+  font-size: 26px;
+  font-weight: 700;
   color: var(--c-text);
 }
 
@@ -288,21 +382,27 @@ onMounted(() => {
   font-size: 14px;
 }
 
+/* ================= Filter ================= */
+
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 16px;
   padding: 18px;
   margin-bottom: 18px;
+
   background: var(--c-surface);
+
+  border-radius: 14px;
+
   border: 1px solid var(--c-border);
-  border-radius: 12px;
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 170px;
 }
 
 .field--wide {
@@ -311,20 +411,51 @@ onMounted(() => {
 
 .field span {
   font-size: 13px;
-  color: var(--c-text);
   font-weight: 600;
+  color: var(--c-text);
 }
 
-.field input {
+.field input,
+.field select {
   height: 40px;
-  padding: 0 12px;
   border: 1px solid var(--c-input-border);
   border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
 }
 
-.field input:focus {
+.field input:focus,
+.field select:focus {
   outline: none;
   border-color: #f97316;
+}
+
+/* ================= Buttons ================= */
+
+.btn {
+  border: none;
+  cursor: pointer;
+
+  border-radius: 8px;
+
+  padding: 10px 18px;
+
+  font-weight: 600;
+
+  background: #f97316;
+
+  color: white;
+
+  transition: 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn--ghost {
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 
 .filter-actions {
@@ -333,26 +464,13 @@ onMounted(() => {
   gap: 10px;
 }
 
-.btn {
-  padding: 10px 18px;
-  border: none;
-  border-radius: 8px;
-  background: #f97316;
-  color: white;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.btn--ghost {
-  background: var(--c-surface-2);
-  color: var(--c-text);
-}
+/* ================= Table ================= */
 
 .table-wrap {
   overflow-x: auto;
   background: var(--c-surface);
+  border-radius: 14px;
   border: 1px solid var(--c-border);
-  border-radius: 12px;
 }
 
 table {
@@ -368,6 +486,7 @@ th {
   padding: 14px;
   text-align: left;
   font-size: 13px;
+  font-weight: 700;
   color: var(--c-text);
 }
 
@@ -383,48 +502,81 @@ tbody tr:hover {
 .empty {
   text-align: center;
   color: var(--c-text-muted);
-  padding: 30px;
+  padding: 35px;
 }
+
+/* ================= Lesson ================= */
 
 .title-text {
   font-weight: 600;
 }
 
 .desc-text {
-  margin-top: 5px;
+  margin-top: 4px;
+
   color: var(--c-text-muted);
+
   font-size: 12px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  max-width: 260px;
 }
+
+/* ================= Category ================= */
 
 .cat-badge {
   display: inline-block;
-  background: rgba(37, 99, 235, 0.12);
-  color: #2563eb;
+
   padding: 4px 10px;
+
   border-radius: 999px;
+
+  background: rgba(37, 99, 235, 0.12);
+
+  color: #2563eb;
+
   font-size: 12px;
+
+  font-weight: 600;
 }
+
 :root[data-theme='dark'] .cat-badge {
   color: #93c5fd;
 }
 
+/* ================= Status ================= */
+
 .badge {
   display: inline-block;
+
   padding: 4px 10px;
+
   border-radius: 999px;
+
   font-size: 12px;
+
   font-weight: 600;
 }
 
+/* Nền rgba mờ hòa được cả theme sáng/tối; chữ chỉnh riêng cho nền tối bên dưới */
 .badge--pub {
   background: rgba(34, 197, 94, 0.15);
   color: #15803d;
 }
+
 :root[data-theme='dark'] .badge--pub {
   color: #4ade80;
 }
 
+/* ================= Action ================= */
+
 .col-actions {
+  white-space: nowrap;
   text-align: center;
 }
 
@@ -432,32 +584,48 @@ tbody tr:hover {
   border: none;
   background: transparent;
   cursor: pointer;
-  font-size: 18px;
+
   padding: 6px;
+
   border-radius: 6px;
+
+  font-size: 17px;
+
+  transition: 0.2s;
 }
 
 .act-btn:hover {
   background: var(--c-surface-2);
 }
 
+/* ================= Pagination ================= */
+
 .pagination {
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
+
   gap: 8px;
-  margin-top: 22px;
+
+  margin-top: 24px;
+
   flex-wrap: wrap;
 }
 
 .pg-btn {
-  height: 38px;
   min-width: 38px;
-  padding: 0 12px;
+
+  height: 38px;
+
   border: 1px solid var(--c-border);
-  background: var(--c-surface);
+
   border-radius: 8px;
+
+  background: var(--c-surface);
+
   cursor: pointer;
+
+  transition: 0.2s;
 }
 
 .pg-btn:hover:not(:disabled) {
@@ -471,22 +639,29 @@ tbody tr:hover {
 }
 
 .pg-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .page-input {
   width: 70px;
+
   height: 38px;
-  text-align: center;
+
   border: 1px solid var(--c-input-border);
+
   border-radius: 8px;
+
+  text-align: center;
 }
+
+/* ================= Message ================= */
 
 .msg {
   padding: 12px;
+  margin-bottom: 16px;
+
   border-radius: 8px;
-  margin-bottom: 15px;
 }
 
 .msg--error {
@@ -502,10 +677,14 @@ tbody tr:hover {
   color: var(--c-text-muted);
 }
 
+/* ================= Responsive ================= */
+
 @media (max-width: 900px) {
   .page__head {
     flex-direction: column;
+
     align-items: flex-start;
+
     gap: 15px;
   }
 

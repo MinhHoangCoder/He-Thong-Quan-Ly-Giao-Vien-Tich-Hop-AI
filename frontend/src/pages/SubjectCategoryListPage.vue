@@ -5,9 +5,14 @@
  * (mở rộng 1 dòng nhóm -> xem/thêm/sửa/xóa môn thuộc nhóm đó). Validate ở cả 2 cấp
  * (nhóm + môn) trước khi gọi API, mirror đúng rule phía backend.
  *
+ * FIX (2026-07-16): đồng bộ giao diện với "Kho bài giảng" (LessonListPage.vue) —
+ * cùng bố cục page__head/filter-bar/table-wrap/pagination, cùng token màu & badge,
+ * cùng kiểu nút hành động icon (✏️/🗑️) và modal xác nhận xóa. Chức năng CRUD
+ * nhóm môn + môn học lồng bên trong giữ NGUYÊN không đổi.
+ *
  * readOnly=true (dùng cho portal GIÁO VIÊN): ẩn mọi nút thêm/sửa/xóa, chỉ xem.
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { subjectCategoryApi } from '@/api/subjectCategories'
 import { subjectApi } from '@/api/subjects'
 
@@ -18,6 +23,7 @@ const total = ref(0)
 const keyword = ref('')
 const page = ref(0)
 const pageSize = 10
+const pageInput = ref('')
 
 /** Toàn bộ nhóm ACTIVE (không phân trang) — dùng cho dropdown "Nhóm môn" trong modal môn học. */
 const allCategories = ref([])
@@ -51,6 +57,53 @@ const subjectModal = reactive({
 })
 
 const deleteSubjectTarget = ref(null)
+
+/* =========================
+   Pagination (đồng bộ với LessonListPage.vue)
+========================= */
+
+const totalPages = computed(() => Math.ceil(total.value / pageSize))
+
+const visiblePages = computed(() => {
+  const totalP = totalPages.value
+  const current = page.value + 1
+
+  let start = Math.max(1, current - 2)
+  let end = Math.min(totalP, current + 2)
+
+  if (end - start < 4) {
+    if (start === 1) {
+      end = Math.min(5, totalP)
+    } else if (end === totalP) {
+      start = Math.max(1, totalP - 4)
+    }
+  }
+
+  const arr = []
+
+  for (let i = start; i <= end; i++) {
+    arr.push(i)
+  }
+
+  return arr
+})
+
+function goPage(index) {
+  if (index < 0 || index >= totalPages.value) return
+
+  page.value = index
+  load()
+}
+
+function jumpPage() {
+  const p = Number(pageInput.value)
+
+  if (isNaN(p)) return
+  if (p < 1) return
+  if (p > totalPages.value) return
+
+  goPage(p - 1)
+}
 
 /* ── Load nhóm môn ── */
 async function load() {
@@ -92,8 +145,10 @@ function onSearch() {
   page.value = 0
   load()
 }
-function onPage(p) {
-  page.value = p
+
+function clearSearch() {
+  keyword.value = ''
+  page.value = 0
   load()
 }
 
@@ -292,81 +347,117 @@ async function confirmDeleteSubject() {
     deleteSubjectTarget.value = null
   }
 }
-
-/* ── Helpers ── */
-const totalPages = () => Math.ceil(total.value / pageSize)
 </script>
 
 <template>
-  <div class="sc-page">
-    <!-- Header -->
-    <div class="sc-header">
+  <div class="page">
+    <!-- ================= HEADER ================= -->
+    <div class="page__head">
       <div>
-        <h2 class="sc-title">Nhóm môn học</h2>
-        <p v-if="readOnly" class="sc-readonly-note">
-          Chế độ xem — bấm vào 1 dòng để xem các môn học trong nhóm.
+        <h1 class="page__title">Nhóm môn học</h1>
+        <p class="page__sub">
+          {{
+            readOnly
+              ? 'Chế độ xem — bấm vào 1 dòng để xem các môn học trong nhóm.'
+              : 'Quản lý nhóm môn và các môn học trực thuộc'
+          }}
         </p>
       </div>
-      <button v-if="!readOnly" class="btn btn-primary" @click="openCreate">+ Thêm nhóm môn</button>
+
+      <button v-if="!readOnly" class="btn" @click="openCreate">+ Thêm nhóm môn</button>
     </div>
 
-    <!-- Search -->
-    <div class="sc-toolbar">
-      <input
-        v-model="keyword"
-        class="input-search"
-        placeholder="Tìm theo tên, mã..."
-        @keyup.enter="onSearch"
-      />
-      <button class="btn btn-outline" @click="onSearch">Tìm</button>
+    <!-- ================= FILTER ================= -->
+
+    <div class="filter-bar">
+      <label class="field field--wide">
+        <span>Tìm kiếm</span>
+
+        <input v-model="keyword" placeholder="Nhập tên, mã nhóm môn..." @keyup.enter="onSearch" />
+      </label>
+
+      <div class="filter-actions">
+        <button class="btn" @click="onSearch">Lọc</button>
+
+        <button class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+      </div>
     </div>
 
-    <!-- Table -->
-    <div class="sc-table-wrap" :class="{ loading }">
-      <table class="sc-table">
+    <!-- ================= INFO ================= -->
+
+    <p v-if="!loading" class="total">
+      Tổng cộng
+      <strong>{{ total }}</strong>
+      nhóm môn
+    </p>
+
+    <!-- ================= TABLE ================= -->
+
+    <div class="table-wrap">
+      <table>
         <thead>
           <tr>
-            <th class="expand-col"></th>
+            <th width="28"></th>
             <th>Mã (Code)</th>
             <th>Tên nhóm môn</th>
             <th>Mô tả</th>
             <th>Số môn</th>
             <th>Trạng thái</th>
-            <th v-if="!readOnly"></th>
+            <th v-if="!readOnly" width="120">Thao tác</th>
           </tr>
         </thead>
+
         <tbody>
           <tr v-if="loading">
-            <td :colspan="readOnly ? 6 : 7" class="text-center text-muted">Đang tải...</td>
+            <td :colspan="readOnly ? 6 : 7" class="empty">Đang tải...</td>
           </tr>
-          <tr v-else-if="!items.length">
-            <td :colspan="readOnly ? 6 : 7" class="text-center text-muted">Chưa có dữ liệu</td>
+
+          <tr v-else-if="items.length === 0">
+            <td :colspan="readOnly ? 6 : 7" class="empty">Không có dữ liệu</td>
           </tr>
+
           <template v-for="item in items" :key="item.id">
             <tr class="row-clickable" @click="toggleExpand(item)">
               <td class="expand-cell">
                 <span class="chevron" :class="{ open: expandedId === item.id }">›</span>
               </td>
+
               <td>
-                <code>{{ item.code }}</code>
+                <code class="code-text">{{ item.code }}</code>
               </td>
-              <td class="font-medium">{{ item.name }}</td>
-              <td class="text-muted small">{{ item.description ?? '—' }}</td>
-              <td>{{ item.subjectCount }}</td>
+
+              <td class="col-title">
+                <div class="title-text">{{ item.name }}</div>
+              </td>
+
               <td>
-                <span :class="['badge', item.status === 'ACTIVE' ? 'badge-green' : 'badge-gray']">
+                <div v-if="item.description" class="desc-text">{{ item.description }}</div>
+                <span v-else>-</span>
+              </td>
+
+              <td>
+                <span class="cat-badge">{{ item.subjectCount }}</span>
+              </td>
+
+              <td>
+                <span
+                  class="badge"
+                  :class="item.status === 'ACTIVE' ? 'badge--pub' : 'badge--draft'"
+                >
                   {{ item.status === 'ACTIVE' ? 'Hoạt động' : 'Tắt' }}
                 </span>
               </td>
-              <td v-if="!readOnly" class="actions" @click.stop>
-                <button class="btn btn-sm btn-outline" @click="openEdit(item)">Sửa</button>
+
+              <td v-if="!readOnly" class="col-actions" @click.stop>
+                <button class="act-btn" title="Sửa" @click="openEdit(item)">✏️</button>
+
                 <button
-                  class="btn btn-sm btn-danger"
+                  class="act-btn act-btn--del"
+                  title="Xóa"
                   :disabled="item.subjectCount > 0"
-                  :title="item.subjectCount > 0 ? 'Có môn học đang dùng nhóm này' : 'Xóa'"
                   @click="deleteTarget = item"
                 >
-                  Xóa
+                  🗑️
                 </button>
               </td>
             </tr>
@@ -377,18 +468,12 @@ const totalPages = () => Math.ceil(total.value / pageSize)
                 <div class="subj-panel">
                   <div class="subj-panel__head">
                     <h4>Môn học trong nhóm "{{ item.name }}"</h4>
-                    <button
-                      v-if="!readOnly"
-                      class="btn btn-sm btn-primary"
-                      @click="openCreateSubject(item)"
-                    >
+                    <button v-if="!readOnly" class="btn btn--sm" @click="openCreateSubject(item)">
                       + Thêm môn học
                     </button>
                   </div>
 
-                  <div v-if="subjectsLoading" class="text-muted small subj-loading">
-                    Đang tải môn học...
-                  </div>
+                  <p v-if="subjectsLoading" class="empty empty--inline">Đang tải môn học...</p>
 
                   <table v-else-if="subjectsByCategory.length" class="subj-table">
                     <thead>
@@ -397,41 +482,51 @@ const totalPages = () => Math.ceil(total.value / pageSize)
                         <th>Tên môn</th>
                         <th>Mô tả</th>
                         <th>Trạng thái</th>
-                        <th v-if="!readOnly"></th>
+                        <th v-if="!readOnly" width="90">Thao tác</th>
                       </tr>
                     </thead>
+
                     <tbody>
                       <tr v-for="s in subjectsByCategory" :key="s.id">
                         <td>
-                          <code>{{ s.code }}</code>
+                          <code class="code-text">{{ s.code }}</code>
                         </td>
-                        <td>{{ s.name }}</td>
-                        <td class="text-muted small">{{ s.description ?? '—' }}</td>
+
+                        <td class="title-text">{{ s.name }}</td>
+
+                        <td>
+                          <span v-if="s.description" class="desc-text">{{ s.description }}</span>
+                          <span v-else>-</span>
+                        </td>
+
                         <td>
                           <span
-                            :class="['badge', s.status === 'ACTIVE' ? 'badge-green' : 'badge-gray']"
+                            class="badge"
+                            :class="s.status === 'ACTIVE' ? 'badge--pub' : 'badge--draft'"
                           >
                             {{ s.status === 'ACTIVE' ? 'Hoạt động' : 'Tắt' }}
                           </span>
                         </td>
-                        <td v-if="!readOnly" class="actions">
-                          <button class="btn btn-sm btn-outline" @click="openEditSubject(s)">
-                            Sửa
+
+                        <td v-if="!readOnly" class="col-actions">
+                          <button class="act-btn" title="Sửa" @click="openEditSubject(s)">
+                            ✏️
                           </button>
+
                           <button
-                            class="btn btn-sm btn-danger"
+                            class="act-btn act-btn--del"
+                            title="Xóa"
                             :disabled="s.lessonCount > 0"
-                            :title="s.lessonCount > 0 ? 'Có bài giảng đang dùng môn này' : 'Xóa'"
                             @click="deleteSubjectTarget = s"
                           >
-                            Xóa
+                            🗑️
                           </button>
                         </td>
                       </tr>
                     </tbody>
                   </table>
 
-                  <p v-else class="text-muted small subj-empty">
+                  <p v-else class="empty empty--inline">
                     Nhóm này chưa có môn học nào{{
                       readOnly ? '.' : ' — bấm "+ Thêm môn học" để tạo.'
                     }}
@@ -444,16 +539,46 @@ const totalPages = () => Math.ceil(total.value / pageSize)
       </table>
     </div>
 
-    <!-- Pagination -->
-    <div class="sc-pagination" v-if="totalPages() > 1">
-      <button :disabled="page === 0" @click="onPage(page - 1)">‹</button>
-      <span>Trang {{ page + 1 }} / {{ totalPages() }}</span>
-      <button :disabled="page >= totalPages() - 1" @click="onPage(page + 1)">›</button>
+    <!-- ================= PAGINATION ================= -->
+
+    <div v-if="totalPages > 1" class="pagination">
+      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
+
+      <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+
+      <button
+        v-for="p in visiblePages"
+        :key="p"
+        class="pg-btn"
+        :class="{ 'pg-btn--active': page === p - 1 }"
+        @click="goPage(p - 1)"
+      >
+        {{ p }}
+      </button>
+
+      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
+        ›
+      </button>
+
+      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
+        »
+      </button>
+
+      <input
+        v-model="pageInput"
+        class="page-input"
+        type="number"
+        min="1"
+        :max="totalPages"
+        placeholder="Trang"
+      />
+
+      <button class="pg-btn" @click="jumpPage">Đi</button>
     </div>
 
-    <!-- Modal tạo/sửa nhóm môn -->
-    <div v-if="modal.open" class="modal-overlay" @click.self="modal.open = false">
-      <div class="modal-box">
+    <!-- ================= MODAL: tạo/sửa nhóm môn ================= -->
+    <div v-if="modal.open" class="overlay" @click.self="modal.open = false">
+      <div class="modal">
         <h3>{{ modal.mode === 'create' ? 'Thêm nhóm môn' : 'Sửa nhóm môn' }}</h3>
 
         <div class="form-group">
@@ -468,6 +593,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
           <small v-if="modal.errors.code" class="field-error">{{ modal.errors.code }}</small>
           <small v-else>Chỉ chữ hoa, số, dấu _. Không đổi sau khi tạo.</small>
         </div>
+
         <div class="form-group">
           <label>Tên nhóm môn *</label>
           <input
@@ -478,6 +604,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
           />
           <small v-if="modal.errors.name" class="field-error">{{ modal.errors.name }}</small>
         </div>
+
         <div class="form-group">
           <label>Mô tả</label>
           <textarea
@@ -490,6 +617,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
             modal.errors.description
           }}</small>
         </div>
+
         <div class="form-group">
           <label>Trạng thái</label>
           <select v-model="modal.form.status">
@@ -498,35 +626,37 @@ const totalPages = () => Math.ceil(total.value / pageSize)
           </select>
         </div>
 
-        <p v-if="modal.error" class="error-msg">{{ modal.error }}</p>
+        <p v-if="modal.error" class="msg msg--error">{{ modal.error }}</p>
 
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
-          <button class="btn btn-primary" :disabled="modal.saving" @click="saveModal">
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="modal.open = false">Hủy</button>
+          <button class="btn" :disabled="modal.saving" @click="saveModal">
             {{ modal.saving ? 'Đang lưu...' : 'Lưu' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Confirm xóa nhóm môn -->
-    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
-      <div class="modal-box modal-sm">
+    <!-- ================= MODAL: xác nhận xóa nhóm môn ================= -->
+    <div v-if="deleteTarget" class="overlay" @click.self="deleteTarget = null">
+      <div class="modal">
         <h3>Xác nhận xóa</h3>
+
         <p>
           Bạn có chắc muốn xóa nhóm môn <strong>{{ deleteTarget.name }}</strong
           >?
         </p>
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="deleteTarget = null">Hủy</button>
-          <button class="btn btn-danger" @click="confirmDelete">Xóa</button>
+
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
+          <button class="btn btn--danger" @click="confirmDelete">Xóa</button>
         </div>
       </div>
     </div>
 
-    <!-- Modal tạo/sửa môn học -->
-    <div v-if="subjectModal.open" class="modal-overlay" @click.self="subjectModal.open = false">
-      <div class="modal-box">
+    <!-- ================= MODAL: tạo/sửa môn học ================= -->
+    <div v-if="subjectModal.open" class="overlay" @click.self="subjectModal.open = false">
+      <div class="modal">
         <h3>{{ subjectModal.mode === 'create' ? 'Thêm môn học' : 'Sửa môn học' }}</h3>
 
         <div class="form-group">
@@ -542,6 +672,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
           }}</small>
           <small v-else>Chỉ chữ hoa, số, dấu _ (2-20 ký tự).</small>
         </div>
+
         <div class="form-group">
           <label>Tên môn học *</label>
           <input
@@ -554,6 +685,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
             subjectModal.errors.name
           }}</small>
         </div>
+
         <div v-if="subjectModal.mode === 'create'" class="form-group">
           <label>Nhóm môn</label>
           <input :value="subjectModal.categoryName" disabled />
@@ -572,6 +704,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
             subjectModal.errors.categoryId
           }}</small>
         </div>
+
         <div class="form-group">
           <label>Mô tả</label>
           <textarea
@@ -584,6 +717,7 @@ const totalPages = () => Math.ceil(total.value / pageSize)
             subjectModal.errors.description
           }}</small>
         </div>
+
         <div class="form-group">
           <label>Trạng thái</label>
           <select v-model="subjectModal.form.status">
@@ -592,28 +726,30 @@ const totalPages = () => Math.ceil(total.value / pageSize)
           </select>
         </div>
 
-        <p v-if="subjectModal.error" class="error-msg">{{ subjectModal.error }}</p>
+        <p v-if="subjectModal.error" class="msg msg--error">{{ subjectModal.error }}</p>
 
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="subjectModal.open = false">Hủy</button>
-          <button class="btn btn-primary" :disabled="subjectModal.saving" @click="saveSubjectModal">
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="subjectModal.open = false">Hủy</button>
+          <button class="btn" :disabled="subjectModal.saving" @click="saveSubjectModal">
             {{ subjectModal.saving ? 'Đang lưu...' : 'Lưu' }}
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Confirm xóa môn học -->
-    <div v-if="deleteSubjectTarget" class="modal-overlay" @click.self="deleteSubjectTarget = null">
-      <div class="modal-box modal-sm">
+    <!-- ================= MODAL: xác nhận xóa môn học ================= -->
+    <div v-if="deleteSubjectTarget" class="overlay" @click.self="deleteSubjectTarget = null">
+      <div class="modal">
         <h3>Xác nhận xóa</h3>
+
         <p>
           Bạn có chắc muốn xóa môn học <strong>{{ deleteSubjectTarget.name }}</strong
           >?
         </p>
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="deleteSubjectTarget = null">Hủy</button>
-          <button class="btn btn-danger" @click="confirmDeleteSubject">Xóa</button>
+
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="deleteSubjectTarget = null">Hủy</button>
+          <button class="btn btn--danger" @click="confirmDeleteSubject">Xóa</button>
         </div>
       </div>
     </div>
@@ -621,296 +757,573 @@ const totalPages = () => Math.ceil(total.value / pageSize)
 </template>
 
 <style scoped>
-.sc-page {
-  padding: 1.5rem;
-  max-width: 980px;
+.page {
+  max-width: 1280px;
+  margin: auto;
 }
-.sc-header {
+
+/* ================= Header ================= */
+
+.page__head {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 1rem;
-  gap: 12px;
+  align-items: center;
+  margin-bottom: 22px;
 }
-.sc-title {
-  font-size: 1.25rem;
-  font-weight: 600;
+
+.page__title {
   margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--c-text);
 }
-.sc-readonly-note {
-  margin: 4px 0 0;
-  font-size: 0.8rem;
+
+.page__sub {
+  margin-top: 6px;
   color: var(--c-text-muted);
+  font-size: 14px;
 }
-.sc-toolbar {
+
+/* ================= Filter ================= */
+
+.filter-bar {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-.input-search {
-  flex: 1;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--c-input-border);
-  border-radius: 6px;
-  font-size: 0.9rem;
-}
-.sc-table-wrap {
-  overflow-x: auto;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+
+  background: var(--c-surface);
+
+  border-radius: 14px;
+
   border: 1px solid var(--c-border);
-  border-radius: 8px;
 }
-.sc-table {
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 170px;
+}
+
+.field--wide {
+  flex: 1;
+}
+
+.field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.field input {
+  height: 40px;
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #f97316;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* ================= Buttons ================= */
+
+.btn {
+  border: none;
+  cursor: pointer;
+
+  border-radius: 8px;
+
+  padding: 10px 18px;
+
+  font-weight: 600;
+
+  background: #f97316;
+
+  color: white;
+
+  transition: 0.2s;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn--ghost {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+.btn--danger {
+  background: #ef4444;
+}
+
+.btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* ================= Table ================= */
+
+.table-wrap {
+  overflow-x: auto;
+  background: var(--c-surface);
+  border-radius: 14px;
+  border: 1px solid var(--c-border);
+}
+
+table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9rem;
 }
-.sc-table th {
+
+thead {
   background: var(--c-surface-2);
-  padding: 0.6rem 1rem;
+}
+
+th {
+  padding: 14px;
   text-align: left;
-  font-weight: 600;
-  border-bottom: 1px solid var(--c-border);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text);
 }
-.expand-col {
-  width: 28px;
-}
-.sc-table td {
-  padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--c-border-soft);
+
+td {
+  padding: 14px;
+  border-top: 1px solid var(--c-border);
   vertical-align: middle;
 }
-.sc-table tbody tr:last-child td {
-  border-bottom: none;
-}
-.row-clickable {
-  cursor: pointer;
-}
-.row-clickable:hover td {
+
+tbody tr:hover {
   background: var(--c-surface-2);
 }
+
+.empty {
+  text-align: center;
+  color: var(--c-text-muted);
+  padding: 35px;
+}
+
+.empty--inline {
+  padding: 10px 0;
+  text-align: left;
+}
+
+/* ================= Expand chevron ================= */
+
 .expand-cell {
   width: 28px;
 }
+
 .chevron {
   display: inline-block;
   color: var(--c-text-muted);
-  font-size: 1rem;
+  font-size: 16px;
   transition: transform 0.15s ease;
 }
+
 .chevron.open {
   transform: rotate(90deg);
   color: #f97316;
 }
+
+.row-clickable {
+  cursor: pointer;
+}
+
 .row-expanded:hover td {
   background: var(--c-surface-2);
 }
+
 .row-expanded td {
   background: var(--c-surface-2);
   padding: 0;
-  border-bottom: 1px solid var(--c-border);
+  border-top: 1px solid var(--c-border);
 }
+
+/* ================= Group / Subject ================= */
+
+.title-text {
+  font-weight: 600;
+}
+
+.desc-text {
+  margin-top: 4px;
+
+  color: var(--c-text-muted);
+
+  font-size: 12px;
+
+  overflow: hidden;
+
+  text-overflow: ellipsis;
+
+  white-space: nowrap;
+
+  max-width: 260px;
+}
+
+.code-text {
+  background: var(--c-surface-2);
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+/* ================= Category (số môn) ================= */
+
+.cat-badge {
+  display: inline-block;
+
+  padding: 4px 10px;
+
+  border-radius: 999px;
+
+  background: rgba(37, 99, 235, 0.12);
+
+  color: #2563eb;
+
+  font-size: 12px;
+
+  font-weight: 600;
+}
+
+:root[data-theme='dark'] .cat-badge {
+  color: #93c5fd;
+}
+
+/* ================= Status ================= */
+
+.badge {
+  display: inline-block;
+
+  padding: 4px 10px;
+
+  border-radius: 999px;
+
+  font-size: 12px;
+
+  font-weight: 600;
+}
+
+.badge--draft {
+  background: var(--c-surface-2);
+  color: var(--c-text);
+}
+
+/* Nền rgba mờ hòa được cả theme sáng/tối; chữ chỉnh riêng cho nền tối bên dưới */
+.badge--pub {
+  background: rgba(34, 197, 94, 0.15);
+  color: #15803d;
+}
+
+:root[data-theme='dark'] .badge--pub {
+  color: #4ade80;
+}
+
+/* ================= Action ================= */
+
+.col-actions {
+  white-space: nowrap;
+}
+
+.act-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+
+  padding: 6px;
+
+  border-radius: 6px;
+
+  font-size: 16px;
+
+  transition: 0.2s;
+}
+
+.act-btn:hover {
+  background: var(--c-surface-2);
+}
+
+.act-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.act-btn--del:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.12);
+}
+
+/* ================= Subject panel (dòng mở rộng) ================= */
+
 .subj-panel {
   padding: 14px 20px 16px 46px;
 }
+
 .subj-panel__head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 10px;
 }
+
 .subj-panel__head h4 {
   margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--c-text);
 }
-.subj-loading,
-.subj-empty {
-  padding: 6px 0 4px;
-}
+
 .subj-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: 13px;
   background: var(--c-surface);
   border: 1px solid var(--c-border);
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
 }
+
 .subj-table th {
   background: var(--c-surface-2);
-  padding: 0.45rem 0.75rem;
+  padding: 10px 12px;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--c-text);
   border-bottom: 1px solid var(--c-border);
 }
+
 .subj-table td {
-  padding: 0.45rem 0.75rem;
-  border-bottom: 1px solid var(--c-border-soft);
+  padding: 10px 12px;
+  border-top: 1px solid var(--c-border);
   vertical-align: middle;
 }
-.subj-table tbody tr:last-child td {
-  border-bottom: none;
+
+.subj-table tbody tr:hover {
+  background: var(--c-surface-2);
 }
-.actions {
-  display: flex;
-  gap: 0.4rem;
-}
-.sc-pagination {
-  margin-top: 1rem;
+
+/* ================= Pagination ================= */
+
+.pagination {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
   justify-content: center;
+
+  gap: 8px;
+
+  margin-top: 24px;
+
+  flex-wrap: wrap;
 }
 
-.badge {
-  display: inline-block;
-  padding: 0.15rem 0.55rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.badge-green {
-  background: rgba(34, 197, 94, 0.14);
-  color: #166534;
-}
-:root[data-theme='dark'] .badge-green {
-  color: #4ade80;
-}
-.badge-gray {
-  background: var(--c-surface-2);
-  color: var(--c-text-muted);
+.pg-btn {
+  min-width: 38px;
+
+  height: 38px;
+
+  border: 1px solid var(--c-border);
+
+  border-radius: 8px;
+
+  background: var(--c-surface);
+
+  cursor: pointer;
+
+  transition: 0.2s;
 }
 
-.modal-overlay {
+.pg-btn:hover:not(:disabled) {
+  background: #f97316;
+  color: white;
+}
+
+.pg-btn--active {
+  background: #f97316;
+  color: white;
+}
+
+.pg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.page-input {
+  width: 70px;
+
+  height: 38px;
+
+  border: 1px solid var(--c-input-border);
+
+  border-radius: 8px;
+
+  text-align: center;
+}
+
+/* ================= Modal ================= */
+
+.overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+
   display: flex;
-  align-items: center;
   justify-content: center;
-  z-index: 200;
+  align-items: center;
+
+  background: rgba(0, 0, 0, 0.45);
+
+  z-index: 999;
+  padding: 20px;
 }
-.modal-box {
+
+.modal {
+  width: 440px;
+  max-width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+
   background: var(--c-surface);
-  border-radius: 12px;
-  padding: 1.5rem;
-  width: 100%;
-  max-width: 440px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+
+  border-radius: 16px;
+
+  padding: 28px;
 }
-.modal-sm {
-  max-width: 360px;
+
+.modal h3 {
+  margin-top: 0;
 }
-.modal-box h3 {
-  margin: 0 0 1rem;
-  font-size: 1.05rem;
-  font-weight: 600;
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+
+  margin-top: 24px;
 }
+
 .form-group {
-  margin-bottom: 0.9rem;
+  margin-bottom: 14px;
 }
+
 .form-group label {
   display: block;
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-bottom: 0.25rem;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
   color: var(--c-text);
 }
+
 .form-group input,
 .form-group select,
 .form-group textarea {
   width: 100%;
-  padding: 0.4rem 0.7rem;
+  height: 40px;
   border: 1px solid var(--c-input-border);
-  border-radius: 6px;
-  font-size: 0.9rem;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 14px;
   box-sizing: border-box;
+  font-family: inherit;
 }
+
+.form-group textarea {
+  height: auto;
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: #f97316;
+}
+
 .form-group small {
+  display: block;
+  margin-top: 4px;
   color: var(--c-text-muted);
-  font-size: 0.78rem;
+  font-size: 12px;
 }
+
 .input-error {
   border-color: #dc2626 !important;
 }
+
 .field-error {
   color: #dc2626 !important;
-  font-size: 0.78rem;
-  display: block;
-  margin-top: 2px;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 1rem;
-}
-.error-msg {
-  color: #dc2626;
-  font-size: 0.85rem;
-  margin: 0.5rem 0 0;
 }
 
-.btn {
-  padding: 0.45rem 1rem;
-  border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  border: none;
-  transition: 0.15s;
-}
-.btn-primary {
-  background: #2563eb;
-  color: white;
-}
-.btn-primary:hover {
-  background: #1d4ed8;
-}
-.btn-outline {
-  background: var(--c-surface);
-  border: 1px solid var(--c-input-border);
-  color: var(--c-text);
-}
-.btn-outline:hover {
-  background: var(--c-surface-2);
-}
-.btn-danger {
-  background: #dc2626;
-  color: white;
-}
-.btn-danger:hover {
-  background: #b91c1c;
-}
-.btn-danger:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-.btn-sm {
-  padding: 0.3rem 0.65rem;
-  font-size: 0.8rem;
+/* ================= Message ================= */
+
+.msg {
+  padding: 12px;
+  margin-top: 10px;
+  margin-bottom: 0;
+
+  border-radius: 8px;
 }
 
-.text-center {
-  text-align: center;
+.msg--error {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
 }
-.text-muted {
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+
+.total {
+  margin-bottom: 14px;
   color: var(--c-text-muted);
 }
-.font-medium {
-  font-weight: 500;
-}
-.small {
-  font-size: 0.83rem;
-}
-code {
-  background: var(--c-surface-2);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  font-size: 0.82rem;
-  font-family: monospace;
+
+/* ================= Responsive ================= */
+
+@media (max-width: 900px) {
+  .page__head {
+    flex-direction: column;
+
+    align-items: flex-start;
+
+    gap: 15px;
+  }
+
+  .filter-bar {
+    flex-direction: column;
+  }
+
+  .field {
+    width: 100%;
+  }
+
+  .filter-actions {
+    width: 100%;
+  }
+
+  .btn {
+    width: 100%;
+  }
+
+  .subj-panel {
+    padding: 14px;
+  }
 }
 </style>
