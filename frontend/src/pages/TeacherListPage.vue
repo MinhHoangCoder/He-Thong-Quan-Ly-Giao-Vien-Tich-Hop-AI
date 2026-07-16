@@ -1732,13 +1732,13 @@ function formatDate(d) {
                 <template v-else-if="editModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
                   <p class="create-section-hint">
-                    Không bắt buộc — ghi chú nhanh để tham khảo khi phân công lớp.
+                    Không bắt buộc — ghi chú nhanh.
                   </p>
                   <textarea
                     v-model="editModal.experience"
                     class="form-input form-textarea"
                     rows="8"
-                    placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
+                    placeholder="VD: 3 năm dạy ... tại ... từng phụ trách CLB ..."
                   />
                 </template>
 
