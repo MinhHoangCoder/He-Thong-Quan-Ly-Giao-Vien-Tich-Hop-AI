@@ -152,7 +152,17 @@ onMounted(load)
 }
 
 .btn-back {
+  background: none;
+  border: none;
+  color: var(--c-primary, #f97316);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
   margin-bottom: 20px;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
 }
 
 .info {
