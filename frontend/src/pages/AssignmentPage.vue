@@ -57,8 +57,7 @@ const modal = reactive({
   slotDraft: { dayOfWeek: 'MON', periodId: '' },
 })
 
-const cancelTarget = ref(null)
-const deleteTarget = ref(null) // xóa mềm → thùng rác
+const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
 const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 
 async function load() {
@@ -196,10 +195,11 @@ async function submit() {
   }
 }
 
+/* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
 async function confirmCancel() {
   if (!cancelTarget.value) return
   try {
-    await assignmentApi.cancel(cancelTarget.value.id)
+    await assignmentApi.remove(cancelTarget.value.id)
     cancelTarget.value = null
     load()
   } catch (e) {
@@ -208,20 +208,7 @@ async function confirmCancel() {
   }
 }
 
-/* Xóa mềm phân công đã hủy → thùng rác. */
-async function confirmDelete() {
-  if (!deleteTarget.value) return
-  try {
-    await assignmentApi.remove(deleteTarget.value.id)
-    deleteTarget.value = null
-    load()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa thất bại')
-    deleteTarget.value = null
-  }
-}
-
-/* Khôi phục từ thùng rác (thao tác an toàn, làm ngay không cần xác nhận). */
+/* Khôi phục từ thùng rác → đưa lại Đang chạy (có thể bị chặn nếu trùng lịch). */
 async function restoreItem(a) {
   try {
     await assignmentApi.restore(a.id)
@@ -309,18 +296,11 @@ async function confirmPurge() {
             <td class="actions">
               <template v-if="!inTrash">
                 <button
-                  v-if="a.status === 'ACTIVE'"
+                  v-if="a.status !== 'COMPLETED'"
                   class="btn btn-sm btn-danger"
                   @click="cancelTarget = a"
                 >
                   Hủy
-                </button>
-                <button
-                  v-else-if="a.status === 'CANCELLED'"
-                  class="btn btn-sm btn-outline"
-                  @click="deleteTarget = a"
-                >
-                  Xóa
                 </button>
               </template>
               <template v-else>
@@ -417,32 +397,18 @@ async function confirmPurge() {
       </div>
     </div>
 
-    <!-- Confirm hủy -->
+    <!-- Confirm hủy → đưa vào thùng rác -->
     <div v-if="cancelTarget" class="modal-overlay" @click.self="cancelTarget = null">
       <div class="modal-box modal-sm">
         <h3>Xác nhận hủy</h3>
         <p>
           Hủy phân công của <strong>{{ cancelTarget.teacherName }}</strong> tại
-          {{ cancelTarget.schoolName }}? Các buổi chưa diễn ra sẽ bị hủy theo.
+          {{ cancelTarget.schoolName }} và đưa vào <strong>thùng rác</strong>? Các buổi chưa diễn ra
+          sẽ bị hủy theo. Bạn có thể khôi phục lại từ thùng rác.
         </p>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="cancelTarget = null">Không</button>
           <button class="btn btn-danger" @click="confirmCancel">Hủy phân công</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Confirm xóa mềm → thùng rác -->
-    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
-      <div class="modal-box modal-sm">
-        <h3>Xác nhận xóa</h3>
-        <p>
-          Đưa phân công của <strong>{{ deleteTarget.teacherName }}</strong> tại
-          {{ deleteTarget.schoolName }} vào <strong>thùng rác</strong>? Bạn có thể khôi phục lại sau.
-        </p>
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="deleteTarget = null">Không</button>
-          <button class="btn btn-danger" @click="confirmDelete">Xóa</button>
         </div>
       </div>
     </div>
@@ -470,6 +436,24 @@ async function confirmPurge() {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+/* Tiêu đề cột không bị ngắt dòng (vd "TRẠNG THÁI" bị xuống 2 dòng khi cột hẹp) */
+.table th {
+  white-space: nowrap;
+}
+/* Cột trạng thái: badge luôn gọn 1 dòng (không bị ngắt "Đang / chạy") */
+.badge {
+  white-space: nowrap;
+}
+/* Cột hành động: dùng lại ô bảng bình thường (không flex) để nút luôn nằm cùng 1 dòng
+   và căn giữa theo chiều dọc, thẳng hàng với badge trạng thái kể cả ở dòng cao nhiều chip. */
+.actions {
+  display: table-cell;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.actions .btn + .btn {
+  margin-left: 0.4rem;
 }
 .slots-block {
   margin-top: 0.5rem;

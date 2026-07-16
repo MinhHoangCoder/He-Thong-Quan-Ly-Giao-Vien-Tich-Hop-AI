@@ -28,11 +28,7 @@ export const assignmentApi = {
     return http.post('/assignments', body)
   },
 
-  cancel(id) {
-    return http.post(`/assignments/${id}/cancel`)
-  },
-
-  /** Xóa mềm phân công đã hủy → đưa vào thùng rác. */
+  /** Hủy phân công + đưa vào thùng rác (một thao tác). */
   remove(id) {
     return http.delete(`/assignments/${id}`)
   },

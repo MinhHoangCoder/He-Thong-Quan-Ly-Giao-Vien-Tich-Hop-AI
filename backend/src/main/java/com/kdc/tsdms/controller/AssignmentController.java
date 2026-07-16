@@ -72,6 +72,13 @@ public class AssignmentController {
         return service.cancel(id);
     }
 
+    /** Bỏ hủy: đưa phân công đã hủy về lại ACTIVE (khôi phục khi lỡ bấm Hủy). */
+    @PostMapping("/{id}/reactivate")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
+    public AssignmentResponse reactivate(@PathVariable Integer id) {
+        return service.reactivate(id);
+    }
+
     /** Xóa mềm phân công đã hủy (đưa vào thùng rác). */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")

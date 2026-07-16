@@ -310,18 +310,73 @@ public class AssignmentService {
         return toResponse(a);
     }
 
+    /**
+     * BỎ HỦY: đưa phân công ĐÃ HỦY về lại ACTIVE (khôi phục khi lỡ bấm Hủy). Đảo ngược
+     * {@link #cancel(Integer)} — các buổi đã bị hủy theo phân công được đưa lại APPROVED.
+     * Trước khi bật lại phải DÒ TRÙNG LỊCH: giai đoạn phân công có thể đã bị một phân công
+     * ACTIVE khác chiếm mất khung Thứ+Tiết trong lúc nó đang bị hủy.
+     */
+    @Transactional
+    public AssignmentResponse reactivate(Integer id) {
+        Assignment a = getOrThrow(id);
+        if (!"CANCELLED".equals(a.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy");
+        }
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            for (AssignmentSlot existing : slotRepo.findByTeacherIdAndDayOfWeekAndPeriodIdAndDeletedFalse(
+                    a.getTeacherId(), slot.getDayOfWeek(), slot.getPeriodId())) {
+                if (existing.getAssignmentId().equals(id)) {
+                    continue; // bỏ qua slot của chính phân công đang khôi phục
+                }
+                Assignment other = assignmentRepo
+                        .findByIdAndDeletedFalse(existing.getAssignmentId())
+                        .orElse(null);
+                if (other == null || !"ACTIVE".equals(other.getStatus())) {
+                    continue;
+                }
+                boolean overlaps = !(a.getEndDate() != null && a.getEndDate().isBefore(other.getStartDate())
+                        || other.getEndDate() != null && other.getEndDate().isBefore(a.getStartDate()));
+                if (overlaps) {
+                    Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
+                    throw new ApiException(
+                            HttpStatus.CONFLICT,
+                            "Không khôi phục được: giáo viên đã có lịch dạy "
+                                    + AssignmentSlotResponse.fromEntity(existing, p).dayOfWeekLabel
+                                    + (p != null ? " tiết " + p.getPeriodNumber() : "")
+                                    + " ở phân công #" + other.getId() + " trong cùng giai đoạn");
+                }
+            }
+        }
+        Integer userId = SecurityUtils.currentUserId();
+        a.setStatus("ACTIVE");
+        a.setUpdatedAt(Instant.now());
+        a.setUpdatedBy(userId);
+        assignmentRepo.save(a);
+        // Đưa lại các buổi đã bị hủy theo phân công về APPROVED (đảo ngược cancel()).
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            if ("CANCELLED".equals(s.getStatus())) {
+                s.setUpdatedBy(userId);
+                s.setStatus("APPROVED");
+                s.setUpdatedAt(Instant.now());
+                scheduleRepo.save(s);
+            }
+        }
+        return toResponse(a);
+    }
+
     /* ─────────────────────── XÓA MỀM → THÙNG RÁC ─────────────────────── */
 
     /**
-     * Xóa mềm một phân công ĐÃ HỦY vào thùng rác: gắn cờ {@code deleted} cho Assignment và
-     * CASCADE xóa mềm toàn bộ AssignmentSlot + Schedule của nó. Chỉ áp dụng khi phân công
-     * đang ở trạng thái CANCELLED — đúng luồng Đang chạy → Hủy → Xóa.
+     * HỦY + đưa vào Thùng rác trong MỘT thao tác (nút "Hủy" của trang phân công). Nếu phân
+     * công đang chạy thì HỦY trước (đổi CANCELLED + hủy các buổi tương lai qua {@link #cancel}),
+     * rồi gắn cờ {@code deleted} và CASCADE xóa mềm toàn bộ AssignmentSlot + Schedule của nó.
+     * Khôi phục lại từ Thùng rác (xem {@link #restore}).
      */
     @Transactional
     public void softDelete(Integer id) {
         Assignment a = getOrThrow(id);
-        if (!"CANCELLED".equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ có thể xóa phân công đã hủy");
+        if ("ACTIVE".equals(a.getStatus())) {
+            cancel(id); // hủy trước: đổi CANCELLED + hủy các buổi tương lai
         }
         Integer userId = SecurityUtils.currentUserId();
         Instant now = Instant.now();
@@ -351,7 +406,12 @@ public class AssignmentService {
                 .toList();
     }
 
-    /** Khôi phục phân công từ thùng rác: bỏ cờ {@code deleted} cho Assignment + slot + buổi của nó. */
+    /**
+     * Khôi phục phân công từ Thùng rác về lại <b>Đang chạy</b>: bỏ cờ {@code deleted} cho
+     * Assignment + slot + buổi, rồi BỎ HỦY (đưa về ACTIVE, kích hoạt lại buổi dạy) qua
+     * {@link #reactivate} — có DÒ TRÙNG LỊCH nên nếu khung Thứ+Tiết đã bị phân công ACTIVE
+     * khác chiếm thì báo lỗi và không khôi phục.
+     */
     @Transactional
     public AssignmentResponse restore(Integer id) {
         Assignment a = assignmentRepo
@@ -380,6 +440,11 @@ public class AssignmentService {
                 s.setDeletedBy(null);
                 scheduleRepo.save(s);
             }
+        }
+        // Bỏ hủy → Đang chạy (nếu đang CANCELLED). Dò trùng lịch bên trong reactivate; nếu
+        // đụng lịch sẽ ném lỗi và rollback cả thao tác bỏ cờ deleted ở trên.
+        if ("CANCELLED".equals(a.getStatus())) {
+            return reactivate(id);
         }
         return toResponse(a, false);
     }
