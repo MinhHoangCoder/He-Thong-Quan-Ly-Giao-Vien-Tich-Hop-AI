@@ -19,7 +19,10 @@ export const teacherApi = {
 
   /** Update GV. */
   update(id, data) {
-    return http.put(`/teacher/${id}`, data)
+        return http.put(`/teacher/${id}`, {
+      ...data,
+      employmentType: data.employmentType || null,
+    })
   },
 
   /** Xóa GV (chỉ ADMIN). */
@@ -44,4 +47,14 @@ export const teacherApi = {
   restore(id) {
     return http.post(`/teacher/trash/${id}/restore`)
   },
+
+ addCertificate(teacherId, data) {
+    return http.post(`/teacher/${teacherId}/certificates`, data)
+  },
+
+  /** Xóa mềm 1 chứng chỉ/bằng cấp của GV. */
+  deleteCertificate(teacherId, certId) {
+    return http.delete(`/teacher/${teacherId}/certificates/${certId}`)
+  },
+
 }
