@@ -7,6 +7,13 @@ export const teacherRoutes = [
     component: () => import('@/pages/TeacherDashboardPage.vue'),
     meta: { layout: 'teacher', roles: ['TEACHER'] },
   },
+  // Lịch dạy của tôi (thời khóa biểu tuần + lịch tháng, chỉ buổi đã duyệt)
+  {
+    path: '/teacher/schedule',
+    name: 'teacher-schedule',
+    component: () => import('@/pages/TeacherSchedulePage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
+  },
   // Danh sách bài giảng
   {
     path: '/teacher/lessons',

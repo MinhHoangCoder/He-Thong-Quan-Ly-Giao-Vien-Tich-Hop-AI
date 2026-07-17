@@ -11,7 +11,7 @@ const nav = [
   {
     title: 'Công việc',
     items: [
-      { label: 'Lịch dạy của tôi', icon: 'schedule', to: '#' },
+      { label: 'Lịch dạy của tôi', icon: 'schedule', to: '/teacher/schedule' },
       { label: 'Chấm công', icon: 'clock', to: '#' },
       { label: 'Bảng công', icon: 'attendance', to: '#' },
     ],

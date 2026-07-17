@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.dto.MyScheduleFilters;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.ScheduleEventResponse;
 import com.kdc.tsdms.dto.ScheduleFilterOptions;
@@ -23,7 +24,9 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -77,7 +80,24 @@ public class ScheduleService {
                         effectiveTeacher, APPROVED, from.atStartOfDay(), to.atTime(LocalTime.MAX))
                 : scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
                         from.atStartOfDay(), to.atTime(LocalTime.MAX), APPROVED);
+        return buildEvents(schedules, schoolId, classId);
+    }
 
+    /**
+     * Lịch dạy của CHÍNH giáo viên đang đăng nhập (chỉ buổi ĐÃ DUYỆT). KHÔNG nhận teacherId từ
+     * ngoài — giáo viên tuyệt đối không thể xem lịch người khác qua endpoint này (chống IDOR).
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduleEventResponse> listMine(LocalDate from, LocalDate to, Integer schoolId, Integer classId) {
+        Integer teacherId = currentTeacherId();
+        List<Schedule> schedules =
+                scheduleRepo.findByTeacherIdAndStatusAndStartTimeBetweenAndDeletedFalseOrderByStartTime(
+                        teacherId, APPROVED, from.atStartOfDay(), to.atTime(LocalTime.MAX));
+        return buildEvents(schedules, schoolId, classId);
+    }
+
+    /** Ghép các buổi dạy thành sự kiện lịch (tên GV/trường/lớp/môn/tiết), lọc theo trường/lớp. */
+    private List<ScheduleEventResponse> buildEvents(List<Schedule> schedules, Integer schoolId, Integer classId) {
         // Cache tra cứu (tránh N+1 khi nhiều buổi trùng GV/trường/lớp/môn/tiết).
         Map<Integer, Assignment> aCache = new HashMap<>();
         Map<Integer, String> teacherName = new HashMap<>();
@@ -162,7 +182,56 @@ public class ScheduleService {
                 .toList();
     }
 
+    /**
+     * Options lọc cho trang "Lịch dạy của tôi": chỉ TRƯỜNG + LỚP mà chính giáo viên đang đăng
+     * nhập có buổi dạy ĐÃ DUYỆT. Lấy trên MỌI thời điểm (không theo khoảng đang xem) để danh
+     * sách lọc ổn định khi GV lật tuần/tháng.
+     */
+    @Transactional(readOnly = true)
+    public MyScheduleFilters myFilterOptions() {
+        Integer teacherId = currentTeacherId();
+        List<Schedule> schedules = scheduleRepo.findByTeacherIdAndStatusAndDeletedFalse(teacherId, APPROVED);
+
+        Map<Integer, Assignment> aCache = new HashMap<>();
+        Map<Integer, String> schools = new LinkedHashMap<>(); // schoolId -> tên trường
+        Map<Integer, MyScheduleFilters.ClassOption> classes = new LinkedHashMap<>();
+        for (Schedule s : schedules) {
+            Assignment a = aCache.computeIfAbsent(
+                    s.getAssignmentId(), id -> assignmentRepo.findById(id).orElse(null));
+            if (a == null) {
+                continue;
+            }
+            schools.computeIfAbsent(
+                    a.getSchoolId(),
+                    id -> schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")"));
+            if (a.getClassId() != null) {
+                classes.computeIfAbsent(a.getClassId(), id -> {
+                    String name =
+                            classRepo.findById(id).map(SchoolClass::getName).orElse("(Lớp #" + id + ")");
+                    return new MyScheduleFilters.ClassOption(id, name, a.getSchoolId());
+                });
+            }
+        }
+
+        List<OptionItem> schoolOpts = schools.entrySet().stream()
+                .map(e -> new OptionItem(e.getKey(), e.getValue()))
+                .sorted(Comparator.comparing(OptionItem::name))
+                .toList();
+        List<MyScheduleFilters.ClassOption> classOpts = classes.values().stream()
+                .sorted(Comparator.comparing(MyScheduleFilters.ClassOption::name))
+                .toList();
+        return new MyScheduleFilters(schoolOpts, classOpts);
+    }
+
     /* ── helpers ── */
+
+    /** Hồ sơ giáo viên của người đang đăng nhập (báo lỗi nếu tài khoản không phải giáo viên). */
+    private Integer currentTeacherId() {
+        return teacherRepo
+                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
+                .map(Teacher::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+    }
 
     /** Staff → teacherId tùy chọn (null = tất cả); GV thường → ép về chính mình. */
     private Integer scopedTeacherId(Integer requested) {
@@ -175,10 +244,7 @@ public class ScheduleService {
         if (isStaff) {
             return requested;
         }
-        return teacherRepo
-                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
-                .map(Teacher::getId)
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+        return currentTeacherId();
     }
 
     private static String dayCode(DayOfWeek d) {
