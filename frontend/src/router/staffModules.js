@@ -86,7 +86,7 @@ export const STAFF_MODULES = [
     perm: 'EVALUATION_VIEW',
     label: 'Đánh giá giáo viên',
     icon: 'evaluation',
-    to: '#',
+    to: '/staff/evaluations',
     desc: 'Đánh giá chất lượng giảng dạy',
   },
   {

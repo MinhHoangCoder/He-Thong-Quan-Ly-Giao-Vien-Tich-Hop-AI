@@ -176,7 +176,7 @@ onMounted(scrollDown)
   box-shadow: 0 2px 6px rgba(15, 40, 80, 0.06);
 }
 .msg.ai .bubble {
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-bottom-left-radius: 4px;
 }
@@ -193,7 +193,7 @@ onMounted(scrollDown)
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #cbd5e1;
+  background: var(--c-text-muted);
   animation: blink 1.2s infinite both;
 }
 .typing span:nth-child(2) {
@@ -218,11 +218,11 @@ onMounted(scrollDown)
   gap: 0.4rem;
   padding: 0.7rem 1rem;
   border-top: 1px solid var(--c-border);
-  background: #fff;
+  background: var(--c-surface);
 }
 .chip {
   border: 1px solid var(--c-border);
-  background: #fff;
+  background: var(--c-surface);
   color: var(--c-text);
   border-radius: 9999px;
   padding: 0.35rem 0.8rem;
@@ -239,7 +239,7 @@ onMounted(scrollDown)
   gap: 0.6rem;
   padding: 0.85rem 1rem;
   border-top: 1px solid var(--c-border);
-  background: #fff;
+  background: var(--c-surface);
 }
 .chat-input input {
   flex: 1;
@@ -247,6 +247,8 @@ onMounted(scrollDown)
   border: 1px solid var(--c-border);
   border-radius: 10px;
   font-size: 0.9rem;
+  background: var(--c-surface);
+  color: var(--c-text);
 }
 .chat-input input:focus {
   outline: none;

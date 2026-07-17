@@ -12,12 +12,15 @@ import { useUiStore } from '@/stores/ui'
 import { useLogout } from '@/composables/useLogout'
 import { notificationApi } from '@/api/notifications'
 import { roleHome } from '@/router/roleHome'
+import { ROLE_LABELS } from '@/utils/labels'
 
 defineProps({
   // [{ title, items: [{ label, icon, to, badge }] }]
   nav: { type: Array, default: () => [] },
   // Route trang cài đặt của vai trò hiện tại (mỗi layout truyền path riêng).
   settingsTo: { type: String, default: '/settings' },
+  // Route trang HỒ SƠ (chỉ xem) — tách khỏi Cài đặt; mỗi layout truyền path riêng.
+  profileTo: { type: String, default: '/profile' },
 })
 
 const router = useRouter()
@@ -61,17 +64,7 @@ onBeforeUnmount(() => {
 const auth = useAuthStore()
 const ui = useUiStore() // nút mặt trời/mặt trăng trên topbar đảo theme sáng/tối
 const onLogout = useLogout()
-const roleLabels = {
-  ADMIN: 'Quản trị viên',
-  EMPLOYEE: 'Nhân viên',
-  SCHOOL: 'Trường',
-  TEACHER: 'Giáo viên',
-  ACCOUNTANT: 'Kế toán',
-  HR: 'Nhân sự',
-  ACADEMIC: 'Đào tạo',
-  SALES: 'Tuyển sinh',
-}
-const roleLabel = computed(() => roleLabels[auth.primaryRole] || 'Người dùng')
+const roleLabel = computed(() => ROLE_LABELS[auth.primaryRole] || 'Người dùng')
 
 /* ══════════════════ TÌM KIẾM CHUNG ══════════════════ */
 const searchQuery = ref('')
@@ -186,7 +179,7 @@ function initialsOf(u) {
 const initials = computed(() => initialsOf(auth.user))
 
 function labelOf(u) {
-  return roleLabels[u?.roles?.[0]] || 'Người dùng'
+  return ROLE_LABELS[u?.roles?.[0]] || 'Người dùng'
 }
 
 // Đổi sang tài khoản khác: điều hướng CỨNG (reload) về "nhà" của vai trò đó để mọi
@@ -213,12 +206,14 @@ function switchTo(acc) {
       <nav class="sidebar__nav">
         <div v-for="group in nav" :key="group.title" class="navgroup">
           <p class="navgroup__title">{{ group.title }}</p>
+          <!-- to: '#' = trang chưa làm -> không gán active-class, kẻo vue-router
+               coi '#' là trang hiện tại và thắp sáng CẢ LOẠT mục menu -->
           <RouterLink
             v-for="item in group.items"
             :key="item.label"
             :to="item.to"
             class="navlink"
-            active-class="is-active"
+            :active-class="item.to === '#' ? '' : 'is-active'"
           >
             <span class="navlink__icon"><SvgIcon :name="item.icon" :size="19" /></span>
             <span class="navlink__label">{{ item.label }}</span>
@@ -329,6 +324,15 @@ function switchTo(acc) {
                   <small>@{{ auth.user?.username }} · {{ roleLabel }}</small>
                 </div>
                 <div class="usermenu__divider" />
+                <RouterLink
+                  :to="profileTo"
+                  class="usermenu__item"
+                  role="menuitem"
+                  @click="menuOpen = false"
+                >
+                  <SvgIcon name="teacher" :size="17" />
+                  Hồ sơ của tôi
+                </RouterLink>
                 <RouterLink
                   :to="settingsTo"
                   class="usermenu__item"
@@ -626,7 +630,7 @@ function switchTo(acc) {
   font-weight: 700;
   color: #fff;
   background: var(--c-primary);
-  border: 2px solid #fff;
+  border: 2px solid var(--c-surface);
   border-radius: 20px;
   line-height: 1;
 }
@@ -636,7 +640,7 @@ function switchTo(acc) {
   right: 0;
   width: 360px;
   max-width: calc(100vw - 2rem);
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 14px;
   box-shadow: var(--a-shadow-lg);
@@ -669,7 +673,7 @@ function switchTo(acc) {
   transition: background var(--t-fast);
 }
 .notif__markall:hover {
-  background: #fff7ed;
+  background: rgba(249, 115, 22, 0.1);
 }
 .notif__list {
   list-style: none;
@@ -692,10 +696,10 @@ function switchTo(acc) {
   background: var(--a-bg);
 }
 .notif__item.is-unread {
-  background: #fff7ed80;
+  background: rgba(249, 115, 22, 0.07);
 }
 .notif__item.is-unread:hover {
-  background: #ffedd5;
+  background: rgba(249, 115, 22, 0.16);
 }
 .notif__icon {
   flex: 0 0 auto;

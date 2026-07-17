@@ -509,7 +509,7 @@ onMounted(async () => {
   text-decoration: underline;
 }
 .loading {
-  color: #64748b;
+  color: var(--c-text-muted);
   padding: 32px;
   text-align: center;
 }
@@ -545,7 +545,7 @@ onMounted(async () => {
 .card__sub {
   margin: 0 0 14px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--c-text-muted);
 }
 
 .grid-1 {
@@ -597,7 +597,7 @@ onMounted(async () => {
 .field select,
 .field textarea {
   padding: 9px 11px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--c-input-border);
   border-radius: 9px;
   font-size: 14px;
   outline: none;
@@ -664,7 +664,7 @@ onMounted(async () => {
   align-items: flex-start;
   gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid var(--c-border-soft);
 }
 .file-item:last-child {
   border-bottom: none;
@@ -707,7 +707,7 @@ a.file-name:hover {
   flex-shrink: 0;
 }
 .del-btn:hover:not(:disabled) {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #ef4444;
 }
 .del-btn:disabled {
@@ -737,7 +737,7 @@ a.file-name:hover {
   color: var(--c-text);
 }
 .btn--ghost:hover:not(:disabled) {
-  background: #e2e8f0;
+  background: var(--c-border);
   filter: none;
 }
 .btn--full {
@@ -751,11 +751,17 @@ a.file-name:hover {
   margin: 10px 0 0;
 }
 .msg--error {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
 }
 .msg--ok {
-  background: #ecfdf5;
+  background: rgba(34, 197, 94, 0.12);
   color: #047857;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
 }
 </style>

@@ -11,7 +11,7 @@ const nav = [
   {
     title: 'Công việc',
     items: [
-      { label: 'Lịch dạy của tôi', icon: 'schedule', to: '#' },
+      { label: 'Lịch dạy của tôi', icon: 'schedule', to: '/teacher/schedule' },
       { label: 'Chấm công', icon: 'clock', to: '#' },
       { label: 'Bảng công', icon: 'attendance', to: '#' },
     ],
@@ -24,20 +24,17 @@ const nav = [
     title: 'Cá nhân',
     items: [
       { label: 'Phiếu lương', icon: 'payroll', to: '#' },
-      { label: 'Hồ sơ của tôi', icon: 'teacher', to: '#' },
-      { label: 'Đánh giá', icon: 'evaluation', to: '#' },
+      { label: 'Hồ sơ của tôi', icon: 'teacher', to: '/teacher/profile' },
+      { label: 'Đánh giá', icon: 'evaluation', to: '/teacher/evaluations' },
     ],
   },
-  {
-    title: 'Hệ thống',
-    items: [{ label: 'Thông báo', icon: 'bell', to: '#' }],
-  },
+  // Thông báo KHÔNG để ở sidebar: đã có chuông thông báo trên topbar (PortalShell).
 ]
 // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/teacher/settings">
+  <PortalShell :nav="nav" settings-to="/teacher/settings" profile-to="/teacher/profile">
     <slot />
   </PortalShell>
 </template>

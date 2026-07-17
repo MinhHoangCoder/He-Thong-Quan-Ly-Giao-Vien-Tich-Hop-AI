@@ -12,6 +12,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // 5173 bận thì báo lỗi và DỪNG, không âm thầm né sang cổng khác:
+    // backend chỉ cho phép CORS origin http://localhost:5173 (SecurityConfig),
+    // chạy nhầm cổng khác là mọi API dính 403 "Invalid CORS request".
+    strictPort: true,
     proxy: {
       // Mọi request /api/... được chuyển sang backend Spring Boot (cổng 8080)
       '/api': {

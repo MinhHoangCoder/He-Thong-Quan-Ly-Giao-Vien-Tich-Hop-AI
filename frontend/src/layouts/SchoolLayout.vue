@@ -19,6 +19,7 @@ const nav = [
   {
     title: 'Báo cáo',
     items: [
+      { label: 'Đánh giá GV', icon: 'evaluation', to: '/school/evaluations' },
       { label: 'Thống kê', icon: 'evaluation', to: '#' },
       { label: 'Phản hồi', icon: 'mail', to: '#' },
     ],
@@ -32,7 +33,7 @@ const nav = [
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/school/settings">
+  <PortalShell :nav="nav" settings-to="/school/settings" profile-to="/school/profile">
     <slot />
   </PortalShell>
 </template>

@@ -5,9 +5,12 @@ import com.kdc.tsdms.dto.ProfileResponse;
 import com.kdc.tsdms.dto.SessionResponse;
 import com.kdc.tsdms.dto.UpdateProfileRequest;
 import com.kdc.tsdms.entity.AppUser;
+import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.RefreshToken;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
+import com.kdc.tsdms.repository.BranchRepository;
+import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.EmployeeRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
@@ -35,6 +38,8 @@ public class UserSettingsService {
     private final TeacherRepository teacherRepo;
     private final EmployeeRepository employeeRepo;
     private final SchoolRepository schoolRepo;
+    private final BranchRepository branchRepo;
+    private final CertificateRepository certificateRepo;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
 
@@ -45,6 +50,8 @@ public class UserSettingsService {
             TeacherRepository teacherRepo,
             EmployeeRepository employeeRepo,
             SchoolRepository schoolRepo,
+            BranchRepository branchRepo,
+            CertificateRepository certificateRepo,
             PasswordEncoder passwordEncoder,
             JwtService jwtService) {
         this.appUserRepo = appUserRepo;
@@ -53,11 +60,17 @@ public class UserSettingsService {
         this.teacherRepo = teacherRepo;
         this.employeeRepo = employeeRepo;
         this.schoolRepo = schoolRepo;
+        this.branchRepo = branchRepo;
+        this.certificateRepo = certificateRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
     }
 
-    /** Hồ sơ cá nhân: định danh (AppUser) + thông tin liên hệ từ hồ sơ tác nhân. */
+    /**
+     * Hồ sơ cá nhân: định danh (AppUser) + hồ sơ tác nhân theo vai trò.
+     * GV nhận thêm khối {@code teacher} (CCCD, ngày sinh, địa chỉ, bằng cấp...) —
+     * dữ liệu chính chủ tự xem nên trả đầy đủ, không che.
+     */
     @Transactional(readOnly = true)
     public ProfileResponse getProfile() {
         AppUser user = currentUser();
@@ -66,6 +79,12 @@ public class UserSettingsService {
         var teacher = teacherRepo.findByAppUserIdAndDeletedFalse(user.getId());
         if (teacher.isPresent()) {
             var t = teacher.get();
+            var certificates = certificateRepo.findByTeacherIdAndDeletedFalse(t.getId()).stream()
+                    .map(c -> new ProfileResponse.CertificateItem(
+                            c.getName(), c.getIssuer(), c.getIssueDate(), c.getExpiryDate()))
+                    .toList();
+            var detail = new ProfileResponse.TeacherDetail(
+                    t.getIdCardNo(), t.getDateOfBirth(), t.getGender(), t.getAddress(), t.getHireDate(), certificates);
             return new ProfileResponse(
                     user.getUsername(),
                     user.getEmail(),
@@ -73,7 +92,11 @@ public class UserSettingsService {
                     t.getPhone(),
                     "TEACHER",
                     null,
-                    roles);
+                    roles,
+                    branchName(t.getBranchId()),
+                    t.getEmploymentType(),
+                    t.getStatus(),
+                    detail);
         }
         var employee = employeeRepo.findByAppUserIdAndDeletedFalse(user.getId());
         if (employee.isPresent()) {
@@ -85,16 +108,49 @@ public class UserSettingsService {
                     e.getPhone(),
                     "EMPLOYEE",
                     e.getPosition(),
-                    roles);
+                    roles,
+                    branchName(e.getBranchId()),
+                    e.getEmploymentType(),
+                    e.getStatus(),
+                    null);
         }
         var school = schoolRepo.findByAppUserIdAndDeletedFalse(user.getId());
         if (school.isPresent()) {
             var s = school.get();
             return new ProfileResponse(
-                    user.getUsername(), user.getEmail(), s.getName(), s.getPhone(), "SCHOOL", null, roles);
+                    user.getUsername(),
+                    user.getEmail(),
+                    s.getName(),
+                    s.getPhone(),
+                    "SCHOOL",
+                    null,
+                    roles,
+                    null,
+                    null,
+                    s.getStatus(),
+                    null);
         }
         // Tài khoản không gắn hồ sơ (admin hệ thống)
-        return new ProfileResponse(user.getUsername(), user.getEmail(), user.getUsername(), null, "NONE", null, roles);
+        return new ProfileResponse(
+                user.getUsername(),
+                user.getEmail(),
+                user.getUsername(),
+                null,
+                "NONE",
+                null,
+                roles,
+                null,
+                null,
+                null,
+                null);
+    }
+
+    /** Tên chi nhánh theo id — null nếu không có (hồ sơ cũ/chi nhánh đã xóa). */
+    private String branchName(Integer branchId) {
+        if (branchId == null) {
+            return null;
+        }
+        return branchRepo.findById(branchId).map(Branch::getName).orElse(null);
     }
 
     /**

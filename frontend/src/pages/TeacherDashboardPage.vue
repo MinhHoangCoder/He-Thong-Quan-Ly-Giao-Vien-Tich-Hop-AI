@@ -1,89 +1,112 @@
 <script setup>
-// Dashboard GIÁO VIÊN — cùng phong cách dashboard admin. Dữ liệu mẫu (sau thay bằng API).
+// Dashboard GIÁO VIÊN — chỉ hiển thị SỐ LIỆU, không so sánh kỳ trước/kỳ sau.
+// Toàn bộ lịch lấy từ MỘT nguồn weekSchedule (dữ liệu mẫu, sau thay bằng API):
+// các con số (buổi hôm nay / buổi tuần / số trường / lớp / môn) đều TÍNH ra từ đó
+// nên khi nối API chỉ cần thay weekSchedule, các khối khác tự khớp.
 import { computed } from 'vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import StatCard from '@/components/ui/StatCard.vue'
-import MiniBars from '@/components/charts/MiniBars.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const firstName = computed(() => auth.user?.fullName || 'Giáo viên')
 
-const stats = [
+// Mỗi môn 1 màu nhấn cố định để chip lịch tuần & chấm timeline đồng bộ nhau
+const SUBJECT_COLORS = {
+  Robotics: '#f97316',
+  Scratch: '#0ea5e9',
+  'AI cơ bản': '#2563eb',
+}
+const subjectColor = (subject) => SUBJECT_COLORS[subject] || '#f97316'
+
+// Lịch dạy trong tuần (T2 → CN). cls = lớp phụ trách tại trường đó.
+const weekSchedule = [
   {
-    icon: 'schedule',
-    label: 'Buổi dạy hôm nay',
-    value: 3,
-    hint: 'còn 2 buổi chiều',
-    color: '#f97316',
+    day: 'T2',
+    sessions: [
+      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A1' },
+      { time: '09:30', subject: 'Scratch', school: 'THCS Lê Quý Đôn', cls: '6A2', room: 'P.A2' },
+      { time: '13:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B1' },
+    ],
   },
   {
-    icon: 'clock',
-    label: 'Giờ công tháng này',
-    value: 72,
-    hint: 'mục tiêu 96h',
-    trend: 9,
-    color: '#0ea5e9',
+    day: 'T3',
+    sessions: [
+      { time: '08:00', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B2' },
+      { time: '09:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B1' },
+    ],
   },
   {
-    icon: 'assignment',
-    label: 'Buổi dạy tuần này',
-    value: 14,
-    hint: 'so với tuần trước',
-    trend: 6,
-    color: '#f59e0b',
+    day: 'T4',
+    sessions: [
+      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A1' },
+      { time: '09:30', subject: 'Scratch', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A2' },
+      { time: '13:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B1' },
+    ],
   },
   {
-    icon: 'evaluation',
-    label: 'Điểm đánh giá',
-    value: '4.7/5',
-    hint: 'học kỳ này',
-    color: '#2563eb',
+    day: 'T5',
+    sessions: [
+      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A2', room: 'P.A1' },
+      { time: '13:30', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B2' },
+    ],
   },
+  {
+    day: 'T6',
+    sessions: [
+      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A1' },
+      { time: '09:30', subject: 'AI cơ bản', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A3' },
+      { time: '13:30', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B1' },
+    ],
+  },
+  {
+    day: 'T7',
+    sessions: [
+      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A1' },
+    ],
+  },
+  { day: 'CN', sessions: [] },
 ]
 
-// Lịch dạy hôm nay
-const todaySchedule = [
-  { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', room: 'P.A1', color: '#f97316' },
-  { time: '09:30', subject: 'Scratch', school: 'THCS Lê Quý Đôn', room: 'P.A2', color: '#0ea5e9' },
-  { time: '13:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', room: 'P.B1', color: '#2563eb' },
-]
+// getDay(): 0 = CN, 1 = T2... → đổi về chỉ số 0 = T2 ... 6 = CN cho khớp mảng trên
+const todayIdx = (new Date().getDay() + 6) % 7
+const todaySessions = computed(() => weekSchedule[todayIdx].sessions)
+const weekCount = computed(() => weekSchedule.reduce((sum, d) => sum + d.sessions.length, 0))
+const todayLabel = new Intl.DateTimeFormat('vi-VN', {
+  weekday: 'long',
+  day: '2-digit',
+  month: '2-digit',
+}).format(new Date())
 
-// Thông báo gần đây
-const notifications = [
-  { title: 'Lịch dạy thứ 6 được duyệt', time: '2 giờ trước', type: 'ok' },
-  { title: 'Bảng công tháng 5 đã chốt', time: 'Hôm qua', type: 'info' },
-  { title: 'Cập nhật hồ sơ trước 15/06', time: '2 ngày trước', type: 'warn' },
-]
-const dotClass = (t) => (t === 'ok' ? 'is-ok' : t === 'warn' ? 'is-warn' : 'is-info')
+// 4 thẻ đầu trang: chỉ con số, không hint/không % tăng giảm
+const stats = computed(() => [
+  { icon: 'schedule', label: 'Buổi dạy hôm nay', value: todaySessions.value.length, color: '#f97316' },
+  { icon: 'assignment', label: 'Buổi dạy tuần này', value: weekCount.value, color: '#0ea5e9' },
+  { icon: 'clock', label: 'Giờ công tháng này', value: '72h', color: '#f59e0b' },
+  { icon: 'evaluation', label: 'Điểm đánh giá', value: '4.7/5', color: '#2563eb' },
+])
 
-// Giờ dạy 7 ngày gần nhất (mini chart)
-const miniStats = [
-  {
-    label: 'Giờ dạy 7 ngày',
-    value: '21h',
-    data: [3, 4, 2, 5, 4, 3, 0],
-    color: '#f97316',
-    trend: 8,
-  },
-  {
-    label: 'Tỉ lệ đúng giờ',
-    value: '98%',
-    data: [9, 8, 10, 9, 10, 9, 10],
-    color: '#2563eb',
-    trend: 2,
-  },
-  { label: 'Buổi sắp tới', value: '5', data: [1, 2, 1, 0, 1, 0, 0], color: '#f59e0b', trend: -3 },
-]
+// Đếm số phần tử KHÁC NHAU theo 1 trường dữ liệu (Set tự loại trùng)
+const countUnique = (field) =>
+  new Set(weekSchedule.flatMap((d) => d.sessions.map((s) => s[field]))).size
+
+const quickStats = computed(() => [
+  { icon: 'school', label: 'Trường đang dạy', value: countUnique('school') },
+  { icon: 'teacher', label: 'Lớp phụ trách', value: countUnique('cls') },
+  { icon: 'subject', label: 'Môn đảm nhiệm', value: countUnique('subject') },
+  { icon: 'attendance', label: 'Buổi đã dạy tháng này', value: 38 },
+])
+
+// Chip buổi dạy ở lưới tuần: nền mờ 9% + vạch trái đậm theo màu môn (hợp cả theme tối)
+const sessionStyle = (s) => ({
+  background: subjectColor(s.subject) + '17',
+  borderLeftColor: subjectColor(s.subject),
+})
 </script>
 
 <template>
   <div class="page-head">
-    <div>
-      <h1 class="page-head__title">Xin chào, {{ firstName }}</h1>
-      <p class="page-head__crumb">Tổng quan / Giáo viên</p>
-    </div>
-    <button class="btn-primary"><SvgIcon name="clock" :size="18" /> Check-in</button>
+    <h1 class="page-head__title">Xin chào, {{ firstName }}</h1>
   </div>
 
   <section class="stat-grid">
@@ -95,48 +118,62 @@ const miniStats = [
     <div class="card">
       <div class="card__head">
         <h2 class="card__title">Lịch dạy hôm nay</h2>
-        <a href="#" class="card__more">Lịch tuần</a>
+        <span class="card__date">{{ todayLabel }}</span>
       </div>
-      <ul class="timeline">
-        <li v-for="t in todaySchedule" :key="t.time" class="timeline__item">
+      <ul v-if="todaySessions.length" class="timeline">
+        <li v-for="t in todaySessions" :key="t.time" class="timeline__item">
           <span class="timeline__time">{{ t.time }}</span>
-          <span class="timeline__dot" :style="{ background: t.color }" />
+          <span class="timeline__dot" :style="{ background: subjectColor(t.subject) }" />
           <div class="timeline__body">
             <strong>{{ t.subject }}</strong>
-            <small>{{ t.school }} · {{ t.room }}</small>
+            <small>{{ t.school }} · Lớp {{ t.cls }} · {{ t.room }}</small>
           </div>
         </li>
       </ul>
+      <p v-else class="empty-note">Hôm nay không có buổi dạy.</p>
     </div>
 
-    <!-- Thông báo -->
+    <!-- Số liệu giảng dạy -->
     <div class="card">
       <div class="card__head">
-        <h2 class="card__title">Thông báo</h2>
-        <a href="#" class="card__more">Tất cả</a>
+        <h2 class="card__title">Số liệu giảng dạy</h2>
       </div>
-      <ul class="notis">
-        <li v-for="n in notifications" :key="n.title" class="noti">
-          <span class="noti__dot" :class="dotClass(n.type)" />
-          <div class="noti__body">
-            <strong>{{ n.title }}</strong>
-            <small>{{ n.time }}</small>
-          </div>
+      <ul class="qstats">
+        <li v-for="q in quickStats" :key="q.label" class="qstat">
+          <span class="qstat__icon"><SvgIcon :name="q.icon" :size="17" /></span>
+          <span class="qstat__label">{{ q.label }}</span>
+          <strong class="qstat__value">{{ q.value }}</strong>
         </li>
       </ul>
     </div>
   </section>
 
-  <section class="mini-grid">
-    <div v-for="s in miniStats" :key="s.label" class="card mini-card">
-      <div class="mini-card__top">
-        <span class="mini-card__label">{{ s.label }}</span>
-        <span class="mini-card__trend" :class="s.trend >= 0 ? 'is-up' : 'is-down'">
-          <SvgIcon :name="s.trend >= 0 ? 'up' : 'down'" :size="13" />{{ Math.abs(s.trend) }}%
-        </span>
+  <!-- Lịch dạy tuần này -->
+  <section class="card week-card">
+    <div class="card__head">
+      <h2 class="card__title">Lịch dạy tuần này</h2>
+      <span class="week-total">{{ weekCount }} buổi</span>
+    </div>
+    <div class="week-scroll">
+      <div class="week-grid">
+        <div
+          v-for="(d, i) in weekSchedule"
+          :key="d.day"
+          class="wday"
+          :class="{ 'is-today': i === todayIdx }"
+        >
+          <div class="wday__head">
+            <span class="wday__name">{{ d.day }}</span>
+            <span v-if="d.sessions.length" class="wday__count">{{ d.sessions.length }} buổi</span>
+          </div>
+          <div v-for="s in d.sessions" :key="s.time" class="wsession" :style="sessionStyle(s)">
+            <strong class="wsession__time">{{ s.time }}</strong>
+            <span class="wsession__subject">{{ s.subject }}</span>
+            <small class="wsession__cls">Lớp {{ s.cls }}</small>
+          </div>
+          <p v-if="!d.sessions.length" class="wday__off">Nghỉ</p>
+        </div>
       </div>
-      <div class="mini-card__value">{{ s.value }}</div>
-      <MiniBars :data="s.data" :color="s.color" />
     </div>
   </section>
 </template>
@@ -156,32 +193,6 @@ const miniStats = [
   font-weight: 700;
   color: var(--a-text);
 }
-.page-head__crumb {
-  margin: 0.2rem 0 0;
-  font-size: 0.82rem;
-  color: var(--a-text-muted);
-}
-.btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  border: none;
-  cursor: pointer;
-  padding: 0.65rem 1.15rem;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #fff;
-  background: var(--grad-primary);
-  box-shadow: 0 8px 18px rgba(249, 115, 22, 0.32);
-  transition:
-    transform var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 24px rgba(249, 115, 22, 0.42);
-}
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -200,7 +211,7 @@ const miniStats = [
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .card__head {
   display: flex;
@@ -215,28 +226,12 @@ const miniStats = [
   font-weight: 700;
   color: var(--a-text);
 }
-.card__more {
-  position: relative;
+.card__date {
   font-size: 0.82rem;
-  color: var(--c-primary);
-  text-decoration: none;
   font-weight: 600;
+  color: var(--c-primary);
   white-space: nowrap;
-}
-.card__more::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: -2px;
-  width: 100%;
-  height: 2px;
-  background: var(--c-primary);
-  transform: scaleX(0);
-  transform-origin: left;
-  transition: transform var(--t);
-}
-.card__more:hover::after {
-  transform: scaleX(1);
+  text-transform: capitalize;
 }
 .grid-2 {
   display: grid;
@@ -244,8 +239,15 @@ const miniStats = [
   gap: 1.1rem;
   margin-bottom: 1.4rem;
 }
+.empty-note {
+  margin: 0;
+  padding: 1.2rem 0;
+  text-align: center;
+  color: var(--a-text-muted);
+  font-size: 0.9rem;
+}
 
-/* Timeline */
+/* Timeline hôm nay */
 .timeline {
   list-style: none;
   margin: 0;
@@ -282,7 +284,7 @@ const miniStats = [
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid var(--c-surface);
   box-shadow: 0 0 0 2px currentColor;
   z-index: 1;
 }
@@ -300,90 +302,133 @@ const miniStats = [
   color: var(--a-text-muted);
 }
 
-/* Notifications */
-.notis {
+/* Số liệu giảng dạy */
+.qstats {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-.noti {
+.qstat {
   display: flex;
-  align-items: flex-start;
-  gap: 0.6rem;
-  padding: 0.6rem 0;
-  border-bottom: 1px solid var(--a-border);
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.72rem 0;
+  border-bottom: 1px solid var(--c-border-soft);
 }
-.noti:last-child {
+.qstat:last-child {
   border-bottom: none;
 }
-.noti__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  margin-top: 0.35rem;
+.qstat__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgba(249, 115, 22, 0.1);
+  color: var(--c-primary);
   flex: 0 0 auto;
 }
-.noti__dot.is-ok {
-  background: #22c55e;
-}
-.noti__dot.is-warn {
-  background: #f59e0b;
-}
-.noti__dot.is-info {
-  background: #0ea5e9;
-}
-.noti__body {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.3;
-}
-.noti__body strong {
+.qstat__label {
+  flex: 1;
   font-size: 0.88rem;
-  font-weight: 600;
   color: var(--a-text);
 }
-.noti__body small {
-  font-size: 0.76rem;
-  color: var(--a-text-muted);
+.qstat__value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--a-text);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Mini cards */
-.mini-grid {
+/* Lưới lịch tuần */
+.week-total {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--c-primary-dark);
+  background: rgba(249, 115, 22, 0.09);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  border-radius: 9999px;
+  padding: 0.14rem 0.6rem;
+  white-space: nowrap;
+}
+:root[data-theme='dark'] .week-total {
+  color: #fdba74;
+}
+.week-scroll {
+  overflow-x: auto;
+}
+.week-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1.1rem;
+  grid-template-columns: repeat(7, minmax(112px, 1fr));
+  gap: 0.6rem;
 }
-.mini-card {
-  padding: 1.1rem;
+.wday {
+  border: 1px solid var(--a-border);
+  border-radius: 12px;
+  padding: 0.55rem 0.55rem 0.4rem;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
 }
-.mini-card__top {
+.wday.is-today {
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.16);
+  background: rgba(249, 115, 22, 0.04);
+}
+.wday__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.3rem;
+  margin-bottom: 0.45rem;
 }
-.mini-card__label {
-  font-size: 0.78rem;
+.wday__name {
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
   color: var(--a-text-muted);
 }
-.mini-card__trend {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.1rem;
+.wday.is-today .wday__name {
+  color: var(--c-primary);
+}
+.wday__count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--a-text-muted);
+  white-space: nowrap;
+}
+.wsession {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0.3rem 0.45rem;
+  border-radius: 7px;
+  border-left: 3px solid transparent;
+  margin-bottom: 4px;
+  line-height: 1.25;
+}
+.wsession__time {
   font-size: 0.72rem;
-  font-weight: 700;
-}
-.mini-card__trend.is-up {
-  color: #15803d;
-}
-.mini-card__trend.is-down {
-  color: #dc2626;
-}
-.mini-card__value {
-  font-size: 1.5rem;
-  font-weight: 700;
   color: var(--a-text);
-  margin: 0.35rem 0 0.7rem;
+}
+.wsession__subject {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--a-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wsession__cls {
+  font-size: 0.68rem;
+  color: var(--a-text-muted);
+}
+.wday__off {
+  margin: auto 0;
+  text-align: center;
+  font-size: 0.76rem;
+  color: var(--a-text-muted);
+  opacity: 0.7;
 }
 
 @media (max-width: 1100px) {

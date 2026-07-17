@@ -7,6 +7,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { attendanceApi } from '@/api/attendance'
 import { assignmentApi } from '@/api/assignments'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const STATUSES = [
   { code: 'PRESENT', label: 'Có mặt', cls: 'badge-green' },
@@ -29,6 +30,15 @@ const rows = ref([])
 const loading = ref(false)
 const info = ref('')
 
+/* ── Phân trang phía client ── */
+const PAGE_SIZE = 10
+const page = ref(0)
+const totalPages = computed(() => Math.ceil(rows.value.length / PAGE_SIZE))
+const pagedRows = computed(() => {
+  const start = page.value * PAGE_SIZE
+  return rows.value.slice(start, start + PAGE_SIZE)
+})
+
 const editModal = reactive({ open: false, saving: false, error: '', id: null, form: {} })
 
 async function loadTeachers() {
@@ -43,6 +53,7 @@ async function loadTeachers() {
 async function load() {
   loading.value = true
   info.value = ''
+  page.value = 0
   try {
     const { data } = await attendanceApi.list({
       teacherId: filter.teacherId || undefined,
@@ -125,7 +136,6 @@ const presentCount = computed(
     <div class="page-head">
       <div>
         <h2 class="title">Chấm công</h2>
-        <p class="subtitle">Theo dõi buổi dạy, giờ vào/ra và số giờ dạy của giáo viên.</p>
       </div>
       <button class="btn btn-primary" @click="generate">⟳ Sinh từ lịch dạy</button>
     </div>
@@ -184,7 +194,7 @@ const presentCount = computed(
               Chưa có dữ liệu — bấm “Sinh từ lịch dạy” để tạo từ các buổi đã duyệt.
             </td>
           </tr>
-          <tr v-for="r in rows" :key="r.id">
+          <tr v-for="r in pagedRows" :key="r.id">
             <td class="mono">{{ r.workDate }}</td>
             <td class="font-medium">{{ r.teacherName }}</td>
             <td class="mono">{{ r.checkIn ? r.checkIn.slice(0, 5) : '—' }}</td>
@@ -203,6 +213,8 @@ const presentCount = computed(
         </tbody>
       </table>
     </div>
+
+    <Pagination v-model="page" :total-pages="totalPages" />
 
     <!-- Modal sửa -->
     <div v-if="editModal.open" class="modal-overlay" @click.self="editModal.open = false">

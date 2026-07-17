@@ -10,9 +10,8 @@ const nav = [
   {
     title: 'Nhân sự',
     items: [
-      { label: 'Giáo viên', icon: 'teacher', to: '/dashboard/teacher', badge: '128' },
-      { label: 'Môn học', icon: 'subject', to: '#' },
-      { label: 'Đánh giá', icon: 'evaluation', to: '#' },
+      { label: 'Giáo viên', icon: 'teacher', to: '/dashboard/teacher' },
+      { label: 'Đánh giá', icon: 'evaluation', to: '/admin/evaluations' },
     ],
   },
   {
@@ -23,10 +22,9 @@ const nav = [
     ],
   },
   {
-    title: 'Khách hàng',
+    title: 'Trường học',
     items: [
       { label: 'Trường', icon: 'school', to: '#' },
-      { label: 'Lớp & Học sinh', icon: 'attendance', to: '#' },
     ],
   },
   {
@@ -42,7 +40,9 @@ const nav = [
     title: 'Hệ thống',
     items: [
       { label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' },
-      { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
+      // TẠM ẨN cho đợt bảo vệ (demo chỉ dùng admin + teacher). Trang /settings/roles
+      // vẫn hoạt động — mở lại bằng cách bỏ comment dòng dưới.
+      // { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
     ],
   },
 ]
@@ -50,7 +50,7 @@ const nav = [
 </script>
 
 <template>
-  <PortalShell :nav="nav" settings-to="/settings">
+  <PortalShell :nav="nav" settings-to="/settings" profile-to="/profile">
     <slot />
   </PortalShell>
 </template>

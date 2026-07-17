@@ -65,8 +65,8 @@ const statRoutes = {
 const sideRoutes = {
   hours: '/attendance',
   ontime: '/attendance',
-  rating: '/dashboard/teacher',
-  pending: '/schedule',
+  rating: '/admin/evaluations',
+  payroll: '/payroll',
 }
 function goStat(key) {
   const to = statRoutes[key]
@@ -85,6 +85,9 @@ function goAssignments() {
 function goSchedule() {
   router.push('/schedule')
 }
+function goScheduleWeek() {
+  router.push({ path: '/schedule', query: { view: 'week' } })
+}
 function goTeachers() {
   router.push('/dashboard/teacher')
 }
@@ -97,8 +100,9 @@ const recentAssignments = computed(() => data.value?.recentAssignments ?? [])
 const todaySchedule = computed(() => data.value?.todaySchedule ?? [])
 const topTeachers = computed(() => data.value?.topTeachers ?? [])
 
+const TONE_CLASS = { ok: 'is-ok', wait: 'is-wait', done: 'is-done', no: 'is-no' }
 function toneClass(tone) {
-  return tone === 'ok' ? 'is-ok' : tone === 'wait' ? 'is-wait' : 'is-no'
+  return TONE_CLASS[tone] || 'is-no'
 }
 </script>
 
@@ -226,7 +230,7 @@ function toneClass(tone) {
       <div class="card">
         <div class="card__head">
           <h2 class="card__title">Lịch dạy hôm nay</h2>
-          <button class="card__more" @click="goSchedule">Lịch tuần</button>
+          <button class="card__more" @click="goScheduleWeek">Lịch tuần</button>
         </div>
         <ul v-if="todaySchedule.length" class="timeline">
           <li v-for="t in todaySchedule" :key="t.id" class="timeline__item" @click="goSchedule">
@@ -259,7 +263,7 @@ function toneClass(tone) {
             <strong>{{ t.name }}</strong>
             <small>{{ t.subject }}</small>
           </div>
-          <span class="teacher__hours">{{ t.hours }}h</span>
+          <span class="teacher__hours">{{ t.tiet }} tiết</span>
         </div>
       </div>
       <div v-else class="state state--empty">
@@ -326,7 +330,7 @@ function toneClass(tone) {
   align-items: center;
   gap: 0.4rem;
   border: 1px solid var(--a-border);
-  background: #fff;
+  background: var(--c-surface);
   color: var(--a-text-muted);
   cursor: pointer;
   padding: 0.6rem 0.95rem;
@@ -341,7 +345,7 @@ function toneClass(tone) {
 .btn-ghost:hover:not(:disabled) {
   border-color: var(--c-primary);
   color: var(--c-primary);
-  background: #fff7ed;
+  background: rgba(249, 115, 22, 0.08);
 }
 .btn-ghost:disabled {
   opacity: 0.6;
@@ -359,14 +363,17 @@ function toneClass(tone) {
 }
 .state--loading {
   color: var(--a-text-muted);
-  background: #fff;
+  background: var(--c-surface);
   border: 1px solid var(--a-border);
 }
 .state--error {
   color: #b91c1c;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
   flex-wrap: wrap;
+}
+:root[data-theme='dark'] .state--error {
+  color: #f87171;
 }
 .state--error .btn-ghost {
   margin-left: auto;
@@ -435,7 +442,7 @@ function toneClass(tone) {
 }
 .card:hover {
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .card__head {
   display: flex;
@@ -560,6 +567,13 @@ function toneClass(tone) {
 .mini-card__trend.is-down {
   color: #dc2626;
 }
+/* Chữ xanh/đỏ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .mini-card__trend.is-up {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .mini-card__trend.is-down {
+  color: #f87171;
+}
 .mini-card__value {
   font-size: 1.5rem;
   font-weight: 700;
@@ -636,6 +650,19 @@ function toneClass(tone) {
   color: #dc2626;
   background: #ef44441f;
 }
+:root[data-theme='dark'] .badge.is-ok {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .badge.is-wait {
+  color: #fbbf24;
+}
+:root[data-theme='dark'] .badge.is-no {
+  color: #f87171;
+}
+.badge.is-done {
+  color: #1d4ed8;
+  background: #2563eb1f;
+}
 
 /* Timeline lịch hôm nay */
 .timeline {
@@ -678,7 +705,7 @@ function toneClass(tone) {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 3px solid #fff;
+  border: 3px solid var(--c-surface);
   box-shadow: 0 0 0 2px currentColor;
   z-index: 1;
   transition: transform var(--t);
@@ -720,7 +747,7 @@ function toneClass(tone) {
 .teacher:hover {
   transform: translateY(-3px);
   box-shadow: var(--a-shadow-lg);
-  border-color: #d2e8e2;
+  border-color: rgba(249, 115, 22, 0.35);
 }
 .teacher:hover .teacher__avatar {
   transform: scale(1.07);

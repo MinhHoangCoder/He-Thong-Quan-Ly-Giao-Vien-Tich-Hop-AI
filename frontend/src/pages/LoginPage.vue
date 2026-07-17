@@ -201,10 +201,13 @@ const features = [
   padding: 0.55rem 0.8rem;
   font-size: 0.82rem;
   color: var(--c-accent-dark, #1d4ed8);
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
+  background: rgba(37, 99, 235, 0.09);
+  border: 1px solid rgba(37, 99, 235, 0.22);
   border-radius: 10px;
   line-height: 1.45;
+}
+:root[data-theme='dark'] .addnote {
+  color: #93c5fd;
 }
 .addnote__back {
   border: none;
@@ -372,7 +375,7 @@ const features = [
 }
 .field input {
   padding: 10px 12px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--c-input-border);
   border-radius: 10px;
   font-size: 15px;
   outline: none;
@@ -453,12 +456,18 @@ const features = [
   padding: 8px 10px;
 }
 .msg--error {
-  background: #fef2f2;
+  background: rgba(239, 68, 68, 0.1);
   color: #b91c1c;
 }
 .msg--ok {
-  background: #ecfdf5;
+  background: rgba(34, 197, 94, 0.12);
   color: #047857;
+}
+:root[data-theme='dark'] .msg--error {
+  color: #f87171;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
 }
 .demo {
   margin-top: 8px;
@@ -468,7 +477,7 @@ const features = [
 .demo__title {
   margin: 0 0 8px;
   font-size: 12px;
-  color: #64748b;
+  color: var(--c-text-muted);
 }
 .demo__chips {
   display: flex;

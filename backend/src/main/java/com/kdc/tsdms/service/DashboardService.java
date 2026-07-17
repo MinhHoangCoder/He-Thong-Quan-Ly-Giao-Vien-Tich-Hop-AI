@@ -10,6 +10,7 @@ import com.kdc.tsdms.dto.DashboardResponse.StatCard;
 import com.kdc.tsdms.dto.DashboardResponse.TopTeacher;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.Attendance;
+import com.kdc.tsdms.entity.Payroll;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Subject;
@@ -18,13 +19,14 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.entity.TeacherEvaluation;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherEvaluationRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
+import java.math.BigDecimal;
 import java.time.DayOfWeek;
-import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -68,6 +70,7 @@ public class DashboardService {
     private final SubjectRepository subjectRepo;
     private final AttendanceRepository attendanceRepo;
     private final TeacherEvaluationRepository evaluationRepo;
+    private final PayrollRepository payrollRepo;
 
     public DashboardService(
             TeacherRepository teacherRepo,
@@ -76,7 +79,8 @@ public class DashboardService {
             ScheduleRepository scheduleRepo,
             SubjectRepository subjectRepo,
             AttendanceRepository attendanceRepo,
-            TeacherEvaluationRepository evaluationRepo) {
+            TeacherEvaluationRepository evaluationRepo,
+            PayrollRepository payrollRepo) {
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
         this.assignmentRepo = assignmentRepo;
@@ -84,6 +88,7 @@ public class DashboardService {
         this.subjectRepo = subjectRepo;
         this.attendanceRepo = attendanceRepo;
         this.evaluationRepo = evaluationRepo;
+        this.payrollRepo = payrollRepo;
     }
 
     @Transactional(readOnly = true)
@@ -121,11 +126,12 @@ public class DashboardService {
         List<Attendance> attendance =
                 attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from.toLocalDate(), to.toLocalDate());
         List<TeacherEvaluation> evaluations = evaluationRepo.findByDeletedFalse();
+        List<Payroll> payrolls = payrollRepo.findAll();
 
         return new DashboardResponse(
                 buildStats(schedules, teacherById, weekStart, weekEnd, lastWeekStart),
                 buildChart(schedules, assignmentById, subjectById, monthStart, chartMonths),
-                buildSideStats(schedules, attendance, evaluations, monthStart, lastMonthStart),
+                buildSideStats(schedules, attendance, evaluations, payrolls, monthStart, lastMonthStart),
                 buildRecentAssignments(assignmentById, schoolById, subjectById, teacherById, today),
                 buildToday(schedules, assignmentById, subjectById, schoolById, teacherById, todayStart, tomorrowStart),
                 buildTopTeachers(schedules, assignmentById, subjectById, teacherById, monthStart, monthEnd));
@@ -237,19 +243,19 @@ public class DashboardService {
             List<Schedule> schedules,
             List<Attendance> attendance,
             List<TeacherEvaluation> evaluations,
+            List<Payroll> payrolls,
             LocalDateTime monthStart,
             LocalDateTime lastMonthStart) {
-        // 1) Giờ dạy tháng này.
-        double hoursThisMonth = approvedHours(schedules, monthStart, monthStart.plusMonths(1));
-        double hoursLastMonth = approvedHours(schedules, lastMonthStart, monthStart);
-        List<Long> hoursSpark =
-                monthlySeries(monthStart, (from, toEx) -> Math.round(approvedHours(schedules, from, toEx)));
-        SideStat hours = new SideStat(
+        // 1) Số TIẾT dạy tháng này (mỗi buổi APPROVED = 1 tiết). Bỏ tính theo giờ.
+        long tietThisMonth = countApproved(schedules, monthStart, monthStart.plusMonths(1));
+        long tietLastMonth = countApproved(schedules, lastMonthStart, monthStart);
+        List<Long> tietSpark = monthlySeries(monthStart, (from, toEx) -> countApproved(schedules, from, toEx));
+        SideStat tiet = new SideStat(
                 "hours",
-                "Giờ dạy tháng này",
-                formatInt(Math.round(hoursThisMonth)),
-                percentChange(Math.round(hoursThisMonth), Math.round(hoursLastMonth)),
-                hoursSpark,
+                "Số tiết dạy tháng này",
+                formatInt(tietThisMonth),
+                percentChange(tietThisMonth, tietLastMonth),
+                tietSpark,
                 "#f97316");
 
         // 2) Tỉ lệ chấm công đúng giờ (PRESENT / (PRESENT+LATE)) trong tháng.
@@ -293,17 +299,51 @@ public class DashboardService {
                 ratingSpark,
                 "#0ea5e9");
 
-        // 4) Buổi dạy chờ duyệt.
-        long pending = scheduleRepo.countByStatusAndDeletedFalse("PENDING");
-        List<Long> pendingSpark = monthlySeries(monthStart, (from, toEx) -> schedules.stream()
-                .filter(s -> "PENDING".equals(s.getStatus()))
-                .filter(s ->
-                        !s.getStartTime().isBefore(from) && s.getStartTime().isBefore(toEx))
-                .count());
-        SideStat pendingStat =
-                new SideStat("pending", "Buổi dạy chờ duyệt", formatInt(pending), null, pendingSpark, "#f59e0b");
+        // 4) Chi phí lương tháng này = tổng NetAmount các dòng Payroll của kỳ hiện tại
+        //    (NetAmount do DB tính sẵn). Chưa "Tạo bảng lương" cho tháng này → hiển thị "—".
+        short curYear = (short) monthStart.getYear();
+        short curMonth = (short) monthStart.getMonthValue();
+        short prevYear = (short) lastMonthStart.getYear();
+        short prevMonth = (short) lastMonthStart.getMonthValue();
 
-        return List.of(hours, onTime, rating, pendingStat);
+        BigDecimal payThis = sumNet(payrolls, curYear, curMonth);
+        BigDecimal payLast = sumNet(payrolls, prevYear, prevMonth);
+        boolean hasPayroll = payrolls.stream()
+                .filter(p -> p.getPeriodYear() != null && p.getPeriodMonth() != null)
+                .anyMatch(p -> p.getPeriodYear().shortValue() == curYear
+                        && p.getPeriodMonth().shortValue() == curMonth);
+
+        // Sparkline: tổng lương từng tháng trong SPARK_MONTHS tháng gần nhất (cũ → mới).
+        List<Long> paySpark = new ArrayList<>();
+        for (int i = SPARK_MONTHS - 1; i >= 0; i--) {
+            LocalDateTime b = monthStart.minusMonths(i);
+            paySpark.add(sumNet(payrolls, (short) b.getYear(), (short) b.getMonthValue())
+                    .longValue());
+        }
+
+        Double payTrend = (hasPayroll && payLast.signum() > 0)
+                ? round1((payThis.doubleValue() - payLast.doubleValue()) * 100.0 / payLast.doubleValue())
+                : null;
+        SideStat payroll = new SideStat(
+                "payroll",
+                "Chi phí lương tháng này",
+                hasPayroll ? formatMoney(payThis) : "—",
+                payTrend,
+                paySpark,
+                "#22c55e");
+
+        return List.of(tiet, onTime, rating, payroll);
+    }
+
+    /** Tổng NetAmount (lương thực nhận, DB tính) của mọi dòng Payroll thuộc kỳ year/month. */
+    private static BigDecimal sumNet(List<Payroll> payrolls, short year, short month) {
+        return payrolls.stream()
+                .filter(p -> p.getPeriodYear() != null && p.getPeriodMonth() != null)
+                .filter(p -> p.getPeriodYear().shortValue() == year
+                        && p.getPeriodMonth().shortValue() == month)
+                .map(Payroll::getNetAmount)
+                .filter(v -> v != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     /* ─────────────────────────── RECENT ASSIGNMENTS ─────────────────────────── */
@@ -324,8 +364,8 @@ public class DashboardService {
                             name(schoolById.get(a.getSchoolId()), School::getName, "Trường"),
                             name(subjectById.get(a.getSubjectId()), Subject::getName, "Môn"),
                             a.getStartDate() == null ? "" : a.getStartDate().format(DAY_MONTH),
-                            status[0],
-                            status[1]);
+                            status[1],
+                            status[0]);
                 })
                 .toList();
     }
@@ -370,7 +410,8 @@ public class DashboardService {
             Map<Integer, Teacher> teacherById,
             LocalDateTime monthStart,
             LocalDateTime monthEnd) {
-        Map<Integer, Double> hoursByTeacher = new LinkedHashMap<>();
+        // Đếm SỐ TIẾT mỗi GV trong tháng (mỗi buổi APPROVED = 1 tiết) thay cho cộng giờ.
+        Map<Integer, Long> tietByTeacher = new LinkedHashMap<>();
         Map<Integer, Map<String, Long>> subjectByTeacher = new LinkedHashMap<>();
         for (Schedule s : schedules) {
             if (!APPROVED.equals(s.getStatus())
@@ -378,7 +419,7 @@ public class DashboardService {
                     || !s.getStartTime().isBefore(monthEnd)) {
                 continue;
             }
-            hoursByTeacher.merge(s.getTeacherId(), hoursOf(s), Double::sum);
+            tietByTeacher.merge(s.getTeacherId(), 1L, Long::sum);
             Assignment a = assignmentById.get(s.getAssignmentId());
             Subject subject = a == null ? null : subjectById.get(a.getSubjectId());
             if (subject != null) {
@@ -387,8 +428,8 @@ public class DashboardService {
                         .merge(subject.getName(), 1L, Long::sum);
             }
         }
-        return hoursByTeacher.entrySet().stream()
-                .sorted(Map.Entry.<Integer, Double>comparingByValue().reversed())
+        return tietByTeacher.entrySet().stream()
+                .sorted(Map.Entry.<Integer, Long>comparingByValue().reversed())
                 .limit(4)
                 .map(e -> {
                     Teacher t = teacherById.get(e.getKey());
@@ -396,7 +437,7 @@ public class DashboardService {
                             .max(Map.Entry.comparingByValue())
                             .map(Map.Entry::getKey)
                             .orElse("—");
-                    return new TopTeacher(e.getKey(), teacherName(t), subject, Math.round(e.getValue()), initials(t));
+                    return new TopTeacher(e.getKey(), teacherName(t), subject, e.getValue(), initials(t));
                 })
                 .toList();
     }
@@ -409,23 +450,6 @@ public class DashboardService {
                 .filter(s ->
                         !s.getStartTime().isBefore(from) && s.getStartTime().isBefore(toEx))
                 .count();
-    }
-
-    private double approvedHours(List<Schedule> schedules, LocalDateTime from, LocalDateTime toEx) {
-        return schedules.stream()
-                .filter(s -> APPROVED.equals(s.getStatus()))
-                .filter(s ->
-                        !s.getStartTime().isBefore(from) && s.getStartTime().isBefore(toEx))
-                .mapToDouble(this::hoursOf)
-                .sum();
-    }
-
-    private double hoursOf(Schedule s) {
-        if (s.getStartTime() == null || s.getEndTime() == null) {
-            return 0;
-        }
-        long minutes = Duration.between(s.getStartTime(), s.getEndTime()).toMinutes();
-        return minutes <= 0 ? 0 : minutes / 60.0;
     }
 
     private int monthIndex(LocalDateTime when, List<LocalDateTime> bucketStarts) {
@@ -499,13 +523,13 @@ public class DashboardService {
         return counted == 0 ? 0 : (present * 100.0) / counted;
     }
 
-    /** Trả [tone, label]: ok=Đang dạy, wait=Sắp bắt đầu, no=Đã hủy. */
+    /** Trả [tone, label]: ok=Đang dạy, wait=Sắp bắt đầu, no=Đã hủy, done=Hoàn thành. */
     private String[] assignmentStatus(Assignment a, LocalDate today) {
         if ("CANCELLED".equals(a.getStatus())) {
             return new String[] {"no", "Đã hủy"};
         }
         if ("COMPLETED".equals(a.getStatus())) {
-            return new String[] {"ok", "Hoàn thành"};
+            return new String[] {"done", "Hoàn thành"};
         }
         if (a.getStartDate() != null && a.getStartDate().isAfter(today)) {
             return new String[] {"wait", "Sắp bắt đầu"};
@@ -565,6 +589,33 @@ public class DashboardService {
     /** Định dạng số nguyên có phân tách hàng nghìn bằng dấu chấm (kiểu VN): 4820 → 4.820. */
     private static String formatInt(long v) {
         return String.format(Locale.US, "%,d", v).replace(',', '.');
+    }
+
+    /**
+     * Định dạng tiền VND gọn cho thẻ nhỏ trên dashboard: ≥1 tỷ → "1,2 tỷ ₫",
+     * ≥1 triệu → "12,3 tr ₫", còn lại → số đầy đủ "123.000 ₫".
+     */
+    private static String formatMoney(BigDecimal amount) {
+        if (amount == null || amount.signum() == 0) {
+            return "0 ₫";
+        }
+        double v = amount.doubleValue();
+        if (v >= 1_000_000_000d) {
+            return trimDec(v / 1_000_000_000d) + " tỷ ₫";
+        }
+        if (v >= 1_000_000d) {
+            return trimDec(v / 1_000_000d) + " tr ₫";
+        }
+        return formatInt(amount.longValue()) + " ₫";
+    }
+
+    /** Làm tròn 1 chữ số thập phân, dùng dấu phẩy kiểu VN và bỏ ",0" thừa: 5,0 → "5"; 12,34 → "12,3". */
+    private static String trimDec(double v) {
+        double r = Math.round(v * 10.0) / 10.0;
+        if (r == Math.floor(r)) {
+            return String.valueOf((long) r);
+        }
+        return String.format(Locale.US, "%.1f", r).replace('.', ',');
     }
 
     private static LocalDateTime min(LocalDateTime a, LocalDateTime b) {

@@ -28,7 +28,23 @@ export const assignmentApi = {
     return http.post('/assignments', body)
   },
 
-  cancel(id) {
-    return http.post(`/assignments/${id}/cancel`)
+  /** Hủy phân công + đưa vào thùng rác (một thao tác). */
+  remove(id) {
+    return http.delete(`/assignments/${id}`)
+  },
+
+  /** Danh sách phân công trong thùng rác (đã xóa mềm). */
+  trash() {
+    return http.get('/assignments/trash')
+  },
+
+  /** Khôi phục phân công từ thùng rác. */
+  restore(id) {
+    return http.post(`/assignments/${id}/restore`)
+  },
+
+  /** Xóa vĩnh viễn phân công khỏi hệ thống. */
+  purge(id) {
+    return http.delete(`/assignments/${id}/permanent`)
   },
 }

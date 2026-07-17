@@ -25,7 +25,8 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
      * có tên = :category
      * - gradeLevel : NULL/blank = tất cả khối
      * - status : DRAFT | PUBLISHED | ARCHIVED, NULL/blank = tất cả
-     * - keyword : tìm theo tiêu đề, không phân biệt hoa thường
+     * - keyword : tìm theo tiêu đề HOẶC tên môn học, không phân biệt hoa thường
+     *             (khớp tên môn để link "Bài giảng" từ Lịch dạy lọc đúng theo môn của buổi).
      */
     @Query("""
                SELECT l FROM Lesson l
@@ -36,7 +37,10 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
                       OR LOWER(l.gradeLevel) LIKE LOWER(CONCAT('%', :gradeLevel, '%')))
                  AND (:status     IS NULL OR :status = '' OR l.status = :status)
                  AND (:keyword    IS NULL OR :keyword = ''
-                      OR LOWER(l.title) LIKE LOWER(CONCAT('%', :keyword, '%')))
+                      OR LOWER(l.title) LIKE LOWER(CONCAT('%', :keyword, '%'))
+                      OR l.subjectId IN
+                      (SELECT s2.id FROM Subject s2 WHERE s2.deleted = false
+                       AND LOWER(s2.name) LIKE LOWER(CONCAT('%', :keyword, '%'))))
                """)
     Page<Lesson> search(
             @Param("category") String category,

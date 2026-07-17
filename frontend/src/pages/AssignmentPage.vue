@@ -6,6 +6,8 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { assignmentApi } from '@/api/assignments'
+import { tietLabel, tietShort } from '@/utils/period'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const DAYS = [
   { code: 'MON', label: 'Thứ 2' },
@@ -20,6 +22,21 @@ const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCEL
 
 const loading = ref(false)
 const items = ref([])
+const trashItems = ref([])
+
+/* Chế độ xem: 'list' = danh sách phân công | 'trash' = thùng rác (đã xóa mềm). */
+const view = ref('list')
+const inTrash = computed(() => view.value === 'trash')
+
+/* ── Phân trang phía client (áp cho danh sách đang xem) ── */
+const PAGE_SIZE = 10
+const page = ref(0)
+const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
+const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
+const pagedItems = computed(() => {
+  const start = page.value * PAGE_SIZE
+  return currentList.value.slice(start, start + PAGE_SIZE)
+})
 
 const options = reactive({ teachers: [], subjects: [], schools: [] })
 const scoped = reactive({ classes: [], periods: [] })
@@ -40,10 +57,12 @@ const modal = reactive({
   slotDraft: { dayOfWeek: 'MON', periodId: '' },
 })
 
-const cancelTarget = ref(null)
+const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
+const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 
 async function load() {
   loading.value = true
+  page.value = 0
   try {
     const { data } = await assignmentApi.list()
     items.value = data
@@ -52,6 +71,29 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadTrash() {
+  loading.value = true
+  page.value = 0
+  try {
+    const { data } = await assignmentApi.trash()
+    trashItems.value = data
+  } catch {
+    trashItems.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+function showTrash() {
+  view.value = 'trash'
+  loadTrash()
+}
+
+function showList() {
+  view.value = 'list'
+  load()
 }
 
 onMounted(load)
@@ -114,7 +156,7 @@ function removeSlot(i) {
 function slotLabel(s) {
   const d = DAYS.find((x) => x.code === s.dayOfWeek)?.label ?? s.dayOfWeek
   const p = scoped.periods.find((x) => x.id === s.periodId)
-  return `${d} · ${p ? p.label : 'Tiết #' + s.periodId}`
+  return `${d} · ${p ? tietLabel(p.periodNumber, p.sessionType) : 'Tiết #' + s.periodId}`
 }
 
 const canSubmit = computed(
@@ -153,15 +195,39 @@ async function submit() {
   }
 }
 
+/* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
 async function confirmCancel() {
   if (!cancelTarget.value) return
   try {
-    await assignmentApi.cancel(cancelTarget.value.id)
+    await assignmentApi.remove(cancelTarget.value.id)
     cancelTarget.value = null
     load()
   } catch (e) {
     alert(e.response?.data?.message ?? 'Hủy thất bại')
     cancelTarget.value = null
+  }
+}
+
+/* Khôi phục từ thùng rác → đưa lại Đang chạy (có thể bị chặn nếu trùng lịch). */
+async function restoreItem(a) {
+  try {
+    await assignmentApi.restore(a.id)
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Khôi phục thất bại')
+  }
+}
+
+/* Xóa vĩnh viễn khỏi hệ thống (không thể hoàn tác). */
+async function confirmPurge() {
+  if (!purgeTarget.value) return
+  try {
+    await assignmentApi.purge(purgeTarget.value.id)
+    purgeTarget.value = null
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
+    purgeTarget.value = null
   }
 }
 </script>
@@ -170,12 +236,17 @@ async function confirmCancel() {
   <div class="page">
     <div class="page-head">
       <div>
-        <h2 class="title">Phân công giảng dạy</h2>
-        <p class="subtitle">
-          Gán giáo viên ↔ trường ↔ lớp ↔ môn; hệ thống tự sinh buổi dạy hằng tuần.
-        </p>
+        <h2 class="title">
+          {{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}
+        </h2>
       </div>
-      <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
+      <div class="head-actions">
+        <template v-if="!inTrash">
+          <button class="btn btn-outline" @click="showTrash">🗑 Thùng rác</button>
+          <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
+        </template>
+        <button v-else class="btn btn-outline" @click="showList">← Quay lại danh sách</button>
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -196,10 +267,12 @@ async function confirmCancel() {
           <tr v-if="loading">
             <td colspan="8" class="text-center text-muted">Đang tải…</td>
           </tr>
-          <tr v-else-if="!items.length">
-            <td colspan="8" class="text-center text-muted">Chưa có phân công nào</td>
+          <tr v-else-if="!currentList.length">
+            <td colspan="8" class="text-center text-muted">
+              {{ inTrash ? 'Thùng rác trống' : 'Chưa có phân công nào' }}
+            </td>
           </tr>
-          <tr v-for="a in items" :key="a.id">
+          <tr v-for="a in pagedItems" :key="a.id">
             <td class="font-medium">{{ a.teacherName }}</td>
             <td>{{ a.schoolName }}</td>
             <td>{{ a.className ?? '—' }}</td>
@@ -209,7 +282,7 @@ async function confirmCancel() {
             </td>
             <td>
               <span v-for="s in a.slots" :key="s.id" class="chip"
-                >{{ s.dayOfWeekLabel }} · T{{ s.periodNumber }}</span
+                >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType) }}</span
               >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
@@ -225,18 +298,28 @@ async function confirmCancel() {
               >
             </td>
             <td class="actions">
-              <button
-                v-if="a.status === 'ACTIVE'"
-                class="btn btn-sm btn-danger"
-                @click="cancelTarget = a"
-              >
-                Hủy
-              </button>
+              <template v-if="!inTrash">
+                <button
+                  v-if="a.status !== 'COMPLETED'"
+                  class="btn btn-sm btn-danger"
+                  @click="cancelTarget = a"
+                >
+                  Hủy
+                </button>
+              </template>
+              <template v-else>
+                <button class="btn btn-sm btn-outline" @click="restoreItem(a)">Khôi phục</button>
+                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">
+                  Xóa vĩnh viễn
+                </button>
+              </template>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+
+    <Pagination v-model="page" :total-pages="totalPages" />
 
     <!-- Modal tạo phân công -->
     <div v-if="modal.open" class="modal-overlay" @click.self="modal.open = false">
@@ -296,7 +379,9 @@ async function confirmCancel() {
               <option value="">
                 {{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}
               </option>
-              <option v-for="p in scoped.periods" :key="p.id" :value="p.id">{{ p.label }}</option>
+              <option v-for="p in scoped.periods" :key="p.id" :value="p.id">
+                {{ tietLabel(p.periodNumber, p.sessionType) }}
+              </option>
             </select>
             <button
               class="btn btn-outline btn-sm"
@@ -329,13 +414,14 @@ async function confirmCancel() {
       </div>
     </div>
 
-    <!-- Confirm hủy -->
+    <!-- Confirm hủy → đưa vào thùng rác -->
     <div v-if="cancelTarget" class="modal-overlay" @click.self="cancelTarget = null">
       <div class="modal-box modal-sm">
         <h3>Xác nhận hủy</h3>
         <p>
           Hủy phân công của <strong>{{ cancelTarget.teacherName }}</strong> tại
-          {{ cancelTarget.schoolName }}? Các buổi chưa diễn ra sẽ bị hủy theo.
+          {{ cancelTarget.schoolName }} và đưa vào <strong>thùng rác</strong>? Các buổi chưa diễn ra
+          sẽ bị hủy theo. Bạn có thể khôi phục lại từ thùng rác.
         </p>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="cancelTarget = null">Không</button>
@@ -343,13 +429,53 @@ async function confirmCancel() {
         </div>
       </div>
     </div>
+
+    <!-- Confirm xóa vĩnh viễn -->
+    <div v-if="purgeTarget" class="modal-overlay" @click.self="purgeTarget = null">
+      <div class="modal-box modal-sm">
+        <h3>Xóa vĩnh viễn</h3>
+        <p>
+          Xóa <strong>vĩnh viễn</strong> phân công của
+          <strong>{{ purgeTarget.teacherName }}</strong> tại {{ purgeTarget.schoolName }} khỏi hệ
+          thống? Hành động này <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên
+          quan.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="purgeTarget = null">Không</button>
+          <button class="btn btn-danger" @click="confirmPurge">Xóa vĩnh viễn</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.head-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+/* Tiêu đề cột không bị ngắt dòng (vd "TRẠNG THÁI" bị xuống 2 dòng khi cột hẹp) */
+.table th {
+  white-space: nowrap;
+}
+/* Cột trạng thái: badge luôn gọn 1 dòng (không bị ngắt "Đang / chạy") */
+.badge {
+  white-space: nowrap;
+}
+/* Cột hành động: dùng lại ô bảng bình thường (không flex) để nút luôn nằm cùng 1 dòng
+   và căn giữa theo chiều dọc, thẳng hàng với badge trạng thái kể cả ở dòng cao nhiều chip. */
+.actions {
+  display: table-cell;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.actions .btn + .btn {
+  margin-left: 0.4rem;
+}
 .slots-block {
   margin-top: 0.5rem;
-  border-top: 1px dashed #e5e7eb;
+  border-top: 1px dashed var(--c-border);
   padding-top: 0.9rem;
 }
 .slots-label {
@@ -357,7 +483,7 @@ async function confirmCancel() {
   font-size: 0.85rem;
   font-weight: 600;
   margin-bottom: 0.5rem;
-  color: #374151;
+  color: var(--c-text);
 }
 .slot-add {
   display: flex;
@@ -367,9 +493,11 @@ async function confirmCancel() {
 }
 .slot-add select {
   padding: 0.4rem 0.6rem;
-  border: 1px solid #d1d5db;
+  border: 1px solid var(--c-input-border);
   border-radius: 6px;
   font-size: 0.88rem;
+  background: var(--c-surface);
+  color: var(--c-text);
 }
 .chips {
   display: flex;
@@ -380,7 +508,7 @@ async function confirmCancel() {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: #eef2ff;
+  background: rgba(99, 102, 241, 0.12);
   color: #3730a3;
   border-radius: 9999px;
   padding: 0.12rem 0.55rem;
@@ -401,7 +529,14 @@ async function confirmCancel() {
   line-height: 1;
 }
 .badge-blue {
-  background: #dbeafe;
+  background: rgba(37, 99, 235, 0.12);
   color: #1e40af;
+}
+/* Chữ đậm chìm trên nền tối → dùng tông sáng hơn */
+:root[data-theme='dark'] .chip {
+  color: #a5b4fc;
+}
+:root[data-theme='dark'] .badge-blue {
+  color: #93c5fd;
 }
 </style>

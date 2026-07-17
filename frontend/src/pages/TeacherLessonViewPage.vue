@@ -152,7 +152,17 @@ onMounted(load)
 }
 
 .btn-back {
+  background: none;
+  border: none;
+  color: var(--c-primary, #f97316);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
   margin-bottom: 20px;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
 }
 
 .info {
@@ -186,7 +196,7 @@ onMounted(load)
 
   padding: 10px 0;
 
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--c-border-soft);
 }
 
 .file-item:last-child {
@@ -216,7 +226,7 @@ onMounted(load)
 }
 
 .btn-view:disabled {
-  color: #999;
+  color: var(--c-text-muted);
   cursor: default;
   text-decoration: none;
 }

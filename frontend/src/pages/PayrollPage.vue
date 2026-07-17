@@ -6,6 +6,7 @@
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { payrollApi } from '@/api/payroll'
+import Pagination from '@/components/ui/Pagination.vue'
 
 const now = new Date()
 const filter = reactive({
@@ -25,6 +26,15 @@ const rows = ref([])
 const loading = ref(false)
 const info = ref('')
 
+/* ── Phân trang phía client ── */
+const PAGE_SIZE = 10
+const page = ref(0)
+const totalPages = computed(() => Math.ceil(rows.value.length / PAGE_SIZE))
+const pagedRows = computed(() => {
+  const start = page.value * PAGE_SIZE
+  return rows.value.slice(start, start + PAGE_SIZE)
+})
+
 const editModal = reactive({ open: false, saving: false, error: '', row: null, form: {} })
 
 const vnd = (n) =>
@@ -33,6 +43,7 @@ const vnd = (n) =>
 async function load() {
   loading.value = true
   info.value = ''
+  page.value = 0
   try {
     const { data } = await payrollApi.list(filter.year, filter.month)
     rows.value = data
@@ -51,6 +62,7 @@ async function generate() {
   try {
     const { data } = await payrollApi.generate(filter.year, filter.month)
     rows.value = data
+    page.value = 0
     info.value = `Đã tính lương cho ${data.length} giáo viên`
   } catch (e) {
     info.value = e.response?.data?.message ?? 'Tính lương thất bại'
@@ -114,10 +126,6 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
     <div class="page-head">
       <div>
         <h2 class="title">Bảng lương</h2>
-        <p class="subtitle">
-          Tính lương theo tiết — Tiểu học 115.000₫/tiết, THCS 125.000₫/tiết; tổng hợp từ chấm công
-          theo tháng.
-        </p>
       </div>
     </div>
 
@@ -161,7 +169,7 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
               Chưa có dữ liệu — bấm “Tính lương từ chấm công”.
             </td>
           </tr>
-          <tr v-for="r in rows" :key="r.id">
+          <tr v-for="r in pagedRows" :key="r.id">
             <td class="font-medium">{{ r.teacherName }}</td>
             <td class="num mono">{{ Math.round(Number(r.taughtHours ?? 0)) }}</td>
             <td class="num mono">{{ vnd(r.ratePerHour) }}</td>
@@ -202,6 +210,8 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         </tfoot>
       </table>
     </div>
+
+    <Pagination v-model="page" :total-pages="totalPages" />
 
     <!-- Modal sửa -->
     <div v-if="editModal.open" class="modal-overlay" @click.self="editModal.open = false">
@@ -272,11 +282,14 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
 .preview {
   margin-top: 0.4rem;
   padding: 0.6rem 0.8rem;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
+  background: rgba(249, 115, 22, 0.09);
+  border: 1px solid rgba(249, 115, 22, 0.3);
   border-radius: 8px;
   font-size: 0.9rem;
   color: #9a3412;
+}
+:root[data-theme='dark'] .preview {
+  color: #fdba74;
 }
 tfoot td {
   padding: 0.7rem 1rem;

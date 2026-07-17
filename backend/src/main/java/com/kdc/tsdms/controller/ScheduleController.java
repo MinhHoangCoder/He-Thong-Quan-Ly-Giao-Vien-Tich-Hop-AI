@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.dto.MyScheduleFilters;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.ScheduleEventResponse;
 import com.kdc.tsdms.dto.ScheduleFilterOptions;
@@ -33,6 +34,27 @@ public class ScheduleController {
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(required = false) Integer classId) {
         return service.list(from, to, teacherId, schoolId, classId);
+    }
+
+    /**
+     * "Lịch dạy của tôi" — buổi ĐÃ DUYỆT của CHÍNH giáo viên đang đăng nhập trong [from, to].
+     * Không nhận teacherId: service tự lấy hồ sơ GV từ token (chống IDOR).
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("hasRole('TEACHER')")
+    public List<ScheduleEventResponse> listMine(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Integer schoolId,
+            @RequestParam(required = false) Integer classId) {
+        return service.listMine(from, to, schoolId, classId);
+    }
+
+    /** Trường + lớp mà chính giáo viên đang đăng nhập có dạy — cho bộ lọc "Lịch dạy của tôi". */
+    @GetMapping("/mine/filters")
+    @PreAuthorize("hasRole('TEACHER')")
+    public MyScheduleFilters myFilters() {
+        return service.myFilterOptions();
     }
 
     /** GV + trường cho bộ lọc. */

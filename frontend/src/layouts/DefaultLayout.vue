@@ -14,11 +14,13 @@ const year = new Date().getFullYear()
           <span class="brand__sub">Điều phối giáo viên · tích hợp AI</span>
         </RouterLink>
 
+        <!-- Menu = anchor cuộn tới từng khối của trang chủ (layout này chỉ bọc trang chủ).
+             "Trang chủ"/"Dashboard" cũ đã bỏ: một cái trỏ về chính trang đang đứng,
+             một cái trùng nút "Vào hệ thống" bên cạnh. -->
         <nav class="nav">
-          <RouterLink to="/" class="nav__link">Trang chủ</RouterLink>
           <a href="#features" class="nav__link">Tính năng</a>
-          <RouterLink to="/dashboard" class="nav__link">Dashboard</RouterLink>
-          <a href="#contact" class="nav__link">Liên hệ</a>
+          <a href="#workflow" class="nav__link">Quy trình</a>
+          <a href="#roles" class="nav__link">Vai trò</a>
         </nav>
 
         <RouterLink to="/dashboard" class="btn btn--primary">Vào hệ thống</RouterLink>
@@ -30,7 +32,7 @@ const year = new Date().getFullYear()
       <slot />
     </main>
 
-    <footer id="contact" class="layout__footer">
+    <footer class="layout__footer">
       <div class="container">
         <p>© {{ year }} KDC EduOps AI — Hệ thống quản lý &amp; điều phối giáo viên.</p>
       </div>
@@ -85,6 +87,11 @@ const year = new Date().getFullYear()
 }
 .nav__link:hover {
   color: var(--c-primary);
+}
+@media (max-width: 640px) {
+  .nav {
+    display: none; /* màn hẹp: giữ logo + nút Vào hệ thống là đủ */
+  }
 }
 .layout__main {
   flex: 1;

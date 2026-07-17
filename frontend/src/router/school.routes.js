@@ -7,11 +7,25 @@ export const schoolRoutes = [
     component: () => import('@/pages/SchoolDashboardPage.vue'),
     meta: { layout: 'school', roles: ['SCHOOL'] },
   },
-  // ── Cài đặt cá nhân (hồ sơ / mật khẩu / thiết bị đăng nhập) ─────
+  // ── Đánh giá giáo viên ──────────────────────────────────────────
+  {
+    path: '/school/evaluations',
+    name: 'school-evaluations',
+    component: () => import('@/pages/EvaluationPage.vue'),
+    meta: { layout: 'school', roles: ['SCHOOL'], evaluationPortal: 'school' },
+  },
+  // ── Cài đặt cá nhân (liên hệ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/school/settings',
     name: 'school-settings',
     component: () => import('@/pages/SettingsPage.vue'),
+    meta: { layout: 'school', roles: ['SCHOOL'] },
+  },
+  // ── Hồ sơ của tôi (chỉ xem — tách riêng khỏi Cài đặt) ─────────────
+  {
+    path: '/school/profile',
+    name: 'school-profile',
+    component: () => import('@/pages/MyProfilePage.vue'),
     meta: { layout: 'school', roles: ['SCHOOL'] },
   },
 ]

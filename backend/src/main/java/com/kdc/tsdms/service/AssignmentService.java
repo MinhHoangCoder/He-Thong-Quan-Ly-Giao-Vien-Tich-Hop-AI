@@ -310,6 +310,162 @@ public class AssignmentService {
         return toResponse(a);
     }
 
+    /**
+     * BỎ HỦY: đưa phân công ĐÃ HỦY về lại ACTIVE (khôi phục khi lỡ bấm Hủy). Đảo ngược
+     * {@link #cancel(Integer)} — các buổi đã bị hủy theo phân công được đưa lại APPROVED.
+     * Trước khi bật lại phải DÒ TRÙNG LỊCH: giai đoạn phân công có thể đã bị một phân công
+     * ACTIVE khác chiếm mất khung Thứ+Tiết trong lúc nó đang bị hủy.
+     */
+    @Transactional
+    public AssignmentResponse reactivate(Integer id) {
+        Assignment a = getOrThrow(id);
+        if (!"CANCELLED".equals(a.getStatus())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy");
+        }
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            for (AssignmentSlot existing : slotRepo.findByTeacherIdAndDayOfWeekAndPeriodIdAndDeletedFalse(
+                    a.getTeacherId(), slot.getDayOfWeek(), slot.getPeriodId())) {
+                if (existing.getAssignmentId().equals(id)) {
+                    continue; // bỏ qua slot của chính phân công đang khôi phục
+                }
+                Assignment other = assignmentRepo
+                        .findByIdAndDeletedFalse(existing.getAssignmentId())
+                        .orElse(null);
+                if (other == null || !"ACTIVE".equals(other.getStatus())) {
+                    continue;
+                }
+                boolean overlaps = !(a.getEndDate() != null && a.getEndDate().isBefore(other.getStartDate())
+                        || other.getEndDate() != null && other.getEndDate().isBefore(a.getStartDate()));
+                if (overlaps) {
+                    Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
+                    throw new ApiException(
+                            HttpStatus.CONFLICT,
+                            "Không khôi phục được: giáo viên đã có lịch dạy "
+                                    + AssignmentSlotResponse.fromEntity(existing, p).dayOfWeekLabel
+                                    + (p != null ? " tiết " + p.getPeriodNumber() : "")
+                                    + " ở phân công #" + other.getId() + " trong cùng giai đoạn");
+                }
+            }
+        }
+        Integer userId = SecurityUtils.currentUserId();
+        a.setStatus("ACTIVE");
+        a.setUpdatedAt(Instant.now());
+        a.setUpdatedBy(userId);
+        assignmentRepo.save(a);
+        // Đưa lại các buổi đã bị hủy theo phân công về APPROVED (đảo ngược cancel()).
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            if ("CANCELLED".equals(s.getStatus())) {
+                s.setUpdatedBy(userId);
+                s.setStatus("APPROVED");
+                s.setUpdatedAt(Instant.now());
+                scheduleRepo.save(s);
+            }
+        }
+        return toResponse(a);
+    }
+
+    /* ─────────────────────── XÓA MỀM → THÙNG RÁC ─────────────────────── */
+
+    /**
+     * HỦY + đưa vào Thùng rác trong MỘT thao tác (nút "Hủy" của trang phân công). Nếu phân
+     * công đang chạy thì HỦY trước (đổi CANCELLED + hủy các buổi tương lai qua {@link #cancel}),
+     * rồi gắn cờ {@code deleted} và CASCADE xóa mềm toàn bộ AssignmentSlot + Schedule của nó.
+     * Khôi phục lại từ Thùng rác (xem {@link #restore}).
+     */
+    @Transactional
+    public void softDelete(Integer id) {
+        Assignment a = getOrThrow(id);
+        if ("ACTIVE".equals(a.getStatus())) {
+            cancel(id); // hủy trước: đổi CANCELLED + hủy các buổi tương lai
+        }
+        Integer userId = SecurityUtils.currentUserId();
+        Instant now = Instant.now();
+        a.setDeleted(true);
+        a.setDeletedAt(now);
+        a.setDeletedBy(userId);
+        assignmentRepo.save(a);
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            slot.setDeleted(true);
+            slot.setDeletedAt(now);
+            slot.setDeletedBy(userId);
+            slotRepo.save(slot);
+        }
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            s.setDeleted(true);
+            s.setDeletedAt(now);
+            s.setDeletedBy(userId);
+            scheduleRepo.save(s);
+        }
+    }
+
+    /** Danh sách phân công trong thùng rác (đã xóa mềm). */
+    @Transactional(readOnly = true)
+    public List<AssignmentResponse> listTrash() {
+        return assignmentRepo.findByDeletedTrueOrderByIdDesc().stream()
+                .map(a -> toResponse(a, true))
+                .toList();
+    }
+
+    /**
+     * Khôi phục phân công từ Thùng rác về lại <b>Đang chạy</b>: bỏ cờ {@code deleted} cho
+     * Assignment + slot + buổi, rồi BỎ HỦY (đưa về ACTIVE, kích hoạt lại buổi dạy) qua
+     * {@link #reactivate} — có DÒ TRÙNG LỊCH nên nếu khung Thứ+Tiết đã bị phân công ACTIVE
+     * khác chiếm thì báo lỗi và không khôi phục.
+     */
+    @Transactional
+    public AssignmentResponse restore(Integer id) {
+        Assignment a = assignmentRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(() ->
+                        new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác id=" + id));
+        Integer userId = SecurityUtils.currentUserId();
+        a.setDeleted(false);
+        a.setDeletedAt(null);
+        a.setDeletedBy(null);
+        a.setUpdatedAt(Instant.now());
+        a.setUpdatedBy(userId);
+        assignmentRepo.save(a);
+        for (AssignmentSlot slot : slotRepo.findByAssignmentId(id)) {
+            if (slot.isDeleted()) {
+                slot.setDeleted(false);
+                slot.setDeletedAt(null);
+                slot.setDeletedBy(null);
+                slotRepo.save(slot);
+            }
+        }
+        for (Schedule s : scheduleRepo.findByAssignmentId(id)) {
+            if (s.isDeleted()) {
+                s.setDeleted(false);
+                s.setDeletedAt(null);
+                s.setDeletedBy(null);
+                scheduleRepo.save(s);
+            }
+        }
+        // Bỏ hủy → Đang chạy (nếu đang CANCELLED). Dò trùng lịch bên trong reactivate; nếu
+        // đụng lịch sẽ ném lỗi và rollback cả thao tác bỏ cờ deleted ở trên.
+        if ("CANCELLED".equals(a.getStatus())) {
+            return reactivate(id);
+        }
+        return toResponse(a, false);
+    }
+
+    /**
+     * Xóa VĨNH VIỄN khỏi DB (chỉ khi phân công đang ở thùng rác). Xóa theo đúng thứ tự khóa
+     * ngoại: nhật ký trạng thái &amp; chấm công (→ Schedule) → buổi → slot → phân công.
+     */
+    @Transactional
+    public void purge(Integer id) {
+        Assignment a = assignmentRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(() ->
+                        new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác id=" + id));
+        scheduleRepo.deleteStatusLogsByAssignmentId(id);
+        scheduleRepo.deleteAttendanceByAssignmentId(id);
+        scheduleRepo.deleteByAssignmentId(id);
+        slotRepo.deleteByAssignmentId(id);
+        assignmentRepo.delete(a);
+    }
+
     /* ─────────────────────────── HELPERS ─────────────────────────── */
 
     private Assignment getOrThrow(Integer id) {
@@ -319,6 +475,14 @@ public class AssignmentService {
     }
 
     private AssignmentResponse toResponse(Assignment a) {
+        return toResponse(a, false);
+    }
+
+    /**
+     * @param includeDeletedSlots true = lấy cả slot đã xóa mềm (dùng cho thùng rác, nơi
+     *     Assignment và slot đều đã bị gắn cờ deleted nhưng vẫn cần hiển thị các tiết/tuần).
+     */
+    private AssignmentResponse toResponse(Assignment a, boolean includeDeletedSlots) {
         String teacherName = teacherRepo
                 .findById(a.getTeacherId())
                 .map(AssignmentService::fullName)
@@ -331,8 +495,11 @@ public class AssignmentService {
                 ? null
                 : classRepo.findById(a.getClassId()).map(SchoolClass::getName).orElse(null);
 
+        List<AssignmentSlot> slotEntities = includeDeletedSlots
+                ? slotRepo.findByAssignmentId(a.getId())
+                : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
         List<AssignmentSlotResponse> slots = new ArrayList<>();
-        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+        for (AssignmentSlot slot : slotEntities) {
             Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
             slots.add(AssignmentSlotResponse.fromEntity(slot, p));
         }
