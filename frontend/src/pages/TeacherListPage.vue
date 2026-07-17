@@ -10,9 +10,8 @@ import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
-
 /* ══════════════════════════════════════════════════════════
-   PHÂN QUYỀN THEO VAI TRÒ
+   PHÂN QUYỀN THEO VAI TRÒjdnjdnvjdnsdjnvd
    ADMIN / EMPLOYEE: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
    TEACHER: chỉ xem + sửa — KHÔNG có nút "Xóa" và tab "Lịch sử".
 ══════════════════════════════════════════════════════════ */
