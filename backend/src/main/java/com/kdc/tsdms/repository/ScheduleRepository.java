@@ -53,6 +53,12 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     List<Schedule> findByTeacherIdAndStatusAndStartTimeBetweenAndDeletedFalseOrderByStartTime(
             Integer teacherId, String status, LocalDateTime from, LocalDateTime to);
 
+    /**
+     * MỌI buổi của một GV theo trạng thái (không giới hạn ngày) — dựng danh sách trường/lớp
+     * ổn định cho bộ lọc trang "Lịch dạy của tôi" (không đổi khi GV lật tuần/tháng).
+     */
+    List<Schedule> findByTeacherIdAndStatusAndDeletedFalse(Integer teacherId, String status);
+
     /** Đếm buổi của phân công (thống kê). */
     long countByAssignmentIdAndDeletedFalse(Integer assignmentId);
 

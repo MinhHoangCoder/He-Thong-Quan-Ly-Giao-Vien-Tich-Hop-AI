@@ -1,9 +1,10 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 import { subjectCategoryApi } from '@/api/subjectCategories'
 
+const route = useRoute()
 const router = useRouter()
 
 /* =========================
@@ -172,6 +173,8 @@ function viewLesson(id) {
 ========================= */
 
 onMounted(async () => {
+  // Mở từ "Lịch dạy của tôi" (bấm 1 buổi) → prefill ô tìm kiếm theo tên môn để lọc nhanh.
+  if (route.query.keyword) filter.keyword = String(route.query.keyword)
   await loadMeta()
   await loadLessons()
 })
