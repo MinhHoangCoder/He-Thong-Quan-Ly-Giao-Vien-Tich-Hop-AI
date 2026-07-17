@@ -11,7 +11,7 @@ import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { settingsApi } from '@/api/settings'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
-import { permGroups, roleLabel } from '@/utils/labels'
+import { roleLabel } from '@/utils/labels'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -119,9 +119,10 @@ const p = computed(() => state.data)
 const isTeacher = computed(() => p.value?.actorType === 'TEACHER')
 const isEmployee = computed(() => p.value?.actorType === 'EMPLOYEE')
 
-// Quyền trong token nhóm theo module — người thường đọc được thay vì mã SCHEDULE_VIEW.
-const permRows = computed(() => permGroups(auth.user?.perms ?? []))
-const isAdmin = computed(() => (p.value?.roles ?? []).includes('ADMIN'))
+// GV/NV có card Công việc -> chia 2 cột; admin/trường chỉ có 1 card -> 1 cột.
+// (Khối "Quyền của tôi" đã bỏ 2026-07-17 — trùng vai trò với rail bên Cài đặt,
+// nhóm thống nhất hồ sơ chỉ hiển thị thông tin con người, không hiển thị phân quyền.)
+const hasWorkCol = computed(() => isTeacher.value || isEmployee.value)
 
 const initials = computed(() => {
   const name = p.value?.fullName || p.value?.username || '?'
@@ -173,7 +174,8 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
       </div>
     </section>
 
-    <div class="grid-2">
+    <!-- GV/NV: 2 cột (cá nhân | công việc); admin/trường chỉ có 1 card -> 1 cột -->
+    <div :class="hasWorkCol ? 'grid-2' : ''">
       <div class="col">
         <!-- Thông tin cá nhân: các trường HR quản chỉ đọc; email + SĐT sửa tại chỗ -->
         <section class="card">
@@ -274,8 +276,13 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
           </p>
         </section>
 
+      </div>
+
+      <!-- Cột phải: thông tin công việc (chỉ GV/NV có) — thế chỗ khối "Quyền của
+           tôi" cũ; quyền vẫn xem được ở rail trang Cài đặt (đọc từ JWT) -->
+      <div v-if="hasWorkCol" class="col">
         <!-- Công việc -->
-        <section v-if="isTeacher || isEmployee" class="card">
+        <section class="card">
           <h3 class="card__title"><SvgIcon name="assignment" :size="17" /> Công việc</h3>
           <dl class="info-grid">
             <div class="info-item">
@@ -318,31 +325,6 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
             </li>
           </ul>
           <p v-else class="empty-note">Hồ sơ chưa ghi nhận bằng cấp/chứng chỉ nào.</p>
-        </section>
-      </div>
-
-      <!-- Quyền của tôi: dịch mã quyền trong token sang tiếng Việt, gom theo phân hệ -->
-      <div class="col">
-        <section class="card">
-          <h3 class="card__title"><SvgIcon name="shield" :size="17" /> Quyền của tôi</h3>
-          <p v-if="isAdmin" class="perm-note">
-            Bạn là <strong>Quản trị viên</strong> — có toàn quyền trên mọi phân hệ của hệ thống.
-          </p>
-          <template v-else-if="permRows.length">
-            <ul class="perm-rows">
-              <li v-for="row in permRows" :key="row.module" class="perm-row">
-                <span class="perm-row__module">{{ row.module }}</span>
-                <span class="perm-row__actions">
-                  <span v-for="a in row.actions" :key="a" class="perm-chip">{{ a }}</span>
-                </span>
-              </li>
-            </ul>
-            <p v-if="isTeacher" class="perm-note">
-              Các quyền "Xem" của giáo viên chỉ áp dụng với dữ liệu của <strong>chính bạn</strong>
-              (lịch dạy, chấm công, đánh giá của mình).
-            </p>
-          </template>
-          <p v-else class="empty-note">Tài khoản chưa được cấp quyền chi tiết nào.</p>
         </section>
       </div>
     </div>
@@ -669,52 +651,6 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
   color: var(--a-text-muted);
 }
 
-/* Quyền của tôi */
-.perm-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.perm-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--c-border-soft);
-}
-.perm-row:last-child {
-  border-bottom: none;
-}
-.perm-row__module {
-  font-size: 0.88rem;
-  color: var(--a-text);
-}
-.perm-row__actions {
-  display: flex;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.perm-chip {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--c-accent-dark);
-  background: rgba(37, 99, 235, 0.09);
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 9999px;
-  padding: 0.08rem 0.5rem;
-  white-space: nowrap;
-}
-:root[data-theme='dark'] .perm-chip {
-  color: #93c5fd;
-}
-.perm-note {
-  margin: 0.9rem 0 0;
-  font-size: 0.82rem;
-  color: var(--a-text-muted);
-  line-height: 1.5;
-}
 .empty-note {
   margin: 0;
   color: var(--a-text-muted);

@@ -44,6 +44,15 @@ tính từ CWD). Script tự: login teacher → sửa SĐT sai (hiện lỗi) �
 → admin KHÔNG có ô SĐT, có ô email → **khôi phục SĐT gốc** qua API. Đã pass toàn bộ
 2026-07-17, không pageerror, dark mode OK (4 ảnh trong claude-context/).
 
+## Bỏ khối "Quyền của tôi" (cùng ngày, commit sau)
+
+User + nhóm trưởng thống nhất: hồ sơ chỉ hiển thị thông tin CON NGƯỜI, không hiển thị
+phân quyền (khối này trùng vai trò với rail "Quyền của tôi" bên Cài đặt — vẫn còn đó,
+đọc từ JWT). KHÔNG bù khối filler nào (quy tắc "chỉ thêm khối khi có dữ liệu thật");
+thay vào đó cân lại lưới: GV/NV 2 cột (Thông tin cá nhân | Công việc + Bằng cấp),
+admin/trường 1 cột full-width. `permGroups` trong utils/labels.js vẫn được giữ cho
+rail Cài đặt.
+
 ## Bẫy cho người sau
 
 - Muốn cho admin sửa SĐT: phải thêm cột phone cho AppUser hoặc hồ sơ riêng — đừng chỉ
