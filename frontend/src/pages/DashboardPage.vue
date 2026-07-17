@@ -40,7 +40,8 @@ async function load(isRefresh = false) {
     const { data: res } = await dashboardApi.summary(months.value)
     data.value = res
   } catch (e) {
-    error.value = e?.response?.data?.message || 'Không tải được dữ liệu bảng điều khiển. Vui lòng thử lại.'
+    error.value =
+      e?.response?.data?.message || 'Không tải được dữ liệu bảng điều khiển. Vui lòng thử lại.'
   } finally {
     loading.value = false
     refreshing.value = false
@@ -133,12 +134,7 @@ function toneClass(tone) {
   <template v-else-if="data">
     <!-- Thẻ thống kê -->
     <section class="stat-grid">
-      <button
-        v-for="s in data.stats"
-        :key="s.key"
-        class="stat-link fade-up"
-        @click="goStat(s.key)"
-      >
+      <button v-for="s in data.stats" :key="s.key" class="stat-link fade-up" @click="goStat(s.key)">
         <StatCard :icon="s.icon" :label="statLabel(s)" :value="s.value" :color="s.color" />
       </button>
     </section>
@@ -152,7 +148,9 @@ function toneClass(tone) {
             <p class="card__sub">Thống kê số buổi dạy theo nhóm môn</p>
           </div>
           <select v-model.number="months" class="select" @change="onPeriodChange">
-            <option v-for="o in periodOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <option v-for="o in periodOptions" :key="o.value" :value="o.value">
+              {{ o.label }}
+            </option>
           </select>
         </div>
         <div class="chart-wrap">
@@ -217,7 +215,9 @@ function toneClass(tone) {
                 <td>{{ r.school }}</td>
                 <td>{{ r.subject }}</td>
                 <td>{{ r.date }}</td>
-                <td><span class="badge" :class="toneClass(r.tone)">{{ r.statusLabel }}</span></td>
+                <td>
+                  <span class="badge" :class="toneClass(r.tone)">{{ r.statusLabel }}</span>
+                </td>
               </tr>
               <tr v-if="!recentAssignments.length">
                 <td colspan="5" class="td-empty">Chưa có phân công nào.</td>
@@ -233,12 +233,7 @@ function toneClass(tone) {
           <button class="card__more" @click="goScheduleWeek">Lịch tuần</button>
         </div>
         <ul v-if="todaySchedule.length" class="timeline">
-          <li
-            v-for="t in todaySchedule"
-            :key="t.id"
-            class="timeline__item"
-            @click="goSchedule"
-          >
+          <li v-for="t in todaySchedule" :key="t.id" class="timeline__item" @click="goSchedule">
             <span class="timeline__time">{{ t.time }}</span>
             <span class="timeline__dot" :style="{ background: t.color, color: t.color }" />
             <div class="timeline__body">
@@ -261,12 +256,7 @@ function toneClass(tone) {
         <button class="card__more" @click="goTeachers">Danh sách GV</button>
       </div>
       <div v-if="topTeachers.length" class="teacher-grid">
-        <div
-          v-for="(t, i) in topTeachers"
-          :key="t.id"
-          class="teacher"
-          @click="goTeachers"
-        >
+        <div v-for="(t, i) in topTeachers" :key="t.id" class="teacher" @click="goTeachers">
           <span class="teacher__rank">#{{ i + 1 }}</span>
           <span class="teacher__avatar">{{ t.initials }}</span>
           <div class="teacher__info">

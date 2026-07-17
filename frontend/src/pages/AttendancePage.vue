@@ -15,11 +15,14 @@ const STATUSES = [
   { code: 'LEAVE', label: 'Nghỉ phép', cls: 'badge-gray' },
   { code: 'ABSENT', label: 'Vắng', cls: 'badge-red' },
 ]
-const statusMeta = (code) => STATUSES.find((s) => s.code === code) ?? { label: code, cls: 'badge-gray' }
+const statusMeta = (code) =>
+  STATUSES.find((s) => s.code === code) ?? { label: code, cls: 'badge-gray' }
 
 const today = new Date()
 const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
-const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().slice(0, 10)
+const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  .toISOString()
+  .slice(0, 10)
 
 const filter = reactive({ from: firstOfMonth, to: lastOfMonth, teacherId: '' })
 const teachers = ref([])
@@ -197,7 +200,11 @@ const presentCount = computed(
             <td class="mono">{{ r.checkIn ? r.checkIn.slice(0, 5) : '—' }}</td>
             <td class="mono">{{ r.checkOut ? r.checkOut.slice(0, 5) : '—' }}</td>
             <td class="mono">{{ Number(r.hours).toFixed(2) }}</td>
-            <td><span class="badge" :class="statusMeta(r.status).cls">{{ statusMeta(r.status).label }}</span></td>
+            <td>
+              <span class="badge" :class="statusMeta(r.status).cls">{{
+                statusMeta(r.status).label
+              }}</span>
+            </td>
             <td class="text-muted small">{{ r.note ?? '—' }}</td>
             <td class="actions">
               <button class="btn btn-sm btn-outline" @click="openEdit(r)">Sửa</button>

@@ -13,6 +13,7 @@ import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -134,8 +135,12 @@ public class TeacherService {
         t.setDeleted(true);
         t.setDeletedAt(Instant.now());
         t.setDeletedBy(SecurityUtils.currentUserId());
+        t.setStatus("RETIRED"); // GV bị ẩn khỏi ds chính -> luôn hiện "Ngừng hoạt động" trong thùng rác
+        t.setUpdatedAt(Instant.now());
+        t.setUpdatedBy(SecurityUtils.currentUserId());
         teacherRepo.save(t);
     }
+
     // History
 
     public List<TeacherResponse.HistoryItem> getTrash() {
@@ -154,9 +159,30 @@ public class TeacherService {
         t.setDeleted(false);
         t.setDeletedAt(null);
         t.setDeletedBy(null);
+        t.setStatus("ACTIVE");
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
         return toResponse(teacherRepo.save(t), false);
+    }
+
+    /**
+     * Xóa VĨNH VIỄN khỏi DB — CHỈ áp dụng cho GV đang nằm trong thùng rác (deleted=true).
+     * Không thể hoàn tác.
+     */
+    @Transactional
+    public void deleteTrueTeacher(Integer id) {
+        Teacher t = teacherRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Giáo viên id=" + id + " không có trong thùng rác => không thể xóa "));
+        try {
+            ceRepo.deleteAll(ceRepo.findByTeacherId(id));
+            contractRepo.deleteAll(contractRepo.findByTeacherId(id));
+            teacherRepo.delete(t);
+            teacherRepo.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa vĩnh viễn: giáo viên id=" + id);
+        }
     }
 
     // ════════════════════════════════════════════════════════════════

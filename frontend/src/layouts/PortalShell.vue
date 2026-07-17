@@ -270,11 +270,7 @@ function switchTo(acc) {
               <div v-if="notifOpen" class="notif__panel">
                 <div class="notif__head">
                   <strong>Thông báo</strong>
-                  <button
-                    v-if="unreadCount > 0"
-                    class="notif__markall"
-                    @click="markAllRead"
-                  >
+                  <button v-if="unreadCount > 0" class="notif__markall" @click="markAllRead">
                     <SvgIcon name="check-all" :size="14" /> Đánh dấu đã đọc
                   </button>
                 </div>

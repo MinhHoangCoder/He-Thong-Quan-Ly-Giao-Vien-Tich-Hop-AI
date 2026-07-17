@@ -236,7 +236,9 @@ async function confirmPurge() {
   <div class="page">
     <div class="page-head">
       <div>
-        <h2 class="title">{{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}</h2>
+        <h2 class="title">
+          {{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}
+        </h2>
       </div>
       <div class="head-actions">
         <template v-if="!inTrash">
@@ -275,7 +277,9 @@ async function confirmPurge() {
             <td>{{ a.schoolName }}</td>
             <td>{{ a.className ?? '—' }}</td>
             <td>{{ a.subjectName }}</td>
-            <td class="text-muted small">{{ a.startDate }} → {{ a.endDate ?? 'không giới hạn' }}</td>
+            <td class="text-muted small">
+              {{ a.startDate }} → {{ a.endDate ?? 'không giới hạn' }}
+            </td>
             <td>
               <span v-for="s in a.slots" :key="s.id" class="chip"
                 >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType) }}</span
@@ -305,7 +309,9 @@ async function confirmPurge() {
               </template>
               <template v-else>
                 <button class="btn btn-sm btn-outline" @click="restoreItem(a)">Khôi phục</button>
-                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">Xóa vĩnh viễn</button>
+                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">
+                  Xóa vĩnh viễn
+                </button>
               </template>
             </td>
           </tr>
@@ -345,7 +351,9 @@ async function confirmPurge() {
           <div class="form-group">
             <label>Lớp *</label>
             <select v-model="modal.form.classId" :disabled="!scoped.classes.length">
-              <option value="">{{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}</option>
+              <option value="">
+                {{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}
+              </option>
               <option v-for="c in scoped.classes" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
@@ -368,12 +376,19 @@ async function confirmPurge() {
               <option v-for="d in DAYS" :key="d.code" :value="d.code">{{ d.label }}</option>
             </select>
             <select v-model="modal.slotDraft.periodId" :disabled="!scoped.periods.length">
-              <option value="">{{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}</option>
+              <option value="">
+                {{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}
+              </option>
               <option v-for="p in scoped.periods" :key="p.id" :value="p.id">
                 {{ tietLabel(p.periodNumber, p.sessionType) }}
               </option>
             </select>
-            <button class="btn btn-outline btn-sm" type="button" :disabled="!modal.slotDraft.periodId" @click="addSlot">
+            <button
+              class="btn btn-outline btn-sm"
+              type="button"
+              :disabled="!modal.slotDraft.periodId"
+              @click="addSlot"
+            >
               + Thêm tiết
             </button>
           </div>
@@ -382,7 +397,9 @@ async function confirmPurge() {
               {{ slotLabel(s) }}
               <button class="chip-x" type="button" @click="removeSlot(i)">×</button>
             </span>
-            <span v-if="!modal.form.slots.length" class="text-muted small">Chưa thêm tiết nào.</span>
+            <span v-if="!modal.form.slots.length" class="text-muted small"
+              >Chưa thêm tiết nào.</span
+            >
           </div>
         </div>
 
@@ -418,9 +435,10 @@ async function confirmPurge() {
       <div class="modal-box modal-sm">
         <h3>Xóa vĩnh viễn</h3>
         <p>
-          Xóa <strong>vĩnh viễn</strong> phân công của <strong>{{ purgeTarget.teacherName }}</strong>
-          tại {{ purgeTarget.schoolName }} khỏi hệ thống? Hành động này
-          <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên quan.
+          Xóa <strong>vĩnh viễn</strong> phân công của
+          <strong>{{ purgeTarget.teacherName }}</strong> tại {{ purgeTarget.schoolName }} khỏi hệ
+          thống? Hành động này <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên
+          quan.
         </p>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="purgeTarget = null">Không</button>

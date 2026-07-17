@@ -115,7 +115,12 @@ const weekDays = computed(() => {
   const arr = []
   for (let i = 0; i < 7; i++) {
     const d = addDays(s, i)
-    arr.push({ iso: iso(d), label: DOW_LABELS[i], dnum: d.getDate(), isToday: iso(d) === TODAY_ISO })
+    arr.push({
+      iso: iso(d),
+      label: DOW_LABELS[i],
+      dnum: d.getDate(),
+      isToday: iso(d) === TODAY_ISO,
+    })
   }
   return arr
 })
@@ -172,7 +177,8 @@ const title = computed(() => {
   return `Tháng ${anchor.value.getMonth() + 1}, ${anchor.value.getFullYear()}`
 })
 function go(dir) {
-  anchor.value = view.value === 'week' ? addDays(anchor.value, dir * 7) : addMonths(anchor.value, dir)
+  anchor.value =
+    view.value === 'week' ? addDays(anchor.value, dir * 7) : addMonths(anchor.value, dir)
   load()
 }
 function goToday() {

@@ -118,9 +118,7 @@ async function finalize(r) {
   }
 }
 
-const totalNet = computed(() =>
-  rows.value.reduce((s, r) => s + Number(r.netAmount || 0), 0),
-)
+const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmount || 0), 0))
 </script>
 
 <template>

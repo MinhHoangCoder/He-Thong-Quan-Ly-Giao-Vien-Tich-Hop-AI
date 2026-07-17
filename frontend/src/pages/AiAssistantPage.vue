@@ -46,7 +46,10 @@ async function reply(question) {
       const active = data.filter((a) => a.status === 'ACTIVE').length
       return `Hiện có **${data.length} phân công** trong hệ thống, trong đó **${active} đang chạy**.`
     }
-    if (q.includes('giờ dạy') || (q.includes('chấm công') && (q.includes('tổng') || q.includes('bao nhiêu')))) {
+    if (
+      q.includes('giờ dạy') ||
+      (q.includes('chấm công') && (q.includes('tổng') || q.includes('bao nhiêu')))
+    ) {
       const { data } = await attendanceApi.list()
       const hours = data.reduce((s, r) => s + Number(r.hours || 0), 0)
       return `Tháng này ghi nhận **${data.length} buổi chấm công**, tổng **${hours.toFixed(2)} giờ dạy**.`
@@ -55,7 +58,7 @@ async function reply(question) {
       return 'Chấm công: vào **Điều phối → Chấm công**. Bấm **“Sinh từ lịch dạy”** để tạo dòng chấm công từ các buổi đã duyệt, sau đó chỉnh giờ vào/ra và trạng thái từng dòng. Số giờ dạy tự tính và dùng cho bảng lương.'
     }
     if (q.includes('lương')) {
-      if (q.includes('cách') || q.includes('tính') && q.includes('thế nào')) {
+      if (q.includes('cách') || (q.includes('tính') && q.includes('thế nào'))) {
         return 'Lương = **giờ dạy × đơn giá** + phụ cấp + thưởng − khấu trừ. Vào **Điều phối → Bảng lương**, chọn kỳ và bấm **“Tính lương từ chấm công”**.'
       }
       const now = new Date()
@@ -65,7 +68,11 @@ async function reply(question) {
       return `Bảng lương tháng ${now.getMonth() + 1}/${now.getFullYear()}: **${data.length} giáo viên**, tổng thực nhận **${fmt} ₫**.`
     }
   } catch (e) {
-    return 'Mình chưa lấy được dữ liệu (' + (e.response?.data?.message ?? e.message) + '). Bạn kiểm tra lại quyền hoặc kết nối nhé.'
+    return (
+      'Mình chưa lấy được dữ liệu (' +
+      (e.response?.data?.message ?? e.message) +
+      '). Bạn kiểm tra lại quyền hoặc kết nối nhé.'
+    )
   }
 
   if (q.includes('giáo viên') || q.includes('gv')) {
@@ -106,7 +113,9 @@ onMounted(scrollDown)
     <div class="page-head">
       <div>
         <h2 class="title">Trợ lý AI</h2>
-        <p class="subtitle">Hỏi đáp nhanh về vận hành trung tâm — tra số liệu và hướng dẫn thao tác.</p>
+        <p class="subtitle">
+          Hỏi đáp nhanh về vận hành trung tâm — tra số liệu và hướng dẫn thao tác.
+        </p>
       </div>
     </div>
 
