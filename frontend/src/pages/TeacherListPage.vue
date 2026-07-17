@@ -10,7 +10,6 @@ import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
-import '@fortawesome/fontawesome-free/css/all.min.css'
 
 /* ══════════════════════════════════════════════════════════
    PHÂN QUYỀN THEO VAI TRÒ
