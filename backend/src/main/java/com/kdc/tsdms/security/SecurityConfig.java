@@ -57,7 +57,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/refresh",
                                 "/api/v1/auth/logout",
                                 "/api/v1/auth/forgot-password",
-                                "/api/v1/auth/reset-password")
+                                "/api/v1/auth/reset-password",
+                                "/uploads/**")
                         .permitAll()
                         // FIX (2026-07-10): TRƯỚC ĐÂY mở public /uploads/lessons/** vì FE dùng
                         // thẻ <a href="..."> trực tiếp trỏ vào file tĩnh, mà <a> thường không

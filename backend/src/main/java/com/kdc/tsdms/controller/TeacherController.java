@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1/teacher")
@@ -86,6 +88,23 @@ public class TeacherController {
     public ResponseEntity<Void> deleteCertificate(@PathVariable Integer id, @PathVariable Integer certId) {
         teacherService.deleteCertificate(id, certId);
         return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/certificates/{certId}")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    public TeacherResponse.CertificateDTO updateCertificate(
+            @PathVariable Integer id,
+            @PathVariable Integer certId,
+            @Valid @RequestBody TeacherResponse.CertificateRequest request) {
+        return teacherService.updateCertificate(id, certId, request);
+    }
+
+    /** Upload file PDF đính kèm cho chứng chỉ. */
+    @PostMapping("/{id}/certificates/{certId}/file")
+    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    public TeacherResponse.CertificateDTO uploadCertificateFile(
+            @PathVariable Integer id, @PathVariable Integer certId, @RequestParam("file") MultipartFile file) {
+        return teacherService.uploadCertificateFile(id, certId, file);
     }
 
     // Contract(1 hđ / 1 gv) =============================

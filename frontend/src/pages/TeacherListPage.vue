@@ -54,6 +54,9 @@ const confirmDelete = reactive({ open: false })
 // Notification toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
 
+
+
+
 /* ══════════════════════════════════════════════════════════
    REGEX / HẰNG SỐ VALIDATE DÙNG CHUNG (Tạo + Sửa)
 ══════════════════════════════════════════════════════════ */
@@ -61,7 +64,7 @@ const NAME_RE = /^[\p{L} ]+$/u
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^(\+84|0)\d{9,10}$/
 const CCCD_RE = /^\d{9}(\d{3})?$/
-const MIN_WORKING_AGE = 18 // tuổi lao động tối thiểu — dùng để so ngày sinh với ngày vào làm
+const MIN_WORKING_AGE = 18 
 
 /**
  * So sánh cặp Ngày sinh / Ngày vào làm — dùng chung cho cả 2 form (Tạo & Sửa).
@@ -79,6 +82,10 @@ function checkDobHirePair(dobStr, hireStr) {
   if (dobStr) {
     const dob = new Date(dobStr)
     if (dob > today) return { field: 'dateOfBirth', msg: 'Ngày sinh không được ở tương lai.' }
+  }
+   if (hireStr) {
+    const hire = new Date(hireStr)
+    if (hire > today) return { field: 'hireDate', msg: 'Ngày vào làm không được ở tương lai.' }
   }
   if (dobStr && hireStr) {
     const dob = new Date(dobStr)
@@ -282,7 +289,7 @@ function validateAllCreateFields() {
     return false
   }
   if (!results.every(Boolean)) {
-    createModal.error = 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ.'
+    createModal.error = 'Vui lòng kiểm tra lại các lỗi trên.'
     createModal.activeTab = 'profile'
     return false
   }
@@ -328,6 +335,7 @@ function onPickFile(doc, e) {
   }
   doc.file = file
 }
+
 
 async function submitCreate() {
   if (!validateAllCreateFields()) return
@@ -377,12 +385,15 @@ async function submitCreate() {
       d.name.trim(),
     )
     for (const d of allDocs) {
-      await teacherApi.addCertificate(created.id, {
+      const { data: cert } = await teacherApi.addCertificate(created.id, {
         name: d.name.trim(),
         issuer: d.issuer || null,
         issueDate: d.issueDate || null,
-        fileUrl: d.file?.name || null,
+        fileUrl: null,
       })
+      if (d.file) {
+        await teacherApi.uploadCertificateFile(created.id, cert.id, d.file)
+      }
     }
 
     createModal.open = false
@@ -463,17 +474,14 @@ async function loadTeachers() {
 
 async function loadBranches() {
   try {
-    // /branches trả về TOÀN BỘ chi nhánh trong bảng Branch (BranchController.list() dùng
-    // findAll(), không lọc theo phạm vi người dùng) — bao gồm đủ các chi nhánh trong file
-    // seed database/seed/TSDMS_Seed_Demo.sql (Chi nhánh trung tâm, Cầu Giấy, Hà Đông, Đà Nẵng,
-    // TP.HCM). Nếu dropdown đang thiếu chi nhánh, khả năng cao là seed CHƯA được chạy trên
-    // DB đang dùng, chứ không phải do FE lọc bớt — FE ở đây không hardcode gì cả.
     const res = await branchApi.list()
     branches.value = res.data
   } catch {
     // Bỏ qua lỗi branch — không cản trang chính
   }
 }
+
+
 
 async function loadTrash() {
   trashLoading.value = true
@@ -703,12 +711,15 @@ async function saveEdit() {
     // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
     const newOnes = [...editModal.newDegrees, ...editModal.newCerts].filter((d) => d.name.trim())
     for (const d of newOnes) {
-      await teacherApi.addCertificate(editModal.id, {
+      const { data: cert } = await teacherApi.addCertificate(editModal.id, {
         name: d.name.trim(),
         issuer: d.issuer || null,
         issueDate: d.issueDate || null,
-        fileUrl: d.file?.name || null,
+        fileUrl: null,
       })
+      if (d.file) {
+        await teacherApi.uploadCertificateFile(editModal.id, cert.id, d.file)
+      }
     }
     editModal.open = false
     showToast('Cập nhật giáo viên thành công')
@@ -793,6 +804,23 @@ async function confirmDoDelete() {
 async function restore(id) {
   try {
     await teacherApi.restore(id)
+
+    // Chuyển trạng thái GV vừa khôi phục sang "Đang hoạt động".
+    const { data: t } = await teacherApi.get(id)
+    await teacherApi.update(id, {
+      branchId: t.branchId,
+      firstName: t.firstName,
+      lastName: t.lastName,
+      status: 'ACTIVE',
+      employmentType: t.employmentType,
+      dateOfBirth: t.dateOfBirth,
+      gender: t.gender,
+      idCardNo: t.idCardNo,
+      phone: t.phone,
+      address: t.address,
+      hireDate: t.hireDate,
+    })
+
     showToast('Đã khôi phục giáo viên thành công')
     await loadTrash()
     await loadTeachers()
@@ -819,6 +847,11 @@ function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('vi-VN')
 }
+function absoluteFileUrl(url) {
+  if (!url) return ''
+  return url.startsWith('http') ? url : `${import.meta.env.VITE_API_BASE_URL}${url}`
+}
+
 </script>
 
 <template>
@@ -885,8 +918,6 @@ function formatDate(d) {
 
         <select v-model="filters.employmentType" class="filter-select">
           <option value="">Tất cả loại hình</option>
-          <option value="FULL_TIME">Toàn thời gian</option>
-          <option value="PART_TIME">Bán thời gian</option>
           <option value="CONTRACT">Hợp đồng</option>
         </select>
 
@@ -1029,7 +1060,7 @@ function formatDate(d) {
       <div class="trash-header">
         <div>
           <h2 class="trash-title">
-            <SvgIcon name="history" :size="20" /> Lịch sử giáo viên đã xóa
+            <span class="icon" style="font-size: 30px"> 🧾 </span> Lịch sử giáo viên đã xóa
           </h2>
           <p class="trash-sub">
             Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Bạn có thể khôi phục bất kỳ lúc
@@ -1293,8 +1324,6 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="createModal.profile.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
                       <option value="CONTRACT">Hợp đồng</option>
                     </select>
                   </label>
@@ -1575,6 +1604,15 @@ function formatDate(d) {
                     <span v-if="c.issuer"> · {{ c.issuer }}</span>
                     <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
                     <span v-if="c.expiryDate"> → {{ formatDate(c.expiryDate) }}</span>
+                    <a
+                      v-if="c.fileUrl"
+                      :href="absoluteFileUrl(c.fileUrl)"
+                      target="_blank"
+                      class="cert-file-link"
+                      title="Xem file PDF"
+                    >
+                      <i class="fa-solid fa-file-pdf" style="color: #dc2626"></i> Xem file
+                    </a>
                   </div>
                 </div>
               </div>
@@ -1746,8 +1784,6 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="editModal.form.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình --</option>
-                      <option value="FULL_TIME">Toàn thời gian</option>
-                      <option value="PART_TIME">Bán thời gian</option>
                       <option value="CONTRACT">Hợp đồng</option>
                     </select>
                   </label>
@@ -1810,6 +1846,15 @@ function formatDate(d) {
                       <strong>{{ c.name }}</strong>
                       <span v-if="c.issuer"> · {{ c.issuer }}</span>
                       <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
+                      <a
+                        v-if="c.fileUrl"
+                        :href="absoluteFileUrl(c.fileUrl)"
+                        target="_blank"
+                        class="cert-file-link"
+                        title="Xem file PDF"
+                      >
+                        <i class="fa-solid fa-file-pdf" style="color: #dc2626"></i> Xem file
+                      </a>
                     </div>
                     <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
                       <SvgIcon name="trash" :size="14" />
@@ -1985,6 +2030,10 @@ function formatDate(d) {
   background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
+  position: sticky;
+  top: 60px;
+  z-index: 10;
+  padding: 15px;
 }
 .filter-total {
   display: flex;

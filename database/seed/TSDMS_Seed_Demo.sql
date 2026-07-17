@@ -1,30 +1,15 @@
 /* =====================================================================
-   TSDMS - SEED DỮ LIỆU DEMO (~5 dòng trở lên cho mỗi bảng)
+   TSDMS - SEED THEO LỚP: 4 DANH MỤC × LỚP 1..9 × 10 BÀI = 360 BÀI GIẢNG
    ---------------------------------------------------------------------
-   FILE NÀY NẰM Ở ĐÂU / CHẠY THẾ NÀO?
-     - File SQL nằm trong git tại database/seed/ → cả nhóm dùng chung 1 bộ data.
-     - Dữ liệu chỉ vào DB khi bạn MỞ FILE NÀY TRONG SSMS VÀ BẤM EXECUTE
-       (sau khi đã có schema: chạy TSDMS_Schema.sql, hoặc Flyway V1+V2 đã chạy).
-     - KHÔNG để data demo trong Flyway migration: migration chạy tự động ở
-       MỌI môi trường, còn data demo chỉ dành cho máy dev/máy demo đồ án.
-
-   QUY TẮC TRONG FILE:
-     - Tra ID theo Username/Code/Name — KHÔNG hard-code Id tự tăng.
-     - Có CHỐT CHẶN ở đầu: lỡ chạy 2 lần sẽ tự bỏ qua, không tạo data trùng.
-     - Toàn bộ bọc trong TRANSACTION: lỗi giữa chừng → rollback sạch sẽ.
-     - Mật khẩu của TẤT CẢ tài khoản demo: Tsdms@123 (giống 4 tài khoản gốc).
-
-   BẢNG CỐ TÌNH ĐỂ TRỐNG (không seed):
-     - RefreshToken / PasswordResetToken: sinh ra lúc CHẠY APP (đăng nhập /
-       quên mật khẩu). Seed hash giả vào đây vô nghĩa và dễ gây hiểu lầm.
-     - Role: danh mục cố định 4 vai trò, V1 đã seed đủ.
-     - ScheduleStatusLog: KHÔNG insert tay — cuối file có lệnh UPDATE duyệt
-       lịch, trigger TR_Schedule_StatusLog sẽ TỰ ghi log (đúng cơ chế thật).
+   DANH MỤC: Kĩ năng số · STEM - AI · Tiếng Anh · Tin học
+   MỖI DANH MỤC: mỗi lớp (1..9) có 10 bài giảng.
+   CHẠY SAU: "TSDMS_Schema.sql" (cần Branch). Guard NOT EXISTS: chạy lại
+             nhiều lần không bị trùng.
+   GHI CHÚ: "Kĩ năng số" là danh mục MỚI (KY_NANG_SO), khác với danh mục
+            "Kĩ năng sống" (KY_NANG_SONG) ở các file seed trước.
    ===================================================================== */
-
 USE TSDMS;
 GO
-SET NOCOUNT ON;
 
 /* ---- CHỐT CHẶN: đã seed rồi thì thoát, không chạy lại ---- */
 IF EXISTS (SELECT 1 FROM Branch WHERE Name = N'Chi nhánh Cầu Giấy')

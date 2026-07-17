@@ -10,14 +10,23 @@ import com.kdc.tsdms.repository.ContractRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.transaction.Transactional;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class TeacherService {
+
+    private static final String UPLOAD_ROOT = "uploads/teachers";
+
     private final TeacherRepository teacherRepo;
     private final CertificateRepository ceRepo;
     private final ContractRepository contractRepo;
@@ -162,7 +171,7 @@ public class TeacherService {
     // ════════════════════════════════════════════════════════════════
     // CHỨNG CHỈ — quản lý ĐỘC LẬP sau khi GV đã tồn tại
     // (KHÁC với certificates trong createTeacher: đó chỉ là lúc TẠO MỚI,
-    //  còn đây là thêm/xóa chứng chỉ cho GV ĐÃ CÓ SẴN, dùng quanh năm)
+    //  còn đây là thêm/xóa/sửa chứng chỉ cho GV ĐÃ CÓ SẴN, dùng quanh năm)
     // ════════════════════════════════════════════════════════════════
 
     @Transactional
@@ -179,6 +188,49 @@ public class TeacherService {
         c.setDeletedAt(Instant.now());
         c.setDeletedBy(SecurityUtils.currentUserId());
         ceRepo.save(c);
+    }
+
+    @Transactional
+    public TeacherResponse.CertificateDTO updateCertificate(
+            Integer teacherId, Integer certId, TeacherResponse.CertificateRequest req) {
+
+        Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ"));
+
+        c.setName(req.getName());
+        c.setIssuer(req.getIssuer());
+        c.setIssueDate(req.getIssueDate());
+        c.setExpiryDate(req.getExpiryDate());
+        c.setFileUrl(req.getFileUrl());
+
+        return toCertDTO(ceRepo.save(c));
+    }
+
+    @Transactional
+    public TeacherResponse.CertificateDTO uploadCertificateFile(Integer teacherId, Integer certId, MultipartFile file) {
+        findActiveOrThrow(teacherId);
+        Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ id=" + certId));
+
+        if (file == null || file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn file");
+        }
+
+        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
+        int dot = original.lastIndexOf('.');
+        String ext = dot >= 0 ? original.substring(dot) : "";
+        String stored = UUID.randomUUID() + ext;
+
+        Path dir = Path.of(UPLOAD_ROOT, String.valueOf(teacherId));
+        try {
+            Files.createDirectories(dir);
+            Files.copy(file.getInputStream(), dir.resolve(stored), StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + original);
+        }
+
+        c.setFileUrl("/" + UPLOAD_ROOT + "/" + teacherId + "/" + stored);
+        return toCertDTO(ceRepo.save(c));
     }
 
     // HỢP ĐỒNG — upsert ĐỘC LẬP sau khi GV đã tồn tại
