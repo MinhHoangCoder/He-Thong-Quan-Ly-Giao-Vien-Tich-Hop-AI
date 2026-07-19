@@ -33,6 +33,8 @@ const pageInput = ref('')
 // Teacher chỉ xem bài giảng đã xuất bản -> không có filter Trạng thái
 // (khác trang Admin, nơi có đủ 3 trạng thái Bản nháp/Đã đăng/Lưu kho).
 const filter = reactive({
+  category: '',
+  gradeLevel: '',
   keyword: '',
 })
 
@@ -75,7 +77,42 @@ const visiblePages = computed(() => {
   return arr
 })
 
-async function load() {
+function goPage(index) {
+  if (index < 0 || index >= totalPages.value) return
+
+  page.value = index
+  loadLessons()
+}
+
+function jumpPage() {
+  const p = Number(pageInput.value)
+
+  if (isNaN(p)) return
+  if (p < 1) return
+  if (p > totalPages.value) return
+
+  goPage(p - 1)
+}
+
+/* =========================
+   API
+========================= */
+
+async function loadMeta() {
+  try {
+    const [categoryRes, gradeRes] = await Promise.all([
+      subjectCategoryApi.listActive(),
+      lessonApi.gradeLevels(),
+    ])
+
+    categories.value = categoryRes.data
+    gradeLevels.value = gradeRes.data
+  } catch (e) {
+    console.error(e)
+  }
+}
+
+async function loadLessons() {
   loading.value = true
   error.value = ''
 
