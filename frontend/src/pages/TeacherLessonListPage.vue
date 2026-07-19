@@ -308,7 +308,7 @@ onMounted(async () => {
 
             <td class="col-actions">
               <button class="act-btn" title="Xem bài giảng" @click="viewLesson(lesson.id)">
-                👁
+                Xem
               </button>
             </td>
           </tr>
@@ -588,11 +588,12 @@ tbody tr:hover {
   background: transparent;
   cursor: pointer;
 
-  padding: 6px;
+  padding: 6px 10px;
 
   border-radius: 6px;
 
-  font-size: 17px;
+  font-size: 13px;
+  font-weight: 500;
 
   transition: 0.2s;
 }
