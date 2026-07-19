@@ -254,13 +254,6 @@ async function deleteFile(fileId) {
   }
 }
 
-function fileIcon(type) {
-  if (type === 'canva') return '🎨'
-  if (type === 'pptx' || type === 'ppt') return '📊'
-  if (type === 'pdf') return '📄'
-  return '📎'
-}
-
 function fileLabel(type) {
   if (type === 'canva') return 'Canva'
   if (type === 'pptx' || type === 'ppt') return 'PPT'
@@ -276,7 +269,7 @@ onMounted(async () => {
 <template>
   <div class="page">
     <div class="page__head">
-      <button class="back-btn" @click="router.push({ name: listRouteName })">← Danh sách</button>
+      <button class="back-btn" @click="router.push({ name: listRouteName })">Danh sách</button>
       <h1 class="page__title">{{ isEdit ? 'Sửa bài giảng' : 'Thêm bài giảng' }}</h1>
     </div>
     <div v-if="loadingPage" class="loading">Đang tải dữ liệu…</div>
@@ -383,7 +376,7 @@ onMounted(async () => {
       <div v-if="isEdit" class="col-side">
         <!-- Giáo án -->
         <div class="card">
-          <h2 class="card__title">📄 Tải lên giáo án</h2>
+          <h2 class="card__title">Tải lên giáo án</h2>
 
           <input
             ref="pdfInput"
@@ -395,7 +388,7 @@ onMounted(async () => {
           />
 
           <div v-if="pdfFiles.length" class="file-preview">
-            <span v-for="f in pdfFiles" :key="f.name" class="file-chip">📄 {{ f.name }}</span>
+            <span v-for="f in pdfFiles" :key="f.name" class="file-chip">{{ f.name }}</span>
           </div>
 
           <p v-if="pdfError" class="msg msg--error">{{ pdfError }}</p>
@@ -407,7 +400,7 @@ onMounted(async () => {
 
         <!-- Bài giảng (link Canva) -->
         <div class="card">
-          <h2 class="card__title">🎨 Tải lên bài giảng</h2>
+          <h2 class="card__title">Tải lên bài giảng</h2>
           <p class="card__sub">Dán link trình chiếu Canva đã publish để xem trực tiếp.</p>
 
           <button
@@ -451,7 +444,6 @@ onMounted(async () => {
           <div v-if="!attachedFiles.length" class="empty-files">Chưa có tài liệu nào.</div>
           <ul v-else class="file-list">
             <li v-for="f in attachedFiles" :key="f.id" class="file-item">
-              <span class="file-icon">{{ fileIcon(f.fileType) }}</span>
               <div class="file-info">
                 <a
                   v-if="f.fileType === 'canva'"
@@ -472,7 +464,7 @@ onMounted(async () => {
                 title="Xóa file"
                 @click="deleteFile(f.id)"
               >
-                {{ deletingFileId === f.id ? '…' : '✕' }}
+                {{ deletingFileId === f.id ? 'Đang xóa…' : 'Xóa' }}
               </button>
             </li>
           </ul>
@@ -668,11 +660,6 @@ onMounted(async () => {
 }
 .file-item:last-child {
   border-bottom: none;
-}
-.file-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  margin-top: 1px;
 }
 .file-info {
   flex: 1;
