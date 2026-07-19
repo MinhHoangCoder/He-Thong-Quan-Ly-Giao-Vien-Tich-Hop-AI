@@ -77,7 +77,7 @@ onMounted(load)
 </script>
 <template>
   <div class="page">
-    <button class="btn-back" @click="back">Quay lại</button>
+    <button class="btn-back" @click="back">← Quay lại</button>
 
     <div v-if="loading" class="loading">Đang tải...</div>
 
@@ -120,7 +120,7 @@ onMounted(load)
 
         <div v-if="lesson.files && lesson.files.length">
           <div class="file-item" v-for="file in lesson.files" :key="file.id">
-            <span> {{ file.fileType === 'canva' ? 'Canva' : 'PDF' }} · {{ file.fileName }} </span>
+            <span> {{ file.fileType === 'canva' ? '🎨' : '📄' }} {{ file.fileName }} </span>
 
             <!-- FIX (2026-07-10): thay <a href> tĩnh bằng nút gọi openFile() —
                  canva mở link mới nhất ở tab mới, file khác tự động tải về máy. -->
@@ -152,7 +152,17 @@ onMounted(load)
 }
 
 .btn-back {
+  background: none;
+  border: none;
+  color: var(--c-primary, #f97316);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0;
   margin-bottom: 20px;
+}
+
+.btn-back:hover {
+  text-decoration: underline;
 }
 
 .info {
