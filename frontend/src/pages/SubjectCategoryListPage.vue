@@ -7,7 +7,7 @@
  *
  * FIX (2026-07-16): đồng bộ giao diện với "Kho bài giảng" (LessonListPage.vue) —
  * cùng bố cục page__head/filter-bar/table-wrap/pagination, cùng token màu & badge,
- * cùng kiểu nút hành động icon (✏️/🗑️) và modal xác nhận xóa. Chức năng CRUD
+ * cùng kiểu nút hành động dạng chữ (Sửa/Xóa) và modal xác nhận xóa. Chức năng CRUD
  * nhóm môn + môn học lồng bên trong giữ NGUYÊN không đổi.
  *
  * readOnly=true (dùng cho portal GIÁO VIÊN): ẩn mọi nút thêm/sửa/xóa, chỉ xem.
@@ -449,7 +449,7 @@ async function confirmDeleteSubject() {
               </td>
 
               <td v-if="!readOnly" class="col-actions" @click.stop>
-                <button class="act-btn" title="Sửa" @click="openEdit(item)">✏️</button>
+                <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
 
                 <button
                   class="act-btn act-btn--del"
@@ -457,7 +457,7 @@ async function confirmDeleteSubject() {
                   :disabled="item.subjectCount > 0"
                   @click="deleteTarget = item"
                 >
-                  🗑️
+                  Xóa
                 </button>
               </td>
             </tr>
@@ -510,7 +510,7 @@ async function confirmDeleteSubject() {
 
                         <td v-if="!readOnly" class="col-actions">
                           <button class="act-btn" title="Sửa" @click="openEditSubject(s)">
-                            ✏️
+                            Sửa
                           </button>
 
                           <button
@@ -519,7 +519,7 @@ async function confirmDeleteSubject() {
                             :disabled="s.lessonCount > 0"
                             @click="deleteSubjectTarget = s"
                           >
-                            🗑️
+                            Xóa
                           </button>
                         </td>
                       </tr>
@@ -1050,11 +1050,14 @@ tbody tr:hover {
   background: transparent;
   cursor: pointer;
 
-  padding: 6px;
+  padding: 6px 10px;
 
   border-radius: 6px;
 
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 500;
+
+  margin-right: 4px;
 
   transition: 0.2s;
 }
