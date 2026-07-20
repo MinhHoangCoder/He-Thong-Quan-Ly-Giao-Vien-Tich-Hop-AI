@@ -152,4 +152,11 @@ export const adminRoutes = [
     component: () => import('@/pages/MyProfilePage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
+  // ── Lớp học (SchoolClass) ────────────────────────────────────────
+  {
+    path: '/admin/classes',
+    name: 'admin-class-list',
+    component: () => import('@/pages/SchoolClassListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]
