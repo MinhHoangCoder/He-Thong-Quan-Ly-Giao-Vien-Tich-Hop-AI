@@ -11,7 +11,7 @@ const year = new Date().getFullYear()
       <div class="container layout__bar">
         <RouterLink to="/" class="brand">
           <BrandLogo :size="34" />
-          <span class="brand__sub">Điều phối giáo viên · tích hợp AI</span>
+          <span class="brand__sub">Quản lý &amp; điều phối giáo viên</span>
         </RouterLink>
 
         <!-- Menu = anchor cuộn tới từng khối của trang chủ (layout này chỉ bọc trang chủ).
@@ -34,7 +34,7 @@ const year = new Date().getFullYear()
 
     <footer class="layout__footer">
       <div class="container">
-        <p>© {{ year }} KDC EduOps AI — Hệ thống quản lý &amp; điều phối giáo viên.</p>
+        <p>© {{ year }} KDC EduOps — Hệ thống quản lý &amp; điều phối giáo viên.</p>
       </div>
     </footer>
   </div>

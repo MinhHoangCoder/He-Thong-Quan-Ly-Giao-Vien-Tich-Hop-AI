@@ -80,10 +80,12 @@ function fillDemo(u) {
 const demoAccounts = ['admin', 'school', 'teacher', 'ketoan', 'nhansu', 'daotao', 'tuyensinh']
 
 // Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
+// TẠM ẨN (2026-07-20): mục "Trợ lý AI hỗ trợ" đã thay bằng "Chấm công & bảng lương"
+// — đợt bảo vệ không quảng bá phần AI (trang /ai-assistant vẫn còn trong code).
 const features = [
   { icon: 'assignment', label: 'Phân công & điều phối' },
   { icon: 'schedule', label: 'Lịch dạy trực quan' },
-  { icon: 'ai', label: 'Trợ lý AI hỗ trợ' },
+  { icon: 'payroll', label: 'Chấm công & bảng lương' },
   { icon: 'evaluation', label: 'Báo cáo & đánh giá' },
 ]
 </script>
@@ -98,7 +100,7 @@ const features = [
         <BrandLogo :size="48" variant="light" class="auth__brand" />
         <h2 class="auth__headline">
           Vận hành & điều phối giáo viên
-          <span class="auth__headline-accent">tích hợp AI</span>
+          <span class="auth__headline-accent">cho trung tâm giáo dục</span>
         </h2>
         <p class="auth__tagline">
           Phân công thông minh · Lịch dạy · Chấm công · Báo cáo — tất cả trong một nền tảng.
@@ -116,7 +118,7 @@ const features = [
     <main class="auth__panel">
       <div class="login-card fade-up">
         <BrandLogo :size="44" :show-text="false" class="login-mark" />
-        <h1 class="login-title">KDC EduOps AI</h1>
+        <h1 class="login-title">KDC EduOps</h1>
         <p class="login-sub">Hệ thống quản lý &amp; điều phối giáo viên</p>
 
         <!-- CHẾ ĐỘ ĐĂNG NHẬP -->

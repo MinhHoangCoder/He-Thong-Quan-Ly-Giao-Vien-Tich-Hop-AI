@@ -1,6 +1,7 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.School;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,9 @@ public interface SchoolRepository extends JpaRepository<School, Integer> {
     Optional<School> findByAppUserIdAndDeletedFalse(Integer appUserId);
 
     Optional<School> findByIdAndDeletedFalse(Integer id);
+
+    /** Dropdown trường (chưa xóa mềm), sắp theo tên. */
+    List<School> findByDeletedFalseOrderByNameAsc();
 
     /** Tra 1 trường trong thùng rác (đã xóa mềm). */
     Optional<School> findByIdAndDeletedTrue(Integer id);

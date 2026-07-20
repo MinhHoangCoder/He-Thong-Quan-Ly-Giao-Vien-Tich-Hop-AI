@@ -38,12 +38,16 @@ export const adminRoutes = [
     component: () => import('@/pages/PayrollPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
-  {
-    path: '/ai-assistant',
-    name: 'ai-assistant',
-    component: () => import('@/pages/AiAssistantPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
-  },
+  // TẠM ẨN (2026-07-20): route Trợ lý AI đóng lại cho đợt bảo vệ + bản deploy công khai
+  // — tránh việc gõ thẳng /ai-assistant vẫn vào được trong khi hệ thống không quảng bá
+  // tính năng AI. File AiAssistantPage.vue và API backend GIỮ NGUYÊN; mở lại bằng cách
+  // bỏ comment khối dưới (nhớ mở lại mục menu trong AdminLayout.vue).
+  // {
+  //   path: '/ai-assistant',
+  //   name: 'ai-assistant',
+  //   component: () => import('@/pages/AiAssistantPage.vue'),
+  //   meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  // },
   {
     path: '/admin/lessons',
     name: 'admin-lesson-list',
@@ -150,6 +154,13 @@ export const adminRoutes = [
     path: '/profile',
     name: 'admin-profile',
     component: () => import('@/pages/MyProfilePage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  // ── Lớp học (SchoolClass) ────────────────────────────────────────
+  {
+    path: '/admin/classes',
+    name: 'admin-class-list',
+    component: () => import('@/pages/SchoolClassListPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
 ]
