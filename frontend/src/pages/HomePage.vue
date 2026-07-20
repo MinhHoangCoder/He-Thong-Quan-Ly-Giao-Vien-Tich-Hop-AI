@@ -104,17 +104,29 @@ const portals = [
   {
     icon: 'settings',
     title: 'Quản trị viên',
-    items: ['Dashboard vận hành toàn trung tâm', 'Quản lý tài khoản & phân quyền', 'Toàn bộ nghiệp vụ điều phối'],
+    items: [
+      'Dashboard vận hành toàn trung tâm',
+      'Quản lý tài khoản & phân quyền',
+      'Toàn bộ nghiệp vụ điều phối',
+    ],
   },
   {
     icon: 'assignment',
     title: 'Nhân viên trung tâm',
-    items: ['Phân công & xếp lịch dạy', 'Chấm công, tính lương', 'Quản lý hồ sơ GV & kho bài giảng'],
+    items: [
+      'Phân công & xếp lịch dạy',
+      'Chấm công, tính lương',
+      'Quản lý hồ sơ GV & kho bài giảng',
+    ],
   },
   {
     icon: 'teacher',
     title: 'Giáo viên',
-    items: ['Lịch dạy cá nhân theo tuần', 'Kho bài giảng đã xuất bản', 'Hồ sơ, phiếu lương, đánh giá'],
+    items: [
+      'Lịch dạy cá nhân theo tuần',
+      'Kho bài giảng đã xuất bản',
+      'Hồ sơ, phiếu lương, đánh giá',
+    ],
   },
   {
     icon: 'school',
@@ -201,7 +213,9 @@ const portals = [
   <section id="workflow" class="section section--alt">
     <div class="container">
       <h2 class="section-title">Quy trình vận hành khép kín</h2>
-      <p class="section-sub">Dữ liệu chảy một đường từ phân công tới bảng lương — không nhập tay lại.</p>
+      <p class="section-sub">
+        Dữ liệu chảy một đường từ phân công tới bảng lương — không nhập tay lại.
+      </p>
       <ol class="flow">
         <li v-for="(s, i) in workflow" :key="s.title" class="flow__step">
           <span class="flow__num">{{ i + 1 }}</span>
@@ -216,7 +230,9 @@ const portals = [
   <section id="roles" class="section">
     <div class="container">
       <h2 class="section-title">Mỗi vai trò một cổng làm việc riêng</h2>
-      <p class="section-sub">Đăng nhập là vào thẳng đúng không gian của mình, thấy đúng việc của mình.</p>
+      <p class="section-sub">
+        Đăng nhập là vào thẳng đúng không gian của mình, thấy đúng việc của mình.
+      </p>
       <div class="portals">
         <article v-for="p in portals" :key="p.title" class="portal">
           <span class="portal__icon"><SvgIcon :name="p.icon" :size="22" /></span>

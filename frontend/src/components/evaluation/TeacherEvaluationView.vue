@@ -101,7 +101,12 @@ onMounted(load)
     </div>
 
     <section v-if="stats" class="stat-grid">
-      <StatCard icon="evaluation" label="Số lượt đánh giá" :value="stats.totalCount" color="#f97316" />
+      <StatCard
+        icon="evaluation"
+        label="Số lượt đánh giá"
+        :value="stats.totalCount"
+        color="#f97316"
+      />
       <StatCard icon="evaluation" label="Điểm trung bình" :value="avgLabel" color="#2563eb" />
       <StatCard
         icon="evaluation"
@@ -112,9 +117,7 @@ onMounted(load)
       />
     </section>
 
-    <div class="insight" role="status">
-      <strong>Gợi ý:</strong> {{ insight }}
-    </div>
+    <div class="insight" role="status"><strong>Gợi ý:</strong> {{ insight }}</div>
 
     <div v-if="stats && stats.totalCount" class="dist">
       <span class="dist__label">Phân bố điểm nhận được</span>
@@ -165,7 +168,9 @@ onMounted(load)
     </div>
 
     <div v-if="totalPages > 1" class="pagination">
-      <button class="pg-btn" type="button" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+      <button class="pg-btn" type="button" :disabled="page === 0" @click="goPage(page - 1)">
+        ‹
+      </button>
       <span class="pg-info">Trang {{ page + 1 }} / {{ totalPages }}</span>
       <button
         class="pg-btn"
@@ -303,7 +308,9 @@ onMounted(load)
   border-radius: 12px;
   padding: 1rem 1.1rem;
   cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 .card:hover {
   border-color: var(--c-primary);

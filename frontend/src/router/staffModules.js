@@ -126,7 +126,7 @@ export const STAFF_MODULES = [
     perm: 'SCHOOL_VIEW',
     label: 'Trường khách hàng',
     icon: 'school',
-    to: '#',
+    to: '/staff/schools',
     desc: 'Quản lý trường khách hàng',
   },
   {

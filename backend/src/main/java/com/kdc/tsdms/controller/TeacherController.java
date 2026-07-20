@@ -30,9 +30,7 @@ public class TeacherController {
 
     /**
      * Toàn bộ GV active. Tìm kiếm do FRONTEND tự lọc trên mảng này.
-     *
      * <p>Chỉ staff (hoặc quyền TEACHER_VIEW) — hồ sơ chứa CCCD/địa chỉ/ngày sinh,
-     * KHÔNG để mọi tài khoản đăng nhập (trường, GV khác) đọc được.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAuthority('TEACHER_VIEW')")

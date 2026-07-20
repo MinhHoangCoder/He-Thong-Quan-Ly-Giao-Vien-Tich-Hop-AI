@@ -44,10 +44,5 @@ const copy = computed(() => {
 
 <template>
   <TeacherEvaluationView v-if="isTeacher" />
-  <EvaluationWorkbench
-    v-else
-    :portal="portal"
-    :title="copy.title"
-    :subtitle="copy.subtitle"
-  />
+  <EvaluationWorkbench v-else :portal="portal" :title="copy.title" :subtitle="copy.subtitle" />
 </template>

@@ -23,9 +23,7 @@ const nav = [
   },
   {
     title: 'Trường học',
-    items: [
-      { label: 'Trường', icon: 'school', to: '#' },
-    ],
+    items: [{ label: 'Trường', icon: 'school', to: '/admin/schools' }],
   },
   {
     title: 'Điều phối',
