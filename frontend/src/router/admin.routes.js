@@ -112,6 +112,14 @@ export const adminRoutes = [
       roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
     },
   },
+  // ── Trường khách hàng (School) — quản lý trường ─────────────────
+  {
+    path: '/admin/schools',
+    name: 'admin-school-list',
+    component: () => import('@/pages/SchoolListPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+
   // ── Đánh giá giáo viên ──────────────────────────────────────────
   {
     path: '/admin/evaluations',

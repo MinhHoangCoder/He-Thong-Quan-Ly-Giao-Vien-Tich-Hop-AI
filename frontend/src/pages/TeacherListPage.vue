@@ -111,7 +111,6 @@ const createTabs = [
   { key: 'status', label: 'Trạng thái', icon: 'attendance' },
 ]
 
-
 // Trình độ chuyên môn — 4 mức cố định theo yêu cầu khách hàng.
 const DEGREE_LEVELS = ['Thạc sỹ', 'Cử nhân', 'Cao đẳng', 'Trung cấp']
 
@@ -170,8 +169,6 @@ function onPickFile(doc, e) {
   }
   doc.file = file
 }
-
-
 
 const createModal = reactive({
   open: false,
@@ -368,8 +365,6 @@ function openCreate() {
   createModal.open = true
 }
 
-
-
 async function submitCreate() {
   if (!validateAllCreateFields()) return
 
@@ -414,7 +409,7 @@ async function submitCreate() {
     })
 
     // 3) Bằng cấp + Trình độ  — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
-   const validDegrees = createModal.degrees.filter((d) => d.level)
+    const validDegrees = createModal.degrees.filter((d) => d.level)
     for (const d of validDegrees) {
       await teacherApi.addCertificate(created.id, {
         name: degreeName(d),
@@ -577,7 +572,7 @@ const editModal = reactive({
     hireDate: '',
     gender: null,
   },
-   // Bằng cấp ĐÃ LƯU (BE dùng chung 1 bảng Certificate) + form thêm mới — gộp chung
+  // Bằng cấp ĐÃ LƯU (BE dùng chung 1 bảng Certificate) + form thêm mới — gộp chung
   // 1 tab "Bằng cấp" duy nhất, không còn tab Chứng chỉ riêng.
   existingCerts: [],
   newDegrees: [emptyDegree()],
@@ -694,7 +689,7 @@ async function removeExistingCert(certId) {
   try {
     await teacherApi.deleteCertificate(editModal.id, certId)
     editModal.existingCerts = editModal.existingCerts.filter((c) => c.id !== certId)
-      showToast('Đã xóa bằng cấp')
+    showToast('Đã xóa bằng cấp')
   } catch (e) {
     showToast(e?.response?.data?.message || 'Xóa bằng cấp thất bại', 'error')
   }
@@ -724,10 +719,10 @@ async function saveEdit() {
       employmentType: editModal.form.employmentType || null,
     })
     // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
-     const newOnes = editModal.newDegrees.filter((d) => d.level)
+    const newOnes = editModal.newDegrees.filter((d) => d.level)
     for (const d of newOnes) {
       await teacherApi.addCertificate(editModal.id, {
-            name: degreeName(d),
+        name: degreeName(d),
         issuer: null,
         issueDate: null,
       })
@@ -1336,17 +1331,21 @@ function formatDate(d) {
                   </label>
                 </template>
 
-                   <!-- Tab: Bằng cấp -->
+                <!-- Tab: Bằng cấp -->
                 <template v-else-if="createModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Bằng cấp</h4>
-                  <p class="create-section-hint">Có thể bỏ trống nếu chưa có, sau này thêm cũng được.</p>
+                  <p class="create-section-hint">
+                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
+                  </p>
                   <div v-for="(d, i) in createModal.degrees" :key="i" class="degree-row">
                     <div class="degree-row__fields">
                       <label class="form-label form-label--sm"
                         >Trình độ chuyên môn
                         <select v-model="d.level" class="form-input">
                           <option value="">-- Chọn trình độ --</option>
-                          <option v-for="lv in DEGREE_LEVELS" :key="lv" :value="lv">{{ lv }}</option>
+                          <option v-for="lv in DEGREE_LEVELS" :key="lv" :value="lv">
+                            {{ lv }}
+                          </option>
                         </select>
                       </label>
                       <label class="form-label form-label--sm"
@@ -1389,7 +1388,6 @@ function formatDate(d) {
                   </button>
                 </template>
 
-              
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="createModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
@@ -1652,7 +1650,7 @@ function formatDate(d) {
                   </label>
                 </template>
 
-                  <!-- Tab: Bằng cấp -->
+                <!-- Tab: Bằng cấp -->
                 <template v-else-if="editModal.activeTab === 'degree'">
                   <h4 class="create-section-title">Đã lưu</h4>
                   <p v-if="!editModal.existingCerts.length" class="create-section-hint">
@@ -1674,7 +1672,9 @@ function formatDate(d) {
                         >Trình độ chuyên môn
                         <select v-model="d.level" class="form-input">
                           <option value="">-- Chọn trình độ --</option>
-                          <option v-for="lv in DEGREE_LEVELS" :key="lv" :value="lv">{{ lv }}</option>
+                          <option v-for="lv in DEGREE_LEVELS" :key="lv" :value="lv">
+                            {{ lv }}
+                          </option>
                         </select>
                       </label>
                       <label class="form-label form-label--sm"
@@ -1765,9 +1765,7 @@ function formatDate(d) {
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="editModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
-                  <p class="create-section-hint">
-                    Không bắt buộc — ghi chú nhanh.
-                  </p>
+                  <p class="create-section-hint">Không bắt buộc — ghi chú nhanh.</p>
                   <textarea
                     v-model="editModal.experience"
                     class="form-input form-textarea"

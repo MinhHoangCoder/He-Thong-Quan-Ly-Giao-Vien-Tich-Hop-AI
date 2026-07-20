@@ -19,7 +19,7 @@ export const teacherApi = {
 
   /** Update GV. */
   update(id, data) {
-        return http.put(`/teacher/${id}`, {
+    return http.put(`/teacher/${id}`, {
       ...data,
       employmentType: data.employmentType || null,
     })
@@ -48,7 +48,7 @@ export const teacherApi = {
     return http.post(`/teacher/trash/${id}/restore`)
   },
 
- addCertificate(teacherId, data) {
+  addCertificate(teacherId, data) {
     return http.post(`/teacher/${teacherId}/certificates`, data)
   },
 
@@ -56,5 +56,4 @@ export const teacherApi = {
   deleteCertificate(teacherId, certId) {
     return http.delete(`/teacher/${teacherId}/certificates/${certId}`)
   },
-
 }

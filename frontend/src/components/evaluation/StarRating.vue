@@ -23,7 +23,12 @@ function pick(n) {
 </script>
 
 <template>
-  <span class="stars" :class="{ 'stars--interactive': interactive }" role="img" :aria-label="`${value}/5`">
+  <span
+    class="stars"
+    :class="{ 'stars--interactive': interactive }"
+    role="img"
+    :aria-label="`${value}/5`"
+  >
     <button
       v-for="n in 5"
       :key="n"
@@ -54,7 +59,9 @@ function pick(n) {
   color: #d1d5db;
   cursor: default;
   line-height: 1;
-  transition: color var(--t-fast, 0.15s ease), transform var(--t-fast, 0.15s ease);
+  transition:
+    color var(--t-fast, 0.15s ease),
+    transform var(--t-fast, 0.15s ease);
 }
 .stars--interactive .stars__btn {
   cursor: pointer;
