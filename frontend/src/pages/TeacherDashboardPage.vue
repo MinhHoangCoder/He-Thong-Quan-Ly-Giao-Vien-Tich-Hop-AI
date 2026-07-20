@@ -80,7 +80,12 @@ const todayLabel = new Intl.DateTimeFormat('vi-VN', {
 
 // 4 thẻ đầu trang: chỉ con số, không hint/không % tăng giảm
 const stats = computed(() => [
-  { icon: 'schedule', label: 'Buổi dạy hôm nay', value: todaySessions.value.length, color: '#f97316' },
+  {
+    icon: 'schedule',
+    label: 'Buổi dạy hôm nay',
+    value: todaySessions.value.length,
+    color: '#f97316',
+  },
   { icon: 'assignment', label: 'Buổi dạy tuần này', value: weekCount.value, color: '#0ea5e9' },
   { icon: 'clock', label: 'Giờ công tháng này', value: '72h', color: '#f59e0b' },
   { icon: 'evaluation', label: 'Điểm đánh giá', value: '4.7/5', color: '#2563eb' },

@@ -34,12 +34,23 @@ export const staffRoutes = [
     component: () => import('@/pages/SubjectCategoryListPage.vue'),
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
+  // ── Trường khách hàng (School) — quản lý trường ─────────────────
+  {
+    path: '/staff/schools',
+    name: 'staff-school-list',
+    component: () => import('@/pages/SchoolListPage.vue'),
+    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
+  },
   // ── Đánh giá giáo viên ──────────────────────────────────────────
   {
     path: '/staff/evaluations',
     name: 'staff-evaluations',
     component: () => import('@/pages/EvaluationPage.vue'),
-    meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'], evaluationPortal: 'staff' },
+    meta: {
+      layout: 'staff',
+      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+      evaluationPortal: 'staff',
+    },
   },
   // ── Cài đặt cá nhân (liên hệ / mật khẩu / thiết bị đăng nhập) ─────
   {

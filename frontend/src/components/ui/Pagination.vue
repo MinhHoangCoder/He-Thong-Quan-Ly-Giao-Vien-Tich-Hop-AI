@@ -59,10 +59,18 @@ function goPage(index) {
       {{ p }}
     </button>
 
-    <button class="pg-btn" :disabled="modelValue === totalPages - 1" @click="goPage(modelValue + 1)">
+    <button
+      class="pg-btn"
+      :disabled="modelValue === totalPages - 1"
+      @click="goPage(modelValue + 1)"
+    >
       ›
     </button>
-    <button class="pg-btn" :disabled="modelValue === totalPages - 1" @click="goPage(totalPages - 1)">
+    <button
+      class="pg-btn"
+      :disabled="modelValue === totalPages - 1"
+      @click="goPage(totalPages - 1)"
+    >
       »
     </button>
   </div>

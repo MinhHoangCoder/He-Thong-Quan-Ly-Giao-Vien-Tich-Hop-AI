@@ -127,12 +127,17 @@ const hasWorkCol = computed(() => isTeacher.value || isEmployee.value)
 const initials = computed(() => {
   const name = p.value?.fullName || p.value?.username || '?'
   const words = name.trim().split(/\s+/)
-  return ((words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : ''))
-    .toUpperCase()
+  return (
+    (words[0]?.[0] ?? '') + (words.length > 1 ? words[words.length - 1][0] : '')
+  ).toUpperCase()
 })
 
 /* ── Các hàm "dịch" giá trị thô sang chữ người đọc ── */
-const EMPLOYMENT_LABELS = { FULL_TIME: 'Toàn thời gian', PART_TIME: 'Bán thời gian', CONTRACT: 'Hợp đồng' }
+const EMPLOYMENT_LABELS = {
+  FULL_TIME: 'Toàn thời gian',
+  PART_TIME: 'Bán thời gian',
+  CONTRACT: 'Hợp đồng',
+}
 const STATUS_LABELS = {
   ACTIVE: 'Đang hoạt động',
   INACTIVE: 'Ngừng hoạt động',
@@ -169,7 +174,9 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
         <div class="id-card__chips">
           <span v-for="r in p.roles" :key="r" class="chip chip--role">{{ roleLabel(r) }}</span>
           <span v-if="p.position" class="chip">{{ p.position }}</span>
-          <span v-if="p.profileStatus" class="chip chip--ok">{{ statusLabel(p.profileStatus) }}</span>
+          <span v-if="p.profileStatus" class="chip chip--ok">{{
+            statusLabel(p.profileStatus)
+          }}</span>
         </div>
       </div>
     </section>
@@ -310,7 +317,9 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
 
         <!-- Bằng cấp & chứng chỉ (GV) -->
         <section v-if="isTeacher" class="card">
-          <h3 class="card__title"><SvgIcon name="evaluation" :size="17" /> Bằng cấp &amp; chứng chỉ</h3>
+          <h3 class="card__title">
+            <SvgIcon name="evaluation" :size="17" /> Bằng cấp &amp; chứng chỉ
+          </h3>
           <ul v-if="p.teacher?.certificates?.length" class="cert-list">
             <li v-for="(c, i) in p.teacher.certificates" :key="i" class="cert">
               <span class="cert__icon"><SvgIcon name="check" :size="15" /></span>

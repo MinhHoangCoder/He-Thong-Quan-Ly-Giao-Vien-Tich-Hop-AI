@@ -126,17 +126,29 @@ const portals = [
   {
     icon: 'settings',
     title: 'Quản trị viên',
-    items: ['Dashboard vận hành toàn trung tâm', 'Quản lý tài khoản & phân quyền', 'Toàn bộ nghiệp vụ điều phối'],
+    items: [
+      'Dashboard vận hành toàn trung tâm',
+      'Quản lý tài khoản & phân quyền',
+      'Toàn bộ nghiệp vụ điều phối',
+    ],
   },
   {
     icon: 'assignment',
     title: 'Nhân viên trung tâm',
-    items: ['Phân công & xếp lịch dạy', 'Chấm công, tính lương', 'Quản lý hồ sơ GV & kho bài giảng'],
+    items: [
+      'Phân công & xếp lịch dạy',
+      'Chấm công, tính lương',
+      'Quản lý hồ sơ GV & kho bài giảng',
+    ],
   },
   {
     icon: 'teacher',
     title: 'Giáo viên',
-    items: ['Lịch dạy cá nhân theo tuần', 'Kho bài giảng đã xuất bản', 'Hồ sơ, phiếu lương, đánh giá'],
+    items: [
+      'Lịch dạy cá nhân theo tuần',
+      'Kho bài giảng đã xuất bản',
+      'Hồ sơ, phiếu lương, đánh giá',
+    ],
   },
 ]
 </script>

@@ -345,13 +345,22 @@ onMounted(async () => {
 
     <!-- KPI -->
     <section v-if="stats" class="stat-grid">
-      <StatCard icon="evaluation" label="Tổng lượt đánh giá" :value="stats.totalCount" color="#f97316" />
+      <StatCard
+        icon="evaluation"
+        label="Tổng lượt đánh giá"
+        :value="stats.totalCount"
+        color="#f97316"
+      />
       <StatCard icon="evaluation" label="Điểm trung bình" :value="avgLabel" color="#2563eb" />
       <StatCard
         icon="evaluation"
         label="Điểm cao (≥4)"
         :value="stats.highScoreCount"
-        :hint="stats.totalCount ? `${Math.round((stats.highScoreCount / stats.totalCount) * 100)}% tổng lượt` : ''"
+        :hint="
+          stats.totalCount
+            ? `${Math.round((stats.highScoreCount / stats.totalCount) * 100)}% tổng lượt`
+            : ''
+        "
         color="#22c55e"
       />
       <StatCard
@@ -460,7 +469,11 @@ onMounted(async () => {
           <option v-if="suggestedPeriod" :value="suggestedPeriod">
             {{ suggestedPeriod }} (gợi ý)
           </option>
-          <option v-for="p in periodPresets.filter((x) => x !== suggestedPeriod)" :key="p" :value="p">
+          <option
+            v-for="p in periodPresets.filter((x) => x !== suggestedPeriod)"
+            :key="p"
+            :value="p"
+          >
             {{ p }}
           </option>
         </select>
@@ -530,7 +543,13 @@ onMounted(async () => {
             <td>{{ row.evaluatorName }}</td>
             <td class="col-comment">
               <button type="button" class="linkish" @click="detail = row">
-                {{ row.comment ? (row.comment.length > 60 ? row.comment.slice(0, 60) + '…' : row.comment) : '—' }}
+                {{
+                  row.comment
+                    ? row.comment.length > 60
+                      ? row.comment.slice(0, 60) + '…'
+                      : row.comment
+                    : '—'
+                }}
               </button>
             </td>
             <td class="muted">{{ formatDateTime(row.createdAt) }}</td>
@@ -561,7 +580,9 @@ onMounted(async () => {
     </div>
 
     <div v-if="!isPristineEmpty && totalPages > 1" class="pagination">
-      <button class="pg-btn" type="button" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+      <button class="pg-btn" type="button" :disabled="page === 0" @click="goPage(page - 1)">
+        ‹
+      </button>
       <span class="pg-info">Trang {{ page + 1 }} / {{ totalPages }}</span>
       <button
         class="pg-btn"
@@ -596,15 +617,13 @@ onMounted(async () => {
           <div>
             <h2 class="modal__title">
               {{
-                uneval.data?.unevaluatedCount === 0
-                  ? 'Coverage kỳ này'
-                  : 'Giáo viên cần đánh giá'
+                uneval.data?.unevaluatedCount === 0 ? 'Coverage kỳ này' : 'Giáo viên cần đánh giá'
               }}
             </h2>
             <p v-if="uneval.data" class="modal__lead">
               <span class="modal__period-tag">{{ uneval.data.periodNote }}</span>
-              · Đã chấm {{ uneval.data.evaluatedCount }}/{{ uneval.data.totalTeachers }}
-              · Còn <strong>{{ uneval.data.unevaluatedCount }}</strong>
+              · Đã chấm {{ uneval.data.evaluatedCount }}/{{ uneval.data.totalTeachers }} · Còn
+              <strong>{{ uneval.data.unevaluatedCount }}</strong>
             </p>
           </div>
           <button type="button" class="modal__x" @click="uneval.open = false">×</button>
@@ -652,7 +671,9 @@ onMounted(async () => {
               </div>
               <div class="uneval-item__info">
                 <div class="title-text">{{ t.name }}</div>
-                <div class="uneval-item__schools">{{ t.schoolsLabel || 'Chưa phân công trường' }}</div>
+                <div class="uneval-item__schools">
+                  {{ t.schoolsLabel || 'Chưa phân công trường' }}
+                </div>
                 <div class="muted">
                   <template v-if="t.branchName">{{ t.branchName }} · </template>
                   <template v-if="t.totalCount">
@@ -662,7 +683,9 @@ onMounted(async () => {
                   <template v-else>Chưa từng có đánh giá</template>
                 </div>
               </div>
-              <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">Chấm điểm</button>
+              <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">
+                Chấm điểm
+              </button>
             </li>
           </ul>
           <div v-else class="empty empty--ok">
@@ -696,7 +719,9 @@ onMounted(async () => {
           <p><strong>Nguồn:</strong> {{ sourceLabel(detail) }}</p>
           <p><strong>Người đánh giá:</strong> {{ detail.evaluatorName }}</p>
           <p><strong>Thời gian:</strong> {{ formatDateTime(detail.createdAt) }}</p>
-          <p class="detail-comment"><strong>Nhận xét:</strong><br />{{ detail.comment || '(Không có)' }}</p>
+          <p class="detail-comment">
+            <strong>Nhận xét:</strong><br />{{ detail.comment || '(Không có)' }}
+          </p>
         </div>
         <div class="modal__foot">
           <button
@@ -704,7 +729,7 @@ onMounted(async () => {
             type="button"
             class="btn btn--ghost"
             @click="
-              openEdit(detail);
+              openEdit(detail)
               detail = null
             "
           >
@@ -724,8 +749,9 @@ onMounted(async () => {
         </div>
         <div class="modal__body">
           <p>
-            Xóa mềm đánh giá của <strong>{{ deleteTarget.teacherName }}</strong>
-            ({{ deleteTarget.score }}/5)? Dữ liệu vẫn lưu trong hệ thống để audit.
+            Xóa mềm đánh giá của <strong>{{ deleteTarget.teacherName }}</strong> ({{
+              deleteTarget.score
+            }}/5)? Dữ liệu vẫn lưu trong hệ thống để audit.
           </p>
         </div>
         <div class="modal__foot">
@@ -894,7 +920,9 @@ onMounted(async () => {
   font-weight: 300;
   color: var(--c-text-muted);
   line-height: 1;
-  transition: transform 0.15s ease, color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    color 0.15s ease;
 }
 .coverage:hover:not(:disabled) .coverage__chev {
   transform: translateX(3px);

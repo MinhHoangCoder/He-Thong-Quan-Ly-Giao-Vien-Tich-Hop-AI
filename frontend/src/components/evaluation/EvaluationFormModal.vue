@@ -289,7 +289,9 @@ function optionHint(t) {
   <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal__head">
-        <h2 class="modal__title">{{ mode === 'edit' ? 'Sửa đánh giá' : 'Tạo đánh giá giáo viên' }}</h2>
+        <h2 class="modal__title">
+          {{ mode === 'edit' ? 'Sửa đánh giá' : 'Tạo đánh giá giáo viên' }}
+        </h2>
         <button type="button" class="modal__x" @click="emit('close')">×</button>
       </div>
 
@@ -351,7 +353,9 @@ function optionHint(t) {
               </button>
             </div>
             <div v-if="pickerOpen && !(lockTeacher && mode === 'edit')" class="picker__list">
-              <div v-if="teachersLoading && !teacherOptions.length" class="picker__empty">Đang tải…</div>
+              <div v-if="teachersLoading && !teacherOptions.length" class="picker__empty">
+                Đang tải…
+              </div>
               <div v-else-if="!teacherOptions.length" class="picker__empty">
                 {{
                   schoolScoped || filterMeta.schoolScoped
@@ -383,7 +387,11 @@ function optionHint(t) {
                 :disabled="teachersLoading"
                 @click="loadMoreTeachers"
               >
-                {{ teachersLoading ? 'Đang tải…' : `Tải thêm (${teacherOptions.length}/${teacherTotal})` }}
+                {{
+                  teachersLoading
+                    ? 'Đang tải…'
+                    : `Tải thêm (${teacherOptions.length}/${teacherTotal})`
+                }}
               </button>
             </div>
           </div>
@@ -450,7 +458,9 @@ function optionHint(t) {
       </div>
 
       <div class="modal__foot">
-        <button type="button" class="btn btn--ghost" :disabled="saving" @click="emit('close')">Hủy</button>
+        <button type="button" class="btn btn--ghost" :disabled="saving" @click="emit('close')">
+          Hủy
+        </button>
         <button type="button" class="btn" :disabled="saving || !canSubmit" @click="submit">
           {{ saving ? 'Đang lưu…' : mode === 'edit' ? 'Cập nhật' : 'Gửi đánh giá' }}
         </button>
