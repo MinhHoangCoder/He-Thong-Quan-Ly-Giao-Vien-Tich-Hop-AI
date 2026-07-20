@@ -439,7 +439,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           <label>Địa chỉ</label>
           <input
             v-model="modal.form.address"
-            placeholder="VD: Cầu Giấy, Hà Nội"
+            placeholder="VD: Lê Chân, Hải Phòng"
             :class="{ 'input-error': modal.errors.address }"
             @input="clearFieldError('address')"
           />
