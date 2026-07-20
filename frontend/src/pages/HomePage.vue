@@ -63,18 +63,10 @@ const features = [
     ],
     roles: ['Quản trị', 'Nhân viên trung tâm', 'Giáo viên'],
   },
-  {
-    icon: 'ai',
-    title: 'Trợ lý AI',
-    tagline: 'Hỏi đáp vận hành',
-    desc: 'Chatbot nội bộ trả lời câu hỏi về vận hành trung tâm ngay trong hệ thống.',
-    points: [
-      'Hỏi đáp về phân công, chấm công, bảng lương, cách dùng hệ thống',
-      'Gợi ý sẵn các câu hỏi thường gặp để tra nhanh',
-      'Nền tảng mở rộng: tra cứu số liệu thật và gợi ý xếp lịch về sau',
-    ],
-    roles: ['Quản trị', 'Nhân viên trung tâm'],
-  },
+  // TẠM ẨN (2026-07-20): card "Trợ lý AI" đã gỡ khỏi landing — quy mô đồ án chưa làm
+  // AI thật (vector DB, mô hình ngôn ngữ), trợ lý hiện tại chỉ chạy theo luật.
+  // Trang /ai-assistant + backend vẫn còn nguyên, muốn quảng bá lại thì thêm object
+  // { icon: 'ai', title: 'Trợ lý AI', ... } vào đây.
   {
     icon: 'shield',
     title: 'Bảo mật & phân quyền',
@@ -160,8 +152,8 @@ const portals = [
       <div class="hero__copy">
         <h1 class="hero__title">Điều phối giáo viên, lịch dạy và lương trong một hệ thống</h1>
         <p class="hero__desc">
-          Trung tâm phân công một lần — lịch dạy, chấm công và bảng lương tự nối tiếp nhau.
-          Kèm trợ lý AI hỏi đáp vận hành ngay trong hệ thống.
+          Trung tâm phân công một lần — lịch dạy, chấm công và bảng lương tự nối tiếp nhau,
+          không phải nhập tay lại ở bất kỳ bước nào.
         </p>
         <div class="hero__actions">
           <RouterLink to="/dashboard" class="btn btn--primary btn--lg">Vào hệ thống</RouterLink>
