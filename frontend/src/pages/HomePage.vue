@@ -104,7 +104,7 @@ const previewRows = [
 
 // Dải số liệu: SỰ THẬT của hệ thống (đếm được trong code/DB), không phải con số quảng cáo.
 const metrics = [
-  { value: '4', label: 'cổng làm việc theo vai trò' },
+  { value: '3', label: 'cổng làm việc theo vai trò' },
   { value: '30', label: 'quyền chi tiết (RBAC)' },
   { value: '5', label: 'bước từ phân công tới lương' },
   { value: '0', label: 'lần nhập tay lại số liệu' },
@@ -119,7 +119,9 @@ const workflow = [
   { title: 'Theo dõi', desc: 'Dashboard số liệu thật + thông báo trong hệ thống.' },
 ]
 
-// 4 cổng làm việc theo vai trò — mỗi vai trò một portal riêng đã có trong hệ thống.
+// Cổng làm việc theo vai trò — mỗi vai trò một portal riêng đã có trong hệ thống.
+// Đợt bảo vệ TẠM bỏ "Trường liên kết" (nhà trường chưa tham dự hệ thống) — code
+// khu School/SchoolLayout vẫn còn, muốn hiện lại chỉ cần thêm object school vào đây.
 const portals = [
   {
     icon: 'settings',
@@ -135,11 +137,6 @@ const portals = [
     icon: 'teacher',
     title: 'Giáo viên',
     items: ['Lịch dạy cá nhân theo tuần', 'Kho bài giảng đã xuất bản', 'Hồ sơ, phiếu lương, đánh giá'],
-  },
-  {
-    icon: 'school',
-    title: 'Trường liên kết',
-    items: ['Giáo viên đang dạy tại trường', 'Lịch dạy tại trường mình', 'Gửi đánh giá giáo viên'],
   },
 ]
 </script>
