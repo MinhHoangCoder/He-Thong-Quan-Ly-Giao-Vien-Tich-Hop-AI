@@ -80,8 +80,7 @@ function fillDemo(u) {
 const demoAccounts = ['admin', 'school', 'teacher', 'ketoan', 'nhansu', 'daotao', 'tuyensinh']
 
 // Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
-// TẠM ẨN (2026-07-20): mục "Trợ lý AI hỗ trợ" đã thay bằng "Chấm công & bảng lương"
-// — đợt bảo vệ không quảng bá phần AI (trang /ai-assistant vẫn còn trong code).
+// Mục "Trợ lý AI hỗ trợ" đã thay bằng "Chấm công & bảng lương" (tính năng AI đã gỡ khỏi hệ thống).
 const features = [
   { icon: 'assignment', label: 'Phân công & điều phối' },
   { icon: 'schedule', label: 'Lịch dạy trực quan' },

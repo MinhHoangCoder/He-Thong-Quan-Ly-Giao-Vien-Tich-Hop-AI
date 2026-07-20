@@ -1,6 +1,6 @@
 /* ============================================================================
-   Style DÙNG CHUNG cho các trang nghiệp vụ mới (Phân công / Chấm công / Bảng lương
-   / Trợ lý AI). Import 1 lần ở main.js. Dùng class riêng (.page, .title…)
+   Style DÙNG CHUNG cho các trang nghiệp vụ mới (Phân công / Chấm công / Bảng
+   lương). Import 1 lần ở main.js. Dùng class riêng (.page, .title…)
    để không đụng style scoped của các trang cũ.
    ============================================================================ */
 .page {
