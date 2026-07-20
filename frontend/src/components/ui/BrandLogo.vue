@@ -1,13 +1,15 @@
 <script setup>
-// Brandmark KDC EduOps AI — huy hiệu lục giác gradient cam→xanh (gợi badge ngực robot).
+// Brandmark KDC EduOps — huy hiệu lục giác gradient cam→xanh (gợi badge ngực robot).
 // Dùng tạm bằng SVG inline để không phụ thuộc file ảnh; khi có PNG logo thật chỉ cần
 // thay phần <svg> bằng <img src="@/assets/logo-kdc.png">.
+// TẠM ẨN "AI" (2026-07-20): đợt bảo vệ không quảng bá phần tích hợp AI — tên hiển thị
+// bỏ hậu tố AI. Tên file ảnh logo giữ nguyên (logo thật của KDC, không chứa chữ AI).
 import logoUrl from '@/assets/KDC_EduOps_AI_Logo.jpg'
 
 defineProps({
   size: { type: [Number, String], default: 36 },
   showText: { type: Boolean, default: true },
-  text: { type: String, default: 'KDC EduOps AI' },
+  text: { type: String, default: 'KDC EduOps' },
   // 'dark' = chữ tối (nền sáng) | 'light' = chữ trắng (nền tối)
   variant: { type: String, default: 'dark' },
 })
@@ -15,7 +17,7 @@ defineProps({
 
 <template>
   <span class="brandlogo" :class="`brandlogo--${variant}`">
-    <img class="brandlogo__mark" :width="size" :height="size" :src="logoUrl" alt="KDC EduOps AI" />
+    <img class="brandlogo__mark" :width="size" :height="size" :src="logoUrl" alt="KDC EduOps" />
     <span v-if="showText" class="brandlogo__text">{{ text }}</span>
   </span>
 </template>

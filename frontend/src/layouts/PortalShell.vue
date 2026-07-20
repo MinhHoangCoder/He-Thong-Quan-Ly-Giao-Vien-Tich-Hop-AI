@@ -200,11 +200,13 @@ function switchTo(acc) {
     <aside class="sidebar">
       <div class="sidebar__brand">
         <BrandLogo :size="34" :show-text="false" />
-        <span class="sidebar__name">KDC EduOps AI</span>
+        <span class="sidebar__name">KDC EduOps</span>
       </div>
 
       <nav class="sidebar__nav">
-        <div v-for="group in nav" :key="group.title" class="navgroup">
+        <!-- Bỏ qua nhóm rỗng: khi tất cả mục trong nhóm bị ẩn (vd nhóm "Hệ thống"
+             đợt bảo vệ), không vẽ trơ mỗi tiêu đề nhóm trên sidebar. -->
+        <div v-for="group in nav" :key="group.title" v-show="group.items.length" class="navgroup">
           <p class="navgroup__title">{{ group.title }}</p>
           <!-- to: '#' = trang chưa làm -> không gán active-class, kẻo vue-router
                coi '#' là trang hiện tại và thắp sáng CẢ LOẠT mục menu -->

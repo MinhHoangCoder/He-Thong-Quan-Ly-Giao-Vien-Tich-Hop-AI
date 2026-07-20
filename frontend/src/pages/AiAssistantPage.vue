@@ -12,7 +12,7 @@ import { payrollApi } from '@/api/payroll'
 const messages = ref([
   {
     role: 'ai',
-    text: 'Xin chào 👋 Mình là trợ lý KDC EduOps AI. Hỏi mình về phân công, chấm công, bảng lương hoặc cách dùng hệ thống nhé.',
+    text: 'Xin chào 👋 Mình là trợ lý KDC EduOps. Hỏi mình về phân công, chấm công, bảng lương hoặc cách dùng hệ thống nhé.',
   },
 ])
 const input = ref('')
