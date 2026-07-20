@@ -1,14 +1,17 @@
 <script setup>
-// HỒ SƠ CỦA TÔI — trang CHỈ XEM, tách khỏi Cài đặt (Cài đặt = nơi SỬA liên hệ,
-// mật khẩu, phiên đăng nhập; nút "Chỉnh sửa" ở góc dẫn sang đó).
+// HỒ SƠ CỦA TÔI — nơi XEM toàn bộ hồ sơ và SỬA phần liên hệ (email + SĐT) tại chỗ.
+// Email/SĐT là 2 trường DUY NHẤT backend cho tự sửa (PUT /me/profile); các trường
+// định danh/công việc do phòng Nhân sự quản — hiển thị chỉ đọc kèm ghi chú.
+// Cài đặt giờ chỉ còn: mật khẩu, thiết bị đăng nhập, giao diện (nút góc dẫn sang).
 // Dùng chung cho mọi vai trò: GET /me/profile trả actorType + khối chi tiết
 // tương ứng, template bật/tắt từng nhóm thông tin theo đó.
 import { computed, onMounted, reactive } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { settingsApi } from '@/api/settings'
+import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
-import { permGroups, roleLabel } from '@/utils/labels'
+import { roleLabel } from '@/utils/labels'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -33,13 +36,93 @@ onMounted(load)
 // /profile (admin) -> /settings ... — suy từ path nên không phải khai báo từng layout.
 const settingsPath = computed(() => route.path.replace(/\/profile$/, '/settings') || '/settings')
 
+/* ── Sửa liên hệ tại chỗ (xem-trước-sửa-sau, chuyển từ trang Cài đặt sang) ── */
+const edit = reactive({
+  editing: false,
+  form: { email: '', phone: '' },
+  errors: {},
+  saving: false,
+  success: '',
+  error: '',
+})
+
+// Mirror rule backend (UpdateProfileRequest): email hợp lệ; SĐT rỗng hoặc SĐT
+// Việt Nam (0/+84 + 9-10 chữ số) — cùng quy ước với module Giáo viên.
+const PHONE_RE = /^$|^(\+84|0)\d{9,10}$/
+const FIELD_RULES = {
+  email: () => {
+    const email = edit.form.email.trim()
+    if (!email) return 'Email không được để trống'
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Email không hợp lệ'
+    return ''
+  },
+  phone: () =>
+    PHONE_RE.test(edit.form.phone.trim())
+      ? ''
+      : 'SĐT phải bắt đầu bằng 0 hoặc +84, gồm 10–11 chữ số',
+}
+
+// Báo lỗi khi RỜI Ô; khi đang gõ chỉ validate lại nếu ô đó ĐANG lỗi
+// (lỗi biến mất đúng lúc sửa xong, không cằn nhằn giữa chừng).
+function checkField(field) {
+  const msg = FIELD_RULES[field]()
+  if (msg) edit.errors[field] = msg
+  else delete edit.errors[field]
+}
+
+// Vào chế độ sửa: nạp form từ dữ liệu hiện tại để Hủy luôn quay về đúng bản gốc
+function startEdit() {
+  edit.form.email = p.value?.email ?? ''
+  edit.form.phone = p.value?.phone ?? ''
+  edit.errors = {}
+  edit.success = ''
+  edit.error = ''
+  edit.editing = true
+}
+
+function cancelEdit() {
+  edit.editing = false
+  edit.errors = {}
+  edit.error = ''
+}
+
+async function saveContact() {
+  const errors = {}
+  for (const field of Object.keys(FIELD_RULES)) {
+    const msg = FIELD_RULES[field]()
+    if (msg) errors[field] = msg
+  }
+  edit.errors = errors
+  if (Object.keys(errors).length) return
+  edit.saving = true
+  edit.success = ''
+  edit.error = ''
+  try {
+    const { data } = await settingsApi.updateProfile({
+      email: edit.form.email.trim(),
+      phone: edit.form.phone.trim(),
+    })
+    state.data = data
+    edit.editing = false // lưu xong quay về chế độ xem
+    edit.success = 'Đã lưu thông tin liên hệ'
+    // Đồng bộ lại user trong store (topbar/menu đọc email từ đây)
+    const me = await authApi.me()
+    auth.setSession({ user: me.data })
+  } catch (e) {
+    edit.error = e?.response?.data?.message ?? 'Lưu thất bại'
+  } finally {
+    edit.saving = false
+  }
+}
+
 const p = computed(() => state.data)
 const isTeacher = computed(() => p.value?.actorType === 'TEACHER')
 const isEmployee = computed(() => p.value?.actorType === 'EMPLOYEE')
 
-// Quyền trong token nhóm theo module — người thường đọc được thay vì mã SCHEDULE_VIEW.
-const permRows = computed(() => permGroups(auth.user?.perms ?? []))
-const isAdmin = computed(() => (p.value?.roles ?? []).includes('ADMIN'))
+// GV/NV có card Công việc -> chia 2 cột; admin/trường chỉ có 1 card -> 1 cột.
+// (Khối "Quyền của tôi" đã bỏ 2026-07-17 — trùng vai trò với rail bên Cài đặt,
+// nhóm thống nhất hồ sơ chỉ hiển thị thông tin con người, không hiển thị phân quyền.)
+const hasWorkCol = computed(() => isTeacher.value || isEmployee.value)
 
 const initials = computed(() => {
   const name = p.value?.fullName || p.value?.username || '?'
@@ -71,7 +154,7 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
   <div class="page-head">
     <h1 class="page-head__title">Hồ sơ của tôi</h1>
     <RouterLink :to="settingsPath" class="btn-ghost">
-      <SvgIcon name="pencil" :size="16" /> Chỉnh sửa liên hệ &amp; bảo mật
+      <SvgIcon name="settings" :size="16" /> Cài đặt tài khoản
     </RouterLink>
   </div>
 
@@ -98,11 +181,23 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
       </div>
     </section>
 
-    <div class="grid-2">
+    <!-- GV/NV: 2 cột (cá nhân | công việc); admin/trường chỉ có 1 card -> 1 cột -->
+    <div :class="hasWorkCol ? 'grid-2' : ''">
       <div class="col">
-        <!-- Thông tin cá nhân -->
+        <!-- Thông tin cá nhân: các trường HR quản chỉ đọc; email + SĐT sửa tại chỗ -->
         <section class="card">
-          <h3 class="card__title"><SvgIcon name="teacher" :size="17" /> Thông tin cá nhân</h3>
+          <div class="card__titlebar">
+            <h3 class="card__title"><SvgIcon name="teacher" :size="17" /> Thông tin cá nhân</h3>
+            <button
+              v-if="!edit.editing"
+              class="editbtn"
+              title="Sửa email / số điện thoại"
+              aria-label="Sửa email / số điện thoại"
+              @click="startEdit"
+            >
+              <SvgIcon name="pencil" :size="16" />
+            </button>
+          </div>
           <dl class="info-grid">
             <div v-if="isTeacher" class="info-item">
               <dt>Số CCCD</dt>
@@ -116,26 +211,85 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
               <dt>Giới tính</dt>
               <dd>{{ genderLabel(p.teacher?.gender) || 'Chưa cập nhật' }}</dd>
             </div>
-            <div class="info-item">
-              <dt>Số điện thoại</dt>
-              <dd>{{ p.phone || 'Chưa cập nhật' }}</dd>
-            </div>
-            <div class="info-item">
-              <dt>Email</dt>
-              <dd>{{ p.email }}</dd>
-            </div>
+            <!-- Chế độ XEM: chữ tĩnh. SĐT ẩn với tài khoản hệ thống (actorType NONE):
+                 backend chỉ lưu phone trên hồ sơ Teacher/Employee/School — admin
+                 không có hồ sơ nào nên có nhập cũng bị bỏ qua lặng lẽ. -->
+            <template v-if="!edit.editing">
+              <div v-if="p.actorType !== 'NONE'" class="info-item">
+                <dt>Số điện thoại</dt>
+                <dd>{{ p.phone || 'Chưa cập nhật' }}</dd>
+              </div>
+              <div class="info-item">
+                <dt>Email</dt>
+                <dd>{{ p.email }}</dd>
+              </div>
+            </template>
+            <!-- Chế độ SỬA: 2 ô input thế đúng chỗ 2 dòng xem -->
+            <template v-else>
+              <div v-if="p.actorType !== 'NONE'" class="info-item">
+                <dt>Số điện thoại</dt>
+                <dd>
+                  <input
+                    v-model="edit.form.phone"
+                    placeholder="VD: 0901234567"
+                    :class="{ 'input-error': edit.errors.phone }"
+                    @blur="checkField('phone')"
+                    @input="edit.errors.phone && checkField('phone')"
+                  />
+                  <small v-if="edit.errors.phone" class="field-error">{{
+                    edit.errors.phone
+                  }}</small>
+                </dd>
+              </div>
+              <div class="info-item">
+                <dt>Email <span class="req">*</span></dt>
+                <dd>
+                  <input
+                    v-model="edit.form.email"
+                    type="email"
+                    placeholder="ban@vidu.vn"
+                    :class="{ 'input-error': edit.errors.email }"
+                    @blur="checkField('email')"
+                    @input="edit.errors.email && checkField('email')"
+                  />
+                  <small v-if="edit.errors.email" class="field-error">{{
+                    edit.errors.email
+                  }}</small>
+                </dd>
+              </div>
+            </template>
             <div v-if="isTeacher" class="info-item info-item--wide">
               <dt>Địa chỉ</dt>
               <dd>{{ p.teacher?.address || 'Chưa cập nhật' }}</dd>
             </div>
           </dl>
-          <p class="card__note">
-            Họ tên và CCCD do phòng Nhân sự quản lý — cần điều chỉnh hãy liên hệ trung tâm.
+
+          <p v-if="edit.success" class="msg msg--ok">{{ edit.success }}</p>
+          <p v-if="edit.error" class="msg msg--err">{{ edit.error }}</p>
+
+          <footer v-if="edit.editing" class="card__foot">
+            <button class="btn-save" :disabled="edit.saving" @click="saveContact">
+              {{ edit.saving ? 'Đang lưu...' : 'Lưu thay đổi' }}
+            </button>
+            <button class="btn-ghost" :disabled="edit.saving" @click="cancelEdit">Hủy</button>
+          </footer>
+
+          <p v-if="p.actorType !== 'NONE'" class="card__note">
+            Chỉ email và số điện thoại tự sửa được. Họ tên, CCCD và các thông tin còn lại do
+            phòng Nhân sự quản lý — cần điều chỉnh hãy liên hệ trung tâm.
+          </p>
+          <p v-else class="card__note">
+            Tài khoản hệ thống chỉ tự sửa được email (dùng nhận liên kết đặt lại mật khẩu).
           </p>
         </section>
 
+      </div>
+
+      <!-- Cột phải: thông tin công việc (chỉ GV/NV có) — thế chỗ khối "Quyền của
+           tôi" cũ; quyền vẫn xem được ở rail trang Cài đặt (đọc từ JWT) -->
+      <div v-if="hasWorkCol" class="col">
         <!-- Công việc -->
-        <section v-if="isTeacher || isEmployee" class="card">
+        <section class="card">
           <h3 class="card__title"><SvgIcon name="assignment" :size="17" /> Công việc</h3>
           <dl class="info-grid">
             <div class="info-item">
@@ -180,31 +334,6 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
             </li>
           </ul>
           <p v-else class="empty-note">Hồ sơ chưa ghi nhận bằng cấp/chứng chỉ nào.</p>
-        </section>
-      </div>
-
-      <!-- Quyền của tôi: dịch mã quyền trong token sang tiếng Việt, gom theo phân hệ -->
-      <div class="col">
-        <section class="card">
-          <h3 class="card__title"><SvgIcon name="shield" :size="17" /> Quyền của tôi</h3>
-          <p v-if="isAdmin" class="perm-note">
-            Bạn là <strong>Quản trị viên</strong> — có toàn quyền trên mọi phân hệ của hệ thống.
-          </p>
-          <template v-else-if="permRows.length">
-            <ul class="perm-rows">
-              <li v-for="row in permRows" :key="row.module" class="perm-row">
-                <span class="perm-row__module">{{ row.module }}</span>
-                <span class="perm-row__actions">
-                  <span v-for="a in row.actions" :key="a" class="perm-chip">{{ a }}</span>
-                </span>
-              </li>
-            </ul>
-            <p v-if="isTeacher" class="perm-note">
-              Các quyền "Xem" của giáo viên chỉ áp dụng với dữ liệu của <strong>chính bạn</strong>
-              (lịch dạy, chấm công, đánh giá của mình).
-            </p>
-          </template>
-          <p v-else class="empty-note">Tài khoản chưa được cấp quyền chi tiết nào.</p>
         </section>
       </div>
     </div>
@@ -286,6 +415,115 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
   border-top: 1px dashed var(--c-border);
   font-size: 0.8rem;
   color: var(--a-text-muted);
+}
+.card__titlebar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.card__foot {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--c-border-soft);
+}
+
+/* Nút icon bút — mở chế độ sửa email/SĐT (đồng bộ pattern trang Cài đặt cũ) */
+.editbtn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--c-input-border);
+  border-radius: 9px;
+  background: var(--c-surface);
+  color: var(--a-text-muted);
+  cursor: pointer;
+  transition:
+    border-color var(--t-fast),
+    color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.editbtn:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+/* Ô nhập trong chế độ sửa — thế đúng chỗ dòng chữ tĩnh */
+.info-item input {
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--a-text);
+  background: var(--c-surface);
+  transition:
+    border-color var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.info-item input:focus {
+  outline: none;
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+}
+.input-error {
+  border-color: var(--c-danger) !important;
+}
+.field-error {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--c-danger);
+}
+.req {
+  color: var(--c-danger);
+}
+
+.btn-save {
+  border: none;
+  border-radius: 10px;
+  padding: 0.55rem 1.05rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--c-primary);
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.28);
+  transition:
+    background var(--t-fast),
+    transform var(--t-fast),
+    box-shadow var(--t-fast);
+}
+.btn-save:hover:not(:disabled) {
+  background: var(--c-primary-dark);
+  transform: translateY(-1px);
+}
+.btn-save:disabled,
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.msg {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+}
+.msg--ok {
+  color: #16a34a;
+}
+:root[data-theme='dark'] .msg--ok {
+  color: #4ade80;
+}
+.msg--err {
+  color: var(--c-danger);
 }
 
 /* Thẻ định danh */
@@ -422,52 +660,6 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
   color: var(--a-text-muted);
 }
 
-/* Quyền của tôi */
-.perm-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.perm-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--c-border-soft);
-}
-.perm-row:last-child {
-  border-bottom: none;
-}
-.perm-row__module {
-  font-size: 0.88rem;
-  color: var(--a-text);
-}
-.perm-row__actions {
-  display: flex;
-  gap: 0.3rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.perm-chip {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--c-accent-dark);
-  background: rgba(37, 99, 235, 0.09);
-  border: 1px solid rgba(37, 99, 235, 0.22);
-  border-radius: 9999px;
-  padding: 0.08rem 0.5rem;
-  white-space: nowrap;
-}
-:root[data-theme='dark'] .perm-chip {
-  color: #93c5fd;
-}
-.perm-note {
-  margin: 0.9rem 0 0;
-  font-size: 0.82rem;
-  color: var(--a-text-muted);
-  line-height: 1.5;
-}
 .empty-note {
   margin: 0;
   color: var(--a-text-muted);

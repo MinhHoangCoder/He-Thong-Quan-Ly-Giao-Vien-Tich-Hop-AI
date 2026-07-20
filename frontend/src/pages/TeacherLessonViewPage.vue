@@ -120,7 +120,10 @@ onMounted(load)
 
         <div v-if="lesson.files && lesson.files.length">
           <div class="file-item" v-for="file in lesson.files" :key="file.id">
-            <span> {{ file.fileType === 'canva' ? '🎨' : '📄' }} {{ file.fileName }} </span>
+            <span>
+              <span class="file-type">{{ file.fileType === 'canva' ? 'Canva' : 'Tệp' }}</span>
+              {{ file.fileName }}
+            </span>
 
             <!-- FIX (2026-07-10): thay <a href> tĩnh bằng nút gọi openFile() —
                  canva mở link mới nhất ở tab mới, file khác tự động tải về máy. -->
@@ -201,6 +204,17 @@ onMounted(load)
 
 .file-item:last-child {
   border-bottom: none;
+}
+
+.file-type {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--c-surface-2, rgba(249, 115, 22, 0.12));
+  color: var(--c-primary, #f97316);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .loading {

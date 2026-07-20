@@ -361,11 +361,11 @@ onMounted(async () => {
                   })
                 "
               >
-                ✏️
+                Sửa
               </button>
 
               <button class="act-btn act-btn--del" title="Xóa" @click="confirmDelete(lesson.id)">
-                🗑️
+                Xóa
               </button>
             </td>
           </tr>
@@ -677,11 +677,14 @@ tbody tr:hover {
   background: transparent;
   cursor: pointer;
 
-  padding: 6px;
+  padding: 6px 10px;
 
   border-radius: 6px;
 
-  font-size: 17px;
+  font-size: 13px;
+  font-weight: 500;
+
+  margin-right: 4px;
 
   transition: 0.2s;
 }

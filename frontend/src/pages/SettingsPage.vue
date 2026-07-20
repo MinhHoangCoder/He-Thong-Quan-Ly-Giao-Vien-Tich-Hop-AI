@@ -5,11 +5,8 @@
  * component này thuần nội dung, được bọc bởi layout của từng khu vực qua meta.layout
  * (route đăng ký riêng ở mỗi file *.routes.js theo quy ước chống conflict).
  *
- * Bố cục: HERO hồ sơ + LƯỚI 2 CỘT — cột trái là 4 tab nội dung, cột phải là "rail"
+ * Bố cục: HERO hồ sơ + LƯỚI 2 CỘT — cột trái là 3 tab nội dung, cột phải là "rail"
  * tiện ích luôn hiển thị (Quyền của tôi / Tài khoản trên máy này):
- *  - Hồ sơ     : 2 card tách bạch "của ai quản cái gì" — Thông tin cơ bản CHỈ ĐỌC
- *                (phòng Nhân sự quản) và Thông tin liên hệ theo pattern XEM-TRƯỚC-
- *                SỬA-SAU (bấm icon bút mới thành form; PUT /me/profile).
  *  - Mật khẩu  : đổi mật khẩu (POST /me/change-password) — backend thu hồi mọi phiên
  *                KHÁC, thiết bị này ở lại nhờ gửi kèm refreshToken. Có nút mắt 👁
  *                hiện/ẩn từng ô mật khẩu.
@@ -17,14 +14,17 @@
  *  - Giao diện : theme Sáng/Tối/Theo hệ thống + cỡ chữ + giảm hiệu ứng — đọc/ghi
  *                stores/ui.js (áp data-* lên <html>, main.css lật token màu theo).
  *
+ * Tab "Hồ sơ" cũ đã CHUYỂN sang trang Hồ sơ của tôi (MyProfilePage) — bên đó xem
+ * toàn bộ hồ sơ + sửa email/SĐT tại chỗ; hero ở đây chỉ còn vai trò nhận diện
+ * nhanh, kèm link "Xem hồ sơ đầy đủ" trỏ về đúng trang hồ sơ của khu vực.
+ *
  * Style bám design tokens ở assets/main.css: KHÔNG hard-code màu nền/chữ (điều kiện
  * để dark mode hoạt động) — mọi màu đi qua var(--c-surface/--c-text/...).
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { settingsApi } from '@/api/settings'
-import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useLogout } from '@/composables/useLogout'
@@ -35,20 +35,20 @@ import { permLabel, roleLabel } from '@/utils/labels'
 
 const auth = useAuthStore()
 const ui = useUiStore()
+const route = useRoute()
 const router = useRouter()
 const doLogout = useLogout()
 
-const tab = ref('profile') // 'profile' | 'password' | 'sessions' | 'appearance'
+const tab = ref('password') // 'password' | 'sessions' | 'appearance'
 
-/* ══════════ Hồ sơ ══════════ */
+// Trang Hồ sơ của đúng khu vực hiện tại: /teacher/settings -> /teacher/profile ...
+// (đối xứng với settingsPath bên MyProfilePage — suy từ path, khỏi khai báo từng layout)
+const profilePath = computed(() => route.path.replace(/\/settings$/, '/profile') || '/profile')
+
+/* ══════════ Hồ sơ (chỉ để hiển thị hero — phần xem/sửa nằm ở MyProfilePage) ══════════ */
 const profile = reactive({
   loading: true,
   data: null, // { username, email, fullName, phone, actorType, position, roles }
-  editing: false, // xem-trước-sửa-sau: chỉ hiện form khi bấm icon bút
-  form: { email: '', phone: '' },
-  errors: {},
-  saving: false,
-  success: '',
   error: '',
 })
 
@@ -74,100 +74,10 @@ async function loadProfile() {
   try {
     const { data } = await settingsApi.getProfile()
     profile.data = data
-    profile.form.email = data.email ?? ''
-    profile.form.phone = data.phone ?? ''
   } catch (e) {
     profile.error = e.response?.data?.message ?? 'Không tải được hồ sơ'
   } finally {
     profile.loading = false
-  }
-}
-
-// Mirror rule backend: email hợp lệ; SĐT rỗng hoặc SĐT Việt Nam (0/+84 + 9-10 chữ số)
-// — cùng quy ước với module Giáo viên (TeacherListPage / TeacherResponse).
-const PHONE_RE = /^$|^(\+84|0)\d{9,10}$/
-const FIELD_RULES = {
-  email: () => {
-    const email = profile.form.email.trim()
-    if (!email) return 'Email không được để trống'
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return 'Email không hợp lệ'
-    return ''
-  },
-  phone: () =>
-    PHONE_RE.test(profile.form.phone.trim())
-      ? ''
-      : 'SĐT phải bắt đầu bằng 0 hoặc +84, gồm 10–11 chữ số',
-}
-
-// Validate 1 ô: gọi khi RỜI Ô (blur) để báo lỗi ngay không đợi bấm Lưu; khi đang gõ
-// chỉ gọi lại nếu ô đó ĐANG lỗi (lỗi biến mất đúng lúc sửa xong, không cằn nhằn giữa chừng).
-function checkField(field) {
-  const msg = FIELD_RULES[field]()
-  if (msg) profile.errors[field] = msg
-  else delete profile.errors[field]
-}
-
-function validateProfile() {
-  const errors = {}
-  for (const field of Object.keys(FIELD_RULES)) {
-    const msg = FIELD_RULES[field]()
-    if (msg) errors[field] = msg
-  }
-  return errors
-}
-
-// Vào chế độ sửa: nạp lại form từ dữ liệu hiện tại để Hủy luôn quay về đúng bản gốc
-function startEditProfile() {
-  profile.form.email = profile.data?.email ?? ''
-  profile.form.phone = profile.data?.phone ?? ''
-  profile.errors = {}
-  profile.success = ''
-  profile.error = ''
-  profile.editing = true
-}
-
-function cancelEditProfile() {
-  profile.editing = false
-  profile.errors = {}
-  profile.error = ''
-}
-
-async function saveProfile() {
-  profile.errors = validateProfile()
-  if (Object.keys(profile.errors).length) return
-  profile.saving = true
-  profile.success = ''
-  profile.error = ''
-  try {
-    const { data } = await settingsApi.updateProfile({
-      email: profile.form.email.trim(),
-      phone: profile.form.phone.trim(),
-    })
-    profile.data = data
-    profile.editing = false // lưu xong quay về chế độ xem
-    profile.success = 'Đã lưu thông tin liên hệ'
-    // Đồng bộ lại user trong store (topbar/menu đọc email từ đây)
-    const me = await authApi.me()
-    auth.setSession({ user: me.data })
-  } catch (e) {
-    profile.error = e.response?.data?.message ?? 'Lưu thất bại'
-  } finally {
-    profile.saving = false
-  }
-}
-
-/* ══════════ Sao chép nhanh (username/email) ══════════ */
-const copied = ref('') // key của ô vừa chép — icon đổi thành dấu ✓ trong ~1.6s
-
-async function copyText(key, text) {
-  try {
-    await navigator.clipboard.writeText(text)
-    copied.value = key
-    setTimeout(() => {
-      if (copied.value === key) copied.value = ''
-    }, 1600)
-  } catch {
-    /* clipboard bị chặn (http không phải localhost) -> bỏ qua, không vỡ trang */
   }
 }
 
@@ -348,12 +258,15 @@ onMounted(loadProfile)
           </div>
         </div>
         <p v-else class="msg msg-err">{{ profile.error }}</p>
+        <!-- Xem/sửa thông tin hồ sơ giờ nằm bên trang Hồ sơ của tôi -->
+        <RouterLink :to="profilePath" class="hero__link">
+          <SvgIcon name="teacher" :size="15" /> Xem hồ sơ đầy đủ
+        </RouterLink>
       </div>
     </section>
 
     <!-- ═════ Tabs ═════ -->
     <nav class="st-tabs">
-      <button :class="{ active: tab === 'profile' }" @click="openTab('profile')">Hồ sơ</button>
       <button :class="{ active: tab === 'password' }" @click="openTab('password')">
         Mật khẩu & bảo mật
       </button>
@@ -368,150 +281,6 @@ onMounted(loadProfile)
     <!-- ═════ Lưới 2 cột: nội dung tab (trái) + rail tiện ích (phải) ═════ -->
     <div class="st-cols">
       <div class="st-main">
-        <!-- ═════ Tab: Hồ sơ (2 card — ranh giới "ai quản cái gì" tự rõ) ═════ -->
-        <template v-if="tab === 'profile'">
-          <!-- Card 1: Thông tin cơ bản — CHỈ ĐỌC, phòng Nhân sự quản -->
-          <section class="card">
-            <header class="card__head card__head--row">
-              <div>
-                <h3>Thông tin cơ bản</h3>
-                <p v-if="profile.data && profile.data.actorType !== 'NONE'">
-                  Thông tin định danh gắn với hợp đồng &amp; bảng lương.
-                </p>
-              </div>
-              <span
-                v-if="profile.data && profile.data.actorType !== 'NONE'"
-                class="chip chip--muted"
-                title="Cần thay đổi? Liên hệ phòng Nhân sự"
-              >
-                Phòng Nhân sự quản lý
-              </span>
-            </header>
-
-            <div v-if="profile.loading" class="text-muted">Đang tải...</div>
-            <div v-else-if="profile.data" class="info-grid">
-              <div class="info-item">
-                <small>Họ và tên</small>
-                <span>{{ profile.data.fullName }}</span>
-              </div>
-              <div class="info-item">
-                <small>Tên đăng nhập</small>
-                <span class="copyable">
-                  @{{ profile.data.username }}
-                  <button
-                    class="minibtn"
-                    :title="copied === 'username' ? 'Đã chép' : 'Sao chép tên đăng nhập'"
-                    @click="copyText('username', profile.data.username)"
-                  >
-                    <SvgIcon :name="copied === 'username' ? 'check' : 'copy'" :size="13" />
-                  </button>
-                </span>
-              </div>
-              <div class="info-item">
-                <small>Loại tài khoản</small>
-                <span>{{ ACTOR_LABELS[profile.data.actorType] ?? profile.data.actorType }}</span>
-              </div>
-              <div v-if="profile.data.position" class="info-item">
-                <small>Chức vụ</small>
-                <span>{{ profile.data.position }}</span>
-              </div>
-            </div>
-          </section>
-
-          <!-- Card 2: Thông tin liên hệ — XEM trước, bấm icon bút mới SỬA -->
-          <section class="card card--gap">
-            <header class="card__head card__head--row">
-              <div>
-                <h3>Thông tin liên hệ</h3>
-                <p>Email dùng để nhận liên kết đặt lại mật khẩu.</p>
-              </div>
-              <button
-                v-if="profile.data && !profile.editing"
-                class="editbtn"
-                title="Sửa thông tin liên hệ"
-                aria-label="Sửa thông tin liên hệ"
-                @click="startEditProfile"
-              >
-                <SvgIcon name="pencil" :size="16" />
-              </button>
-            </header>
-
-            <div v-if="profile.loading" class="text-muted">Đang tải...</div>
-            <template v-else-if="profile.data">
-              <!-- Chế độ XEM: chữ tĩnh, không sợ sửa nhầm -->
-              <div v-if="!profile.editing" class="info-grid">
-                <div class="info-item">
-                  <small>Email</small>
-                  <span class="copyable">
-                    {{ profile.data.email }}
-                    <button
-                      class="minibtn"
-                      :title="copied === 'email' ? 'Đã chép' : 'Sao chép email'"
-                      @click="copyText('email', profile.data.email)"
-                    >
-                      <SvgIcon :name="copied === 'email' ? 'check' : 'copy'" :size="13" />
-                    </button>
-                  </span>
-                </div>
-                <div v-if="profile.data.actorType !== 'NONE'" class="info-item">
-                  <small>Số điện thoại</small>
-                  <span v-if="profile.data.phone">{{ profile.data.phone }}</span>
-                  <span v-else class="info-empty">Chưa cập nhật</span>
-                </div>
-              </div>
-
-              <!-- Chế độ SỬA: form + Lưu/Hủy -->
-              <template v-else>
-                <div class="form-grid">
-                  <div class="form-group">
-                    <label>Email <span class="req">*</span></label>
-                    <input
-                      v-model="profile.form.email"
-                      type="email"
-                      placeholder="ban@vidu.vn"
-                      :class="{ 'input-error': profile.errors.email }"
-                      @blur="checkField('email')"
-                      @input="profile.errors.email && checkField('email')"
-                    />
-                    <small v-if="profile.errors.email" class="field-error">{{
-                      profile.errors.email
-                    }}</small>
-                  </div>
-                  <div v-if="profile.data.actorType !== 'NONE'" class="form-group">
-                    <label>Số điện thoại</label>
-                    <input
-                      v-model="profile.form.phone"
-                      placeholder="VD: 0901234567"
-                      :class="{ 'input-error': profile.errors.phone }"
-                      @blur="checkField('phone')"
-                      @input="profile.errors.phone && checkField('phone')"
-                    />
-                    <small v-if="profile.errors.phone" class="field-error">{{
-                      profile.errors.phone
-                    }}</small>
-                  </div>
-                </div>
-              </template>
-
-              <p v-if="profile.success" class="msg msg-ok">{{ profile.success }}</p>
-              <p v-if="profile.error" class="msg msg-err">{{ profile.error }}</p>
-
-              <footer v-if="profile.editing" class="card__foot card__foot--row">
-                <button class="btn btn--primary" :disabled="profile.saving" @click="saveProfile">
-                  {{ profile.saving ? 'Đang lưu...' : 'Lưu thay đổi' }}
-                </button>
-                <button
-                  class="btn btn--outline"
-                  :disabled="profile.saving"
-                  @click="cancelEditProfile"
-                >
-                  Hủy
-                </button>
-              </footer>
-            </template>
-          </section>
-        </template>
-
         <!-- ═════ Tab: Mật khẩu & bảo mật ═════ -->
         <section v-if="tab === 'password'" class="card card--narrow">
           <header class="card__head">
@@ -876,6 +645,31 @@ onMounted(loadProfile)
   gap: 0.35rem;
   margin-top: 0.5rem;
 }
+/* Link về trang Hồ sơ đầy đủ — neo góc phải hero */
+.hero__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--c-border);
+  border-radius: 9px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--c-text);
+  text-decoration: none;
+  flex: 0 0 auto;
+  transition:
+    border-color var(--t-fast),
+    color var(--t-fast),
+    background var(--t-fast);
+}
+.hero__link:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+  background: rgba(249, 115, 22, 0.08);
+}
 
 /* Skeleton khi đang tải hero */
 .skeleton {
@@ -925,13 +719,6 @@ onMounted(loadProfile)
 .chip--warn {
   background: rgba(245, 158, 11, 0.16);
   color: #92400e;
-}
-.chip--muted {
-  background: var(--c-surface-2);
-  color: var(--c-text-muted);
-  border: 1px solid var(--c-border);
-  flex: 0 0 auto;
-  cursor: help;
 }
 /* Pastel chips chỉnh lại chữ cho đủ tương phản trên nền tối */
 :root[data-theme='dark'] .chip--role {
@@ -1019,103 +806,7 @@ onMounted(loadProfile)
   padding-top: 1rem;
   border-top: 1px solid var(--c-border-soft);
 }
-.card__foot--row {
-  display: flex;
-  gap: 0.5rem;
-}
-
-/* Nút icon bút — mở chế độ sửa của card liên hệ */
-.editbtn {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: 1px solid var(--c-input-border);
-  border-radius: 9px;
-  background: var(--c-surface);
-  color: var(--c-text-muted);
-  cursor: pointer;
-  transition:
-    border-color var(--t-fast),
-    color var(--t-fast),
-    box-shadow var(--t-fast);
-}
-.editbtn:hover {
-  border-color: var(--c-primary);
-  color: var(--c-primary);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
-}
-
-/* Lưới thông tin CHỈ ĐỌC (chế độ xem) */
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.9rem 1.25rem;
-}
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.info-item small {
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--c-text-muted);
-}
-.info-item span {
-  font-size: 0.92rem;
-  font-weight: 500;
-  color: var(--c-text);
-  overflow-wrap: anywhere;
-}
-.info-item .info-empty,
-.info-empty {
-  color: var(--c-text-muted);
-  font-style: italic;
-  font-weight: 400;
-}
-
-/* Nút sao chép tí hon cạnh giá trị — chỉ hiện rõ khi rê chuột vào */
-.copyable {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-}
-.minibtn {
-  display: inline-grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--c-text-muted);
-  opacity: 0.55;
-  cursor: pointer;
-  transition:
-    opacity var(--t-fast),
-    color var(--t-fast),
-    background var(--t-fast);
-}
-.copyable:hover .minibtn,
-.minibtn:focus-visible {
-  opacity: 1;
-}
-.minibtn:hover {
-  background: var(--c-surface-2);
-  color: var(--c-primary);
-}
-
 /* ══════════ Form ══════════ */
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 0 1.25rem;
-}
 .form-group {
   margin-bottom: 0.9rem;
 }
