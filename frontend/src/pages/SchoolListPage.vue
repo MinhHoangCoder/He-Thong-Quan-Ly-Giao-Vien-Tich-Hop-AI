@@ -451,7 +451,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             <label>Số điện thoại</label>
             <input
               v-model="modal.form.phone"
-              placeholder="10 -12 số"
+              placeholder="10 số"
               :class="{ 'input-error': modal.errors.phone }"
               @input="clearFieldError('phone')"
             />
