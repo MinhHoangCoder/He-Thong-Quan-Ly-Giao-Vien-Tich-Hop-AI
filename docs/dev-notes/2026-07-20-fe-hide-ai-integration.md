@@ -94,6 +94,13 @@ Giữ nguyên `v-show="group.items.length"` ở PortalShell — nó vô hại v�
 - ESLint sạch trên toàn bộ 8 file `.vue`/`.js` đã sửa.
 - Chạy app, quét text thật: **landing** và **login** đều không còn chuỗi `EduOps AI`,
   `Trợ lý AI`, `tích hợp AI`; `<title>` đã đúng; không có lỗi console.
-- **CHƯA kiểm bằng mắt sidebar admin** (nhóm "Hệ thống" phải biến mất) vì lúc làm backend
-  đang tắt nên không đăng nhập được. Cần xác nhận lại khi bật backend:
-  đăng nhập `admin` → sidebar **không được** có tiêu đề `HỆ THỐNG` trơ.
+- **Sidebar admin: ĐÃ kiểm (2026-07-21, backend bật)** — đăng nhập `admin`, sidebar còn
+  đúng 5 nhóm `Tổng quan | Nhân sự | Môn học | Trường học | Điều phối`; nhóm `HỆ THỐNG`
+  biến mất hoàn toàn (không trơ tiêu đề); không còn mục `Trợ lý AI`; tên sidebar hiển thị
+  `KDC EduOps`; toàn trang admin không còn chuỗi `EduOps AI`; không lỗi console.
+- **Gõ thẳng `/ai-assistant`: ĐÃ kiểm** — không hiện trang Trợ lý AI nữa. Đúng như dự
+  đoán ở trên, do repo không có route 404 catch-all nên nó ra **trang trắng** (chỉ còn
+  header + footer của DefaultLayout). Mục tiêu "không lộ AI" đạt, nhưng nếu muốn đẹp hơn
+  thì thêm 1 dòng redirect vào `admin.routes.js`:
+  `{ path: '/ai-assistant', redirect: '/dashboard' },` — hoặc làm route 404 dùng chung
+  cho cả app (nên làm, vì hiện MỌI URL sai đều ra trang trắng chứ không riêng route này).
