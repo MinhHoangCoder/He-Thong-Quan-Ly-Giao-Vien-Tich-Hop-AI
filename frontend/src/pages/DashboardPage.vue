@@ -63,7 +63,8 @@ const statRoutes = {
   lessons: '/schedule',
 }
 const sideRoutes = {
-  hours: '/attendance',
+  // "Số tiết dạy tháng này" → mở Lịch dạy ở chế độ Tháng (tháng hiện tại).
+  hours: { path: '/schedule', query: { view: 'month' } },
   ontime: '/attendance',
   rating: '/admin/evaluations',
   payroll: '/payroll',
@@ -256,7 +257,8 @@ function toneClass(tone) {
         <button class="card__more" @click="goTeachers">Danh sách GV</button>
       </div>
       <div v-if="topTeachers.length" class="teacher-grid">
-        <div v-for="(t, i) in topTeachers" :key="t.id" class="teacher" @click="goTeachers">
+        <!-- Chỉ hiển thị, không có chức năng click trên từng thẻ GV -->
+        <div v-for="(t, i) in topTeachers" :key="t.id" class="teacher">
           <span class="teacher__rank">#{{ i + 1 }}</span>
           <span class="teacher__avatar">{{ t.initials }}</span>
           <div class="teacher__info">
@@ -738,19 +740,6 @@ function toneClass(tone) {
   border: 1px solid var(--a-border);
   border-radius: 12px;
   position: relative;
-  cursor: pointer;
-  transition:
-    box-shadow var(--t),
-    transform var(--t),
-    border-color var(--t);
-}
-.teacher:hover {
-  transform: translateY(-3px);
-  box-shadow: var(--a-shadow-lg);
-  border-color: rgba(249, 115, 22, 0.35);
-}
-.teacher:hover .teacher__avatar {
-  transform: scale(1.07);
 }
 .teacher__rank {
   position: absolute;
