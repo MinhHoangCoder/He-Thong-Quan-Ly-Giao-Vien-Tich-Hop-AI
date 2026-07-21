@@ -20,6 +20,13 @@ const DAYS = [
 ]
 const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy' }
 
+// Ngày hôm nay theo GIỜ ĐỊA PHƯƠNG (yyyy-MM-dd). Tránh toISOString() vì nó quy về UTC →
+// ở múi giờ VN (UTC+7) lúc rạng sáng (00:00–07:00) sẽ trả nhầm về ngày hôm qua.
+const isoToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const loading = ref(false)
 const items = ref([])
 const trashItems = ref([])
@@ -50,7 +57,7 @@ const modal = reactive({
     subjectId: '',
     schoolId: '',
     classId: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: isoToday(),
     endDate: '',
     slots: [],
   },
@@ -104,7 +111,7 @@ async function openCreate() {
     subjectId: '',
     schoolId: '',
     classId: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: isoToday(),
     endDate: '',
     slots: [],
   })

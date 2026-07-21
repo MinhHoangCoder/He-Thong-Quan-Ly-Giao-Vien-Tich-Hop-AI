@@ -309,7 +309,6 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
     <div class="page-head tsched__noprint">
       <div>
         <h1 class="tsched__title">Lịch dạy của tôi</h1>
-        <p class="tsched__sub">Các buổi dạy đã được duyệt của bạn</p>
       </div>
       <div class="head-actions">
         <div class="viewtoggle">
@@ -503,11 +502,6 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--a-text, var(--c-text));
-}
-.tsched__sub {
-  margin: 0.25rem 0 0;
-  font-size: 0.88rem;
-  color: var(--c-text-muted);
 }
 .page-head {
   display: flex;
