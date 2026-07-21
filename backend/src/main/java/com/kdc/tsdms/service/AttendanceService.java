@@ -2,12 +2,22 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
+import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.Attendance;
+import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
+import com.kdc.tsdms.entity.School;
+import com.kdc.tsdms.entity.SchoolClass;
+import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
+import com.kdc.tsdms.repository.SchoolClassRepository;
+import com.kdc.tsdms.repository.SchoolRepository;
+import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.LocalDate;
@@ -32,12 +42,29 @@ public class AttendanceService {
     private final AttendanceRepository attendanceRepo;
     private final ScheduleRepository scheduleRepo;
     private final TeacherRepository teacherRepo;
+    private final AssignmentRepository assignmentRepo;
+    private final SchoolRepository schoolRepo;
+    private final SchoolClassRepository classRepo;
+    private final SubjectRepository subjectRepo;
+    private final PeriodRepository periodRepo;
 
     public AttendanceService(
-            AttendanceRepository attendanceRepo, ScheduleRepository scheduleRepo, TeacherRepository teacherRepo) {
+            AttendanceRepository attendanceRepo,
+            ScheduleRepository scheduleRepo,
+            TeacherRepository teacherRepo,
+            AssignmentRepository assignmentRepo,
+            SchoolRepository schoolRepo,
+            SchoolClassRepository classRepo,
+            SubjectRepository subjectRepo,
+            PeriodRepository periodRepo) {
         this.attendanceRepo = attendanceRepo;
         this.scheduleRepo = scheduleRepo;
         this.teacherRepo = teacherRepo;
+        this.assignmentRepo = assignmentRepo;
+        this.schoolRepo = schoolRepo;
+        this.classRepo = classRepo;
+        this.subjectRepo = subjectRepo;
+        this.periodRepo = periodRepo;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +81,103 @@ public class AttendanceService {
                 .toList();
     }
 
+    /**
+     * Bảng chấm công của CHÍNH giáo viên đang đăng nhập (read-only). KHÔNG nhận teacherId từ
+     * ngoài — giáo viên tuyệt đối không xem được chấm công người khác qua endpoint này (chống IDOR).
+     * Mỗi dòng ghép sẵn trường/lớp/môn/tiết (từ buổi dạy) để frontend hiển thị trực tiếp.
+     *
+     * @param status lọc tùy chọn theo trạng thái (PRESENT | LATE | ABSENT | LEAVE); null = tất cả.
+     */
+    @Transactional(readOnly = true)
+    public List<AttendanceResponse> listMine(LocalDate from, LocalDate to, String status) {
+        Integer teacherId = currentTeacherId();
+        List<Attendance> items =
+                attendanceRepo.findByTeacherIdAndWorkDateBetweenOrderByWorkDateDescIdDesc(teacherId, from, to);
+
+        String name =
+                teacherRepo.findById(teacherId).map(AttendanceService::fullName).orElse("(GV #" + teacherId + ")");
+
+        // Cache tra cứu (tránh N+1 khi nhiều dòng cùng buổi/trường/lớp/môn/tiết).
+        Map<Long, Schedule> scheduleCache = new HashMap<>();
+        Map<Integer, Assignment> assignmentCache = new HashMap<>();
+        Map<Integer, School> schoolCache = new HashMap<>();
+        Map<Integer, SchoolClass> classCache = new HashMap<>();
+        Map<Integer, Subject> subjectCache = new HashMap<>();
+        Map<Integer, Period> periodCache = new HashMap<>();
+
+        return items.stream()
+                .filter(a -> status == null || status.isBlank() || status.equalsIgnoreCase(a.getStatus()))
+                .map(a -> {
+                    AttendanceResponse r = AttendanceResponse.fromEntity(a, name);
+                    enrichWithSchedule(
+                            r,
+                            a.getScheduleId(),
+                            scheduleCache,
+                            assignmentCache,
+                            schoolCache,
+                            classCache,
+                            subjectCache,
+                            periodCache);
+                    return r;
+                })
+                .toList();
+    }
+
+    /** Ghép trường/lớp/môn/tiết cho 1 dòng chấm công từ buổi dạy tương ứng (bỏ qua nếu không gắn buổi). */
+    private void enrichWithSchedule(
+            AttendanceResponse r,
+            Long scheduleId,
+            Map<Long, Schedule> scheduleCache,
+            Map<Integer, Assignment> assignmentCache,
+            Map<Integer, School> schoolCache,
+            Map<Integer, SchoolClass> classCache,
+            Map<Integer, Subject> subjectCache,
+            Map<Integer, Period> periodCache) {
+        if (scheduleId == null) {
+            return;
+        }
+        Schedule s = scheduleCache.computeIfAbsent(
+                scheduleId, id -> scheduleRepo.findById(id).orElse(null));
+        if (s == null) {
+            return;
+        }
+        Assignment a = assignmentCache.computeIfAbsent(
+                s.getAssignmentId(), id -> assignmentRepo.findById(id).orElse(null));
+        if (a != null) {
+            r.schoolId = a.getSchoolId();
+            School school = schoolCache.computeIfAbsent(
+                    a.getSchoolId(), id -> schoolRepo.findById(id).orElse(null));
+            r.schoolName = school != null ? school.getName() : "(Trường #" + a.getSchoolId() + ")";
+            r.classId = a.getClassId();
+            if (a.getClassId() != null) {
+                SchoolClass c = classCache.computeIfAbsent(
+                        a.getClassId(), id -> classRepo.findById(id).orElse(null));
+                r.className = c != null ? c.getName() : null;
+            }
+            r.subjectId = a.getSubjectId();
+            Subject subj = subjectCache.computeIfAbsent(
+                    a.getSubjectId(), id -> subjectRepo.findById(id).orElse(null));
+            r.subjectName = subj != null ? subj.getName() : "(Môn #" + a.getSubjectId() + ")";
+        }
+        if (s.getPeriodId() != null) {
+            Period p = periodCache.computeIfAbsent(
+                    s.getPeriodId(), id -> periodRepo.findById(id).orElse(null));
+            if (p != null) {
+                r.periodId = p.getId();
+                r.periodNumber = p.getPeriodNumber();
+                r.sessionType = p.getSessionType();
+            }
+        }
+    }
+
+    /** Hồ sơ giáo viên của người đang đăng nhập (báo lỗi nếu tài khoản không phải giáo viên). */
+    private Integer currentTeacherId() {
+        return teacherRepo
+                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
+                .map(Teacher::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+    }
+
     /** Staff xem tất (teacherId lọc tùy chọn); GV thường luôn bị ép về chính mình. */
     private Integer scopedTeacherId(Integer requested) {
         boolean isStaff = SecurityUtils.hasRole("ADMIN")
@@ -65,10 +189,7 @@ public class AttendanceService {
         if (isStaff) {
             return requested;
         }
-        return teacherRepo
-                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
-                .map(Teacher::getId)
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+        return currentTeacherId();
     }
 
     /**
