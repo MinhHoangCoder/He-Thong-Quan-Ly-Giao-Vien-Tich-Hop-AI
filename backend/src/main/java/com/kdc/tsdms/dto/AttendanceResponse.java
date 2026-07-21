@@ -30,6 +30,19 @@ public class AttendanceResponse {
     public String checkInMethod;
     public String note;
 
+    /* ── Thông tin buổi dạy (ghép từ Schedule → Assignment/Period), null nếu chấm công không gắn buổi. ── */
+    public Integer schoolId;
+    public String schoolName;
+    public Integer classId;
+    public String className;
+    public Integer subjectId;
+    public String subjectName;
+    public Integer periodId;
+    public Short periodNumber;
+
+    /** MORNING | AFTERNOON */
+    public String sessionType;
+
     public static AttendanceResponse fromEntity(Attendance a, String teacherName) {
         AttendanceResponse r = new AttendanceResponse();
         r.id = a.getId();

@@ -10,7 +10,10 @@ const nav = [
   },
   {
     title: 'Công việc',
-    items: [{ label: 'Lịch dạy của tôi', icon: 'schedule', to: '/teacher/schedule' }],
+    items: [
+      { label: 'Lịch dạy của tôi', icon: 'schedule', to: '/teacher/schedule' },
+      { label: 'Bảng chấm công', icon: 'attendance', to: '/teacher/attendance' },
+    ],
   },
   {
     title: 'Kho bài giảng',
