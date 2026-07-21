@@ -128,7 +128,7 @@ const features = [
           </p>
           <label class="field">
             <span>Tên đăng nhập</span>
-            <input readonly v-model="username" type="text" autocomplete="username" required />
+            <input v-model="username" type="text" autocomplete="username" required />
           </label>
           <label class="field">
             <span>Mật khẩu</span>
