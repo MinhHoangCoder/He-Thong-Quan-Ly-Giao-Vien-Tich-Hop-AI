@@ -35,6 +35,19 @@ public class PayrollController {
         return service.list(y, m);
     }
 
+    /**
+     * Phiếu lương của CHÍNH giáo viên đang đăng nhập (read-only, mặc định năm hiện tại).
+     * KHÔNG nhận teacherId — backend tự lấy từ token (chống IDOR); chỉ trả phiếu đã chốt/đã trả.
+     * month = null → cả năm (mới nhất trước); month cụ thể → đúng 1 phiếu tháng đó.
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("hasRole('TEACHER')")
+    public List<PayrollResponse> listMine(
+            @RequestParam(required = false) Short year, @RequestParam(required = false) Short month) {
+        short y = year != null ? year : (short) LocalDate.now().getYear();
+        return service.listMine(y, month);
+    }
+
     /** Sinh/tính lại lương từ chấm công theo TIẾT (đơn giá tự tra theo cấp của lớp). */
     @PostMapping("/generate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('PAYROLL_MANAGE')")

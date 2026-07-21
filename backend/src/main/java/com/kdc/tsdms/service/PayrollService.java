@@ -24,6 +24,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
@@ -48,6 +49,9 @@ public class PayrollService {
 
     static final String TH_RATE_STR = "115000";
     static final String THCS_RATE_STR = "125000";
+
+    /** Trạng thái phiếu lương được phép cho GV tự xem (đã chốt/đã trả) — KHÔNG lộ bản nháp. */
+    private static final Set<String> TEACHER_VISIBLE_STATUS = Set.of("FINALIZED", "PAID");
 
     /** Đơn giá 1 tiết theo cấp học. */
     private static final BigDecimal TH_RATE = new BigDecimal(TH_RATE_STR); // Tiểu học (khối 1–5)
@@ -87,6 +91,38 @@ public class PayrollService {
         return payrollRepo.findByPeriodYearAndPeriodMonthOrderByTeacherId(year, month).stream()
                 .map(p -> PayrollResponse.fromEntity(p, teacherName(p.getTeacherId(), cache)))
                 .toList();
+    }
+
+    /**
+     * Phiếu lương của CHÍNH giáo viên đang đăng nhập (read-only). KHÔNG nhận teacherId từ ngoài
+     * (chống IDOR) và CHỈ trả phiếu đã chốt/đã trả — số nháp (DRAFT) không bao giờ lộ cho GV.
+     *
+     * @param year năm cần xem
+     * @param month tháng cụ thể (null = cả năm, mới nhất trước)
+     */
+    @Transactional(readOnly = true)
+    public List<PayrollResponse> listMine(short year, Short month) {
+        Integer teacherId = currentTeacherId();
+        String name =
+                teacherRepo.findById(teacherId).map(PayrollService::fullName).orElse("(GV #" + teacherId + ")");
+        List<Payroll> items = month != null
+                ? payrollRepo
+                        .findByTeacherIdAndPeriodYearAndPeriodMonth(teacherId, year, month)
+                        .map(List::of)
+                        .orElseGet(List::of)
+                : payrollRepo.findByTeacherIdAndPeriodYearOrderByPeriodMonthDesc(teacherId, year);
+        return items.stream()
+                .filter(p -> TEACHER_VISIBLE_STATUS.contains(p.getStatus()))
+                .map(p -> PayrollResponse.fromEntity(p, name))
+                .toList();
+    }
+
+    /** Hồ sơ giáo viên của người đang đăng nhập (báo lỗi nếu tài khoản không phải giáo viên). */
+    private Integer currentTeacherId() {
+        return teacherRepo
+                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
+                .map(Teacher::getId)
+                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
     }
 
     /**

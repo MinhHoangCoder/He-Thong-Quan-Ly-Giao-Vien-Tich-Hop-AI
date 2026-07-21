@@ -14,4 +14,7 @@ public interface PayrollRepository extends JpaRepository<Payroll, Integer> {
     /** Dòng lương của một GV trong một kỳ (upsert khi generate). */
     Optional<Payroll> findByTeacherIdAndPeriodYearAndPeriodMonth(
             Integer teacherId, Short periodYear, Short periodMonth);
+
+    /** Các phiếu lương của một GV trong một năm (mới nhất trước) — cho trang "Phiếu lương của tôi". */
+    List<Payroll> findByTeacherIdAndPeriodYearOrderByPeriodMonthDesc(Integer teacherId, Short periodYear);
 }
