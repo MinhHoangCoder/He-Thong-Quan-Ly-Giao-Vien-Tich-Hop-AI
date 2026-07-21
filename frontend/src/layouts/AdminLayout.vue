@@ -37,17 +37,11 @@ const nav = [
       { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
     ],
   },
-  // TẠM ẨN CẢ NHÓM "Hệ thống" (2026-07-20): hai mục bên trong đều đang ẩn cho đợt
-  // bảo vệ nên để lại nhóm rỗng sẽ trơ mỗi tiêu đề "HỆ THỐNG" trên sidebar.
-  //  - Trợ lý AI: quy mô đồ án chưa làm AI thật (trang + backend vẫn còn trong code).
-  //  - Ma trận quyền: demo chỉ dùng admin + teacher (trang /settings/roles vẫn chạy).
-  // Mở lại: bỏ comment cả khối dưới đây (và dòng mục tương ứng).
+  // Nhóm "Hệ thống" TẠM ẨN cho đợt bảo vệ (demo chỉ dùng admin + teacher).
+  // Trang /settings/roles vẫn hoạt động — mở lại bằng cách bỏ comment khối dưới.
   // {
   //   title: 'Hệ thống',
-  //   items: [
-  //     { label: 'Trợ lý AI', icon: 'ai', to: '/ai-assistant' },
-  //     { label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' },
-  //   ],
+  //   items: [{ label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' }],
   // },
 ]
 // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).

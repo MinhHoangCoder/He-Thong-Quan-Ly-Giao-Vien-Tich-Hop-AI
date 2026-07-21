@@ -63,10 +63,6 @@ const features = [
     ],
     roles: ['Quản trị', 'Nhân viên trung tâm', 'Giáo viên'],
   },
-  // TẠM ẨN (2026-07-20): card "Trợ lý AI" đã gỡ khỏi landing — quy mô đồ án chưa làm
-  // AI thật (vector DB, mô hình ngôn ngữ), trợ lý hiện tại chỉ chạy theo luật.
-  // Trang /ai-assistant + backend vẫn còn nguyên, muốn quảng bá lại thì thêm object
-  // { icon: 'ai', title: 'Trợ lý AI', ... } vào đây.
   {
     icon: 'shield',
     title: 'Bảo mật & phân quyền',
