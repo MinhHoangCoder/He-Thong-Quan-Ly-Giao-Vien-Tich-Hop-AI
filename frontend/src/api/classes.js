@@ -10,6 +10,11 @@ export const classApi = {
     return http.get('/classes/school-options')
   },
 
+  /** Các khối đang tồn tại (lọc danh sách). */
+  gradeLevels() {
+    return http.get('/classes/grade-levels')
+  },
+
   /** Dropdown lớp ACTIVE theo trường. */
   bySchool(schoolId) {
     return http.get(`/classes/by-school/${schoolId}`)

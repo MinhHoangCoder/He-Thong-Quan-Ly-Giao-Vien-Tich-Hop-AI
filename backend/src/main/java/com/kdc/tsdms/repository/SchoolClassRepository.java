@@ -26,6 +26,7 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
             WHERE sc.deleted = false
               AND (:schoolId IS NULL OR sc.schoolId = :schoolId)
               AND (:status IS NULL OR sc.status = :status)
+              AND (:gradeLevel IS NULL OR sc.gradeLevel = :gradeLevel)
               AND (:keyword IS NULL
                    OR LOWER(sc.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
                    OR LOWER(sc.gradeLevel) LIKE LOWER(CONCAT('%', :keyword, '%'))
@@ -35,5 +36,16 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
             @Param("keyword") String keyword,
             @Param("schoolId") Integer schoolId,
             @Param("status") String status,
+            @Param("gradeLevel") String gradeLevel,
             Pageable pageable);
+
+    /** Dropdown lọc: các khối đang tồn tại (chưa xóa mềm). */
+    @Query("""
+            SELECT DISTINCT sc.gradeLevel FROM SchoolClass sc
+            WHERE sc.deleted = false
+              AND sc.gradeLevel IS NOT NULL
+              AND sc.gradeLevel <> ''
+            ORDER BY sc.gradeLevel
+            """)
+    List<String> findDistinctGradeLevels();
 }

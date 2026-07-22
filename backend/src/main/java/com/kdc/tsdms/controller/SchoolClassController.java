@@ -18,8 +18,7 @@ import org.springframework.web.bind.annotation.*;
 /**
  * REST API Lớp học — /api/v1/classes
  *
- * <p>GET : CLASS_VIEW (ADMIN + ACADEMIC; employee test gộp đủ quyền). POST/PUT/DELETE :
- * CLASS_MANAGE.
+ * <p>GET : CLASS_VIEW. POST/PUT/DELETE : CLASS_MANAGE.
  */
 @RestController
 @RequestMapping("/api/v1/classes")
@@ -38,6 +37,13 @@ public class SchoolClassController {
         return service.listSchoolOptions();
     }
 
+    /** Dropdown các khối đang tồn tại trong hệ thống (bộ lọc danh sách). */
+    @GetMapping("/grade-levels")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_VIEW')")
+    public List<String> gradeLevels() {
+        return service.listExistingGradeLevels();
+    }
+
     /** Dropdown lớp ACTIVE theo trường. */
     @GetMapping("/by-school/{schoolId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_VIEW')")
@@ -51,13 +57,12 @@ public class SchoolClassController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) String gradeLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0),
-                Math.max(size, 1),
-                Sort.by("schoolYear").descending().and(Sort.by("name").ascending()));
-        return service.search(keyword, schoolId, status, pageable);
+        // Mới nhất trước: id giảm dần (IDENTITY ~ thời điểm tạo), rồi năm học mới.
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Order.desc("id")));
+        return service.search(keyword, schoolId, status, gradeLevel, pageable);
     }
 
     @GetMapping("/{id}")
