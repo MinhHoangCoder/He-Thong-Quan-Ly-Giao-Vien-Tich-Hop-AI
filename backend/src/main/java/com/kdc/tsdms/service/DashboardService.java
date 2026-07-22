@@ -303,11 +303,8 @@ public class DashboardService {
         //    (NetAmount do DB tính sẵn). Chưa "Tạo bảng lương" cho tháng này → hiển thị "—".
         short curYear = (short) monthStart.getYear();
         short curMonth = (short) monthStart.getMonthValue();
-        short prevYear = (short) lastMonthStart.getYear();
-        short prevMonth = (short) lastMonthStart.getMonthValue();
 
         BigDecimal payThis = sumNet(payrolls, curYear, curMonth);
-        BigDecimal payLast = sumNet(payrolls, prevYear, prevMonth);
         boolean hasPayroll = payrolls.stream()
                 .filter(p -> p.getPeriodYear() != null && p.getPeriodMonth() != null)
                 .anyMatch(p -> p.getPeriodYear().shortValue() == curYear
@@ -321,14 +318,13 @@ public class DashboardService {
                     .longValue());
         }
 
-        Double payTrend = (hasPayroll && payLast.signum() > 0)
-                ? round1((payThis.doubleValue() - payLast.doubleValue()) * 100.0 / payLast.doubleValue())
-                : null;
+        // Không hiển thị % thay đổi cho thẻ chi phí lương: tháng trước thường có
+        // mẫu số rất nhỏ nên % biến động bị "phóng đại" (vd 1801.6%), gây hiểu nhầm.
         SideStat payroll = new SideStat(
                 "payroll",
                 "Chi phí lương tháng này",
                 hasPayroll ? formatMoney(payThis) : "—",
-                payTrend,
+                null,
                 paySpark,
                 "#22c55e");
 
