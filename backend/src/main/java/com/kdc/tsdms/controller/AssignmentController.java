@@ -29,8 +29,9 @@ public class AssignmentController {
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_VIEW')")
-    public List<AssignmentResponse> list(@RequestParam(required = false) Integer teacherId) {
-        return service.list(teacherId);
+    public List<AssignmentResponse> list(
+            @RequestParam(required = false) Integer teacherId, @RequestParam(required = false) String keyword) {
+        return service.list(teacherId, keyword);
     }
 
     /** Thùng rác: các phân công đã xóa mềm. */

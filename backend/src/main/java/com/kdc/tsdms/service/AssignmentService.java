@@ -26,6 +26,7 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
+import java.text.Normalizer;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -85,6 +86,16 @@ public class AssignmentService {
 
     @Transactional(readOnly = true)
     public List<AssignmentResponse> list(Integer teacherId) {
+        return list(teacherId, null);
+    }
+
+    /**
+     * Danh sách phân công còn hoạt động. {@code keyword} tùy chọn: lọc KHÔNG phân biệt
+     * hoa/thường và DẤU tiếng Việt trên tên GV / trường / lớp / môn. So khớp trên các tên
+     * đã build sẵn trong response (không phụ thuộc collation của DB).
+     */
+    @Transactional(readOnly = true)
+    public List<AssignmentResponse> list(Integer teacherId, String keyword) {
         // CHỐNG IDOR: GV (có ASSIGNMENT_VIEW nhưng không phải staff) chỉ được xem
         // phân công của CHÍNH MÌNH — ép teacherId về hồ sơ của người gọi, bỏ qua
         // teacherId client gửi lên.
@@ -92,7 +103,31 @@ public class AssignmentService {
         List<Assignment> items = scoped != null
                 ? assignmentRepo.findByTeacherIdAndDeletedFalseOrderByIdDesc(scoped)
                 : assignmentRepo.findByDeletedFalseOrderByIdDesc();
-        return items.stream().map(this::toResponse).toList();
+        List<AssignmentResponse> responses =
+                items.stream().map(this::toResponse).toList();
+
+        String kw = normalizeSearch(keyword);
+        if (kw.isEmpty()) {
+            return responses;
+        }
+        return responses.stream().filter(r -> matchesKeyword(r, kw)).toList();
+    }
+
+    /** Chuẩn hóa chuỗi để so khớp tìm kiếm: bỏ dấu tiếng Việt + thường hóa + trim. */
+    private static String normalizeSearch(String s) {
+        if (s == null) {
+            return "";
+        }
+        String noMark = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
+        return noMark.replace('đ', 'd').replace('Đ', 'D').toLowerCase().trim();
+    }
+
+    /** Một dòng phân công có khớp từ khóa (tên GV / trường / lớp / môn) không. */
+    private static boolean matchesKeyword(AssignmentResponse r, String normKeyword) {
+        return normalizeSearch(r.teacherName).contains(normKeyword)
+                || normalizeSearch(r.schoolName).contains(normKeyword)
+                || normalizeSearch(r.className).contains(normKeyword)
+                || normalizeSearch(r.subjectName).contains(normKeyword);
     }
 
     @Transactional(readOnly = true)

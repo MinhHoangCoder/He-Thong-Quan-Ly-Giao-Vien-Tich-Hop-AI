@@ -5,9 +5,15 @@ import http from './http'
  * Base: /api/v1/assignments
  */
 export const assignmentApi = {
-  /** Danh sách phân công — lọc theo teacherId nếu truyền. */
-  list(teacherId) {
-    return http.get('/assignments', { params: teacherId ? { teacherId } : {} })
+  /**
+   * Danh sách phân công (còn hoạt động).
+   * @param {Object} [params] - { teacherId, keyword }.
+   *   keyword: tìm không phân biệt hoa/thường & dấu theo tên GV/trường/lớp/môn.
+   */
+  list({ teacherId, keyword } = {}) {
+    return http.get('/assignments', {
+      params: { teacherId: teacherId || undefined, keyword: keyword || undefined },
+    })
   },
 
   detail(id) {
