@@ -11,6 +11,7 @@ const props = defineProps({
 // Mỗi icon là một (hoặc nhiều) <path> theo viewBox 0 0 24 24, stroke style.
 const paths = {
   dashboard: ['M3 13h8V3H3v10Z', 'M13 21h8V11h-8v10Z', 'M13 3v6h8V3h-8Z', 'M3 21h8v-6H3v6Z'],
+  home: ['M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z', 'M9 22V12h6v10'],
   teacher: ['M16 11a4 4 0 1 0-8 0', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M3 21a9 9 0 0 1 18 0'],
   school: ['M3 21h18', 'M5 21V8l7-4 7 4v13', 'M9 21v-6h6v6', 'M9 11h.01', 'M15 11h.01'],
   subject: [
