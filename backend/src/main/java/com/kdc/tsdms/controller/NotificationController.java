@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.dto.NotificationCancelRequest;
 import com.kdc.tsdms.dto.NotificationListResponse;
 import com.kdc.tsdms.dto.NotificationResponse;
 import com.kdc.tsdms.service.NotificationService;
@@ -7,6 +8,7 @@ import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -46,5 +48,18 @@ public class NotificationController {
     @PostMapping("/read-all")
     public NotificationListResponse markAllRead() {
         return service.markAllRead();
+    }
+
+    /** Giáo viên XÁC NHẬN nhận lịch dạy được phân công. */
+    @PostMapping("/{id}/confirm")
+    public NotificationResponse confirm(@PathVariable Long id) {
+        return service.confirmAction(id);
+    }
+
+    /** Giáo viên TỪ CHỐI (Hủy) lịch dạy — bắt buộc kèm lý do. */
+    @PostMapping("/{id}/cancel")
+    public NotificationResponse cancel(
+            @PathVariable Long id, @RequestBody(required = false) NotificationCancelRequest body) {
+        return service.cancelAction(id, body == null ? null : body.reason());
     }
 }

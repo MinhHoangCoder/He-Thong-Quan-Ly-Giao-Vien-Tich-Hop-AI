@@ -24,4 +24,14 @@ export const notificationApi = {
   markAllRead() {
     return http.post('/notifications/read-all')
   },
+
+  /** Giáo viên XÁC NHẬN nhận lịch dạy được phân công. */
+  confirm(id) {
+    return http.post(`/notifications/${id}/confirm`)
+  },
+
+  /** Giáo viên TỪ CHỐI (Hủy) lịch dạy — kèm lý do. */
+  cancel(id, reason) {
+    return http.post(`/notifications/${id}/cancel`, { reason })
+  },
 }
