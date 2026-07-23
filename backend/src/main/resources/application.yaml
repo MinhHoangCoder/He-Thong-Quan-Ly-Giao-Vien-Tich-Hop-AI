@@ -3,7 +3,9 @@ spring:
     name: tsdms
 
   datasource:
-    url: jdbc:sqlserver://localhost:1433;databaseName=TSDMS;encrypt=true;trustServerCertificate=true
+    # URL qua biến môi trường để deploy trỏ sang DB thật (Azure SQL...) mà không sửa code.
+    # Default = SQL Server local -> máy dev chạy y như cũ, không cần đặt DB_URL.
+    url: ${DB_URL:jdbc:sqlserver://localhost:1433;databaseName=TSDMS;encrypt=true;trustServerCertificate=true}
     username: ${DB_USERNAME:sa}
     password: ${DB_PASSWORD:}
     driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
@@ -74,6 +76,11 @@ tsdms:
     access-token-ttl: 15m # access token sống ngắn
     refresh-token-ttl: 7d # refresh token sống dài, lưu hash ở DB để thu hồi được
     issuer: tsdms
+  cors:
+    # Danh sách origin FE được phép gọi API, phân tách bằng dấu phẩy (deploy: thêm domain
+    # Vercel, vd "https://kdc-eduops.vercel.app"). Default = vite dev để local chạy như cũ.
+    # Sai origin ở production = mọi API dính 403 "Invalid CORS request" (kể cả login).
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   reset:
     token-ttl: 30m # link đặt lại mật khẩu hết hạn sau 30 phút
     base-url: ${APP_BASE_URL:http://localhost:5173} # FE base url để ghép link reset

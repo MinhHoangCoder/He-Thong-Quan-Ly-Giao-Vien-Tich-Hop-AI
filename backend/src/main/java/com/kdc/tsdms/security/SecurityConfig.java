@@ -1,7 +1,9 @@
 package com.kdc.tsdms.security;
 
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.Arrays;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -33,9 +35,16 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RateLimitingFilter rateLimitingFilter;
 
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, RateLimitingFilter rateLimitingFilter) {
+    // Origin FE được phép gọi API (tsdms.cors.allowed-origins), phân tách bằng dấu phẩy.
+    private final String corsAllowedOrigins;
+
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            RateLimitingFilter rateLimitingFilter,
+            @Value("${tsdms.cors.allowed-origins}") String corsAllowedOrigins) {
         this.jwtAuthenticationFilter = jwtAuthenticationFilter;
         this.rateLimitingFilter = rateLimitingFilter;
+        this.corsAllowedOrigins = corsAllowedOrigins;
     }
 
     /** Mã hóa mật khẩu bằng BCrypt (khớp hash $2b$ đã seed trong DB). */
@@ -81,11 +90,15 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** Cho phép frontend Vue (Vite dev server) gọi API. */
+    /** Cho phép frontend Vue gọi API. Origin lấy từ cấu hình (localhost dev / domain deploy). */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173"));
+        List<String> origins = Arrays.stream(corsAllowedOrigins.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+        config.setAllowedOrigins(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
