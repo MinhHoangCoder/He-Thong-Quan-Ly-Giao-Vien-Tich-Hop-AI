@@ -12,6 +12,8 @@ public record NotificationResponse(
         String refEntity,
         Long refId,
         boolean read,
+        boolean requiresAction,
+        String actionStatus,
         Instant createdAt) {
 
     public static NotificationResponse fromEntity(Notification n) {
@@ -23,6 +25,8 @@ public record NotificationResponse(
                 n.getRefEntity(),
                 n.getRefId(),
                 n.isRead(),
+                n.isRequiresAction(),
+                n.getActionStatus(),
                 n.getCreatedAt());
     }
 }

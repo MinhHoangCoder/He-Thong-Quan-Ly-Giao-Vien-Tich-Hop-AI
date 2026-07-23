@@ -57,9 +57,10 @@ public record AssignmentCreateRequest(
         LocalDate endDate,
 
         /**
-         * Danh sách slot Thứ+Tiết — tối thiểu 1, tối đa 9 (vì 1 ngày có 9 tiết,
-         * không thể dạy nhiều hơn tổng số tiết/ngày).
+         * Danh sách slot Thứ+Tiết — tối thiểu 1. KHÔNG giới hạn ở 9 nữa: một phân công có
+         * thể trải nhiều Thứ (T2–CN) nên tổng số tiết/tuần vượt 9 là hợp lệ. Chỉ giữ một
+         * trần an toàn 63 = 9 tiết × 7 ngày (số tổ hợp Thứ+Tiết tối đa) để chặn payload rác.
          * Mỗi slot phải là 1 tổ hợp DayOfWeek+PeriodId không trùng nhau.
          */
-        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 9, message = "Không thể chọn quá 9 tiết dạy cho 1 phân công") @Valid // kích hoạt validate đệ quy bên trong AssignmentSlotRequest
+        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 63, message = "Số tiết dạy trong một phân công vượt mức cho phép") @Valid // kích hoạt validate đệ quy bên trong AssignmentSlotRequest
         List<AssignmentSlotRequest> slots) {}

@@ -52,7 +52,7 @@ onMounted(() => {
   document.addEventListener('keydown', onDocKeydown)
   if (auth.isLoggedIn) {
     loadNotifications()
-    pollTimer = setInterval(refreshUnread, 60000) // cập nhật badge chưa đọc mỗi phút
+    pollTimer = setInterval(refreshUnread, 30000) // cập nhật badge chưa đọc mỗi 30s
   }
 })
 onBeforeUnmount(() => {
@@ -82,18 +82,36 @@ const notifWrap = ref(null)
 let pollTimer = null
 
 // Điều hướng khi bấm thông báo — ưu tiên RefEntity, dự phòng theo Type.
-const ENTITY_ROUTES = {
+// GV có bộ route riêng (/teacher/...) khác với staff, nên chọn map theo vai trò.
+const isTeacher = computed(() => auth.primaryRole === 'TEACHER')
+const STAFF_ENTITY_ROUTES = {
   Assignment: '/assignments',
   Schedule: '/schedule',
   Attendance: '/attendance',
   Payroll: '/payroll',
 }
-const TYPE_ROUTES = {
+const TEACHER_ENTITY_ROUTES = {
+  Assignment: '/teacher/schedule',
+  Schedule: '/teacher/schedule',
+  Attendance: '/teacher/attendance',
+  Payroll: '/teacher/payroll',
+}
+const STAFF_TYPE_ROUTES = {
   ASSIGNMENT: '/assignments',
   SCHEDULE: '/schedule',
   ATTENDANCE: '/attendance',
   PAYROLL: '/payroll',
 }
+const TEACHER_TYPE_ROUTES = {
+  ASSIGNMENT: '/teacher/schedule',
+  SCHEDULE: '/teacher/schedule',
+  ATTENDANCE: '/teacher/attendance',
+  PAYROLL: '/teacher/payroll',
+}
+const ENTITY_ROUTES = computed(() =>
+  isTeacher.value ? TEACHER_ENTITY_ROUTES : STAFF_ENTITY_ROUTES,
+)
+const TYPE_ROUTES = computed(() => (isTeacher.value ? TEACHER_TYPE_ROUTES : STAFF_TYPE_ROUTES))
 const TYPE_ICONS = {
   ASSIGNMENT: 'assignment',
   SCHEDULE: 'schedule',
@@ -140,9 +158,60 @@ async function openNotification(n) {
       /* im lặng */
     }
   }
-  const to = ENTITY_ROUTES[n.refEntity] || TYPE_ROUTES[n.type]
+  const to = ENTITY_ROUTES.value[n.refEntity] || TYPE_ROUTES.value[n.type]
   notifOpen.value = false
   if (to) router.push(to)
+}
+
+/* ── Thông báo có hành động: Xác nhận / Hủy (phân công lịch dạy) ── */
+const actionBusy = ref(false) // khóa nút khi đang gọi API
+const cancelingId = ref(null) // id thông báo đang mở ô nhập lý do từ chối
+const cancelReason = ref('')
+
+// Xác nhận nhận lịch dạy.
+async function confirmNotif(n) {
+  if (actionBusy.value) return
+  actionBusy.value = true
+  try {
+    const { data } = await notificationApi.confirm(n.id)
+    Object.assign(n, data)
+    if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+  } catch (e) {
+    window.alert(e?.response?.data?.message || 'Không xác nhận được. Vui lòng thử lại.')
+  } finally {
+    actionBusy.value = false
+  }
+}
+
+// Mở ô nhập lý do từ chối cho 1 thông báo.
+function startCancel(n) {
+  cancelingId.value = n.id
+  cancelReason.value = ''
+}
+function abortCancel() {
+  cancelingId.value = null
+  cancelReason.value = ''
+}
+
+// Gửi từ chối kèm lý do.
+async function submitCancel(n) {
+  const reason = cancelReason.value.trim()
+  if (!reason) {
+    window.alert('Vui lòng nhập lý do từ chối.')
+    return
+  }
+  if (actionBusy.value) return
+  actionBusy.value = true
+  try {
+    const { data } = await notificationApi.cancel(n.id, reason)
+    Object.assign(n, data)
+    if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+    abortCancel()
+  } catch (e) {
+    window.alert(e?.response?.data?.message || 'Không gửi được từ chối. Vui lòng thử lại.')
+  } finally {
+    actionBusy.value = false
+  }
 }
 
 async function markAllRead() {
@@ -291,6 +360,64 @@ function switchTo(acc) {
                       <strong>{{ n.title }}</strong>
                       <small v-if="n.content">{{ n.content }}</small>
                       <span class="notif__time">{{ timeAgo(n.createdAt) }}</span>
+
+                      <!-- Thông báo phân công: cần Xác nhận / Hủy -->
+                      <div v-if="n.requiresAction" class="notif__action" @click.stop>
+                        <template v-if="n.actionStatus === 'PENDING'">
+                          <template v-if="cancelingId === n.id">
+                            <textarea
+                              v-model="cancelReason"
+                              class="notif__reason"
+                              rows="2"
+                              placeholder="Nhập lý do từ chối…"
+                            />
+                            <div class="notif__btnrow">
+                              <button
+                                class="notif__btn notif__btn--danger"
+                                :disabled="actionBusy"
+                                @click="submitCancel(n)"
+                              >
+                                Gửi từ chối
+                              </button>
+                              <button
+                                class="notif__btn notif__btn--ghost"
+                                :disabled="actionBusy"
+                                @click="abortCancel"
+                              >
+                                Bỏ
+                              </button>
+                            </div>
+                          </template>
+                          <div v-else class="notif__btnrow">
+                            <button
+                              class="notif__btn notif__btn--primary"
+                              :disabled="actionBusy"
+                              @click="confirmNotif(n)"
+                            >
+                              <SvgIcon name="check-all" :size="14" /> Xác nhận
+                            </button>
+                            <button
+                              class="notif__btn notif__btn--danger"
+                              :disabled="actionBusy"
+                              @click="startCancel(n)"
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        </template>
+                        <span
+                          v-else-if="n.actionStatus === 'CONFIRMED'"
+                          class="notif__tag notif__tag--ok"
+                        >
+                          ✓ Đã xác nhận
+                        </span>
+                        <span
+                          v-else-if="n.actionStatus === 'CANCELLED'"
+                          class="notif__tag notif__tag--no"
+                        >
+                          ✕ Đã từ chối
+                        </span>
+                      </div>
                     </div>
                     <span v-if="!n.read" class="notif__unread-dot" />
                   </li>
@@ -734,6 +861,83 @@ function switchTo(acc) {
   color: var(--a-text-muted);
   margin-top: 0.1rem;
 }
+
+/* ── Thông báo có hành động (Xác nhận / Hủy) ── */
+.notif__action {
+  margin-top: 0.5rem;
+  cursor: default;
+}
+.notif__btnrow {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.notif__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.32rem 0.7rem;
+  border-radius: 8px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--a-text);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    filter var(--t-fast),
+    background var(--t-fast);
+}
+.notif__btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.notif__btn--primary {
+  background: var(--grad-primary, var(--c-primary));
+  border-color: transparent;
+  color: #fff;
+}
+.notif__btn--primary:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+.notif__btn--danger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.4);
+}
+.notif__btn--danger:hover:not(:disabled) {
+  background: rgba(220, 38, 38, 0.08);
+}
+.notif__btn--ghost {
+  color: var(--a-text-muted);
+}
+.notif__reason {
+  width: 100%;
+  resize: vertical;
+  padding: 0.4rem 0.5rem;
+  margin-bottom: 0.4rem;
+  border: 1px solid var(--c-input-border, var(--c-border));
+  border-radius: 8px;
+  background: var(--c-surface);
+  color: var(--a-text);
+  font-size: 0.8rem;
+  font-family: inherit;
+}
+.notif__tag {
+  display: inline-block;
+  padding: 0.18rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+.notif__tag--ok {
+  background: rgba(22, 163, 74, 0.12);
+  color: #16a34a;
+}
+.notif__tag--no {
+  background: rgba(220, 38, 38, 0.12);
+  color: #dc2626;
+}
+
 .notif__unread-dot {
   position: absolute;
   top: 0.85rem;

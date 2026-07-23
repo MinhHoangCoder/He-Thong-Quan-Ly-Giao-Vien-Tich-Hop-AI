@@ -69,6 +69,10 @@ const pagedItems = computed(() => {
 const options = reactive({ teachers: [], subjects: [], schools: [] })
 const scoped = reactive({ classes: [], periods: [] })
 
+// Các phân công ACTIVE của GV đang chọn — dùng để KHÓA tiết mà GV đã có lịch dạy
+// (khớp luật chống trùng 409 ở backend: cùng Thứ + đúng periodId + giai đoạn chồng ngày).
+const teacherBusy = ref([])
+
 const modal = reactive({
   open: false,
   saving: false,
@@ -142,6 +146,7 @@ async function openCreate() {
   modal.open = true
   scoped.classes = []
   scoped.periods = []
+  teacherBusy.value = []
   try {
     const { data } = await assignmentApi.options()
     options.teachers = data.teachers
@@ -162,20 +167,84 @@ async function onSchoolChange() {
     const { data } = await assignmentApi.schoolOptions(modal.form.schoolId)
     scoped.classes = data.classes
     scoped.periods = data.periods
-    modal.slotDraft.periodId = data.periods[0]?.id ?? ''
+    pickFirstFreePeriod()
   } catch {
     /* giữ trống */
   }
 }
 
+/* ── Khóa tiết GV đã có lịch ──
+   Nạp phân công ACTIVE của GV khi đổi Giáo viên; suy ra tiết bận theo Thứ (lọc theo
+   giai đoạn chồng ngày với phân công đang tạo) rồi disable đúng option tiết đó. */
+async function onTeacherChange() {
+  teacherBusy.value = []
+  const tid = modal.form.teacherId
+  if (!tid) return
+  try {
+    const { data } = await assignmentApi.list({ teacherId: Number(tid) })
+    teacherBusy.value = (data || []).filter((a) => a.status === 'ACTIVE')
+  } catch {
+    teacherBusy.value = []
+  }
+}
+
+// Hai giai đoạn [aStart,aEnd] và [bStart,bEnd] có chồng nhau không (chuỗi ISO yyyy-MM-dd
+// so sánh trực tiếp được; end rỗng/null = vô thời hạn).
+function rangesOverlap(aStart, aEnd, bStart, bEnd) {
+  if (aEnd && bStart && aEnd < bStart) return false
+  if (bEnd && aStart && bEnd < aStart) return false
+  return true
+}
+
+// { 'MON': Set(periodId), ... } — tiết GV đã bận, chỉ tính phân công chồng ngày với form.
+const busyByDay = computed(() => {
+  const map = {}
+  const ns = modal.form.startDate
+  const ne = modal.form.endDate
+  for (const a of teacherBusy.value) {
+    if (a.status !== 'ACTIVE') continue
+    if (ns && !rangesOverlap(ns, ne, a.startDate, a.endDate)) continue
+    for (const s of a.slots || []) {
+      ;(map[s.dayOfWeek] ??= new Set()).add(Number(s.periodId))
+    }
+  }
+  return map
+})
+
+// Lý do 1 tiết bị khóa với 1 Thứ: 'busy' = GV đã có lịch | 'added' = đã thêm trong form | ''.
+function periodTakenReason(period, day) {
+  const pid = Number(period.id)
+  if (busyByDay.value[day]?.has(pid)) return 'busy'
+  if (modal.form.slots.some((s) => s.dayOfWeek === day && Number(s.periodId) === pid))
+    return 'added'
+  return ''
+}
+function periodTakenSuffix(period, day) {
+  const r = periodTakenReason(period, day)
+  return r === 'busy' ? ' — đã có lịch' : r === 'added' ? ' — đã thêm' : ''
+}
+
+// Lý do khóa của tiết đang chọn ở ô nháp: 'busy' | 'added' | '' (để disable nút + báo đúng chữ).
+const draftReason = computed(() => {
+  const p = scoped.periods.find((x) => Number(x.id) === Number(modal.slotDraft.periodId))
+  return p ? periodTakenReason(p, modal.slotDraft.dayOfWeek) : ''
+})
+
+// Nhảy ô tiết về tiết TRỐNG đầu tiên cho Thứ đang chọn (tránh dừng ở tiết vừa thêm/đã bận).
+function pickFirstFreePeriod() {
+  const day = modal.slotDraft.dayOfWeek
+  const free = scoped.periods.find((p) => !periodTakenReason(p, day))
+  modal.slotDraft.periodId = free ? free.id : ''
+}
+
 function addSlot() {
   const { dayOfWeek, periodId } = modal.slotDraft
   if (!periodId) return
-  const exists = modal.form.slots.some(
-    (s) => s.dayOfWeek === dayOfWeek && s.periodId === Number(periodId),
-  )
-  if (exists) return
+  const period = scoped.periods.find((x) => Number(x.id) === Number(periodId))
+  // Chặn tiết GV đã có lịch / đã thêm (khớp luật 409 backend).
+  if (period && periodTakenReason(period, dayOfWeek)) return
   modal.form.slots.push({ dayOfWeek, periodId: Number(periodId) })
+  pickFirstFreePeriod() // tự chuyển sang tiết trống kế tiếp
 }
 
 function removeSlot(i) {
@@ -383,7 +452,7 @@ async function confirmPurge() {
         <div class="grid2">
           <div class="form-group">
             <label>Giáo viên *</label>
-            <select v-model="modal.form.teacherId">
+            <select v-model="modal.form.teacherId" @change="onTeacherChange">
               <option value="">-- Chọn giáo viên --</option>
               <option v-for="t in options.teachers" :key="t.id" :value="t.id">{{ t.name }}</option>
             </select>
@@ -426,26 +495,38 @@ async function confirmPurge() {
         <div class="slots-block">
           <label class="slots-label">Các tiết dạy trong tuần *</label>
           <div class="slot-add">
-            <select v-model="modal.slotDraft.dayOfWeek">
+            <select v-model="modal.slotDraft.dayOfWeek" @change="pickFirstFreePeriod">
               <option v-for="d in DAYS" :key="d.code" :value="d.code">{{ d.label }}</option>
             </select>
             <select v-model="modal.slotDraft.periodId" :disabled="!scoped.periods.length">
               <option value="">
                 {{ scoped.periods.length ? '-- Chọn tiết --' : 'Chọn trường trước' }}
               </option>
-              <option v-for="p in scoped.periods" :key="p.id" :value="p.id">
-                {{ tietLabel(p.periodNumber, p.sessionType) }}
+              <option
+                v-for="p in scoped.periods"
+                :key="p.id"
+                :value="p.id"
+                :disabled="!!periodTakenReason(p, modal.slotDraft.dayOfWeek)"
+              >
+                {{ tietLabel(p.periodNumber, p.sessionType)
+                }}{{ periodTakenSuffix(p, modal.slotDraft.dayOfWeek) }}
               </option>
             </select>
             <button
               class="btn btn-outline btn-sm"
               type="button"
-              :disabled="!modal.slotDraft.periodId"
+              :disabled="!modal.slotDraft.periodId || !!draftReason"
               @click="addSlot"
             >
               + Thêm tiết
             </button>
           </div>
+          <p v-if="draftReason === 'busy'" class="slot-hint slot-hint--warn">
+            Giáo viên đã có lịch dạy tiết này — vui lòng chọn tiết khác.
+          </p>
+          <p v-else-if="draftReason === 'added'" class="slot-hint slot-hint--muted">
+            Tiết này đã có trong danh sách bên dưới.
+          </p>
           <div class="chips">
             <span v-for="(s, i) in modal.form.slots" :key="i" class="chip chip-lg">
               {{ slotLabel(s) }}
@@ -596,6 +677,19 @@ async function confirmPurge() {
   font-size: 0.88rem;
   background: var(--c-surface);
   color: var(--c-text);
+}
+.slot-add select option:disabled {
+  color: var(--c-text-muted);
+}
+.slot-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.78rem;
+}
+.slot-hint--warn {
+  color: #dc2626;
+}
+.slot-hint--muted {
+  color: var(--c-text-muted);
 }
 .chips {
   display: flex;

@@ -62,6 +62,7 @@ public class AssignmentService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final NotificationService notificationService;
 
     public AssignmentService(
             AssignmentRepository assignmentRepo,
@@ -71,7 +72,8 @@ public class AssignmentService {
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
-            PeriodRepository periodRepo) {
+            PeriodRepository periodRepo,
+            NotificationService notificationService) {
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
         this.scheduleRepo = scheduleRepo;
@@ -80,6 +82,7 @@ public class AssignmentService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.notificationService = notificationService;
     }
 
     /* ─────────────────────────── QUERY ─────────────────────────── */
@@ -210,7 +213,7 @@ public class AssignmentService {
                 .findById(req.schoolId())
                 .filter(s -> !s.isDeleted())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường"));
-        subjectRepo
+        Subject subject = subjectRepo
                 .findByIdAndDeletedFalse(req.subjectId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy môn học"));
         SchoolClass clazz = classRepo
@@ -292,7 +295,67 @@ public class AssignmentService {
             generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), end, userId);
         }
 
+        // Thông báo cho giáo viên: có lịch dạy mới, kèm nút Xác nhận / Hủy.
+        notifyTeacherOfAssignment(a, teacher, school, clazz, subject, req, periodById, end);
+
         return toResponse(a);
+    }
+
+    /** Dựng nội dung + phát thông báo phân công (có hành động) tới giáo viên được phân công. */
+    private void notifyTeacherOfAssignment(
+            Assignment a,
+            Teacher teacher,
+            School school,
+            SchoolClass clazz,
+            Subject subject,
+            AssignmentCreateRequest req,
+            Map<Integer, Period> periodById,
+            LocalDate end) {
+        StringBuilder slots = new StringBuilder();
+        for (AssignmentSlotRequest slotReq : req.slots()) {
+            Period p = periodById.get(slotReq.periodId());
+            if (slots.length() > 0) {
+                slots.append(", ");
+            }
+            slots.append(dayLabelVi(slotReq.dayOfWeek()));
+            if (p != null) {
+                slots.append(" Tiết ").append(p.getPeriodNumber());
+            }
+        }
+        String content = "Trường " + school.getName()
+                + " · Lớp " + clazz.getName()
+                + " · Môn " + subject.getName()
+                + " · Lịch: " + slots
+                + " · Từ " + fmtDate(req.startDate()) + " đến " + fmtDate(end)
+                + ". Vui lòng xác nhận hoặc từ chối.";
+        notificationService.publishToTeacher(
+                teacher.getId(),
+                "Bạn được phân công lịch dạy mới",
+                content,
+                "ASSIGNMENT",
+                "Assignment",
+                a.getId().longValue(),
+                true);
+    }
+
+    private static final java.time.format.DateTimeFormatter DATE_FMT =
+            java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy");
+
+    private static String fmtDate(LocalDate d) {
+        return d == null ? "" : d.format(DATE_FMT);
+    }
+
+    private static String dayLabelVi(String code) {
+        return switch (code) {
+            case "MON" -> "Thứ 2";
+            case "TUE" -> "Thứ 3";
+            case "WED" -> "Thứ 4";
+            case "THU" -> "Thứ 5";
+            case "FRI" -> "Thứ 6";
+            case "SAT" -> "Thứ 7";
+            case "SUN" -> "Chủ nhật";
+            default -> code;
+        };
     }
 
     /** Trải 1 slot (Thứ+Tiết) thành các buổi Schedule hằng tuần trong [from, to]. */

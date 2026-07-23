@@ -123,7 +123,6 @@ const rangeStats = computed(() => [
   { icon: 'teacher', label: 'Lớp', value: countBy(events.value, 'classId'), color: '#2563eb' },
   { icon: 'subject', label: 'Môn', value: countBy(events.value, 'subjectId'), color: '#f59e0b' },
 ])
-const statsScopeLabel = computed(() => (view.value === 'week' ? 'tuần đang xem' : 'tháng đang xem'))
 
 /* ── Buổi dạy hôm nay (đã sắp theo giờ) ── */
 const todaySorted = computed(() =>
@@ -192,10 +191,13 @@ function cellEvents(period, dayIso) {
 
 /* ── Chi tiết ngày (chế độ tháng) ── */
 const selectedEvents = computed(() => eventsByDate.value[selectedIso.value] || [])
-// Sắp theo trường (A→Z), rồi tiết tăng dần, rồi giờ bắt đầu.
+// Buổi Sáng (0) đứng trước Chiều (1).
+const sessionRank = (e) => (e.sessionType === 'AFTERNOON' ? 1 : 0)
+// Sắp theo buổi (Sáng → Chiều), rồi trường (A→Z), rồi tiết tăng dần, rồi giờ bắt đầu.
 const selectedRows = computed(() =>
   [...selectedEvents.value].sort(
     (a, b) =>
+      sessionRank(a) - sessionRank(b) ||
       (a.schoolName || '').localeCompare(b.schoolName || '', 'vi') ||
       (a.periodNumber ?? 0) - (b.periodNumber ?? 0) ||
       (a.startTime || '').localeCompare(b.startTime || ''),
@@ -357,7 +359,6 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
           <span class="statcard__label">{{ s.label }}</span>
         </div>
       </div>
-      <p class="stat-scope">Tính theo {{ statsScopeLabel }}</p>
     </section>
 
     <!-- ===== Bộ lọc ===== -->
@@ -443,7 +444,7 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
             @click="selectDay(c.iso)"
           >
             <span class="daycell__num">{{ c.day }}</span>
-            <span v-if="c.count" class="daycell__pill">{{ c.count }} buổi</span>
+            <span v-if="c.count" class="daycell__pill">{{ c.count }} Tiết</span>
           </button>
         </div>
       </div>
@@ -652,7 +653,6 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.9rem;
   margin-bottom: 1.1rem;
-  position: relative;
 }
 .statcard {
   display: flex;
@@ -686,15 +686,6 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
   font-size: 0.8rem;
   color: var(--c-text-muted);
 }
-.stat-scope {
-  position: absolute;
-  right: 2px;
-  top: -1.25rem;
-  margin: 0;
-  font-size: 0.74rem;
-  color: var(--c-text-muted);
-}
-
 /* ===== Toolbar lọc ===== */
 .toolbar {
   display: flex;
