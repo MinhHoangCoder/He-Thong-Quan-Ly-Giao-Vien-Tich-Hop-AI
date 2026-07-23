@@ -1,5 +1,5 @@
 <script setup>
-// Layout cho GIÁO VIÊN (tự phục vụ): xem lịch dạy, chấm công, phiếu lương, hồ sơ.
+// Layout cho GIÁO VIÊN (tự phục vụ): xem lịch dạy, phiếu lương, hồ sơ.
 // (to: '#' = trang chưa làm, vẫn hiển thị để thấy cấu trúc.)
 import PortalShell from '@/layouts/PortalShell.vue'
 
@@ -12,8 +12,7 @@ const nav = [
     title: 'Công việc',
     items: [
       { label: 'Lịch dạy của tôi', icon: 'schedule', to: '/teacher/schedule' },
-      { label: 'Chấm công', icon: 'clock', to: '#' },
-      { label: 'Bảng công', icon: 'attendance', to: '#' },
+      { label: 'Bảng chấm công', icon: 'attendance', to: '/teacher/attendance' },
     ],
   },
   {
@@ -23,8 +22,7 @@ const nav = [
   {
     title: 'Cá nhân',
     items: [
-      { label: 'Phiếu lương', icon: 'payroll', to: '#' },
-      { label: 'Hồ sơ của tôi', icon: 'teacher', to: '/teacher/profile' },
+      { label: 'Phiếu lương', icon: 'payroll', to: '/teacher/payroll' },
       { label: 'Đánh giá', icon: 'evaluation', to: '/teacher/evaluations' },
     ],
   },

@@ -10,7 +10,25 @@ import { schoolRoutes } from '@/router/school.routes'
 import { teacherRoutes } from '@/router/teacher.routes'
 import { staffRoutes } from '@/router/staff.routes'
 
-const routes = [...publicRoutes, ...adminRoutes, ...schoolRoutes, ...teacherRoutes, ...staffRoutes]
+// Route 404 CATCH-ALL: khớp MỌI URL không trùng route nào ở trên. BẮT BUỘC đặt CUỐI
+// CÙNG — vue-router khớp theo thứ tự, để trước sẽ nuốt hết các route thật. public:true
+// để guard không đẩy khách chưa đăng nhập về /login (404 hiện cho cả người lạ lẫn đã
+// đăng nhập). Không đặt trong *.routes.js khu vực nào vì nó là route TOÀN CỤC.
+const notFoundRoute = {
+  path: '/:pathMatch(.*)*',
+  name: 'not-found',
+  component: () => import('@/pages/NotFoundPage.vue'),
+  meta: { layout: 'blank', public: true },
+}
+
+const routes = [
+  ...publicRoutes,
+  ...adminRoutes,
+  ...schoolRoutes,
+  ...teacherRoutes,
+  ...staffRoutes,
+  notFoundRoute,
+]
 
 const router = createRouter({
   history: createWebHistory(),

@@ -41,6 +41,22 @@ public class AttendanceController {
         return service.list(teacherId, f, t);
     }
 
+    /**
+     * Bảng chấm công của CHÍNH giáo viên đang đăng nhập (read-only, mặc định tháng hiện tại).
+     * KHÔNG nhận teacherId — backend tự lấy từ token (chống IDOR). Lọc tùy chọn theo trạng thái.
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("hasRole('TEACHER')")
+    public List<AttendanceResponse> listMine(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status) {
+        LocalDate today = LocalDate.now();
+        LocalDate f = from != null ? from : today.withDayOfMonth(1);
+        LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
+        return service.listMine(f, t, status);
+    }
+
     /** Sinh chấm công hàng loạt từ các buổi đã duyệt trong khoảng ngày. */
     @PostMapping("/generate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")

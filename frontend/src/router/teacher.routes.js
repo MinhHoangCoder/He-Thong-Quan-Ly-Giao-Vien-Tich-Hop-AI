@@ -14,6 +14,20 @@ export const teacherRoutes = [
     component: () => import('@/pages/TeacherSchedulePage.vue'),
     meta: { layout: 'teacher', roles: ['TEACHER'] },
   },
+  // Bảng chấm công của tôi (read-only, sinh từ lịch dạy đã duyệt)
+  {
+    path: '/teacher/attendance',
+    name: 'teacher-attendance',
+    component: () => import('@/pages/TeacherAttendancePage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
+  },
+  // Phiếu lương của tôi (read-only, chỉ phiếu đã chốt/đã trả)
+  {
+    path: '/teacher/payroll',
+    name: 'teacher-payroll',
+    component: () => import('@/pages/TeacherPayrollPage.vue'),
+    meta: { layout: 'teacher', roles: ['TEACHER'] },
+  },
   // Danh sách bài giảng
   {
     path: '/teacher/lessons',

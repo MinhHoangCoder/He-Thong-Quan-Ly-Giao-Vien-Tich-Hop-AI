@@ -18,11 +18,14 @@ const STATUSES = [
 const statusMeta = (code) =>
   STATUSES.find((s) => s.code === code) ?? { label: code, cls: 'badge-gray' }
 
+// Format ngày theo GIỜ ĐỊA PHƯƠNG (yyyy-MM-dd). KHÔNG dùng toISOString() vì nó quy về
+// UTC → ở múi giờ VN (UTC+7) mốc 00:00 bị lùi 1 ngày, làm khoảng lọc mặc định lệch:
+// lọt ngày cuối tháng trước và thiếu ngày cuối tháng này.
+const isoLocal = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const today = new Date()
-const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10)
-const lastOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  .toISOString()
-  .slice(0, 10)
+const firstOfMonth = isoLocal(new Date(today.getFullYear(), today.getMonth(), 1))
+const lastOfMonth = isoLocal(new Date(today.getFullYear(), today.getMonth() + 1, 0))
 
 const filter = reactive({ from: firstOfMonth, to: lastOfMonth, teacherId: '' })
 const teachers = ref([])

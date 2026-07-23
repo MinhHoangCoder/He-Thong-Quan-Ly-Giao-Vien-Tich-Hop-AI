@@ -4,7 +4,7 @@
  * khoảng thời gian và các tiết Thứ+Tiết). Khi tạo, backend tự trải các tiết thành
  * buổi dạy (Schedule) — nguồn cho Chấm công & Bảng lương.
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { assignmentApi } from '@/api/assignments'
 import { tietLabel, tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
@@ -20,6 +20,13 @@ const DAYS = [
 ]
 const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy' }
 
+// Ngày hôm nay theo GIỜ ĐỊA PHƯƠNG (yyyy-MM-dd). Tránh toISOString() vì nó quy về UTC →
+// ở múi giờ VN (UTC+7) lúc rạng sáng (00:00–07:00) sẽ trả nhầm về ngày hôm qua.
+const isoToday = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const loading = ref(false)
 const items = ref([])
 const trashItems = ref([])
@@ -27,6 +34,27 @@ const trashItems = ref([])
 /* Chế độ xem: 'list' = danh sách phân công | 'trash' = thùng rác (đã xóa mềm). */
 const view = ref('list')
 const inTrash = computed(() => view.value === 'trash')
+
+/* ── Tìm kiếm (chỉ ở danh sách đang hoạt động) — lọc phía server ──
+   "Lọc ngay khi gõ" nhưng debounce 300ms để không gọi API dồn dập theo từng phím. */
+const search = ref('')
+let searchTimer = null
+function onSearchInput() {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(load, 300)
+}
+// Nút "Lọc" / Enter: tìm ngay (bỏ hàng đợi debounce đang chờ).
+function applySearch() {
+  clearTimeout(searchTimer)
+  load()
+}
+// Nút "Xóa lọc": trả ô tìm về rỗng rồi tải lại toàn bộ danh sách.
+function clearSearch() {
+  if (!search.value) return
+  search.value = ''
+  clearTimeout(searchTimer)
+  load()
+}
 
 /* ── Phân trang phía client (áp cho danh sách đang xem) ── */
 const PAGE_SIZE = 10
@@ -50,7 +78,7 @@ const modal = reactive({
     subjectId: '',
     schoolId: '',
     classId: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: isoToday(),
     endDate: '',
     slots: [],
   },
@@ -64,7 +92,7 @@ async function load() {
   loading.value = true
   page.value = 0
   try {
-    const { data } = await assignmentApi.list()
+    const { data } = await assignmentApi.list({ keyword: search.value })
     items.value = data
   } catch {
     items.value = []
@@ -97,6 +125,7 @@ function showList() {
 }
 
 onMounted(load)
+onBeforeUnmount(() => clearTimeout(searchTimer))
 
 async function openCreate() {
   Object.assign(modal.form, {
@@ -104,7 +133,7 @@ async function openCreate() {
     subjectId: '',
     schoolId: '',
     classId: '',
-    startDate: new Date().toISOString().slice(0, 10),
+    startDate: isoToday(),
     endDate: '',
     slots: [],
   })
@@ -242,10 +271,29 @@ async function confirmPurge() {
       </div>
       <div class="head-actions">
         <template v-if="!inTrash">
-          <button class="btn btn-outline" @click="showTrash">🗑 Thùng rác</button>
+          <button class="btn btn-outline" @click="showTrash">Thùng rác</button>
           <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
         </template>
         <button v-else class="btn btn-outline" @click="showList">← Quay lại danh sách</button>
+      </div>
+    </div>
+
+    <!-- Tìm kiếm phân công theo GV/trường/lớp/môn (chỉ ở danh sách đang hoạt động) -->
+    <div v-if="!inTrash" class="filter-bar">
+      <label class="field field--wide">
+        <span>Tìm kiếm</span>
+        <input
+          v-model="search"
+          type="search"
+          placeholder="Nhập tên giáo viên, trường, lớp, môn…"
+          aria-label="Tìm phân công theo giáo viên, trường, lớp, môn"
+          @input="onSearchInput"
+          @keyup.enter="applySearch"
+        />
+      </label>
+      <div class="filter-actions">
+        <button class="btn btn-primary" @click="applySearch">Lọc</button>
+        <button class="btn btn-outline" @click="clearSearch">Xóa lọc</button>
       </div>
     </div>
 
@@ -269,7 +317,13 @@ async function confirmPurge() {
           </tr>
           <tr v-else-if="!currentList.length">
             <td colspan="8" class="text-center text-muted">
-              {{ inTrash ? 'Thùng rác trống' : 'Chưa có phân công nào' }}
+              {{
+                inTrash
+                  ? 'Thùng rác trống'
+                  : search.trim()
+                    ? 'Không tìm thấy phân công phù hợp'
+                    : 'Chưa có phân công nào'
+              }}
             </td>
           </tr>
           <tr v-for="a in pagedItems" :key="a.id">
@@ -454,6 +508,50 @@ async function confirmPurge() {
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+/* Ô tìm kiếm phân công — theo mẫu filter-bar (khung bo viền + nhãn + nút Lọc/Xóa lọc) */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+.field--wide {
+  flex: 1;
+}
+.field span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.field input {
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--c-input-border, var(--c-border));
+  border-radius: 8px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: 14px;
+}
+.field input:focus {
+  outline: none;
+  border-color: var(--c-primary);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.14);
+}
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
 }
 /* Tiêu đề cột không bị ngắt dòng (vd "TRẠNG THÁI" bị xuống 2 dòng khi cột hẹp) */
 .table th {

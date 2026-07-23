@@ -33,7 +33,6 @@ await loginAndShoot('light', 'teacher', '/teacher', [['/teacher', 'gv-dash-light
 await loginAndShoot('dark', 'admin', '/dashboard', [
   ['/dashboard', 'admin-dash-dark.png'],
   ['/schedule', 'schedule-dark.png'],
-  // ['/ai-assistant', 'ai-dark.png'], // route Trợ lý AI đang tạm ẩn (2026-07-20)
   ['/assignments', 'assign-dark.png'],
   ['/payroll', 'payroll-dark.png'],
   ['/attendance', 'attendance-dark.png'],

@@ -1,84 +1,115 @@
 <script setup>
-// Dashboard GIÁO VIÊN — chỉ hiển thị SỐ LIỆU, không so sánh kỳ trước/kỳ sau.
-// Toàn bộ lịch lấy từ MỘT nguồn weekSchedule (dữ liệu mẫu, sau thay bằng API):
-// các con số (buổi hôm nay / buổi tuần / số trường / lớp / môn) đều TÍNH ra từ đó
-// nên khi nối API chỉ cần thay weekSchedule, các khối khác tự khớp.
-import { computed } from 'vue'
+// Dashboard GIÁO VIÊN — số liệu THẬT lấy từ API (đã bỏ dữ liệu mẫu):
+//  • Lịch tuần / hôm nay: GET /schedules/mine (chỉ buổi ĐÃ DUYỆT của chính GV).
+//  • Giờ công + số buổi đã dạy tháng này: GET /attendance/mine.
+//  • Điểm đánh giá trung bình: GET /evaluations/stats (backend tự ép về chính GV).
+import { ref, computed, onMounted } from 'vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import { useAuthStore } from '@/stores/auth'
+import { scheduleApi } from '@/api/schedules'
+import { attendanceApi } from '@/api/attendance'
+import { evaluationApi } from '@/api/evaluations'
 
 const auth = useAuthStore()
 const firstName = computed(() => auth.user?.fullName || 'Giáo viên')
 
-// Mỗi môn 1 màu nhấn cố định để chip lịch tuần & chấm timeline đồng bộ nhau
-const SUBJECT_COLORS = {
-  Robotics: '#f97316',
-  Scratch: '#0ea5e9',
-  'AI cơ bản': '#2563eb',
+/* ── Helper ngày theo GIỜ ĐỊA PHƯƠNG (tránh lệch UTC như bug timezone đã sửa) ── */
+const iso = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const addDays = (d, n) => {
+  const x = new Date(d)
+  x.setDate(x.getDate() + n)
+  return x
 }
-const subjectColor = (subject) => SUBJECT_COLORS[subject] || '#f97316'
+// Đầu tuần = Thứ 2 (getDay: CN=0..T7=6 → lùi (getDay()+6)%7 ngày về Thứ 2).
+const startOfWeek = (d) => addDays(d, -((d.getDay() + 6) % 7))
 
-// Lịch dạy trong tuần (T2 → CN). cls = lớp phụ trách tại trường đó.
-const weekSchedule = [
-  {
-    day: 'T2',
-    sessions: [
-      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A1' },
-      { time: '09:30', subject: 'Scratch', school: 'THCS Lê Quý Đôn', cls: '6A2', room: 'P.A2' },
-      { time: '13:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B1' },
-    ],
-  },
-  {
-    day: 'T3',
-    sessions: [
-      { time: '08:00', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B2' },
-      { time: '09:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B1' },
-    ],
-  },
-  {
-    day: 'T4',
-    sessions: [
-      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A1' },
-      { time: '09:30', subject: 'Scratch', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A2' },
-      { time: '13:30', subject: 'AI cơ bản', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B1' },
-    ],
-  },
-  {
-    day: 'T5',
-    sessions: [
-      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A2', room: 'P.A1' },
-      { time: '13:30', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '4A3', room: 'P.B2' },
-    ],
-  },
-  {
-    day: 'T6',
-    sessions: [
-      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '6A1', room: 'P.A1' },
-      { time: '09:30', subject: 'AI cơ bản', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A3' },
-      { time: '13:30', subject: 'Scratch', school: 'TH Nguyễn Du', cls: '5B2', room: 'P.B1' },
-    ],
-  },
-  {
-    day: 'T7',
-    sessions: [
-      { time: '08:00', subject: 'Robotics', school: 'THCS Lê Quý Đôn', cls: '7B1', room: 'P.A1' },
-    ],
-  },
-  { day: 'CN', sessions: [] },
+const now = new Date()
+const TODAY_ISO = iso(now)
+const wkStart = startOfWeek(now)
+const monStart = new Date(now.getFullYear(), now.getMonth(), 1)
+const monEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+// index 0 = Thứ 2 ... 6 = CN — để tô sáng cột "hôm nay" trong lưới tuần.
+const todayIdx = (now.getDay() + 6) % 7
+
+/* ── State ── */
+const loading = ref(false)
+const error = ref('')
+const weekEvents = ref([])
+const monthEvents = ref([])
+const monthAttendance = ref([])
+const evalStats = ref(null)
+
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const [wk, mo, att] = await Promise.all([
+      scheduleApi.mine({ from: iso(wkStart), to: iso(addDays(wkStart, 6)) }),
+      scheduleApi.mine({ from: iso(monStart), to: iso(monEnd) }),
+      attendanceApi.mine({ from: iso(monStart), to: iso(monEnd) }),
+    ])
+    weekEvents.value = wk.data || []
+    monthEvents.value = mo.data || []
+    monthAttendance.value = att.data || []
+  } catch (e) {
+    error.value = e?.response?.data?.message || 'Không tải được dữ liệu bảng điều khiển.'
+  } finally {
+    loading.value = false
+  }
+  // Đánh giá tải riêng: nếu tài khoản không có quyền xem, dashboard vẫn hiện phần còn lại.
+  try {
+    const { data } = await evaluationApi.stats()
+    evalStats.value = data
+  } catch {
+    evalStats.value = null
+  }
+}
+onMounted(load)
+
+/* ── Màu theo môn (theo subjectId; hợp cả theme tối) ── */
+const PALETTE = [
+  '#f97316',
+  '#0ea5e9',
+  '#2563eb',
+  '#16a34a',
+  '#a855f7',
+  '#e11d48',
+  '#f59e0b',
+  '#0d9488',
 ]
+const subjectColor = (id) => PALETTE[(Number(id) || 0) % PALETTE.length]
+const hhmm = (t) => (t ? String(t).slice(0, 5) : '')
+const countBy = (list, field) => new Set(list.map((e) => e[field]).filter((v) => v != null)).size
 
-// getDay(): 0 = CN, 1 = T2... → đổi về chỉ số 0 = T2 ... 6 = CN cho khớp mảng trên
-const todayIdx = (new Date().getDay() + 6) % 7
-const todaySessions = computed(() => weekSchedule[todayIdx].sessions)
-const weekCount = computed(() => weekSchedule.reduce((sum, d) => sum + d.sessions.length, 0))
+/* ── Hôm nay (lọc từ lịch tuần, sắp theo giờ) ── */
+const todaySessions = computed(() =>
+  weekEvents.value
+    .filter((e) => e.date === TODAY_ISO)
+    .slice()
+    .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')),
+)
+const weekCount = computed(() => weekEvents.value.length)
 const todayLabel = new Intl.DateTimeFormat('vi-VN', {
   weekday: 'long',
   day: '2-digit',
   month: '2-digit',
-}).format(new Date())
+}).format(now)
 
-// 4 thẻ đầu trang: chỉ con số, không hint/không % tăng giảm
+/* ── Số liệu tháng này ── */
+const monthHours = computed(() =>
+  monthAttendance.value.reduce((s, r) => s + Number(r.hours || 0), 0),
+)
+const taughtThisMonth = computed(
+  () => monthAttendance.value.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length,
+)
+const avgScore = computed(() => {
+  const a = evalStats.value?.averageScore
+  return a == null ? '—' : `${Number(a).toFixed(1)}/5`
+})
+
+/* ── 4 thẻ đầu trang ── */
 const stats = computed(() => [
   {
     icon: 'schedule',
@@ -87,32 +118,51 @@ const stats = computed(() => [
     color: '#f97316',
   },
   { icon: 'assignment', label: 'Buổi dạy tuần này', value: weekCount.value, color: '#0ea5e9' },
-  { icon: 'clock', label: 'Giờ công tháng này', value: '72h', color: '#f59e0b' },
-  { icon: 'evaluation', label: 'Điểm đánh giá', value: '4.7/5', color: '#2563eb' },
+  {
+    icon: 'clock',
+    label: 'Giờ công tháng này',
+    value: `${Math.round(monthHours.value)}h`,
+    color: '#f59e0b',
+  },
+  { icon: 'evaluation', label: 'Điểm đánh giá', value: avgScore.value, color: '#2563eb' },
 ])
 
-// Đếm số phần tử KHÁC NHAU theo 1 trường dữ liệu (Set tự loại trùng)
-const countUnique = (field) =>
-  new Set(weekSchedule.flatMap((d) => d.sessions.map((s) => s[field]))).size
-
+/* ── Số liệu giảng dạy (phạm vi tháng này) ── */
 const quickStats = computed(() => [
-  { icon: 'school', label: 'Trường đang dạy', value: countUnique('school') },
-  { icon: 'teacher', label: 'Lớp phụ trách', value: countUnique('cls') },
-  { icon: 'subject', label: 'Môn đảm nhiệm', value: countUnique('subject') },
-  { icon: 'attendance', label: 'Buổi đã dạy tháng này', value: 38 },
+  { icon: 'school', label: 'Trường đang dạy', value: countBy(monthEvents.value, 'schoolId') },
+  { icon: 'teacher', label: 'Lớp phụ trách', value: countBy(monthEvents.value, 'classId') },
+  { icon: 'subject', label: 'Môn đảm nhiệm', value: countBy(monthEvents.value, 'subjectId') },
+  { icon: 'attendance', label: 'Buổi đã dạy tháng này', value: taughtThisMonth.value },
 ])
 
-// Chip buổi dạy ở lưới tuần: nền mờ 9% + vạch trái đậm theo màu môn (hợp cả theme tối)
+/* ── Lưới lịch tuần: 7 cột T2..CN dựng từ /schedules/mine ── */
+const DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+const weekSchedule = computed(() => {
+  const cols = DOW.map((day, i) => ({ day, iso: iso(addDays(wkStart, i)), sessions: [] }))
+  const byIso = Object.fromEntries(cols.map((c) => [c.iso, c]))
+  for (const e of weekEvents.value) {
+    if (byIso[e.date]) byIso[e.date].sessions.push(e)
+  }
+  cols.forEach((c) =>
+    c.sessions.sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')),
+  )
+  return cols
+})
+
+/* Chip buổi dạy ở lưới tuần: nền mờ + vạch trái theo màu môn (hợp cả theme tối) */
 const sessionStyle = (s) => ({
-  background: subjectColor(s.subject) + '17',
-  borderLeftColor: subjectColor(s.subject),
+  background: subjectColor(s.subjectId) + '17',
+  borderLeftColor: subjectColor(s.subjectId),
 })
 </script>
 
 <template>
   <div class="page-head">
     <h1 class="page-head__title">Xin chào, {{ firstName }}</h1>
+    <span v-if="loading" class="dash-loading">Đang tải…</span>
   </div>
+
+  <p v-if="error" class="dash-error">{{ error }}</p>
 
   <section class="stat-grid">
     <StatCard v-for="s in stats" :key="s.label" v-bind="s" />
@@ -126,12 +176,14 @@ const sessionStyle = (s) => ({
         <span class="card__date">{{ todayLabel }}</span>
       </div>
       <ul v-if="todaySessions.length" class="timeline">
-        <li v-for="t in todaySessions" :key="t.time" class="timeline__item">
-          <span class="timeline__time">{{ t.time }}</span>
-          <span class="timeline__dot" :style="{ background: subjectColor(t.subject) }" />
+        <li v-for="t in todaySessions" :key="t.id" class="timeline__item">
+          <span class="timeline__time">{{ hhmm(t.startTime) }}</span>
+          <span class="timeline__dot" :style="{ background: subjectColor(t.subjectId) }" />
           <div class="timeline__body">
-            <strong>{{ t.subject }}</strong>
-            <small>{{ t.school }} · Lớp {{ t.cls }} · {{ t.room }}</small>
+            <strong>{{ t.subjectName }}</strong>
+            <small>
+              {{ t.schoolName }}<template v-if="t.className"> · Lớp {{ t.className }}</template>
+            </small>
           </div>
         </li>
       </ul>
@@ -171,10 +223,10 @@ const sessionStyle = (s) => ({
             <span class="wday__name">{{ d.day }}</span>
             <span v-if="d.sessions.length" class="wday__count">{{ d.sessions.length }} buổi</span>
           </div>
-          <div v-for="s in d.sessions" :key="s.time" class="wsession" :style="sessionStyle(s)">
-            <strong class="wsession__time">{{ s.time }}</strong>
-            <span class="wsession__subject">{{ s.subject }}</span>
-            <small class="wsession__cls">Lớp {{ s.cls }}</small>
+          <div v-for="s in d.sessions" :key="s.id" class="wsession" :style="sessionStyle(s)">
+            <strong class="wsession__time">{{ hhmm(s.startTime) }}</strong>
+            <span class="wsession__subject">{{ s.subjectName }}</span>
+            <small v-if="s.className" class="wsession__cls">Lớp {{ s.className }}</small>
           </div>
           <p v-if="!d.sessions.length" class="wday__off">Nghỉ</p>
         </div>
@@ -197,6 +249,21 @@ const sessionStyle = (s) => ({
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--a-text);
+}
+.dash-loading {
+  font-size: 0.82rem;
+  color: var(--a-text-muted);
+}
+.dash-error {
+  margin: 0 0 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+  font-size: 0.88rem;
+}
+:root[data-theme='dark'] .dash-error {
+  color: #f87171;
 }
 .stat-grid {
   display: grid;

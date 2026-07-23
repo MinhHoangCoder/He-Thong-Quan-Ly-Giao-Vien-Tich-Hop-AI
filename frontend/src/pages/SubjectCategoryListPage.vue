@@ -431,7 +431,9 @@ async function confirmDeleteSubject() {
               </td>
 
               <td>
-                <div v-if="item.description" class="desc-text">{{ item.description }}</div>
+                <div v-if="item.description" class="desc-text" :title="item.description">
+                  {{ item.description }}
+                </div>
                 <span v-else>-</span>
               </td>
 
@@ -495,7 +497,9 @@ async function confirmDeleteSubject() {
                         <td class="title-text">{{ s.name }}</td>
 
                         <td>
-                          <span v-if="s.description" class="desc-text">{{ s.description }}</span>
+                          <div v-if="s.description" class="desc-text" :title="s.description">
+                            {{ s.description }}
+                          </div>
                           <span v-else>-</span>
                         </td>
 

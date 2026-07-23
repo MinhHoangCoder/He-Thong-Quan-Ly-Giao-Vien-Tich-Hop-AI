@@ -10,6 +10,15 @@ export const payrollApi = {
     return http.get('/payroll', { params: { year, month } })
   },
 
+  /**
+   * "Phiếu lương của tôi" — phiếu của CHÍNH giáo viên đang đăng nhập trong năm (mới nhất trước).
+   * KHÔNG truyền teacherId: backend tự lấy từ token, chỉ trả phiếu đã chốt/đã trả.
+   * month = undefined → cả năm; month cụ thể → đúng 1 phiếu tháng đó.
+   */
+  mine({ year, month } = {}) {
+    return http.get('/payroll/mine', { params: { year, month: month || undefined } })
+  },
+
   /** Sinh/tính lại lương từ chấm công theo tiết (đơn giá tự tra theo cấp lớp). */
   generate(year, month) {
     return http.post('/payroll/generate', null, { params: { year, month } })
