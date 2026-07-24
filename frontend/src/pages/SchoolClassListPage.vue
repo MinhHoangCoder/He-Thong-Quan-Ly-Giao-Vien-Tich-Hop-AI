@@ -37,6 +37,14 @@ const pageInput = ref('')
 const schools = ref([])
 const existingGrades = ref([])
 
+/** list = danh sách chính | trash = thùng rác (giống QL giáo viên). */
+const viewMode = ref('list')
+const deleteMode = ref(false)
+const selectedIds = ref([])
+const trashItems = ref([])
+const trashLoading = ref(false)
+const batchDeleting = ref(false)
+
 /** Combobox trường: gõ để lọc + chọn trong 1 ô. */
 const schoolQuery = ref('')
 const schoolDropOpen = ref(false)
@@ -47,9 +55,9 @@ const modal = reactive({
   mode: 'create', // 'create' | 'edit'
   id: null,
   form: {
-    schoolLevel: '', // TH | THCS | THPT — bắt buộc trước
+    schoolLevel: '', // TH | THCS
     schoolId: '',
-    gradeNum: '', // 1..12
+    gradeNum: '', // 1..9
     classSuffix: '', // A1, B2…
     schoolYear: '',
     status: 'ACTIVE',
@@ -60,6 +68,8 @@ const modal = reactive({
 })
 
 const deleteTarget = ref(null)
+const batchDeleteOpen = ref(false)
+const purgeTarget = ref(null)
 
 /* =========================
    Helpers: cấp / năm / gộp tên
@@ -611,8 +621,179 @@ async function confirmDelete() {
   }
 }
 
+/* ── Chọn nhiều + thùng rác (pattern QL giáo viên) ── */
+function switchView(mode) {
+  viewMode.value = mode
+  deleteMode.value = false
+  selectedIds.value = []
+  if (mode === 'trash') loadTrash()
+  else {
+    load()
+    loadExistingGrades()
+  }
+}
+
+function toggleDeleteMode() {
+  deleteMode.value = !deleteMode.value
+  selectedIds.value = []
+}
+
+function toggleSelect(id) {
+  const idx = selectedIds.value.indexOf(id)
+  if (idx === -1) selectedIds.value.push(id)
+  else selectedIds.value.splice(idx, 1)
+}
+
+/** Chọn/bỏ chọn chỉ các dòng trang hiện tại — giữ nguyên lựa chọn các trang khác. */
+function toggleSelectAll() {
+  const pageIds = items.value.map((i) => i.id)
+  if (!pageIds.length) return
+  const allPageSelected = pageIds.every((id) => selectedIds.value.includes(id))
+  if (allPageSelected) {
+    selectedIds.value = selectedIds.value.filter((id) => !pageIds.includes(id))
+  } else {
+    const set = new Set(selectedIds.value)
+    pageIds.forEach((id) => set.add(id))
+    selectedIds.value = [...set]
+  }
+}
+
+const allSelected = computed(
+  () =>
+    items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
+)
+
+/** Chọn tất cả trong thùng rác (list 1 trang, không phân trang). */
+function toggleSelectAllTrash() {
+  const ids = trashItems.value.map((i) => i.id)
+  if (!ids.length) return
+  const all = ids.every((id) => selectedIds.value.includes(id))
+  selectedIds.value = all ? [] : [...ids]
+}
+
+const allTrashSelected = computed(
+  () =>
+    trashItems.value.length > 0 &&
+    trashItems.value.every((i) => selectedIds.value.includes(i.id)),
+)
+
+const trashBatchBusy = ref(false)
+const trashBatchRestoreOpen = ref(false)
+const trashBatchPurgeOpen = ref(false)
+
+async function confirmTrashBatchRestore() {
+  if (!selectedIds.value.length) return
+  trashBatchBusy.value = true
+  try {
+    const results = await Promise.allSettled(
+      selectedIds.value.map((id) => classApi.restore(id)),
+    )
+    const failed = results.filter((r) => r.status === 'rejected').length
+    const ok = results.length - failed
+    trashBatchRestoreOpen.value = false
+    selectedIds.value = []
+    deleteMode.value = false
+    await loadTrash()
+    if (failed) {
+      alert(`Khôi phục xong ${ok} lớp; ${failed} lớp lỗi (có thể trùng tên/năm với lớp đang có).`)
+    }
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại')
+  } finally {
+    trashBatchBusy.value = false
+  }
+}
+
+async function confirmTrashBatchPurge() {
+  if (!selectedIds.value.length) return
+  trashBatchBusy.value = true
+  try {
+    const results = await Promise.allSettled(selectedIds.value.map((id) => classApi.purge(id)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    const ok = results.length - failed
+    trashBatchPurgeOpen.value = false
+    selectedIds.value = []
+    deleteMode.value = false
+    await loadTrash()
+    if (failed) {
+      alert(`Đã xóa hẳn ${ok} lớp; ${failed} lớp lỗi (có thể còn ràng buộc dữ liệu).`)
+    }
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại')
+  } finally {
+    trashBatchBusy.value = false
+  }
+}
+
+function requestBatchDelete() {
+  if (!selectedIds.value.length) return
+  batchDeleteOpen.value = true
+}
+
+async function confirmBatchDelete() {
+  if (!selectedIds.value.length) return
+  batchDeleting.value = true
+  try {
+    await classApi.removeMany([...selectedIds.value])
+    batchDeleteOpen.value = false
+    selectedIds.value = []
+    deleteMode.value = false
+    await load()
+    await loadExistingGrades()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa hàng loạt thất bại')
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+async function loadTrash() {
+  trashLoading.value = true
+  try {
+    const { data } = await classApi.trash()
+    trashItems.value = data
+  } catch {
+    trashItems.value = []
+  } finally {
+    trashLoading.value = false
+  }
+}
+
+async function restoreClass(id) {
+  try {
+    await classApi.restore(id)
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+    await loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Khôi phục thất bại')
+  }
+}
+
+async function confirmPurge() {
+  if (!purgeTarget.value) return
+  try {
+    const id = purgeTarget.value.id
+    await classApi.purge(id)
+    purgeTarget.value = null
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
+    await loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
+    purgeTarget.value = null
+  }
+}
+
 function statusLabel(s) {
   return s === 'ACTIVE' ? 'Hoạt động' : 'Ngừng'
+}
+
+function formatDeletedAt(iso) {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('vi-VN')
+  } catch {
+    return iso
+  }
 }
 </script>
 
@@ -626,133 +807,303 @@ function statusLabel(s) {
           Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học
         </p>
       </div>
-      <button class="btn" @click="openCreate">+ Thêm lớp học</button>
-    </div>
-
-    <!-- ================= FILTER ================= -->
-    <div class="filter-bar">
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input
-          v-model="keyword"
-          placeholder="Tên lớp, khối, năm học..."
-          @input="onKeywordInput"
-          @keyup.enter="onSearch"
-        />
-      </label>
-
-      <label class="field">
-        <span>Trường</span>
-        <select v-model="filterSchoolId" @change="onSearch">
-          <option value="">Tất cả</option>
-          <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Khối</span>
-        <select v-model="filterGradeLevel" @change="onSearch">
-          <option value="">Tất cả khối</option>
-          <option v-for="g in existingGrades" :key="g" :value="g">{{ g }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Trạng thái</span>
-        <select v-model="filterStatus" @change="onSearch">
-          <option value="">Tất cả</option>
-          <option value="ACTIVE">Hoạt động</option>
-          <option value="INACTIVE">Ngừng</option>
-        </select>
-      </label>
-
-      <div class="filter-actions">
-        <button type="button" class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+      <div class="page__head-actions">
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'list' }"
+          @click="switchView('list')"
+        >
+          Danh sách
+        </button>
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'trash' }"
+          @click="switchView('trash')"
+        >
+          Thùng rác
+        </button>
+        <button v-if="viewMode === 'list'" type="button" class="btn" @click="openCreate">
+          + Thêm lớp học
+        </button>
       </div>
     </div>
 
-    <p v-if="!loading" class="total">
-      Tổng cộng
-      <strong>{{ total }}</strong>
-      lớp học
-      <span class="total-hint">(mới nhất trước)</span>
-    </p>
+    <!-- ================= VIEW: DANH SÁCH ================= -->
+    <template v-if="viewMode === 'list'">
+      <div class="filter-bar">
+        <label class="field field--wide">
+          <span>Tìm kiếm</span>
+          <input
+            v-model="keyword"
+            placeholder="Tên lớp, khối, năm học..."
+            @input="onKeywordInput"
+            @keyup.enter="onSearch"
+          />
+        </label>
 
-    <!-- ================= TABLE ================= -->
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Tên lớp</th>
-            <th>Trường</th>
-            <th>Khối</th>
-            <th>Năm học</th>
-            <th>Trạng thái</th>
-            <th width="120">Thao tác</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="6" class="empty">Đang tải...</td>
-          </tr>
-          <tr v-else-if="items.length === 0">
-            <td colspan="6" class="empty">Không có dữ liệu</td>
-          </tr>
-          <tr v-for="item in items" :key="item.id">
-            <td class="col-title">
-              <div class="title-text">{{ item.name }}</div>
-            </td>
-            <td>{{ item.schoolName || '—' }}</td>
-            <td>{{ item.gradeLevel || '—' }}</td>
-            <td>
-              <code class="code-text">{{ item.schoolYear }}</code>
-            </td>
-            <td>
-              <span
-                class="badge"
-                :class="item.status === 'ACTIVE' ? 'badge--pub' : 'badge--draft'"
-              >
-                {{ statusLabel(item.status) }}
-              </span>
-            </td>
-            <td class="col-actions">
-              <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
-              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
-                Xóa
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+        <label class="field">
+          <span>Trường</span>
+          <select v-model="filterSchoolId" @change="onSearch">
+            <option value="">Tất cả</option>
+            <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+        </label>
 
-    <!-- ================= PAGINATION ================= -->
-    <div v-if="total > pageSize" class="pagination">
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
-      <button
-        v-for="p in visiblePages"
-        :key="p"
-        class="pg-btn"
-        :class="{ 'pg-btn--active': page === p - 1 }"
-        @click="goPage(p - 1)"
-      >
-        {{ p }}
-      </button>
-      <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(page + 1)">›</button>
-      <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(totalPages - 1)">
-        »
-      </button>
-      <input
-        v-model="pageInput"
-        class="page-input"
-        type="number"
-        min="1"
-        :max="totalPages"
-        placeholder="Trang"
-      />
-      <button class="pg-btn" @click="jumpPage">Đi</button>
-    </div>
+        <label class="field">
+          <span>Khối</span>
+          <select v-model="filterGradeLevel" @change="onSearch">
+            <option value="">Tất cả khối</option>
+            <option v-for="g in existingGrades" :key="g" :value="g">{{ g }}</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Trạng thái</span>
+          <select v-model="filterStatus" @change="onSearch">
+            <option value="">Tất cả</option>
+            <option value="ACTIVE">Hoạt động</option>
+            <option value="INACTIVE">Ngừng</option>
+          </select>
+        </label>
+
+        <div class="filter-actions">
+          <button type="button" class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+          <button
+            type="button"
+            class="btn btn--ghost"
+            :class="{ 'btn--select-on': deleteMode }"
+            @click="toggleDeleteMode"
+          >
+            {{ deleteMode ? 'Hủy chọn' : 'Chọn nhiều' }}
+          </button>
+          <button
+            v-if="deleteMode && selectedIds.length"
+            type="button"
+            class="btn btn--danger"
+            @click="requestBatchDelete"
+          >
+            Xóa {{ selectedIds.length }} lớp
+          </button>
+        </div>
+      </div>
+
+      <p v-if="!loading" class="total">
+        Tổng cộng
+        <strong>{{ total }}</strong>
+        lớp học
+        <span v-if="deleteMode" class="total-hint">
+          — đã chọn {{ selectedIds.length }}
+        </span>
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th v-if="deleteMode" class="col-check">
+                <input
+                  type="checkbox"
+                  :checked="allSelected"
+                  title="Chọn tất cả trang này"
+                  @change="toggleSelectAll"
+                />
+              </th>
+              <th>Tên lớp</th>
+              <th>Trường</th>
+              <th>Khối</th>
+              <th>Năm học</th>
+              <th>Trạng thái</th>
+              <th width="120">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+            </tr>
+            <tr v-else-if="items.length === 0">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">Không có dữ liệu</td>
+            </tr>
+            <tr
+              v-for="item in items"
+              :key="item.id"
+              :class="{ 'row--selected': deleteMode && selectedIds.includes(item.id) }"
+              @click="deleteMode && toggleSelect(item.id)"
+            >
+              <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(item.id)">
+                <input
+                  type="checkbox"
+                  :checked="selectedIds.includes(item.id)"
+                  @click.stop="toggleSelect(item.id)"
+                />
+              </td>
+              <td class="col-title">
+                <div class="title-text">{{ item.name }}</div>
+              </td>
+              <td>{{ item.schoolName || '—' }}</td>
+              <td>{{ item.gradeLevel || '—' }}</td>
+              <td>
+                <code class="code-text">{{ item.schoolYear }}</code>
+              </td>
+              <td>
+                <span
+                  class="badge"
+                  :class="item.status === 'ACTIVE' ? 'badge--pub' : 'badge--draft'"
+                >
+                  {{ statusLabel(item.status) }}
+                </span>
+              </td>
+              <td class="col-actions" @click.stop>
+                <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
+                <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
+                  Xóa
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-if="total > pageSize" class="pagination">
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+        <button
+          v-for="p in visiblePages"
+          :key="p"
+          class="pg-btn"
+          :class="{ 'pg-btn--active': page === p - 1 }"
+          @click="goPage(p - 1)"
+        >
+          {{ p }}
+        </button>
+        <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(page + 1)">
+          ›
+        </button>
+        <button
+          class="pg-btn"
+          :disabled="page >= totalPages - 1"
+          @click="goPage(totalPages - 1)"
+        >
+          »
+        </button>
+        <input
+          v-model="pageInput"
+          class="page-input"
+          type="number"
+          min="1"
+          :max="totalPages"
+          placeholder="Trang"
+        />
+        <button class="pg-btn" @click="jumpPage">Đi</button>
+      </div>
+    </template>
+
+    <!-- ================= VIEW: THÙNG RÁC ================= -->
+    <template v-else>
+      <div class="trash-banner">
+        <div class="trash-banner__row">
+          <div>
+            <h2 class="trash-banner__title">Thùng rác — lớp đã xóa</h2>
+            <p class="trash-banner__sub">
+              Lớp đã xóa mềm. Có thể khôi phục hoặc xóa vĩnh viễn (không hoàn tác).
+            </p>
+          </div>
+          <div class="trash-banner__actions">
+            <button
+              type="button"
+              class="btn btn--ghost"
+              :class="{ 'btn--select-on': deleteMode }"
+              :disabled="!trashItems.length"
+              @click="toggleDeleteMode"
+            >
+              {{ deleteMode ? 'Hủy chọn' : 'Chọn nhiều' }}
+            </button>
+            <button
+              v-if="deleteMode && selectedIds.length"
+              type="button"
+              class="btn"
+              :disabled="trashBatchBusy"
+              @click="trashBatchRestoreOpen = true"
+            >
+              Khôi phục {{ selectedIds.length }}
+            </button>
+            <button
+              v-if="deleteMode && selectedIds.length"
+              type="button"
+              class="btn btn--danger"
+              :disabled="trashBatchBusy"
+              @click="trashBatchPurgeOpen = true"
+            >
+              Xóa hẳn {{ selectedIds.length }}
+            </button>
+          </div>
+        </div>
+        <p v-if="deleteMode && selectedIds.length" class="total-hint trash-banner__count">
+          Đã chọn {{ selectedIds.length }} / {{ trashItems.length }} lớp
+        </p>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th v-if="deleteMode" class="col-check">
+                <input
+                  type="checkbox"
+                  :checked="allTrashSelected"
+                  title="Chọn tất cả"
+                  @change="toggleSelectAllTrash"
+                />
+              </th>
+              <th>Tên lớp</th>
+              <th>Trường</th>
+              <th>Khối</th>
+              <th>Năm học</th>
+              <th>Ngày xóa</th>
+              <th width="180">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="trashLoading">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+            </tr>
+            <tr v-else-if="trashItems.length === 0">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">Thùng rác trống</td>
+            </tr>
+            <tr
+              v-for="item in trashItems"
+              :key="item.id"
+              :class="{ 'row--selected': deleteMode && selectedIds.includes(item.id) }"
+              @click="deleteMode && toggleSelect(item.id)"
+            >
+              <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(item.id)">
+                <input
+                  type="checkbox"
+                  :checked="selectedIds.includes(item.id)"
+                  @click.stop="toggleSelect(item.id)"
+                />
+              </td>
+              <td class="col-title">
+                <div class="title-text">{{ item.name }}</div>
+              </td>
+              <td>{{ item.schoolName || '—' }}</td>
+              <td>{{ item.gradeLevel || '—' }}</td>
+              <td>
+                <code class="code-text">{{ item.schoolYear }}</code>
+              </td>
+              <td>{{ formatDeletedAt(item.deletedAt) }}</td>
+              <td class="col-actions" @click.stop>
+                <button class="act-btn act-btn--restore" @click="restoreClass(item.id)">
+                  Khôi phục
+                </button>
+                <button class="act-btn act-btn--del" @click="purgeTarget = item">Xóa hẳn</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
 
     <!-- ================= MODAL: tạo/sửa ================= -->
     <div v-if="modal.open" class="overlay" @click.self="modal.open = false">
@@ -925,18 +1276,92 @@ function statusLabel(s) {
       </div>
     </div>
 
-    <!-- ================= MODAL: xác nhận xóa ================= -->
+    <!-- ================= MODAL: xác nhận xóa 1 ================= -->
     <div v-if="deleteTarget" class="overlay" @click.self="deleteTarget = null">
       <div class="modal">
         <h3>Xác nhận xóa</h3>
         <p>
-          Bạn có chắc muốn xóa lớp
+          Chuyển lớp
           <strong>{{ deleteTarget.name }}</strong>
-          ({{ deleteTarget.schoolYear }})?
+          ({{ deleteTarget.schoolYear }}) vào thùng rác?
         </p>
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
           <button class="btn btn--danger" @click="confirmDelete">Xóa</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: xóa nhiều ================= -->
+    <div v-if="batchDeleteOpen" class="overlay" @click.self="batchDeleteOpen = false">
+      <div class="modal">
+        <h3>Xóa {{ selectedIds.length }} lớp?</h3>
+        <p>Các lớp đã chọn sẽ chuyển vào thùng rác (có thể khôi phục sau).</p>
+        <div class="modal__actions">
+          <button class="btn btn--ghost" :disabled="batchDeleting" @click="batchDeleteOpen = false">
+            Hủy
+          </button>
+          <button class="btn btn--danger" :disabled="batchDeleting" @click="confirmBatchDelete">
+            {{ batchDeleting ? 'Đang xóa...' : 'Xóa vào thùng rác' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: xóa vĩnh viễn ================= -->
+    <div v-if="purgeTarget" class="overlay" @click.self="purgeTarget = null">
+      <div class="modal">
+        <h3>Xóa vĩnh viễn?</h3>
+        <p>
+          Xóa hẳn lớp
+          <strong>{{ purgeTarget.name }}</strong>
+          ({{ purgeTarget.schoolYear }}) — <strong>không hoàn tác</strong>.
+        </p>
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="purgeTarget = null">Hủy</button>
+          <button class="btn btn--danger" @click="confirmPurge">Xóa vĩnh viễn</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: khôi phục nhiều (thùng rác) ================= -->
+    <div v-if="trashBatchRestoreOpen" class="overlay" @click.self="trashBatchRestoreOpen = false">
+      <div class="modal">
+        <h3>Khôi phục {{ selectedIds.length }} lớp?</h3>
+        <p>Đưa các lớp đã chọn từ thùng rác về danh sách chính.</p>
+        <div class="modal__actions">
+          <button
+            class="btn btn--ghost"
+            :disabled="trashBatchBusy"
+            @click="trashBatchRestoreOpen = false"
+          >
+            Hủy
+          </button>
+          <button class="btn" :disabled="trashBatchBusy" @click="confirmTrashBatchRestore">
+            {{ trashBatchBusy ? 'Đang khôi phục...' : 'Khôi phục' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: xóa hẳn nhiều (thùng rác) ================= -->
+    <div v-if="trashBatchPurgeOpen" class="overlay" @click.self="trashBatchPurgeOpen = false">
+      <div class="modal">
+        <h3>Xóa vĩnh viễn {{ selectedIds.length }} lớp?</h3>
+        <p>
+          Thao tác <strong>không hoàn tác</strong>. Chỉ xóa được lớp không còn ràng buộc dữ liệu.
+        </p>
+        <div class="modal__actions">
+          <button
+            class="btn btn--ghost"
+            :disabled="trashBatchBusy"
+            @click="trashBatchPurgeOpen = false"
+          >
+            Hủy
+          </button>
+          <button class="btn btn--danger" :disabled="trashBatchBusy" @click="confirmTrashBatchPurge">
+            {{ trashBatchBusy ? 'Đang xóa...' : 'Xóa vĩnh viễn' }}
+          </button>
         </div>
       </div>
     </div>
@@ -953,7 +1378,16 @@ function statusLabel(s) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
   margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+
+.page__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .page__title {
@@ -967,6 +1401,92 @@ function statusLabel(s) {
   margin-top: 6px;
   color: var(--c-text-muted);
   font-size: 14px;
+}
+
+.btn-tab {
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.btn-tab:hover {
+  border-color: #fb923c;
+}
+
+.btn-tab--active {
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
+}
+
+.btn--select-on {
+  border: 1px solid #f97316 !important;
+  color: #ea580c !important;
+  background: rgba(249, 115, 22, 0.1) !important;
+}
+
+.col-check {
+  width: 40px;
+  text-align: center;
+}
+
+.row--selected {
+  background: rgba(249, 115, 22, 0.08);
+}
+
+.act-btn--restore {
+  color: #15803d;
+}
+
+.act-btn--restore:hover {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.trash-banner {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}
+
+.trash-banner__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.trash-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.trash-banner__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.trash-banner__sub {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+.trash-banner__count {
+  margin: 10px 0 0;
+  display: block;
 }
 
 .filter-bar {

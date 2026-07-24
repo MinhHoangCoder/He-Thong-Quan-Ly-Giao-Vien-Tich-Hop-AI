@@ -3,7 +3,7 @@ package com.kdc.tsdms.dto;
 import com.kdc.tsdms.entity.SchoolClass;
 import java.time.Instant;
 
-/** DTO trả về lớp học kèm tên trường (để hiển thị bảng). */
+/** DTO trả về lớp học kèm tên trường (để hiển thị bảng / thùng rác). */
 public record SchoolClassResponse(
         Integer id,
         Integer schoolId,
@@ -13,7 +13,8 @@ public record SchoolClassResponse(
         String schoolYear,
         String status,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        Instant deletedAt) {
 
     public static SchoolClassResponse fromEntity(SchoolClass sc, String schoolName) {
         return new SchoolClassResponse(
@@ -25,6 +26,7 @@ public record SchoolClassResponse(
                 sc.getSchoolYear(),
                 sc.getStatus(),
                 sc.getCreatedAt(),
-                sc.getUpdatedAt());
+                sc.getUpdatedAt(),
+                sc.getDeletedAt());
     }
 }

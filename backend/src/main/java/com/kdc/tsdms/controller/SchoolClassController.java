@@ -44,6 +44,13 @@ public class SchoolClassController {
         return service.listExistingGradeLevels();
     }
 
+    /** Thùng rác — lớp đã xóa mềm. */
+    @GetMapping("/trash")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public List<SchoolClassResponse> trash() {
+        return service.listTrash();
+    }
+
     /** Dropdown lớp ACTIVE theo trường. */
     @GetMapping("/by-school/{schoolId}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_VIEW')")
@@ -60,7 +67,6 @@ public class SchoolClassController {
             @RequestParam(required = false) String gradeLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        // Mới nhất trước: id giảm dần (IDENTITY ~ thời điểm tạo), rồi năm học mới.
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Order.desc("id")));
         return service.search(keyword, schoolId, status, gradeLevel, pageable);
     }
@@ -87,6 +93,27 @@ public class SchoolClassController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
         service.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Xóa mềm nhiều lớp cùng lúc. Body: [1, 2, 3]. */
+    @PostMapping("/batch-delete")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public ResponseEntity<Void> batchDelete(@RequestBody List<Integer> ids) {
+        service.deleteMany(ids);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/trash/{id}/restore")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public SchoolClassResponse restore(@PathVariable Integer id) {
+        return service.restore(id);
+    }
+
+    @DeleteMapping("/trash/{id}")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public ResponseEntity<Void> purge(@PathVariable Integer id) {
+        service.purge(id);
         return ResponseEntity.noContent().build();
     }
 }
