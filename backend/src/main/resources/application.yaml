@@ -92,4 +92,6 @@ tsdms:
     # Để false, client tự gửi header này sẽ KHÔNG né được rate limit (chống giả mạo IP).
     trust-forwarded-header: false
   mail:
-    from: ${MAIL_FROM:no-reply@tsdms.local}
+    # Địa chỉ hiển thị người gửi. Gmail chỉ cho gửi dưới danh nghĩa chính tài khoản đã xác thực,
+    # nên phần email trong <...> phải khớp MAIL_USERNAME. Đổi qua env khi dùng tài khoản khác.
+    from: ${MAIL_FROM:KDC EduOps <kdceduopsai@gmail.com>}
