@@ -129,13 +129,89 @@ public class SchoolClassService {
     @Transactional
     public void delete(Integer id) {
         SchoolClass sc = getOrThrow(id);
+        softDelete(sc);
+    }
+
+    /** Xóa mềm nhiều lớp — dừng ngay nếu 1 id lỗi (transaction rollback). */
+    @Transactional
+    public void deleteMany(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Danh sách id rỗng");
+        }
+        for (Integer id : ids) {
+            if (id == null) continue;
+            softDelete(getOrThrow(id));
+        }
+    }
+
+    /** Thùng rác: lớp đã xóa mềm (mới ẩn trước). */
+    @Transactional(readOnly = true)
+    public List<SchoolClassResponse> listTrash() {
+        return classRepo.findByDeletedTrueOrderByDeletedAtDesc().stream()
+                .map(sc -> SchoolClassResponse.fromEntity(sc, schoolName(sc.getSchoolId())))
+                .toList();
+    }
+
+    /** Khôi phục từ thùng rác — chặn nếu (trường+tên+năm) đã có lớp active. */
+    @Transactional
+    public SchoolClassResponse restore(Integer id) {
+        SchoolClass sc = classRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(
+                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
+        if (classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(
+                sc.getSchoolId(), sc.getName(), sc.getSchoolYear())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không khôi phục được: lớp '"
+                            + sc.getName()
+                            + "' năm "
+                            + sc.getSchoolYear()
+                            + " đã tồn tại ở trường này");
+        }
+        sc.setDeleted(false);
+        sc.setDeletedAt(null);
+        sc.setDeletedBy(null);
+        sc.setUpdatedAt(Instant.now());
+        sc.setUpdatedBy(SecurityUtils.currentUserId());
+        return SchoolClassResponse.fromEntity(classRepo.save(sc), schoolName(sc.getSchoolId()));
+    }
+
+    /**
+     * Xóa vĩnh viễn (chỉ khi đang ở thùng rác). Chặn nếu còn enrollment / assignment trỏ
+     * ClassId.
+     */
+    @Transactional
+    public void purge(Integer id) {
+        SchoolClass sc = classRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(
+                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
         long students = enrollmentRepo.countByClassId(id);
         if (students > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa: lớp đang có " + students + " học sinh");
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: lớp còn " + students + " học sinh ghi danh");
+        }
+        long anyAsg = assignmentRepo.countByClassId(id);
+        if (anyAsg > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: còn " + anyAsg + " phân công gắn lớp này");
+        }
+        classRepo.delete(sc);
+    }
+
+    private void softDelete(SchoolClass sc) {
+        Integer id = sc.getId();
+        long students = enrollmentRepo.countByClassId(id);
+        if (students > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không thể xóa lớp '" + sc.getName() + "': đang có " + students + " học sinh");
         }
         long assignments = assignmentRepo.countByClassIdAndDeletedFalse(id);
         if (assignments > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa: lớp đang gắn " + assignments + " phân công");
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa lớp '" + sc.getName() + "': đang gắn " + assignments + " phân công");
         }
         sc.setDeleted(true);
         sc.setDeletedAt(Instant.now());

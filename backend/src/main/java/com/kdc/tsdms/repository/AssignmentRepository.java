@@ -39,4 +39,7 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
 
     /** Số phân công (chưa xóa mềm) gắn lớp — chặn xóa lớp đang được phân công. */
     long countByClassIdAndDeletedFalse(Integer classId);
+
+    /** Mọi phân công (kể cả xóa mềm) còn trỏ ClassId — chặn xóa vĩnh viễn lớp. */
+    long countByClassId(Integer classId);
 }
