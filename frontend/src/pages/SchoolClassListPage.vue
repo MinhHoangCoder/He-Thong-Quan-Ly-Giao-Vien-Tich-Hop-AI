@@ -3,25 +3,24 @@
 /**
  * Trang "Lớp học" (khu admin): CRUD SchoolClass.
  *
- * Form thông minh:
- *  1) Chọn cấp trường TH / THCS / THPT trước → mới chọn trường (lọc theo cấp)
- *  2) Khối chỉ hiện đúng cấp (TH: 1–5, THCS: 6–9, THPT: 10–12)
- *  3) Tên lớp = số khối + hậu tố người dùng nhập (vd 10 + A1 → 10A1)
- *  4) Năm học: dropdown ±5 năm quanh năm học hiện tại
- * Danh sách: mới nhất trước; lọc theo khối đang tồn tại.
+ *  1) Cấp trường: TH / THCS (không còn THPT)
+ *  2) Khối theo cấp (TH: 1–5, THCS: 6–9)
+ *  3) Tên lớp = {khối}{1 chữ}{số 1–20 bắt buộc} → 7A1, 7A20 (không 7A)
+ *  4) GradeLevel lưu DB dạng "Khối 7" (không chỉ số 7)
+ *  5) Không trùng (trường + tên lớp + năm học)
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { classApi } from '@/api/classes'
 
-/* ── Cấp trường & khối chuẩn phổ thông ── */
+/* ── Cấp trường: chỉ TH + THCS ── */
 const SCHOOL_LEVELS = [
   { code: 'TH', short: 'TH', label: 'Tiểu học', grades: [1, 2, 3, 4, 5] },
   { code: 'THCS', short: 'THCS', label: 'THCS', grades: [6, 7, 8, 9] },
-  { code: 'THPT', short: 'THPT', label: 'THPT', grades: [10, 11, 12] },
 ]
 
 const YEAR_RANGE = 5
-const CLASS_SUFFIX_RE = /^[A-Za-z][A-Za-z0-9]{0,9}$/
+/** Hậu tố: đúng 1 chữ cái + số 1–20 (bắt buộc). VD: A1, B20 — không A, không A21, không AB. */
+const CLASS_SUFFIX_RE = /^[A-Z](20|[1-9]|1[0-9])$/
 const YEAR_RE = /^(\d{4})-(\d{4})$/
 
 const loading = ref(false)
@@ -106,11 +105,12 @@ const schoolYearOptions = computed(() => {
   return list
 })
 
+/** Lưu DB: luôn "Khối 7" (không chỉ "7", không "Lớp 7"). */
 function gradeLabel(num) {
   return `Khối ${num}`
 }
 
-/** Tên lớp gộp: {số khối}{hậu tố} → 10A1 */
+/** Tên lớp gộp: {số khối}{1 chữ}{số 1–20} → 7A1 */
 function composeClassName(gradeNum, suffix) {
   const g = String(gradeNum || '').trim()
   const s = (suffix || '').trim().toUpperCase()
@@ -122,13 +122,17 @@ const composedClassName = computed(() =>
   composeClassName(modal.form.gradeNum, modal.form.classSuffix),
 )
 
-/** Trường theo cấp đã chọn (lọc thông minh theo prefix tên). */
+/** Trường theo cấp đã chọn — chỉ hiện trường khớp cấp (không fallback THPT). */
 const schoolsByLevel = computed(() => {
   const level = modal.form.schoolLevel
   if (!level) return []
   const matched = schools.value.filter((s) => detectSchoolLevel(s.name) === level)
-  // Nếu DB chưa gắn prefix chuẩn → vẫn cho chọn toàn bộ
-  return matched.length ? matched : schools.value
+  // Không khớp prefix: vẫn cho chọn (trường tên chưa có TH/THCS) trừ khi nhận diện là cấp khác
+  if (matched.length) return matched
+  return schools.value.filter((s) => {
+    const d = detectSchoolLevel(s.name)
+    return d === null || d === level
+  })
 })
 
 /** Lọc thêm theo ô tìm kiếm văn bản (không phân biệt hoa thường). */
@@ -300,7 +304,17 @@ function onSearch() {
   load()
 }
 
+/** Tìm kiếm chữ: debounce để không gọi API mỗi phím. */
+let keywordTimer = null
+function onKeywordInput() {
+  if (keywordTimer) clearTimeout(keywordTimer)
+  keywordTimer = setTimeout(() => {
+    onSearch()
+  }, 350)
+}
+
 function clearSearch() {
+  if (keywordTimer) clearTimeout(keywordTimer)
   keyword.value = ''
   filterSchoolId.value = ''
   filterStatus.value = ''
@@ -337,17 +351,21 @@ watch(
   },
 )
 
-/* ── Parse tên lớp cũ khi sửa: 10A1 → grade 10, suffix A1 ── */
+/* ── Parse tên lớp: 7A1 → grade 7, suffix A1 ── */
 function parseClassName(name, gradeLevel) {
-  const n = (name || '').trim()
-  const gradeFromField = (gradeLevel || '').match(/^Khối\s+(1[0-2]|[1-9])$/i)
-  const gradeNum = gradeFromField ? gradeFromField[1] : null
-
-  if (gradeNum && n.toUpperCase().startsWith(gradeNum)) {
-    const rest = n.slice(gradeNum.length).trim()
-    return { gradeNum, classSuffix: rest || '' }
+  const n = (name || '').trim().toUpperCase()
+  let gradeNum = null
+  const fromKhối = (gradeLevel || '').match(/(?:Khối|Lớp)\s*(1[0-2]|[1-9])$/i)
+  if (fromKhối) gradeNum = fromKhối[1]
+  else {
+    const onlyNum = (gradeLevel || '').match(/^(1[0-2]|[1-9])$/)
+    if (onlyNum) gradeNum = onlyNum[1]
   }
-  const m = n.match(/^(1[0-2]|[1-9])([A-Za-z].*)$/)
+
+  if (gradeNum && n.startsWith(gradeNum)) {
+    return { gradeNum, classSuffix: n.slice(gradeNum.length) || '' }
+  }
+  const m = n.match(/^(1[0-2]|[1-9])([A-Z].*)$/)
   if (m) return { gradeNum: m[1], classSuffix: m[2] }
   return { gradeNum: gradeNum || '', classSuffix: n }
 }
@@ -360,7 +378,11 @@ function validateForm(form) {
   resolveSchoolFromQuery()
 
   if (!form.schoolLevel) {
-    errors.schoolLevel = 'Chọn cấp trường (TH / THCS / THPT)'
+    errors.schoolLevel = 'Chọn cấp trường (TH / THCS)'
+    return errors
+  }
+  if (!SCHOOL_LEVELS.some((l) => l.code === form.schoolLevel)) {
+    errors.schoolLevel = 'Cấp trường không hợp lệ (chỉ TH hoặc THCS)'
     return errors
   }
 
@@ -404,11 +426,10 @@ function validateForm(form) {
 
   const suffix = (form.classSuffix || '').trim().toUpperCase()
   if (!suffix) {
-    errors.classSuffix = 'Nhập tên lớp (vd: A1, B, C2)'
+    errors.classSuffix = 'Nhập hậu tố lớp (vd: A1, B20) — bắt buộc có số'
   } else if (!CLASS_SUFFIX_RE.test(suffix)) {
-    errors.classSuffix = 'Hậu tố: bắt đầu bằng chữ, rồi chữ/số (vd: A1, B2), tối đa 10 ký tự'
-  } else if (composeClassName(form.gradeNum, suffix).length > 50) {
-    errors.classSuffix = 'Tên lớp gộp tối đa 50 ký tự'
+    errors.classSuffix =
+      'Hậu tố: đúng 1 chữ cái + số 1–20 (bắt buộc). VD: A1, B20 — không A, không A21, không AB'
   }
 
   const year = (form.schoolYear || '').trim()
@@ -484,13 +505,18 @@ function openCreate() {
 
 function openEdit(item) {
   const school = schools.value.find((s) => s.id === item.schoolId)
-  const level = detectSchoolLevel(school?.name) || detectSchoolLevel(item.schoolName) || ''
+  let level = detectSchoolLevel(school?.name) || detectSchoolLevel(item.schoolName) || ''
+  // Không còn hỗ trợ THPT trên form — bắt chọn lại TH/THCS nếu dữ liệu cũ
+  if (level === 'THPT') level = ''
   const parsed = parseClassName(item.name, item.gradeLevel)
-  // Nếu suy được khối từ gradeLevel mà parse không ra số
   let gradeNum = parsed.gradeNum
   if (!gradeNum && item.gradeLevel) {
     const m = String(item.gradeLevel).match(/(\d{1,2})/)
     if (m) gradeNum = m[1]
+  }
+  // Khối 10–12 thuộc THPT cũ: để trống để user chọn lại cấp TH/THCS
+  if (gradeNum && Number(gradeNum) >= 10) {
+    gradeNum = ''
   }
 
   schoolQuery.value = school?.name || item.schoolName || ''
@@ -597,7 +623,7 @@ function statusLabel(s) {
       <div>
         <h1 class="page__title">Lớp học</h1>
         <p class="page__sub">
-          Quản lý lớp theo cấp trường (TH / THCS / THPT), khối chuẩn và năm học
+          Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học
         </p>
       </div>
       <button class="btn" @click="openCreate">+ Thêm lớp học</button>
@@ -610,13 +636,14 @@ function statusLabel(s) {
         <input
           v-model="keyword"
           placeholder="Tên lớp, khối, năm học..."
+          @input="onKeywordInput"
           @keyup.enter="onSearch"
         />
       </label>
 
       <label class="field">
         <span>Trường</span>
-        <select v-model="filterSchoolId">
+        <select v-model="filterSchoolId" @change="onSearch">
           <option value="">Tất cả</option>
           <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select>
@@ -624,7 +651,7 @@ function statusLabel(s) {
 
       <label class="field">
         <span>Khối</span>
-        <select v-model="filterGradeLevel">
+        <select v-model="filterGradeLevel" @change="onSearch">
           <option value="">Tất cả khối</option>
           <option v-for="g in existingGrades" :key="g" :value="g">{{ g }}</option>
         </select>
@@ -632,7 +659,7 @@ function statusLabel(s) {
 
       <label class="field">
         <span>Trạng thái</span>
-        <select v-model="filterStatus">
+        <select v-model="filterStatus" @change="onSearch">
           <option value="">Tất cả</option>
           <option value="ACTIVE">Hoạt động</option>
           <option value="INACTIVE">Ngừng</option>
@@ -640,8 +667,7 @@ function statusLabel(s) {
       </label>
 
       <div class="filter-actions">
-        <button class="btn" @click="onSearch">Lọc</button>
-        <button class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+        <button type="button" class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
       </div>
     </div>
 
@@ -844,11 +870,11 @@ function statusLabel(s) {
             <input
               v-model="modal.form.classSuffix"
               :disabled="!modal.form.gradeNum"
-              placeholder="vd: A1, B, C2"
-              maxlength="10"
+              placeholder="A1 / B20"
+              maxlength="3"
               :class="{ 'input-error': modal.errors.classSuffix }"
               @input="
-                modal.form.classSuffix = modal.form.classSuffix.toUpperCase();
+                modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '');
                 clearFieldError('classSuffix')
               "
             />
@@ -857,7 +883,8 @@ function statusLabel(s) {
             modal.errors.classSuffix
           }}</small>
           <small v-else-if="composedClassName" class="field-ok">
-            Lưu thành: <strong>{{ composedClassName }}</strong>
+            Tên lớp: <strong>{{ composedClassName }}</strong>
+            · DB khối: <strong>{{ gradeLabel(modal.form.gradeNum) }}</strong>
           </small>
         </div>
 
