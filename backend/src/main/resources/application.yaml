@@ -2,6 +2,12 @@ spring:
   application:
     name: tsdms
 
+  # Nạp secret local (app password Gmail...) từ file KHÔNG commit lên git.
+  # optional: -> thiếu file cũng không sao (CI/thành viên khác chạy vẫn bình thường).
+  # Đặt MAIL_USERNAME/MAIL_PASSWORD trong file này 1 lần -> khỏi set env mỗi phiên.
+  config:
+    import: optional:classpath:mail-local.properties
+
   datasource:
     # URL qua biến môi trường để deploy trỏ sang DB thật (Azure SQL...) mà không sửa code.
     # Default = SQL Server local -> máy dev chạy y như cũ, không cần đặt DB_URL.
