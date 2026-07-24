@@ -47,6 +47,7 @@ public class AttendanceService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final NotificationService notificationService;
 
     public AttendanceService(
             AttendanceRepository attendanceRepo,
@@ -56,7 +57,8 @@ public class AttendanceService {
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
-            PeriodRepository periodRepo) {
+            PeriodRepository periodRepo,
+            NotificationService notificationService) {
         this.attendanceRepo = attendanceRepo;
         this.scheduleRepo = scheduleRepo;
         this.teacherRepo = teacherRepo;
@@ -65,6 +67,7 @@ public class AttendanceService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -203,6 +206,8 @@ public class AttendanceService {
                 from.atStartOfDay(), to.atTime(LocalTime.MAX), "APPROVED");
         Integer userId = SecurityUtils.currentUserId();
         int created = 0;
+        // Gom số buổi vừa sinh theo từng GV → mỗi GV chỉ nhận MỘT thông báo tổng (chống spam).
+        Map<Integer, Integer> createdByTeacher = new HashMap<>();
         for (Schedule s : schedules) {
             if (attendanceRepo.existsByScheduleId(s.getId())) {
                 continue;
@@ -218,7 +223,17 @@ public class AttendanceService {
             a.setCreatedBy(userId);
             attendanceRepo.save(a);
             created++;
+            createdByTeacher.merge(s.getTeacherId(), 1, Integer::sum);
         }
+        createdByTeacher.forEach((teacherId, count) -> notificationService.publishToTeacher(
+                teacherId,
+                "Đã chấm công theo lịch dạy",
+                "Hệ thống đã ghi nhận chấm công cho " + count + " buổi dạy của bạn (mặc định Có mặt). "
+                        + "Vào Bảng chấm công để kiểm tra chi tiết.",
+                "ATTENDANCE",
+                "Attendance",
+                null,
+                false));
         return created;
     }
 
@@ -229,6 +244,7 @@ public class AttendanceService {
         a.setCreatedBy(SecurityUtils.currentUserId());
         apply(a, req);
         attendanceRepo.save(a);
+        notifyTeacherOfAttendance(a, teacher, "Bạn có kết quả chấm công mới");
         return AttendanceResponse.fromEntity(a, fullName(teacher));
     }
 
@@ -237,10 +253,36 @@ public class AttendanceService {
         Attendance a = attendanceRepo
                 .findById(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy dòng chấm công id=" + id));
+        String oldStatus = a.getStatus();
         Teacher teacher = validate(req);
         apply(a, req);
         attendanceRepo.save(a);
+        // Chỉ báo khi TRẠNG THÁI đổi (tránh spam khi chỉ sửa ghi chú/giờ vặt).
+        if (!java.util.Objects.equals(oldStatus, a.getStatus())) {
+            notifyTeacherOfAttendance(a, teacher, "Chấm công của bạn được cập nhật");
+        }
         return AttendanceResponse.fromEntity(a, fullName(teacher));
+    }
+
+    /** Phát thông báo (không hành động) cho GV về một dòng chấm công. */
+    private void notifyTeacherOfAttendance(Attendance a, Teacher teacher, String title) {
+        String content = "Ngày " + a.getWorkDate() + ": " + statusLabel(a.getStatus())
+                + (a.getNote() != null && !a.getNote().isBlank() ? " — " + a.getNote() : "");
+        notificationService.publish(
+                teacher.getAppUserId(), title, content, "ATTENDANCE", "Attendance", a.getId(), false);
+    }
+
+    private static String statusLabel(String status) {
+        if (status == null) {
+            return "—";
+        }
+        return switch (status) {
+            case "PRESENT" -> "Có mặt";
+            case "LATE" -> "Đi muộn";
+            case "ABSENT" -> "Vắng";
+            case "LEAVE" -> "Nghỉ phép";
+            default -> status;
+        };
     }
 
     /**

@@ -67,6 +67,7 @@ public class PayrollService {
     private final AssignmentRepository assignmentRepo;
     private final SchoolClassRepository classRepo;
     private final EntityManager em;
+    private final NotificationService notificationService;
 
     public PayrollService(
             PayrollRepository payrollRepo,
@@ -75,7 +76,8 @@ public class PayrollService {
             ScheduleRepository scheduleRepo,
             AssignmentRepository assignmentRepo,
             SchoolClassRepository classRepo,
-            EntityManager em) {
+            EntityManager em,
+            NotificationService notificationService) {
         this.payrollRepo = payrollRepo;
         this.attendanceRepo = attendanceRepo;
         this.teacherRepo = teacherRepo;
@@ -83,6 +85,7 @@ public class PayrollService {
         this.assignmentRepo = assignmentRepo;
         this.classRepo = classRepo;
         this.em = em;
+        this.notificationService = notificationService;
     }
 
     @Transactional(readOnly = true)
@@ -226,7 +229,26 @@ public class PayrollService {
         p.setUpdatedAt(Instant.now());
         payrollRepo.saveAndFlush(p);
         em.refresh(p);
+        // Bảng lương đã chốt → giáo viên xem được: báo cho GV.
+        notificationService.publishToTeacher(
+                p.getTeacherId(),
+                "Phiếu lương kỳ " + p.getPeriodMonth() + "/" + p.getPeriodYear() + " đã sẵn sàng",
+                "Phiếu lương tháng " + p.getPeriodMonth() + "/" + p.getPeriodYear()
+                        + " đã được chốt. Thực nhận: " + formatVnd(p.getNetAmount())
+                        + ". Vào Phiếu lương để xem chi tiết.",
+                "PAYROLL",
+                "Payroll",
+                p.getId().longValue(),
+                false);
         return toResponse(p);
+    }
+
+    /** Định dạng tiền VND gọn (vd 3.250.000đ). Null → "—". */
+    private static String formatVnd(BigDecimal amount) {
+        if (amount == null) {
+            return "—";
+        }
+        return String.format(java.util.Locale.US, "%,d", amount.longValue()).replace(',', '.') + "đ";
     }
 
     /* ── helpers ── */

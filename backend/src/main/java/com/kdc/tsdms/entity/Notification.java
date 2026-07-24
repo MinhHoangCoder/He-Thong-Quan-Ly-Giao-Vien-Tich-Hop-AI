@@ -46,6 +46,14 @@ public class Notification {
     @Column(name = "IsRead", nullable = false)
     private boolean read = false;
 
+    /** true = thông báo cần người nhận bấm Xác nhận/Hủy (vd: phân công lịch dạy). */
+    @Column(name = "RequiresAction", nullable = false)
+    private boolean requiresAction = false;
+
+    /** Trạng thái hành động: PENDING | CONFIRMED | CANCELLED (null nếu không cần hành động). */
+    @Column(name = "ActionStatus")
+    private String actionStatus;
+
     @Column(name = "ReadAt")
     private Instant readAt;
 
