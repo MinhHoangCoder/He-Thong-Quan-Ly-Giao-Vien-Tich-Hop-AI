@@ -18,7 +18,7 @@ public record SubjectRequest(
 
         @NotNull(message = "Vui lòng chọn nhóm môn") Integer categoryId,
 
-        @Size(max = 500, message = "Mô tả tối đa 500 ký tự") String description,
+        @Size(max = 200, message = "Mô tả tối đa 200 ký tự") String description,
 
         @Pattern(regexp = "^(ACTIVE|DISABLED)$", message = "Status phải là ACTIVE hoặc DISABLED")
         String status) {}
