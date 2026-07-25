@@ -53,12 +53,13 @@ import org.springframework.web.multipart.MultipartFile;
 @Service
 public class LessonService {
 
-    private static final Path UPLOAD_ROOT = Paths.get("uploads/lessons").toAbsolutePath().normalize();
+    private static final Path UPLOAD_ROOT =
+            Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
-    private static final List<String> GRADE_LEVELS = List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6",
-            "Lớp 7", "Lớp 8", "Lớp 9");
+    private static final List<String> GRADE_LEVELS =
+            List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
 
     private final LessonRepository lessonRepo;
     private final SubjectCategoryRepository subjectCategoryRepo;
@@ -232,8 +233,7 @@ public class LessonService {
         List<LessonFile> saved = new ArrayList<>();
 
         for (MultipartFile f : files) {
-            if (f.isEmpty())
-                continue;
+            if (f.isEmpty()) continue;
             String original = f.getOriginalFilename() != null ? f.getOriginalFilename() : "file";
 
             if (f.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
@@ -419,8 +419,7 @@ public class LessonService {
     }
 
     private Map<Integer, Subject> buildSubjectMap(List<Integer> ids) {
-        if (ids.isEmpty())
-            return Map.of();
+        if (ids.isEmpty()) return Map.of();
         return subjectRepo.findAllById(ids).stream().collect(Collectors.toMap(Subject::getId, s -> s));
     }
 

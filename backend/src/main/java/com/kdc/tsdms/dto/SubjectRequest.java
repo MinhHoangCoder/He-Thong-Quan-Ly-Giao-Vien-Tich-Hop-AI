@@ -11,13 +11,14 @@ import jakarta.validation.constraints.Size;
  * chốt để tránh lặp lại lỗi "môn học không có nhóm" (CategoryId null) như cũ.
  */
 public record SubjectRequest(
-                @NotBlank(message = "Mã môn không được để trống") @Pattern(regexp = "^[A-Z0-9_]{2,20}$", message = "Mã môn chỉ gồm chữ hoa, số, dấu gạch dưới (2-20 ký tự)") String code,
+        @NotBlank(message = "Mã môn không được để trống") @Pattern(regexp = "^[A-Z0-9_]{2,20}$", message = "Mã môn chỉ gồm chữ hoa, số, dấu gạch dưới (2-20 ký tự)")
+        String code,
 
-                @NotBlank(message = "Tên môn học không được để trống") @Size(max = 150, message = "Tên môn tối đa 150 ký tự") String name,
+        @NotBlank(message = "Tên môn học không được để trống") @Size(max = 150, message = "Tên môn tối đa 150 ký tự") String name,
 
-                @NotNull(message = "Vui lòng chọn nhóm môn") Integer categoryId,
+        @NotNull(message = "Vui lòng chọn nhóm môn") Integer categoryId,
 
-                @Size(max = 200, message = "Mô tả tối đa 200 ký tự") String description,
+        @Size(max = 200, message = "Mô tả tối đa 200 ký tự") String description,
 
-                @Pattern(regexp = "^(ACTIVE|DISABLED)$", message = "Status phải là ACTIVE hoặc DISABLED") String status) {
-}
+        @Pattern(regexp = "^(ACTIVE|DISABLED)$", message = "Status phải là ACTIVE hoặc DISABLED")
+        String status) {}
