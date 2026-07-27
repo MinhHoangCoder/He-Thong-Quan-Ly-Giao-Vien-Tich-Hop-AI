@@ -32,5 +32,27 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-06-27 | backend | Category đọc từ SubjectCategory | [2026-06-27-category-from-subject-category.md](2026-06-27-category-from-subject-category.md) |
 | 2026-06-30 | database | Lịch dạy GV (Period/AssignmentSlot, V9) + ca làm NV (V10) | [2026-06-30-database-teacher-timetable-employee-shift.md](2026-06-30-database-teacher-timetable-employee-shift.md) |
 | 2026-07-02 | backend | ⭐ Lưới an toàn schema ↔ entity: Testcontainers + Flyway + Hibernate validate | [2026-07-02-backend-integration-test-schema-validate.md](2026-07-02-backend-integration-test-schema-validate.md) |
+| 2026-07-06 | fullstack | Tính năng Cài đặt (cá nhân + hệ thống) & các bản vá bảo mật | [2026-07-06-settings-account-sessions.md](2026-07-06-settings-account-sessions.md) |
+| 2026-07-06 | database | Bẫy `sp_rename` không sửa thân TRIGGER (V11) | [2026-07-06-v11-trigger-sprename-trap.md](2026-07-06-v11-trigger-sprename-trap.md) |
+| 2026-07-07 | fullstack | Account switcher — đăng nhập nhiều tài khoản, chuyển nhanh không cần logout | [2026-07-07-account-switcher-multi-session.md](2026-07-07-account-switcher-multi-session.md) |
+| 2026-07-09 | backend | Mở lại `/uploads` (thu hẹp đúng `/uploads/lessons/**`) | [2026-07-09-backend-uploads-public-scope.md](2026-07-09-backend-uploads-public-scope.md) |
+| 2026-07-10 | frontend | Cài đặt: bỏ card "Mẹo bảo mật" + fix 2 mũi tên lạ ở thanh tab | [2026-07-10-fe-settings-bo-meo-bao-mat-fix-mui-ten-tab.md](2026-07-10-fe-settings-bo-meo-bao-mat-fix-mui-ten-tab.md) |
+| 2026-07-10 | fullstack | Tải file bảo mật + mở link Canva mới nhất + fix ADMIN sửa bài giảng bị đá về dashboard | [2026-07-10-fullstack-secure-download-canva-open-admin-edit-fix.md](2026-07-10-fullstack-secure-download-canva-open-admin-edit-fix.md) |
+| 2026-07-11 | backend | Xóa WebConfig (static mount `/uploads/**`) + gitignore thư mục uploads | [2026-07-11-backend-xoa-webconfig-uploads-gitignore.md](2026-07-11-backend-xoa-webconfig-uploads-gitignore.md) |
+| 2026-07-11 | database | Seed LessonFile: bỏ file vật lý "ma", thay bằng link Canva demo | [2026-07-11-db-seed-lessonfile-canva.md](2026-07-11-db-seed-lessonfile-canva.md) |
+| 2026-07-12 | frontend | Quét lỗi trùng màu dark mode toàn FE + làm lại Dashboard Giáo viên | [2026-07-12-frontend-dark-mode-teacher-dashboard.md](2026-07-12-frontend-dark-mode-teacher-dashboard.md) |
+| 2026-07-14 | frontend | Làm lại trang chủ quảng cáo (landing) + tạm ẩn Ma trận quyền | [2026-07-14-frontend-landing-redesign.md](2026-07-14-frontend-landing-redesign.md) |
+| 2026-07-15 | fullstack | Trang "Hồ sơ của tôi" tách khỏi Cài đặt + Việt hóa quyền chi tiết | [2026-07-15-fullstack-profile-page.md](2026-07-15-fullstack-profile-page.md) |
+| 2026-07-17 | frontend | Landing bớt "AI-generated look" | [2026-07-17-fe-landing-deai.md](2026-07-17-fe-landing-deai.md) |
+| 2026-07-17 | frontend | Gộp sửa liên hệ vào trang Hồ sơ, Cài đặt bỏ tab Hồ sơ | [2026-07-17-fe-profile-inline-edit.md](2026-07-17-fe-profile-inline-edit.md) |
+| 2026-07-18 | frontend | Bỏ icon emoji, thay bằng chữ ở khu vực Bài giảng & Nhóm môn học | [2026-07-18-frontend-lesson-subject-icon-to-text.md](2026-07-18-frontend-lesson-subject-icon-to-text.md) |
+| 2026-07-20 | frontend | Tạm ẩn phần tích hợp AI (chỉ ẩn ở FE, backend nguyên vẹn) | [2026-07-20-fe-hide-ai-integration.md](2026-07-20-fe-hide-ai-integration.md) |
+| 2026-07-21 | backend | ⭐ Chuẩn hóa cấu hình deploy — bỏ hard-code DB url & CORS origin | [2026-07-21-be-deploy-config-env.md](2026-07-21-be-deploy-config-env.md) |
+| 2026-07-21 | backend | TeacherController — bỏ neo role, chuyển sang phân quyền theo permission | [2026-07-21-be-teacher-controller-rbac.md](2026-07-21-be-teacher-controller-rbac.md) |
+| 2026-07-21 | frontend | Route 404 catch-all dùng chung | [2026-07-21-fe-route-404-catchall.md](2026-07-21-fe-route-404-catchall.md) |
+| 2026-07-25 | backend | Cấu hình gửi mail — secret local qua `mail-local.properties` | [2026-07-25-be-mail-local-config.md](2026-07-25-be-mail-local-config.md) |
+
+Ghi chú không gắn ngày (tổng hợp theo chủ đề):
+[fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
 
 > Mức độ giải thích: luồng quan trọng → giải thích thật kỹ; phần dễ/lặp lại → ghi ngắn gọn.

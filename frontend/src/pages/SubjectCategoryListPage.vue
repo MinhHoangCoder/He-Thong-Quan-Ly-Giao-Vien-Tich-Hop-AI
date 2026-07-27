@@ -185,8 +185,8 @@ function validateCategoryForm(form) {
   else if (!CATEGORY_CODE_RE.test(code)) errors.code = 'Chỉ chữ hoa, số, dấu _ (2-50 ký tự)'
   if (!name) errors.name = 'Tên nhóm môn không được để trống'
   else if (name.length > 100) errors.name = 'Tên tối đa 100 ký tự'
-  if (form.description && form.description.length > 500)
-    errors.description = 'Mô tả tối đa 500 ký tự'
+  if (form.description && form.description.length > 200)
+    errors.description = 'Mô tả tối đa 200 ký tự'
   return errors
 }
 
@@ -270,8 +270,8 @@ function validateSubjectForm(form) {
   if (!name) errors.name = 'Tên môn học không được để trống'
   else if (name.length > 150) errors.name = 'Tên tối đa 150 ký tự'
   if (!form.categoryId) errors.categoryId = 'Vui lòng chọn nhóm môn'
-  if (form.description && form.description.length > 500)
-    errors.description = 'Mô tả tối đa 500 ký tự'
+  if (form.description && form.description.length > 200)
+    errors.description = 'Mô tả tối đa 200 ký tự'
   return errors
 }
 

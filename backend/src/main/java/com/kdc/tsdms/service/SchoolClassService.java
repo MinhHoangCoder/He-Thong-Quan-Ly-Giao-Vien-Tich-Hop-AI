@@ -14,6 +14,7 @@ import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -28,15 +29,21 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SchoolClassService {
 
-    /** Khối hợp lệ theo chuẩn phổ thông VN. */
+    /**
+     * Chuẩn lưu GradeLevel trong DB: luôn dạng {@code Khối 7} (không chỉ {@code 7}, không {@code Lớp
+     * 7}). Seed cũ có thể còn "Lớp 10" — khi sửa sẽ được chuẩn hóa.
+     */
     private static final Set<String> VALID_GRADES = Set.of(
             "Khối 1", "Khối 2", "Khối 3", "Khối 4", "Khối 5", "Khối 6", "Khối 7", "Khối 8", "Khối 9", "Khối 10",
             "Khối 11", "Khối 12");
 
     private static final Pattern YEAR_PATTERN = Pattern.compile("^(\\d{4})-(\\d{4})$");
-    private static final Pattern GRADE_NUM_PATTERN = Pattern.compile("^Khối (1[0-2]|[1-9])$");
-    /** Tên lớp gợi ý bắt đầu bằng số khối (vd 10A1) hoặc chữ (vd A1) — cho phép linh hoạt. */
-    private static final Pattern CLASS_NAME_PATTERN = Pattern.compile("^[\\p{L}0-9][\\p{L}0-9\\s._-]{0,49}$");
+    private static final Pattern GRADE_NUM_IN_TEXT = Pattern.compile("(\\d{1,2})");
+    /**
+     * Tên lớp: {khối 1–12}{đúng 1 chữ}{số 1–20 bắt buộc}. VD: 7A1, 6B20. Không 7A, không 7AB, không
+     * 7A21.
+     */
+    private static final Pattern CLASS_NAME_STRICT = Pattern.compile("^([1-9]|1[0-2])([A-Z])(20|[1-9]|1[0-9])$");
 
     private static final int YEAR_RANGE = 5;
 
@@ -56,7 +63,6 @@ public class SchoolClassService {
         this.assignmentRepo = assignmentRepo;
     }
 
-    /** Dropdown trường cho form tạo/sửa lớp. */
     @Transactional(readOnly = true)
     public List<OptionItem> listSchoolOptions() {
         return schoolRepo.findByDeletedFalseOrderByNameAsc().stream()
@@ -64,13 +70,11 @@ public class SchoolClassService {
                 .toList();
     }
 
-    /** Dropdown các khối đang có dữ liệu (lọc danh sách). */
     @Transactional(readOnly = true)
     public List<String> listExistingGradeLevels() {
         return classRepo.findDistinctGradeLevels();
     }
 
-    /** Dropdown lớp ACTIVE theo trường (dùng cho form phân công/lịch nếu cần). */
     @Transactional(readOnly = true)
     public List<OptionItem> listActiveBySchool(Integer schoolId) {
         requireSchool(schoolId);
@@ -103,12 +107,7 @@ public class SchoolClassService {
     public SchoolClassResponse create(SchoolClassRequest req) {
         requireSchool(req.schoolId());
         ValidatedClassFields fields = validateBusiness(req);
-        if (classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(
-                req.schoolId(), fields.name(), fields.year())) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Lớp '" + fields.name() + "' năm học " + fields.year() + " đã tồn tại ở trường này");
-        }
+        assertNoDuplicate(req.schoolId(), fields.name(), fields.year(), null);
         SchoolClass sc = new SchoolClass();
         apply(sc, req.schoolId(), fields);
         sc.setCreatedBy(SecurityUtils.currentUserId());
@@ -120,12 +119,7 @@ public class SchoolClassService {
         SchoolClass sc = getOrThrow(id);
         requireSchool(req.schoolId());
         ValidatedClassFields fields = validateBusiness(req);
-        if (classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalseAndIdNot(
-                req.schoolId(), fields.name(), fields.year(), id)) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Lớp '" + fields.name() + "' năm học " + fields.year() + " đã tồn tại ở trường này");
-        }
+        assertNoDuplicate(req.schoolId(), fields.name(), fields.year(), id);
         apply(sc, req.schoolId(), fields);
         sc.setUpdatedAt(Instant.now());
         sc.setUpdatedBy(SecurityUtils.currentUserId());
@@ -135,13 +129,89 @@ public class SchoolClassService {
     @Transactional
     public void delete(Integer id) {
         SchoolClass sc = getOrThrow(id);
+        softDelete(sc);
+    }
+
+    /** Xóa mềm nhiều lớp — dừng ngay nếu 1 id lỗi (transaction rollback). */
+    @Transactional
+    public void deleteMany(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Danh sách id rỗng");
+        }
+        for (Integer id : ids) {
+            if (id == null) continue;
+            softDelete(getOrThrow(id));
+        }
+    }
+
+    /** Thùng rác: lớp đã xóa mềm (mới ẩn trước). */
+    @Transactional(readOnly = true)
+    public List<SchoolClassResponse> listTrash() {
+        return classRepo.findByDeletedTrueOrderByDeletedAtDesc().stream()
+                .map(sc -> SchoolClassResponse.fromEntity(sc, schoolName(sc.getSchoolId())))
+                .toList();
+    }
+
+    /** Khôi phục từ thùng rác — chặn nếu (trường+tên+năm) đã có lớp active. */
+    @Transactional
+    public SchoolClassResponse restore(Integer id) {
+        SchoolClass sc = classRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(
+                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
+        if (classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(
+                sc.getSchoolId(), sc.getName(), sc.getSchoolYear())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không khôi phục được: lớp '"
+                            + sc.getName()
+                            + "' năm "
+                            + sc.getSchoolYear()
+                            + " đã tồn tại ở trường này");
+        }
+        sc.setDeleted(false);
+        sc.setDeletedAt(null);
+        sc.setDeletedBy(null);
+        sc.setUpdatedAt(Instant.now());
+        sc.setUpdatedBy(SecurityUtils.currentUserId());
+        return SchoolClassResponse.fromEntity(classRepo.save(sc), schoolName(sc.getSchoolId()));
+    }
+
+    /**
+     * Xóa vĩnh viễn (chỉ khi đang ở thùng rác). Chặn nếu còn enrollment / assignment trỏ
+     * ClassId.
+     */
+    @Transactional
+    public void purge(Integer id) {
+        SchoolClass sc = classRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(
+                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
         long students = enrollmentRepo.countByClassId(id);
         if (students > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa: lớp đang có " + students + " học sinh");
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: lớp còn " + students + " học sinh ghi danh");
+        }
+        long anyAsg = assignmentRepo.countByClassId(id);
+        if (anyAsg > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: còn " + anyAsg + " phân công gắn lớp này");
+        }
+        classRepo.delete(sc);
+    }
+
+    private void softDelete(SchoolClass sc) {
+        Integer id = sc.getId();
+        long students = enrollmentRepo.countByClassId(id);
+        if (students > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Không thể xóa lớp '" + sc.getName() + "': đang có " + students + " học sinh");
         }
         long assignments = assignmentRepo.countByClassIdAndDeletedFalse(id);
         if (assignments > 0) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa: lớp đang gắn " + assignments + " phân công");
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa lớp '" + sc.getName() + "': đang gắn " + assignments + " phân công");
         }
         sc.setDeleted(true);
         sc.setDeletedAt(Instant.now());
@@ -154,22 +224,60 @@ public class SchoolClassService {
     private record ValidatedClassFields(String name, String gradeLevel, String year, String status) {}
 
     /**
-     * Validate nghiệp vụ sâu (không chỉ Bean Validation):
-     * - khối thuộc danh mục chuẩn
-     * - năm học liên tiếp (YYYY+1) và trong cửa sổ ±5 năm quanh năm học hiện tại
-     * - nếu tên lớp bắt đầu bằng số khối thì số đó phải khớp khối đã chọn
+     * Không trùng lớp trong cùng trường + cùng năm học (khớp unique index
+     * UX_Class_School_Name_Year). So khớp không phân biệt hoa thường.
      */
+    private void assertNoDuplicate(Integer schoolId, String name, String year, Integer excludeId) {
+        boolean exists = excludeId == null
+                ? classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(schoolId, name, year)
+                : classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalseAndIdNot(
+                        schoolId, name, year, excludeId);
+        // Thêm kiểm tra case-insensitive qua danh sách cùng trường (phòng client gửi 7a1 vs 7A1)
+        if (!exists) {
+            exists = classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "ACTIVE").stream()
+                            .anyMatch(c -> c.getSchoolYear().equalsIgnoreCase(year)
+                                    && c.getName().equalsIgnoreCase(name)
+                                    && (excludeId == null || !excludeId.equals(c.getId())))
+                    || classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "INACTIVE").stream()
+                            .anyMatch(c -> c.getSchoolYear().equalsIgnoreCase(year)
+                                    && c.getName().equalsIgnoreCase(name)
+                                    && (excludeId == null || !excludeId.equals(c.getId())));
+        }
+        if (exists) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Lớp '" + name + "' năm học " + year + " đã tồn tại ở trường này — không được trùng");
+        }
+    }
+
     private ValidatedClassFields validateBusiness(SchoolClassRequest req) {
-        String name = normalizeSpaces(req.name());
-        String grade = normalizeSpaces(req.gradeLevel());
+        String rawName = normalizeSpaces(req.name());
         String year = normalizeSpaces(req.schoolYear());
         String status = req.status() != null ? req.status() : "ACTIVE";
 
-        if (name == null || !CLASS_NAME_PATTERN.matcher(name).matches()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên lớp không hợp lệ");
+        if (rawName == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên lớp không được để trống");
         }
+        // Chuẩn hóa tên: chữ cái viết hoa (7a1 → 7A1)
+        String name = rawName.toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        Matcher nm = CLASS_NAME_STRICT.matcher(name);
+        if (!nm.matches()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tên lớp không hợp lệ: dạng 7A1 / 6B20 (1 chữ + số 1–20 bắt buộc, không chỉ 7A)");
+        }
+        String gradeNumFromName = nm.group(1);
+
+        String grade = normalizeGradeLevel(req.gradeLevel());
         if (grade == null || !VALID_GRADES.contains(grade)) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Khối không hợp lệ — chọn Khối 1 … Khối 12");
+        }
+        // Số trong "Khối 7" phải khớp số đầu tên lớp "7A1"
+        String gradeNum = grade.replace("Khối ", "");
+        if (!gradeNum.equals(gradeNumFromName)) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Tên lớp bắt đầu bằng " + gradeNumFromName + " nhưng khối đã chọn là " + grade);
         }
 
         Matcher ym = YEAR_PATTERN.matcher(year == null ? "" : year);
@@ -188,25 +296,35 @@ public class SchoolClassService {
                     "Năm học chỉ cho phép trong khoảng ±" + YEAR_RANGE + " năm so với năm học hiện tại");
         }
 
-        // Nếu tên bắt đầu bằng số khối (10A1, 6B…) thì bắt buộc khớp khối đã chọn.
-        Matcher gm = GRADE_NUM_PATTERN.matcher(grade);
-        if (gm.matches()) {
-            String gradeNum = gm.group(1);
-            if (name.matches("^" + gradeNum + "[A-Za-z].*") || name.matches("^" + gradeNum + "$")) {
-                // ok: 10A1 với Khối 10
-            } else if (name.matches("^[1-9][0-9]?[A-Za-z].*") || name.matches("^[1-9][0-9]?$")) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Tên lớp bắt đầu bằng số khối khác với khối đã chọn (khối " + gradeNum + ")");
+        return new ValidatedClassFields(name, grade, year, status);
+    }
+
+    /**
+     * Chuẩn hóa mọi dạng client/seed → {@code Khối N}: "7", "Lớp 7", "Khối 7" → "Khối 7".
+     */
+    private static String normalizeGradeLevel(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim().replaceAll("\\s+", " ");
+        if (t.isEmpty()) {
+            return null;
+        }
+        if (VALID_GRADES.contains(t)) {
+            return t;
+        }
+        Matcher m = GRADE_NUM_IN_TEXT.matcher(t);
+        if (m.find()) {
+            int n = Integer.parseInt(m.group(1));
+            if (n >= 1 && n <= 12) {
+                return "Khối " + n;
             }
         }
-
-        return new ValidatedClassFields(name, grade, year, status);
+        return t;
     }
 
     private static int currentSchoolYearStart() {
         LocalDate today = LocalDate.now();
-        // Năm học VN thường bắt đầu tháng 9
         return today.getMonthValue() >= 9 ? today.getYear() : today.getYear() - 1;
     }
 

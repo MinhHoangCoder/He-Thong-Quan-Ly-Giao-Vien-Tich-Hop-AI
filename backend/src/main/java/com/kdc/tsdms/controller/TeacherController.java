@@ -33,7 +33,7 @@ public class TeacherController {
      * <p>Chỉ staff (hoặc quyền TEACHER_VIEW) — hồ sơ chứa CCCD/địa chỉ/ngày sinh,
      */
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE') or hasAuthority('TEACHER_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_VIEW')")
     public List<TeacherResponse.Response> getAllTeachers() {
         return teacherService.getAllTeachers();
     }
@@ -50,14 +50,14 @@ public class TeacherController {
 
     // CRUD=========================================
     @PostMapping
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE')")
     public ResponseEntity<TeacherResponse.Response> createTeacher(
             @Valid @RequestBody TeacherResponse.CreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(teacherService.createTeacher(request));
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE')")
     public TeacherResponse.Response updateTeacher(
             @PathVariable Integer id, @Valid @RequestBody TeacherResponse.UpdateRequest request) {
         return teacherService.updateTeacher(id, request);
@@ -80,14 +80,14 @@ public class TeacherController {
 
     // Certificate========================
     @PostMapping("/{id}/certificates")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE')")
     public ResponseEntity<TeacherResponse.CertificateDTO> addCertificate(
             @PathVariable Integer id, @Valid @RequestBody TeacherResponse.CertificateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(teacherService.addCertificate(id, request));
     }
 
     @DeleteMapping("/{id}/certificates/{certId}")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE')")
     public ResponseEntity<Void> deleteCertificate(@PathVariable Integer id, @PathVariable Integer certId) {
         teacherService.deleteCertificate(id, certId);
         return ResponseEntity.noContent().build();
@@ -95,7 +95,7 @@ public class TeacherController {
 
     // Contract(1 hđ / 1 gv) =============================
     @PutMapping("/{id}/contract")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CONTRACT_MANAGE')")
     public TeacherResponse.ContractDTO upsertContract(
             @PathVariable Integer id, @Valid @RequestBody TeacherResponse.ContractRequest request) {
         return teacherService.upsertContract(id, request);
@@ -103,14 +103,14 @@ public class TeacherController {
     // History===============================
     /** Danh sách GV đã bị xóa mềm — "thùng rác". */
     @GetMapping("/trash")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_VIEW')")
     public List<TeacherResponse.HistoryItem> getTrash() {
         return teacherService.getTrash();
     }
 
     /** Khôi phục GV từ thùng rác — hiện lại trên danh sách chính. */
     @PostMapping("/trash/{id}/restore")
-    @PreAuthorize("hasAnyRole('ADMIN','EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('TEACHER_MANAGE')")
     public TeacherResponse.Response restoreTeacher(@PathVariable Integer id) {
         return teacherService.restoreTeacher(id);
     }

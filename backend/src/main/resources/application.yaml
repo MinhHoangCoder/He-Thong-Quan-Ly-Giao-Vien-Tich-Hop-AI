@@ -2,6 +2,12 @@ spring:
   application:
     name: tsdms
 
+  # Nạp secret local (app password Gmail...) từ file KHÔNG commit lên git.
+  # optional: -> thiếu file cũng không sao (CI/thành viên khác chạy vẫn bình thường).
+  # Đặt MAIL_USERNAME/MAIL_PASSWORD trong file này 1 lần -> khỏi set env mỗi phiên.
+  config:
+    import: optional:classpath:mail-local.properties
+
   datasource:
     # URL qua biến môi trường để deploy trỏ sang DB thật (Azure SQL...) mà không sửa code.
     # Default = SQL Server local -> máy dev chạy y như cũ, không cần đặt DB_URL.
@@ -92,4 +98,6 @@ tsdms:
     # Để false, client tự gửi header này sẽ KHÔNG né được rate limit (chống giả mạo IP).
     trust-forwarded-header: false
   mail:
-    from: ${MAIL_FROM:no-reply@tsdms.local}
+    # Địa chỉ hiển thị người gửi. Gmail chỉ cho gửi dưới danh nghĩa chính tài khoản đã xác thực,
+    # nên phần email trong <...> phải khớp MAIL_USERNAME. Đổi qua env khi dùng tài khoản khác.
+    from: ${MAIL_FROM:KDC EduOps <kdceduopsai@gmail.com>}
