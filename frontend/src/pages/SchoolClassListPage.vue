@@ -557,6 +557,14 @@ function clearFieldError(field) {
   if (modal.errors[field]) delete modal.errors[field]
 }
 
+// Chuẩn hóa ô "hậu tố lớp": viết hoa + bỏ ký tự không phải chữ/số, rồi xóa lỗi field.
+// Tách thành hàm để KHÔNG nhồi 2 câu lệnh vào @input (Prettier no-semi gỡ dấu ; sẽ
+// khiến trình biên dịch template Vue báo "Unexpected token, expected ,").
+function onClassSuffixInput() {
+  modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  clearFieldError('classSuffix')
+}
+
 async function saveModal() {
   modal.errors = validateForm(modal.form)
   if (Object.keys(modal.errors).length) return
@@ -1222,12 +1230,7 @@ function formatDeletedAt(iso) {
               placeholder="A1 / B20"
               maxlength="3"
               :class="{ 'input-error': modal.errors.classSuffix }"
-              @input="
-                modal.form.classSuffix = modal.form.classSuffix
-                  .toUpperCase()
-                  .replace(/[^A-Z0-9]/g, '')
-                clearFieldError('classSuffix')
-              "
+              @input="onClassSuffixInput"
             />
           </div>
           <small v-if="modal.errors.classSuffix" class="field-error">{{
