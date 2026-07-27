@@ -13,7 +13,7 @@ public record SchoolRequest(
 
         @NotBlank(message = "Tên trường không được để trống") @Size(max = 200) String name,
 
-         @Size(max = 255) String address,
+        @Size(max = 255) String address,
 
         @Pattern(regexp = "^$|^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")
         String phone,
@@ -21,6 +21,7 @@ public record SchoolRequest(
         @Email(message = "Email không hợp lệ") @Size(max = 100, message = "Email tối đa 100 ký tự") String email,
 
         @Size(max = 150, message = "Tên người liên hệ tối đa 150 ký tự") String contactPerson,
+
         Integer appUserId,
 
         LocalDate contractStartDate,

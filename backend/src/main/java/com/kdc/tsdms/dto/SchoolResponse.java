@@ -14,7 +14,7 @@ public record SchoolResponse(
         String phone,
         String email,
         String contactPerson,
-         Integer appUserId,
+        Integer appUserId,
         LocalDate contractStartDate,
         LocalDate contractEndDate,
         String status,

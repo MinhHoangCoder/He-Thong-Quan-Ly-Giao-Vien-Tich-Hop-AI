@@ -47,7 +47,7 @@ public class School extends SoftDeletableEntity {
     @Column(name = "ContractStartDate")
     private LocalDate contractStartDate;
 
-    //  Ngày hết hạn hợp đồng dịch vụ 
+    //  Ngày hết hạn hợp đồng dịch vụ
     @Column(name = "ContractEndDate")
     private LocalDate contractEndDate;
 
