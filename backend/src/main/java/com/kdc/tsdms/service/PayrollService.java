@@ -2,6 +2,7 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.PayrollResponse;
 import com.kdc.tsdms.dto.PayrollUpdateRequest;
+import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Attendance;
 import com.kdc.tsdms.entity.Payroll;
 import com.kdc.tsdms.entity.Schedule;
@@ -9,6 +10,7 @@ import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
@@ -65,6 +67,7 @@ public class PayrollService {
     private final TeacherRepository teacherRepo;
     private final ScheduleRepository scheduleRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final SchoolClassRepository classRepo;
     private final EntityManager em;
     private final NotificationService notificationService;
@@ -75,6 +78,7 @@ public class PayrollService {
             TeacherRepository teacherRepo,
             ScheduleRepository scheduleRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             SchoolClassRepository classRepo,
             EntityManager em,
             NotificationService notificationService) {
@@ -83,6 +87,7 @@ public class PayrollService {
         this.teacherRepo = teacherRepo;
         this.scheduleRepo = scheduleRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.classRepo = classRepo;
         this.em = em;
         this.notificationService = notificationService;
@@ -267,8 +272,18 @@ public class PayrollService {
         Schedule s = scheduleRepo.findById(a.getScheduleId()).orElse(null);
         if (s != null) {
             var asg = assignmentRepo.findById(s.getAssignmentId()).orElse(null);
-            if (asg != null && asg.getClassId() != null) {
-                SchoolClass c = classRepo.findById(asg.getClassId()).orElse(null);
+            // Đơn giá theo KHỐI của lớp dạy ở CHÍNH tiết đó (V16): một phân công nay có thể
+            // trải nhiều lớp, mà lớp 5 (TH) và lớp 6 (THCS) khác đơn giá — đọc lớp ở cấp
+            // phân công sẽ tính sai tiền.
+            Integer classId = asg != null ? asg.getClassId() : null;
+            if (s.getSourceSlotId() != null) {
+                AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+                if (slot != null && slot.getClassId() != null) {
+                    classId = slot.getClassId();
+                }
+            }
+            if (classId != null) {
+                SchoolClass c = classRepo.findById(classId).orElse(null);
                 Integer grade = c != null ? parseGrade(c.getGradeLevel(), c.getName()) : null;
                 if (grade != null) {
                     rate = grade <= 5 ? TH_RATE : THCS_RATE;

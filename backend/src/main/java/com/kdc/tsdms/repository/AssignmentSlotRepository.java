@@ -19,6 +19,19 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     List<AssignmentSlot> findByTeacherIdAndDayOfWeekAndPeriodIdAndDeletedFalse(
             Integer teacherId, String dayOfWeek, Integer periodId);
 
+    /**
+     * Dò trùng lịch theo GIỜ THỰC (V16): mọi ô lịch của GV trong một Thứ, KHÔNG lọc theo
+     * periodId. Bắt buộc phải quét rộng như vậy vì Period thuộc về từng trường — "tiết 1"
+     * của hai trường là hai periodId khác nhau nhưng giờ có thể đè lên nhau.
+     */
+    List<AssignmentSlot> findByTeacherIdAndDayOfWeekAndDeletedFalse(Integer teacherId, String dayOfWeek);
+
+    /** Mọi ô lịch còn hiệu lực của một GV — dựng bảng "giờ bận" cho form phân công. */
+    List<AssignmentSlot> findByTeacherIdAndDeletedFalse(Integer teacherId);
+
+    /** Toàn bộ ô lịch còn hiệu lực — quét trùng giờ trên cả hệ thống. */
+    List<AssignmentSlot> findByDeletedFalse();
+
     /** Xóa CỨNG mọi slot của phân công — dùng khi xóa vĩnh viễn. */
     @Modifying
     @Query("DELETE FROM AssignmentSlot s WHERE s.assignmentId = :assignmentId")

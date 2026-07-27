@@ -3,8 +3,11 @@ package com.kdc.tsdms;
 import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
+/** @EnableScheduling: bật tác vụ nền quét phân công quá hạn xác nhận (AssignmentApprovalService). */
 @SpringBootApplication
+@EnableScheduling
 public class TsdmsApplication {
 
     public static void main(String[] args) {

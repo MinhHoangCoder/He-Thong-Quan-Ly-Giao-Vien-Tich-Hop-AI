@@ -269,6 +269,14 @@ function openEdit(row) {
   })
 }
 
+// Mở form Sửa từ modal chi tiết rồi đóng modal chi tiết. Gộp thành 1 hàm để KHÔNG
+// nhồi nhiều câu lệnh vào @click — Prettier (cấu hình no-semi) từng gỡ dấu ; khiến
+// trình biên dịch template Vue báo "Unexpected token, expected ,".
+function editFromDetail() {
+  openEdit(detail.value)
+  detail.value = null
+}
+
 async function saveModal(payload) {
   modal.saving = true
   modal.error = ''
@@ -728,10 +736,7 @@ onMounted(async () => {
             v-if="detail.canEdit"
             type="button"
             class="btn btn--ghost"
-            @click="
-              openEdit(detail)
-              detail = null
-            "
+            @click="editFromDetail"
           >
             Sửa
           </button>

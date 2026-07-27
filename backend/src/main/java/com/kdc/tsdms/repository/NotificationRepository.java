@@ -15,4 +15,11 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     /** Các thông báo chưa đọc — để đánh dấu đã đọc tất cả. */
     List<Notification> findByRecipientUserIdAndReadFalse(Integer recipientUserId);
+
+    /**
+     * Các lời mời còn treo của một đối tượng (vd mọi thông báo "Assignment" #12 đang PENDING) —
+     * dùng để đóng nút Xác nhận/Từ chối khi phiếu đã được quyết bằng đường khác (admin ép duyệt,
+     * phiếu hết hạn, admin gửi lại lời mời mới).
+     */
+    List<Notification> findByRefEntityAndRefIdAndActionStatus(String refEntity, Long refId, String actionStatus);
 }
