@@ -148,8 +148,8 @@ const portals = [
       <div class="hero__copy">
         <h1 class="hero__title">Điều phối giáo viên, lịch dạy và lương trong một hệ thống</h1>
         <p class="hero__desc">
-          Trung tâm phân công một lần — lịch dạy, chấm công và bảng lương tự nối tiếp nhau,
-          không phải nhập tay lại ở bất kỳ bước nào.
+          Trung tâm phân công một lần — lịch dạy, chấm công và bảng lương tự nối tiếp nhau, không
+          phải nhập tay lại ở bất kỳ bước nào.
         </p>
         <div class="hero__actions">
           <RouterLink to="/dashboard" class="btn btn--primary btn--lg">Vào hệ thống</RouterLink>
@@ -256,7 +256,9 @@ const portals = [
       <header class="section-head">
         <p class="kicker">Quy trình</p>
         <h2 class="section-title">Dữ liệu chảy một đường, không nhập tay lại</h2>
-        <p class="section-sub">Từ phân công tới bảng lương — mỗi bước dùng kết quả của bước trước.</p>
+        <p class="section-sub">
+          Từ phân công tới bảng lương — mỗi bước dùng kết quả của bước trước.
+        </p>
       </header>
       <ol class="flow">
         <li v-for="(s, i) in workflow" :key="s.title" class="flow__step">
@@ -274,7 +276,9 @@ const portals = [
       <header class="section-head">
         <p class="kicker">Cổng làm việc</p>
         <h2 class="section-title">Mỗi vai trò một không gian riêng</h2>
-        <p class="section-sub">Đăng nhập là vào thẳng đúng cổng của mình, thấy đúng việc của mình.</p>
+        <p class="section-sub">
+          Đăng nhập là vào thẳng đúng cổng của mình, thấy đúng việc của mình.
+        </p>
       </header>
       <div class="portals">
         <article v-for="p in portals" :key="p.title" class="portal">

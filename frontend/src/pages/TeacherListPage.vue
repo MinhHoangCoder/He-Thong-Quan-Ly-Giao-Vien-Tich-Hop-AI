@@ -24,7 +24,7 @@ const canManage = computed(() => auth.roles.some((r) => ['ADMIN', 'EMPLOYEE'].in
 const loading = ref(false)
 const teachers = ref([])
 const branches = ref([])
-const showPassword = ref(false) 
+const showPassword = ref(false)
 
 // Bộ lọc
 const filters = reactive({
@@ -89,7 +89,6 @@ function jumpPage() {
 watch(filters, () => {
   page.value = 0
 })
-
 
 // Xóa mềm — chọn nhiều
 const deleteMode = ref(false)
@@ -594,7 +593,7 @@ function switchView(mode) {
   viewMode.value = mode
   deleteMode.value = false
   selectedIds.value = []
-   page.value = 0
+  page.value = 0
   if (mode === 'trash') loadTrash()
 }
 
@@ -739,9 +738,9 @@ async function openEdit(teacher) {
   try {
     const { data } = await teacherApi.get(teacher.id)
     editModal.existingCerts = data.certificates || []
-     const { data: account } = await teacherApi.getAccount(teacher.id)
-  editModal.form.username = account.username || ''
-  editModal.form.email = account.email || ''
+    const { data: account } = await teacherApi.getAccount(teacher.id)
+    editModal.form.username = account.username || ''
+    editModal.form.email = account.email || ''
   } catch {
     // Lỗi tải bằng cấp không nên chặn cả form sửa — các tab khác vẫn dùng được
   }
@@ -845,8 +844,7 @@ async function confirmDoDelete() {
   }
 }
 
-
-  //  KHÔI PHỤC TỪ THÙNG RÁC
+//  KHÔI PHỤC TỪ THÙNG RÁC
 
 async function restore(id) {
   try {
@@ -859,8 +857,7 @@ async function restore(id) {
   }
 }
 
-
-  //  XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
+//  XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
 
 const isAdmin = computed(() => auth.roles.includes('ADMIN'))
 
@@ -1100,8 +1097,7 @@ function formatDate(d) {
         </table>
       </div>
 
-
- <!-- ── Pagination ─────────────────────────────── -->
+      <!-- ── Pagination ─────────────────────────────── -->
       <div v-if="filtered.length && totalPages > 1" class="pagination">
         <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
 
@@ -1279,15 +1275,22 @@ function formatDate(d) {
                     </div>
                   </div>
                   <div class="form-field">
-                    <label class="form-label" >Mật khẩu <span class="req">*</span>
-                     <input v-model="createModal.account.password" :type="showPassword ? 'text' : 'password'" class="form-input"
-                            :class="{ 'form-input--error': createFieldErrors.password }" placeholder="Ít nhất 8 ký tự, có hoa/thường/số"
-                            @blur="validateCreatePassword" />
+                    <label class="form-label"
+                      >Mật khẩu <span class="req">*</span>
+                      <input
+                        v-model="createModal.account.password"
+                        :type="showPassword ? 'text' : 'password'"
+                        class="form-input"
+                        :class="{ 'form-input--error': createFieldErrors.password }"
+                        placeholder="Ít nhất 8 ký tự, có hoa/thường/số"
+                        @blur="validateCreatePassword"
+                      />
                     </label>
-                     
-                    <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu </label>
-                      
+
+                    <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
+                      <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
+                    </label>
+
                     <span v-if="createFieldErrors.password" class="field-error">{{
                       createFieldErrors.password
                     }}</span>
@@ -1296,7 +1299,8 @@ function formatDate(d) {
                   <h4 class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
                   <div class="form-row">
                     <div class="form-field">
-                      <label class="form-label">Họ và tên đệm <span class="req">*</span>
+                      <label class="form-label"
+                        >Họ và tên đệm <span class="req">*</span>
                         <input
                           v-model="createModal.profile.lastName"
                           class="form-input"
@@ -1381,7 +1385,10 @@ function formatDate(d) {
                       <label class="form-label"
                         >Ngày sinh
                         <input
-                          v-model="createModal.profile.dateOfBirth" type="date" class="form-input" lang="vi"
+                          v-model="createModal.profile.dateOfBirth"
+                          type="date"
+                          class="form-input"
+                          lang="vi"
                           :class="{ 'form-input--error': createFieldErrors.dateOfBirth }"
                           @change="validateCreateDates"
                         />
@@ -1395,7 +1402,10 @@ function formatDate(d) {
                         >Ngày vào làm
                         <input
                           v-model="createModal.profile.hireDate"
-                          type="date" class="form-input" lang="vi" :class="{ 'form-input--error': createFieldErrors.hireDate }"
+                          type="date"
+                          class="form-input"
+                          lang="vi"
+                          :class="{ 'form-input--error': createFieldErrors.hireDate }"
                           @change="validateCreateDates"
                         />
                       </label>
@@ -1578,9 +1588,7 @@ function formatDate(d) {
           <div class="modal modal--xl">
             <div class="modal__head">
               <h3 class="modal__title">Chỉnh sửa Giáo viên</h3>
-              <button class="modal__close" @click="editModal.open = false">
-                ❌
-              </button>
+              <button class="modal__close" @click="editModal.open = false">❌</button>
             </div>
 
             <div class="create-body">
@@ -1604,7 +1612,7 @@ function formatDate(d) {
                 <!-- Tab: Hồ sơ giáo viên -->
                 <template v-if="editModal.activeTab === 'profile'">
                   <h4 class="create-section-title">Thông tin cá nhân</h4>
-       
+
                   <div class="form-row">
                     <div class="form-field">
                       <label class="form-label">
@@ -1618,21 +1626,32 @@ function formatDate(d) {
                     </div>
 
                     <div class="form-field">
-                      <label class="form-label"> Email <span class="req">*</span>
-                        <input v-model="editModal.form.email" class="form-input" placeholder="VD: gv@tsdms.local" />
+                      <label class="form-label">
+                        Email <span class="req">*</span>
+                        <input
+                          v-model="editModal.form.email"
+                          class="form-input"
+                          placeholder="VD: gv@tsdms.local"
+                        />
                       </label>
                     </div>
 
                     <div class="form-field">
-                      <label class="form-label"> Mật khẩu
-                        <input v-model="editModal.form.password" :type="showPassword ? 'text' : 'password'" class="form-input" placeholder="Nhập mật khẩu" />
+                      <label class="form-label">
+                        Mật khẩu
+                        <input
+                          v-model="editModal.form.password"
+                          :type="showPassword ? 'text' : 'password'"
+                          class="form-input"
+                          placeholder="Nhập mật khẩu"
+                        />
                       </label>
 
-                      <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
-                        <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu </label>
+                      <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
+                        <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
+                      </label>
                     </div>
                   </div>
-
 
                   <div class="form-row">
                     <div class="form-field">
@@ -2161,7 +2180,6 @@ function formatDate(d) {
     transform: rotate(360deg);
   }
 }
-
 
 /* ── Bảng danh sách giáo viên ── */
 .table-wrap {

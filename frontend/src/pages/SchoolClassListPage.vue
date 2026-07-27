@@ -78,7 +78,11 @@ const purgeTarget = ref(null)
 /** Suy cấp trường từ tên (THPT/THCS trước TH để tránh khớp nhầm). */
 function detectSchoolLevel(name) {
   const n = (name || '').toUpperCase().normalize('NFC')
-  if (n.includes('THPT') || n.includes('TRUNG HOC PHO THONG') || n.includes('TRUNG HỌC PHỔ THÔNG')) {
+  if (
+    n.includes('THPT') ||
+    n.includes('TRUNG HOC PHO THONG') ||
+    n.includes('TRUNG HỌC PHỔ THÔNG')
+  ) {
     return 'THPT'
   }
   if (n.includes('THCS') || n.includes('TRUNG HOC CO SO') || n.includes('TRUNG HỌC CƠ SỞ')) {
@@ -659,8 +663,7 @@ function toggleSelectAll() {
 }
 
 const allSelected = computed(
-  () =>
-    items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
+  () => items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
 )
 
 /** Chọn tất cả trong thùng rác (list 1 trang, không phân trang). */
@@ -673,8 +676,7 @@ function toggleSelectAllTrash() {
 
 const allTrashSelected = computed(
   () =>
-    trashItems.value.length > 0 &&
-    trashItems.value.every((i) => selectedIds.value.includes(i.id)),
+    trashItems.value.length > 0 && trashItems.value.every((i) => selectedIds.value.includes(i.id)),
 )
 
 const trashBatchBusy = ref(false)
@@ -685,9 +687,7 @@ async function confirmTrashBatchRestore() {
   if (!selectedIds.value.length) return
   trashBatchBusy.value = true
   try {
-    const results = await Promise.allSettled(
-      selectedIds.value.map((id) => classApi.restore(id)),
-    )
+    const results = await Promise.allSettled(selectedIds.value.map((id) => classApi.restore(id)))
     const failed = results.filter((r) => r.status === 'rejected').length
     const ok = results.length - failed
     trashBatchRestoreOpen.value = false
@@ -803,9 +803,7 @@ function formatDeletedAt(iso) {
     <div class="page__head">
       <div>
         <h1 class="page__title">Lớp học</h1>
-        <p class="page__sub">
-          Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học
-        </p>
+        <p class="page__sub">Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học</p>
       </div>
       <div class="page__head-actions">
         <button
@@ -893,9 +891,7 @@ function formatDeletedAt(iso) {
         Tổng cộng
         <strong>{{ total }}</strong>
         lớp học
-        <span v-if="deleteMode" class="total-hint">
-          — đã chọn {{ selectedIds.length }}
-        </span>
+        <span v-if="deleteMode" class="total-hint"> — đã chọn {{ selectedIds.length }} </span>
       </p>
 
       <div class="table-wrap">
@@ -980,11 +976,7 @@ function formatDeletedAt(iso) {
         <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(page + 1)">
           ›
         </button>
-        <button
-          class="pg-btn"
-          :disabled="page >= totalPages - 1"
-          @click="goPage(totalPages - 1)"
-        >
+        <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(totalPages - 1)">
           »
         </button>
         <input
@@ -1170,7 +1162,9 @@ function formatDeletedAt(iso) {
               class="combo__list"
               role="listbox"
             >
-              <li v-if="schoolsForLevel.length === 0" class="combo__empty">Không tìm thấy trường</li>
+              <li v-if="schoolsForLevel.length === 0" class="combo__empty">
+                Không tìm thấy trường
+              </li>
               <li
                 v-for="s in schoolsForLevel"
                 :key="s.id"
@@ -1183,7 +1177,9 @@ function formatDeletedAt(iso) {
               </li>
             </ul>
           </div>
-          <small v-if="modal.errors.schoolId" class="field-error">{{ modal.errors.schoolId }}</small>
+          <small v-if="modal.errors.schoolId" class="field-error">{{
+            modal.errors.schoolId
+          }}</small>
         </div>
 
         <!-- 3. Khối — nút -->
@@ -1208,7 +1204,9 @@ function formatDeletedAt(iso) {
           <div v-else class="chip-row chip-row--placeholder">
             <span class="chip-placeholder">Chọn cấp trường để hiện khối</span>
           </div>
-          <small v-if="modal.errors.gradeNum" class="field-error">{{ modal.errors.gradeNum }}</small>
+          <small v-if="modal.errors.gradeNum" class="field-error">{{
+            modal.errors.gradeNum
+          }}</small>
         </div>
 
         <!-- 4. Hậu tố lớp → gộp tên -->
@@ -1225,7 +1223,9 @@ function formatDeletedAt(iso) {
               maxlength="3"
               :class="{ 'input-error': modal.errors.classSuffix }"
               @input="
-                modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                modal.form.classSuffix = modal.form.classSuffix
+                  .toUpperCase()
+                  .replace(/[^A-Z0-9]/g, '')
                 clearFieldError('classSuffix')
               "
             />
@@ -1234,8 +1234,8 @@ function formatDeletedAt(iso) {
             modal.errors.classSuffix
           }}</small>
           <small v-else-if="composedClassName" class="field-ok">
-            Tên lớp: <strong>{{ composedClassName }}</strong>
-            · DB khối: <strong>{{ gradeLabel(modal.form.gradeNum) }}</strong>
+            Tên lớp: <strong>{{ composedClassName }}</strong> · DB khối:
+            <strong>{{ gradeLabel(modal.form.gradeNum) }}</strong>
           </small>
         </div>
 
@@ -1359,7 +1359,11 @@ function formatDeletedAt(iso) {
           >
             Hủy
           </button>
-          <button class="btn btn--danger" :disabled="trashBatchBusy" @click="confirmTrashBatchPurge">
+          <button
+            class="btn btn--danger"
+            :disabled="trashBatchBusy"
+            @click="confirmTrashBatchPurge"
+          >
             {{ trashBatchBusy ? 'Đang xóa...' : 'Xóa vĩnh viễn' }}
           </button>
         </div>

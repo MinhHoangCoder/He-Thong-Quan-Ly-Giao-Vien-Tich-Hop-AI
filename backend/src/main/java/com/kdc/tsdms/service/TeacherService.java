@@ -39,10 +39,10 @@ public class TeacherService {
     // DANH SÁCH  ======================================
 
     public List<TeacherResponse.Response> getAllTeachers() {
-        return teacherRepo.findByDeletedFalse().stream().map(t -> toResponse(t, false)).toList();
+        return teacherRepo.findByDeletedFalse().stream()
+                .map(t -> toResponse(t, false))
+                .toList();
     }
-
-    
 
     // Xem chi tiết thông tin gv + chứng chỉ + hợp đồng
 
@@ -299,8 +299,7 @@ public class TeacherService {
                 .contract(contract);
 
         if (t.getAppUserId() != null) {
-            appUserRepository.findById(t.getAppUserId()).ifPresent(au -> builder
-                    .email(au.getEmail())
+            appUserRepository.findById(t.getAppUserId()).ifPresent(au -> builder.email(au.getEmail())
                     .username(au.getUsername())
                     .PasswordHash(au.getPasswordHash()));
         }

@@ -57,13 +57,12 @@ export const teacherApi = {
     return http.delete(`/teacher/${teacherId}/certificates/${certId}`)
   },
   getAccount(teacherId) {
-  return http.get(`/teacher/${teacherId}/account`)
-},
+    return http.get(`/teacher/${teacherId}/account`)
+  },
 
-
-// Cập nhật username/email/password của giáo viên này
-updateAccount(teacherId, payload) {
-  // payload: { username?, email?, password? }
-  return http.patch(`/teacher/${teacherId}/account`, payload)
-},
+  // Cập nhật username/email/password của giáo viên này
+  updateAccount(teacherId, payload) {
+    // payload: { username?, email?, password? }
+    return http.patch(`/teacher/${teacherId}/account`, payload)
+  },
 }
