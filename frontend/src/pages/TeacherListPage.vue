@@ -2,7 +2,7 @@
 // Trang Quản lý Giáo viên — 1 FILE DUY NHẤT (giống phong cách TeacherDashboardPage.vue)
 // để dễ đọc / dễ sửa, không tách nhỏ ra nhiều component.
 // Giao diện danh sách dạng BẢNG (giống trang Quản lý Nhân viên) thay cho card cũ.
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import { teacherApi } from '@/api/teacher'
@@ -24,6 +24,7 @@ const canManage = computed(() => auth.roles.some((r) => ['ADMIN', 'EMPLOYEE'].in
 const loading = ref(false)
 const teachers = ref([])
 const branches = ref([])
+const showPassword = ref(false)
 
 // Bộ lọc
 const filters = reactive({
@@ -35,6 +36,59 @@ const filters = reactive({
 
 // Chế độ giao diện
 const viewMode = ref('list') // 'list' | 'trash'
+/* ══════════════════════════════════════════════════════════
+   PHÂN TRANG (client-side, dựa trên danh sách đã lọc)
+══════════════════════════════════════════════════════════ */
+const PAGE_SIZE = 6
+const page = ref(0)
+const pageInput = ref('')
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
+
+const paginatedTeachers = computed(() => {
+  const start = page.value * PAGE_SIZE
+  return filtered.value.slice(start, start + PAGE_SIZE)
+})
+
+const visiblePages = computed(() => {
+  const total = totalPages.value
+  const current = page.value + 1
+
+  let start = Math.max(1, current - 2)
+  let end = Math.min(total, current + 2)
+
+  if (end - start < 4) {
+    if (start === 1) {
+      end = Math.min(5, total)
+    } else if (end === total) {
+      start = Math.max(1, total - 4)
+    }
+  }
+
+  const arr = []
+  for (let i = start; i <= end; i++) arr.push(i)
+  return arr
+})
+
+function goPage(index) {
+  if (index < 0 || index >= totalPages.value) return
+  page.value = index
+}
+
+function jumpPage() {
+  const p = Number(pageInput.value)
+
+  if (isNaN(p)) return
+  if (p < 1) return
+  if (p > totalPages.value) return
+
+  goPage(p - 1)
+}
+
+// Đổi bộ lọc → quay về trang 1
+watch(filters, () => {
+  page.value = 0
+})
 
 // Xóa mềm — chọn nhiều
 const deleteMode = ref(false)
@@ -539,6 +593,7 @@ function switchView(mode) {
   viewMode.value = mode
   deleteMode.value = false
   selectedIds.value = []
+  page.value = 0
   if (mode === 'trash') loadTrash()
 }
 
@@ -665,6 +720,9 @@ async function openEdit(teacher) {
     branchId: teacher.branchId,
     firstName: teacher.firstName,
     lastName: teacher.lastName,
+    username: '',
+    email: '',
+    password: '',
     status: teacher.status,
     employmentType: teacher.employmentType || '',
     phone: teacher.phone || '',
@@ -680,6 +738,9 @@ async function openEdit(teacher) {
   try {
     const { data } = await teacherApi.get(teacher.id)
     editModal.existingCerts = data.certificates || []
+    const { data: account } = await teacherApi.getAccount(teacher.id)
+    editModal.form.username = account.username || ''
+    editModal.form.email = account.email || ''
   } catch {
     // Lỗi tải bằng cấp không nên chặn cả form sửa — các tab khác vẫn dùng được
   }
@@ -783,9 +844,8 @@ async function confirmDoDelete() {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
-   KHÔI PHỤC TỪ THÙNG RÁC
-══════════════════════════════════════════════════════════ */
+//  KHÔI PHỤC TỪ THÙNG RÁC
+
 async function restore(id) {
   try {
     await teacherApi.restore(id)
@@ -797,11 +857,8 @@ async function restore(id) {
   }
 }
 
-/* ══════════════════════════════════════════════════════════
-   XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
-   Không thể hoàn tác nên bắt gõ lại đúng họ tên để xác nhận, giống
-   thao tác xóa vĩnh viễn ở các hệ thống khác (GitHub, Google...).
-══════════════════════════════════════════════════════════ */
+//  XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
+
 const isAdmin = computed(() => auth.roles.includes('ADMIN'))
 
 function requestPurge(item) {
@@ -970,7 +1027,7 @@ function formatDate(d) {
           </thead>
           <tbody>
             <tr
-              v-for="t in filtered"
+              v-for="t in paginatedTeachers"
               :key="t.id"
               :class="['t-row', deleteMode && selectedIds.includes(t.id) && 't-row--selected']"
               :title="deleteMode ? '' : 'Bấm để xem'"
@@ -1040,8 +1097,45 @@ function formatDate(d) {
         </table>
       </div>
 
+      <!-- ── Pagination ─────────────────────────────── -->
+      <div v-if="filtered.length && totalPages > 1" class="pagination">
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
+
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+
+        <button
+          v-for="p in visiblePages"
+          :key="p"
+          class="pg-btn"
+          :class="{ 'pg-btn--active': page === p - 1 }"
+          @click="goPage(p - 1)"
+        >
+          {{ p }}
+        </button>
+
+        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
+          ›
+        </button>
+
+        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
+          »
+        </button>
+
+        <input
+          v-model="pageInput"
+          class="page-input"
+          type="number"
+          min="1"
+          :max="totalPages"
+          placeholder="Trang"
+          @keyup.enter="jumpPage"
+        />
+
+        <button class="pg-btn" @click="jumpPage">Đi</button>
+      </div>
+
       <!-- Empty state -->
-      <div v-else class="tl__empty">
+      <div v-if="!loading && !filtered.length" class="tl__empty">
         <SvgIcon name="teacher" :size="48" />
         <p>Không tìm thấy giáo viên phù hợp</p>
       </div>
@@ -1185,13 +1279,18 @@ function formatDate(d) {
                       >Mật khẩu <span class="req">*</span>
                       <input
                         v-model="createModal.account.password"
-                        type="password"
+                        :type="showPassword ? 'text' : 'password'"
                         class="form-input"
                         :class="{ 'form-input--error': createFieldErrors.password }"
                         placeholder="Ít nhất 8 ký tự, có hoa/thường/số"
                         @blur="validateCreatePassword"
                       />
                     </label>
+
+                    <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
+                      <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
+                    </label>
+
                     <span v-if="createFieldErrors.password" class="field-error">{{
                       createFieldErrors.password
                     }}</span>
@@ -1289,6 +1388,7 @@ function formatDate(d) {
                           v-model="createModal.profile.dateOfBirth"
                           type="date"
                           class="form-input"
+                          lang="vi"
                           :class="{ 'form-input--error': createFieldErrors.dateOfBirth }"
                           @change="validateCreateDates"
                         />
@@ -1304,6 +1404,7 @@ function formatDate(d) {
                           v-model="createModal.profile.hireDate"
                           type="date"
                           class="form-input"
+                          lang="vi"
                           :class="{ 'form-input--error': createFieldErrors.hireDate }"
                           @change="validateCreateDates"
                         />
@@ -1487,9 +1588,7 @@ function formatDate(d) {
           <div class="modal modal--xl">
             <div class="modal__head">
               <h3 class="modal__title">Chỉnh sửa Giáo viên</h3>
-              <button class="modal__close" @click="editModal.open = false">
-                <SvgIcon name="close" :size="18" />
-              </button>
+              <button class="modal__close" @click="editModal.open = false">❌</button>
             </div>
 
             <div class="create-body">
@@ -1513,6 +1612,47 @@ function formatDate(d) {
                 <!-- Tab: Hồ sơ giáo viên -->
                 <template v-if="editModal.activeTab === 'profile'">
                   <h4 class="create-section-title">Thông tin cá nhân</h4>
+
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label">
+                        Tên đăng nhập <span class="req">*</span>
+                        <input
+                          v-model="editModal.form.username"
+                          class="form-input"
+                          placeholder="VD: gv.nguyenvana"
+                        />
+                      </label>
+                    </div>
+
+                    <div class="form-field">
+                      <label class="form-label">
+                        Email <span class="req">*</span>
+                        <input
+                          v-model="editModal.form.email"
+                          class="form-input"
+                          placeholder="VD: gv@tsdms.local"
+                        />
+                      </label>
+                    </div>
+
+                    <div class="form-field">
+                      <label class="form-label">
+                        Mật khẩu
+                        <input
+                          v-model="editModal.form.password"
+                          :type="showPassword ? 'text' : 'password'"
+                          class="form-input"
+                          placeholder="Nhập mật khẩu"
+                        />
+                      </label>
+
+                      <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
+                        <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
+                      </label>
+                    </div>
+                  </div>
+
                   <div class="form-row">
                     <div class="form-field">
                       <label class="form-label"
@@ -2047,8 +2187,6 @@ function formatDate(d) {
   background: var(--c-surface);
   border: 1px solid var(--a-border);
   border-radius: 12px;
-  max-height: 420px; /* ~ 6 dòng */
-  overflow-y: auto;
 }
 .teacher-table {
   width: 100%;
@@ -2232,6 +2370,51 @@ function formatDate(d) {
 .ra-btn:hover {
   filter: brightness(0.92);
   transform: scale(1.08);
+}
+
+/* ── Pagination ── */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.2rem;
+  flex-wrap: wrap;
+}
+.pg-btn {
+  min-width: 38px;
+  height: 38px;
+  border: 1px solid var(--a-border);
+  border-radius: 8px;
+  background: var(--c-surface);
+  color: var(--a-text);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.pg-btn:hover:not(:disabled) {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+}
+.pg-btn--active {
+  background: var(--grad-primary);
+  border-color: transparent;
+  color: #fff;
+}
+.pg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.page-input {
+  width: 64px;
+  height: 38px;
+  border: 1px solid var(--a-border);
+  border-radius: 8px;
+  text-align: center;
+  background: var(--a-bg);
+  color: var(--a-text);
 }
 
 /* ── Trash table ── */

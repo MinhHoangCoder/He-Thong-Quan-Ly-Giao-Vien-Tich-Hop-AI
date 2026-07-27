@@ -275,14 +275,13 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
           </footer>
 
           <p v-if="p.actorType !== 'NONE'" class="card__note">
-            Chỉ email và số điện thoại tự sửa được. Họ tên, CCCD và các thông tin còn lại do
-            phòng Nhân sự quản lý — cần điều chỉnh hãy liên hệ trung tâm.
+            Chỉ email và số điện thoại tự sửa được. Họ tên, CCCD và các thông tin còn lại do phòng
+            Nhân sự quản lý — cần điều chỉnh hãy liên hệ trung tâm.
           </p>
           <p v-else class="card__note">
             Tài khoản hệ thống chỉ tự sửa được email (dùng nhận liên kết đặt lại mật khẩu).
           </p>
         </section>
-
       </div>
 
       <!-- Cột phải: thông tin công việc (chỉ GV/NV có) — thế chỗ khối "Quyền của

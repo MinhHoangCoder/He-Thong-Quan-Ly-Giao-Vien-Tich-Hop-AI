@@ -22,8 +22,8 @@ const homeLabel = computed(() => (auth.isLoggedIn ? 'Về trang chính' : 'Về 
     <p class="nf__code">404</p>
     <h1 class="nf__title">Không tìm thấy trang</h1>
     <p class="nf__desc">
-      Đường dẫn <code class="nf__path">{{ route.fullPath }}</code> không tồn tại hoặc đã được
-      chuyển đi. Hãy kiểm tra lại địa chỉ.
+      Đường dẫn <code class="nf__path">{{ route.fullPath }}</code> không tồn tại hoặc đã được chuyển
+      đi. Hãy kiểm tra lại địa chỉ.
     </p>
     <div class="nf__actions">
       <RouterLink :to="homeTarget" class="btn btn--primary">

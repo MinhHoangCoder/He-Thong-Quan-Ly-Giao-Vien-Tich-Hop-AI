@@ -330,7 +330,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             <td colspan="6" class="empty">Không có dữ liệu</td>
           </tr>
 
-          <tr v-for="item in items" :key="item.id">
+          <tr v-for="item in items" :key="item.id" class="row-clickable" @click="openEdit(item)">
             <td class="col-title">
               <div class="title-text">{{ item.name }}</div>
               <div v-if="item.address" class="desc-text">{{ item.address }}</div>
@@ -360,10 +360,10 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
               </span>
             </td>
 
-            <td class="col-actions">
-              <button class="act-btn" title="Sửa" @click="openEdit(item)">✏️</button>
+            <td class="col-actions" @click.stop>
+              <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
               <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
-                🗑️
+                Xóa
               </button>
             </td>
           </tr>
@@ -439,7 +439,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           <label>Địa chỉ</label>
           <input
             v-model="modal.form.address"
-            placeholder="VD: Cầu Giấy, Hà Nội"
+            placeholder="VD: Lê Chân, Hải Phòng"
             :class="{ 'input-error': modal.errors.address }"
             @input="clearFieldError('address')"
           />
@@ -451,7 +451,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             <label>Số điện thoại</label>
             <input
               v-model="modal.form.phone"
-              placeholder="10 -12 số"
+              placeholder="10 số"
               :class="{ 'input-error': modal.errors.phone }"
               @input="clearFieldError('phone')"
             />

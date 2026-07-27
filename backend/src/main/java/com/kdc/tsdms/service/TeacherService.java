@@ -5,6 +5,7 @@ import com.kdc.tsdms.entity.Certificate;
 import com.kdc.tsdms.entity.Contract;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -22,12 +23,17 @@ public class TeacherService {
     private final TeacherRepository teacherRepo;
     private final CertificateRepository ceRepo;
     private final ContractRepository contractRepo;
+    private final AppUserRepository appUserRepository;
 
     public TeacherService(
-            TeacherRepository teacherRepo, CertificateRepository ceRepo, ContractRepository contractRepo) {
+            TeacherRepository teacherRepo,
+            CertificateRepository ceRepo,
+            ContractRepository contractRepo,
+            AppUserRepository appUserRepository) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
+        this.appUserRepository = appUserRepository;
     }
 
     // DANH SÁCH  ======================================
@@ -274,7 +280,7 @@ public class TeacherService {
                     .orElse(null);
         }
 
-        return TeacherResponse.Response.builder()
+        TeacherResponse.Response.ResponseBuilder builder = TeacherResponse.Response.builder()
                 .id(t.getId())
                 .appUserId(t.getAppUserId())
                 .branchId(t.getBranchId())
@@ -290,8 +296,15 @@ public class TeacherService {
                 .employmentType(t.getEmploymentType())
                 .status(t.getStatus())
                 .certificates(certs)
-                .contract(contract)
-                .build();
+                .contract(contract);
+
+        if (t.getAppUserId() != null) {
+            appUserRepository.findById(t.getAppUserId()).ifPresent(au -> builder.email(au.getEmail())
+                    .username(au.getUsername())
+                    .PasswordHash(au.getPasswordHash()));
+        }
+
+        return builder.build();
     }
 
     private TeacherResponse.HistoryItem toHistoryItem(Teacher t) {

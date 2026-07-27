@@ -151,6 +151,9 @@ public class TeacherResponse {
         private String lastName;
         private String fullName; // lastName + " " + firstName
 
+        private String PasswordHash;
+        private String email;
+        private String username;
         private LocalDate dateOfBirth;
         private Boolean gender; // true = Nam, false = Nữ
         private String idCardNo;

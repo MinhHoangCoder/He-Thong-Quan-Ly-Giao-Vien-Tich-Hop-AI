@@ -729,7 +729,7 @@ onMounted(async () => {
             type="button"
             class="btn btn--ghost"
             @click="
-              openEdit(detail);
+              openEdit(detail)
               detail = null
             "
           >
