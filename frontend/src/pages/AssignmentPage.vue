@@ -1,8 +1,14 @@
 <script setup>
 /**
- * Trang Phân công giảng dạy: danh sách phân công + tạo mới (chọn GV/môn/trường/lớp,
- * khoảng thời gian và các tiết Thứ+Tiết). Khi tạo, backend tự trải các tiết thành
- * buổi dạy (Schedule) — nguồn cho Chấm công & Bảng lương.
+ * Trang Phân công giảng dạy: danh sách phân công + tạo mới. Khi tạo, backend tự trải các
+ * tiết thành buổi dạy (Schedule) — nguồn cho Chấm công & Bảng lương.
+ *
+ * <p>Mỗi TIẾT mang LỚP riêng: một phân công (GV + trường + môn) gồm nhiều dòng
+ * "Thứ + Tiết + Lớp", nên sáng Thứ 2 có thể tiết 1 dạy 1A1, tiết 2 dạy 1A2, tiết 3 dạy
+ * 1A3. Muốn dạy trường khác thì tạo phân công khác — khung tiết thuộc về từng trường.
+ *
+ * <p>Tiết nào GV đã bận sẽ bị KHÓA sẵn, so theo GIỜ THẬT nên bắt được cả trùng chéo
+ * trường (tiết 1 trường A 07:00–07:35 đè tiết 1 trường B 07:00–07:45).
  */
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { assignmentApi } from '@/api/assignments'
@@ -18,7 +24,25 @@ const DAYS = [
   { code: 'SAT', label: 'Thứ 7' },
   { code: 'SUN', label: 'Chủ nhật' },
 ]
-const STATUS_LABEL = { ACTIVE: 'Đang chạy', COMPLETED: 'Hoàn thành', CANCELLED: 'Đã hủy' }
+const STATUS_LABEL = {
+  PENDING: 'Chờ xác nhận',
+  ACTIVE: 'Đang dạy',
+  REJECTED: 'Bị từ chối',
+  EXPIRED: 'Hết hạn',
+  COMPLETED: 'Hoàn thành',
+  CANCELLED: 'Đã hủy',
+}
+/* Tab lọc theo trạng thái — thứ tự theo mức độ cần xử lý, việc gấp nhất đứng trước. */
+const STATUS_TABS = [
+  { code: '', label: 'Tất cả' },
+  { code: 'PENDING', label: 'Chờ xác nhận' },
+  { code: 'EXPIRED', label: 'Hết hạn' },
+  { code: 'REJECTED', label: 'Bị từ chối' },
+  { code: 'ACTIVE', label: 'Đang dạy' },
+  { code: 'CANCELLED', label: 'Đã hủy' },
+]
+/* Còn dưới ngần này tiếng là "sắp hết hạn" → tô vàng, nhắc admin xử lý trước khi phiếu chết. */
+const DEADLINE_WARN_HOURS = 12
 
 // Ngày hôm nay theo GIỜ ĐỊA PHƯƠNG (yyyy-MM-dd). Tránh toISOString() vì nó quy về UTC →
 // ở múi giờ VN (UTC+7) lúc rạng sáng (00:00–07:00) sẽ trả nhầm về ngày hôm qua.
@@ -30,10 +54,17 @@ const isoToday = () => {
 const loading = ref(false)
 const items = ref([])
 const trashItems = ref([])
+const conflicts = ref([])
+const statusCounts = ref({})
 
-/* Chế độ xem: 'list' = danh sách phân công | 'trash' = thùng rác (đã xóa mềm). */
+/* Tab trạng thái đang xem ('' = tất cả) + các phiếu đang tích chọn để thao tác hàng loạt. */
+const statusFilter = ref('')
+const selectedIds = ref([])
+
+/* Chế độ xem: 'list' = danh sách | 'trash' = thùng rác | 'conflicts' = quét trùng giờ. */
 const view = ref('list')
 const inTrash = computed(() => view.value === 'trash')
+const inConflicts = computed(() => view.value === 'conflicts')
 
 /* ── Tìm kiếm (chỉ ở danh sách đang hoạt động) — lọc phía server ──
    "Lọc ngay khi gõ" nhưng debounce 300ms để không gọi API dồn dập theo từng phím. */
@@ -59,7 +90,9 @@ function clearSearch() {
 /* ── Phân trang phía client (áp cho danh sách đang xem) ── */
 const PAGE_SIZE = 10
 const page = ref(0)
-const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
+const currentList = computed(() =>
+  inTrash.value ? trashItems.value : inConflicts.value ? conflicts.value : items.value,
+)
 const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
 const pagedItems = computed(() => {
   const start = page.value * PAGE_SIZE
@@ -69,24 +102,25 @@ const pagedItems = computed(() => {
 const options = reactive({ teachers: [], subjects: [], schools: [] })
 const scoped = reactive({ classes: [], periods: [] })
 
-// Các phân công ACTIVE của GV đang chọn — dùng để KHÓA tiết mà GV đã có lịch dạy
-// (khớp luật chống trùng 409 ở backend: cùng Thứ + đúng periodId + giai đoạn chồng ngày).
+// Giờ bận của GV đang chọn trên MỌI trường (mỗi dòng đã kèm khung giờ thật của tiết) —
+// nguồn để khóa các tiết đè giờ. Khớp luật 409 ở backend.
 const teacherBusy = ref([])
 
 const modal = reactive({
   open: false,
   saving: false,
   error: '',
+  /** null = tạo mới | id = đang SỬA phiếu đó (trường & môn khóa cứng, không đổi được). */
+  editId: null,
   form: {
     teacherId: '',
     subjectId: '',
     schoolId: '',
-    classId: '',
     startDate: isoToday(),
     endDate: '',
-    slots: [],
+    slots: [], // { dayOfWeek, periodId, classId }
   },
-  slotDraft: { dayOfWeek: 'MON', periodId: '' },
+  slotDraft: { dayOfWeek: 'MON', periodId: '', classId: '' },
 })
 
 const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
@@ -95,14 +129,35 @@ const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 async function load() {
   loading.value = true
   page.value = 0
+  selectedIds.value = []
   try {
-    const { data } = await assignmentApi.list({ keyword: search.value })
+    const { data } = await assignmentApi.list({
+      keyword: search.value,
+      status: statusFilter.value,
+    })
     items.value = data
   } catch {
     items.value = []
   } finally {
     loading.value = false
   }
+  loadCounts()
+}
+
+/** Số phiếu từng trạng thái cho badge trên tab — tải kèm mỗi lần làm mới danh sách. */
+async function loadCounts() {
+  try {
+    const { data } = await assignmentApi.statusCounts()
+    statusCounts.value = data || {}
+  } catch {
+    statusCounts.value = {}
+  }
+}
+
+function selectTab(code) {
+  if (statusFilter.value === code) return
+  statusFilter.value = code
+  load()
 }
 
 async function loadTrash() {
@@ -118,9 +173,28 @@ async function loadTrash() {
   }
 }
 
+/* Quét trùng giờ trên toàn hệ thống (gồm cả trùng CHÉO TRƯỜNG mà luật cũ để lọt). */
+async function loadConflicts() {
+  loading.value = true
+  page.value = 0
+  try {
+    const { data } = await assignmentApi.conflicts()
+    conflicts.value = data
+  } catch {
+    conflicts.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
 function showTrash() {
   view.value = 'trash'
   loadTrash()
+}
+
+function showConflicts() {
+  view.value = 'conflicts'
+  loadConflicts()
 }
 
 function showList() {
@@ -128,7 +202,14 @@ function showList() {
   load()
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  // Nạp sẵn để hiện số trên nút cảnh báo — người xếp lịch cần biết ngay có trùng hay không.
+  assignmentApi
+    .conflicts()
+    .then(({ data }) => (conflicts.value = data))
+    .catch(() => {})
+})
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
 async function openCreate() {
@@ -136,17 +217,56 @@ async function openCreate() {
     teacherId: '',
     subjectId: '',
     schoolId: '',
-    classId: '',
     startDate: isoToday(),
     endDate: '',
     slots: [],
   })
-  modal.slotDraft = { dayOfWeek: 'MON', periodId: '' }
+  modal.slotDraft = { dayOfWeek: 'MON', periodId: '', classId: '' }
+  modal.editId = null
   modal.error = ''
   modal.open = true
   scoped.classes = []
   scoped.periods = []
   teacherBusy.value = []
+  await loadFormOptions()
+}
+
+/**
+ * Sửa một phiếu CHƯA được xác nhận. Trường và môn khóa cứng (khung tiết + lớp gắn với trường,
+ * đổi trường là phiếu khác hẳn); giáo viên thì ĐỔI được — phiếu bị từ chối cần xếp cho người
+ * khác, mà giáo viên cũ vẫn để chọn lại phòng khi họ bấm nhầm nút Từ chối.
+ */
+async function openEdit(a) {
+  Object.assign(modal.form, {
+    teacherId: a.teacherId,
+    subjectId: a.subjectId,
+    schoolId: a.schoolId,
+    startDate: a.startDate,
+    endDate: a.endDate ?? '',
+    slots: (a.slots ?? []).map((s) => ({
+      dayOfWeek: s.dayOfWeek,
+      periodId: Number(s.periodId),
+      classId: Number(s.classId),
+    })),
+  })
+  modal.slotDraft = { dayOfWeek: 'MON', periodId: '', classId: '' }
+  modal.editId = a.id
+  modal.error = ''
+  modal.open = true
+  await loadFormOptions()
+  try {
+    const { data } = await assignmentApi.schoolOptions(a.schoolId)
+    scoped.classes = data.classes
+    scoped.periods = data.periods
+    modal.slotDraft.classId = scoped.classes.length ? scoped.classes[0].id : ''
+  } catch {
+    /* giữ trống */
+  }
+  await onTeacherChange()
+  pickFirstFreePeriod()
+}
+
+async function loadFormOptions() {
   try {
     const { data } = await assignmentApi.options()
     options.teachers = data.teachers
@@ -158,8 +278,9 @@ async function openCreate() {
 }
 
 async function onSchoolChange() {
-  modal.form.classId = ''
+  // Đổi trường thì cả lớp lẫn khung tiết đều khác → bỏ hết các dòng đã thêm.
   modal.form.slots = []
+  modal.slotDraft.classId = ''
   scoped.classes = []
   scoped.periods = []
   if (!modal.form.schoolId) return
@@ -167,22 +288,26 @@ async function onSchoolChange() {
     const { data } = await assignmentApi.schoolOptions(modal.form.schoolId)
     scoped.classes = data.classes
     scoped.periods = data.periods
+    modal.slotDraft.classId = scoped.classes.length ? scoped.classes[0].id : ''
     pickFirstFreePeriod()
   } catch {
     /* giữ trống */
   }
 }
 
-/* ── Khóa tiết GV đã có lịch ──
-   Nạp phân công ACTIVE của GV khi đổi Giáo viên; suy ra tiết bận theo Thứ (lọc theo
-   giai đoạn chồng ngày với phân công đang tạo) rồi disable đúng option tiết đó. */
+/* ── Khóa tiết GV đã bận ──
+   Nạp bảng "giờ bận" của GV (mọi trường, kèm khung giờ thật) khi đổi Giáo viên, rồi
+   disable những tiết ĐÈ GIỜ với nó. Phải so theo giờ chứ không theo periodId: mỗi trường
+   một bộ khung tiết riêng nên "tiết 1" ở hai trường là hai id khác nhau mà giờ vẫn trùng. */
 async function onTeacherChange() {
   teacherBusy.value = []
   const tid = modal.form.teacherId
   if (!tid) return
   try {
-    const { data } = await assignmentApi.list({ teacherId: Number(tid) })
-    teacherBusy.value = (data || []).filter((a) => a.status === 'ACTIVE')
+    // Không lọc ngày ở server: lấy trọn rồi tự lọc theo giai đoạn đang nhập, để đổi
+    // ngày bắt đầu/kết thúc không phải gọi lại API.
+    const { data } = await assignmentApi.teacherBusy({ teacherId: Number(tid) })
+    teacherBusy.value = data || []
   } catch {
     teacherBusy.value = []
   }
@@ -196,55 +321,90 @@ function rangesOverlap(aStart, aEnd, bStart, bEnd) {
   return true
 }
 
-// { 'MON': Set(periodId), ... } — tiết GV đã bận, chỉ tính phân công chồng ngày với form.
+// Hai khoảng giờ trong ngày có giao nhau không ("07:00:00" so chuỗi được vì cùng định dạng).
+function timesOverlap(aStart, aEnd, bStart, bEnd) {
+  if (!aStart || !aEnd || !bStart || !bEnd) return false
+  return aStart < bEnd && bStart < aEnd
+}
+
+// { 'MON': [ô lịch bận…] } — chỉ giữ phân công có giai đoạn chồng với giai đoạn đang nhập.
 const busyByDay = computed(() => {
   const map = {}
   const ns = modal.form.startDate
   const ne = modal.form.endDate
-  for (const a of teacherBusy.value) {
-    if (a.status !== 'ACTIVE') continue
-    if (ns && !rangesOverlap(ns, ne, a.startDate, a.endDate)) continue
-    for (const s of a.slots || []) {
-      ;(map[s.dayOfWeek] ??= new Set()).add(Number(s.periodId))
-    }
+  for (const b of teacherBusy.value) {
+    // Khi SỬA, bỏ qua chính phiếu đang sửa — không thì mọi tiết của nó đều báo "bận" vì
+    // chạm vào chính nó, sửa xong không thêm lại được tiết cũ.
+    if (modal.editId && b.assignmentId === modal.editId) continue
+    if (ns && !rangesOverlap(ns, ne, b.startDate, b.endDate)) continue
+    ;(map[b.dayOfWeek] ??= []).push(b)
   }
   return map
 })
 
-// Lý do 1 tiết bị khóa với 1 Thứ: 'busy' = GV đã có lịch | 'added' = đã thêm trong form | ''.
-function periodTakenReason(period, day) {
-  const pid = Number(period.id)
-  if (busyByDay.value[day]?.has(pid)) return 'busy'
-  if (modal.form.slots.some((s) => s.dayOfWeek === day && Number(s.periodId) === pid))
-    return 'added'
-  return ''
-}
-function periodTakenSuffix(period, day) {
-  const r = periodTakenReason(period, day)
-  return r === 'busy' ? ' — đã có lịch' : r === 'added' ? ' — đã thêm' : ''
+/**
+ * Vì sao một tiết không chọn được cho một Thứ.
+ * @returns null nếu chọn được, ngược lại { kind: 'busy'|'added', label }
+ */
+function periodConflict(period, day) {
+  const busy = (busyByDay.value[day] ?? []).find((b) =>
+    timesOverlap(period.startTime, period.endTime, b.startTime, b.endTime),
+  )
+  if (busy) {
+    const at = [busy.schoolName, busy.className].filter(Boolean).join(' · ')
+    return { kind: 'busy', label: at }
+  }
+  // Đã thêm ở ngay form này: so cả periodId lẫn giờ (2 tiết khác id vẫn có thể đè giờ).
+  const added = modal.form.slots.find((s) => {
+    if (s.dayOfWeek !== day) return false
+    if (Number(s.periodId) === Number(period.id)) return true
+    const p = scoped.periods.find((x) => Number(x.id) === Number(s.periodId))
+    return p && timesOverlap(period.startTime, period.endTime, p.startTime, p.endTime)
+  })
+  if (added) {
+    const c = scoped.classes.find((x) => Number(x.id) === Number(added.classId))
+    return { kind: 'added', label: c ? c.name : '' }
+  }
+  return null
 }
 
-// Lý do khóa của tiết đang chọn ở ô nháp: 'busy' | 'added' | '' (để disable nút + báo đúng chữ).
-const draftReason = computed(() => {
+function periodTakenSuffix(period, day) {
+  const c = periodConflict(period, day)
+  if (!c) return ''
+  return c.kind === 'busy'
+    ? ` — bận: ${c.label || 'trường khác'}`
+    : ` — đã thêm${c.label ? ' (' + c.label + ')' : ''}`
+}
+
+// Xung đột của tiết đang chọn ở ô nháp (để disable nút Thêm + báo đúng lý do).
+const draftConflict = computed(() => {
   const p = scoped.periods.find((x) => Number(x.id) === Number(modal.slotDraft.periodId))
-  return p ? periodTakenReason(p, modal.slotDraft.dayOfWeek) : ''
+  return p ? periodConflict(p, modal.slotDraft.dayOfWeek) : null
 })
 
 // Nhảy ô tiết về tiết TRỐNG đầu tiên cho Thứ đang chọn (tránh dừng ở tiết vừa thêm/đã bận).
 function pickFirstFreePeriod() {
   const day = modal.slotDraft.dayOfWeek
-  const free = scoped.periods.find((p) => !periodTakenReason(p, day))
+  const free = scoped.periods.find((p) => !periodConflict(p, day))
   modal.slotDraft.periodId = free ? free.id : ''
 }
 
+// Sau khi thêm một tiết, nhảy sang LỚP kế tiếp: xếp liên tiếp 1A1/1A2/1A3 cho tiết 1/2/3
+// là ca dùng phổ biến nhất, đỡ phải chọn lại lớp mỗi dòng. Hết danh sách thì giữ nguyên.
+function pickNextClass() {
+  const i = scoped.classes.findIndex((c) => Number(c.id) === Number(modal.slotDraft.classId))
+  if (i >= 0 && i + 1 < scoped.classes.length) modal.slotDraft.classId = scoped.classes[i + 1].id
+}
+
 function addSlot() {
-  const { dayOfWeek, periodId } = modal.slotDraft
-  if (!periodId) return
+  const { dayOfWeek, periodId, classId } = modal.slotDraft
+  if (!periodId || !classId) return
   const period = scoped.periods.find((x) => Number(x.id) === Number(periodId))
-  // Chặn tiết GV đã có lịch / đã thêm (khớp luật 409 backend).
-  if (period && periodTakenReason(period, dayOfWeek)) return
-  modal.form.slots.push({ dayOfWeek, periodId: Number(periodId) })
+  // Chặn tiết GV đã bận / đã thêm (khớp luật 409 backend).
+  if (period && periodConflict(period, dayOfWeek)) return
+  modal.form.slots.push({ dayOfWeek, periodId: Number(periodId), classId: Number(classId) })
   pickFirstFreePeriod() // tự chuyển sang tiết trống kế tiếp
+  pickNextClass()
 }
 
 function removeSlot(i) {
@@ -254,7 +414,9 @@ function removeSlot(i) {
 function slotLabel(s) {
   const d = DAYS.find((x) => x.code === s.dayOfWeek)?.label ?? s.dayOfWeek
   const p = scoped.periods.find((x) => x.id === s.periodId)
-  return `${d} · ${p ? tietLabel(p.periodNumber, p.sessionType) : 'Tiết #' + s.periodId}`
+  const c = scoped.classes.find((x) => Number(x.id) === Number(s.classId))
+  const tiet = p ? tietLabel(p.periodNumber, p.sessionType) : 'Tiết #' + s.periodId
+  return `${d} · ${tiet} · ${c ? c.name : 'Lớp #' + s.classId}`
 }
 
 const canSubmit = computed(
@@ -262,35 +424,152 @@ const canSubmit = computed(
     modal.form.teacherId &&
     modal.form.subjectId &&
     modal.form.schoolId &&
-    modal.form.classId &&
     modal.form.startDate &&
     modal.form.slots.length > 0,
 )
 
 async function submit() {
   if (!canSubmit.value) {
-    modal.error = 'Vui lòng điền đủ GV, môn, trường, lớp, ngày bắt đầu và ít nhất 1 tiết.'
+    modal.error = 'Vui lòng điền đủ GV, môn, trường, ngày bắt đầu và ít nhất 1 tiết (kèm lớp).'
     return
   }
   modal.saving = true
   modal.error = ''
   try {
-    await assignmentApi.create({
-      teacherId: Number(modal.form.teacherId),
-      subjectId: Number(modal.form.subjectId),
-      schoolId: Number(modal.form.schoolId),
-      classId: Number(modal.form.classId),
-      startDate: modal.form.startDate,
-      endDate: modal.form.endDate || null,
-      slots: modal.form.slots,
-    })
+    if (modal.editId) {
+      // Sửa xong phiếu quay về Chờ xác nhận và giáo viên nhận lại lời mời từ đầu.
+      await assignmentApi.update(modal.editId, {
+        teacherId: Number(modal.form.teacherId),
+        startDate: modal.form.startDate,
+        endDate: modal.form.endDate || null,
+        slots: modal.form.slots,
+      })
+    } else {
+      await assignmentApi.create({
+        teacherId: Number(modal.form.teacherId),
+        subjectId: Number(modal.form.subjectId),
+        schoolId: Number(modal.form.schoolId),
+        classId: null, // lớp nằm ở từng tiết (slots[].classId), không còn ở cấp phân công
+        startDate: modal.form.startDate,
+        endDate: modal.form.endDate || null,
+        slots: modal.form.slots,
+      })
+    }
     modal.open = false
     load()
   } catch (e) {
-    modal.error = e.response?.data?.message ?? 'Tạo phân công thất bại'
+    modal.error =
+      e.response?.data?.message ?? (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
   } finally {
     modal.saving = false
   }
+}
+
+/* ── Hạn xác nhận: đếm ngược + mức cảnh báo ── */
+
+/**
+ * Trạng thái hạn của một phiếu chờ: 'over' (quá hạn) | 'warn' (sắp hết) | 'ok' | null.
+ * Chỉ phiếu đang chờ mới có hạn — phiếu đã quyết rồi thì hạn không còn nghĩa gì.
+ */
+function deadlineLevel(a) {
+  if (a.status !== 'PENDING' || !a.confirmDeadline) return null
+  const left = new Date(a.confirmDeadline).getTime() - Date.now()
+  if (left <= 0) return 'over'
+  return left <= DEADLINE_WARN_HOURS * 3600_000 ? 'warn' : 'ok'
+}
+
+/** "còn 5 giờ" / "còn 40 phút" / "quá hạn" — admin cần biết còn bao lâu, không cần ngày giờ đầy đủ. */
+function deadlineText(a) {
+  if (!a.confirmDeadline) return '—'
+  const left = new Date(a.confirmDeadline).getTime() - Date.now()
+  if (left <= 0) return 'quá hạn'
+  const hours = Math.floor(left / 3600_000)
+  if (hours >= 24) return `còn ${Math.floor(hours / 24)} ngày`
+  if (hours >= 1) return `còn ${hours} giờ`
+  return `còn ${Math.max(1, Math.round(left / 60_000))} phút`
+}
+
+/** Hạn đầy đủ để hiện trong tooltip (dd/MM/yyyy HH:mm). */
+function deadlineFull(a) {
+  if (!a.confirmDeadline) return ''
+  const d = new Date(a.confirmDeadline)
+  const p = (n) => String(n).padStart(2, '0')
+  return `Hạn xác nhận: ${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/* ── Tích chọn + thao tác hàng loạt ── */
+
+// Chỉ phiếu CHƯA có hiệu lực mới thao tác hàng loạt được (nhắc/ép duyệt/hủy).
+const actionableItems = computed(() =>
+  pagedItems.value.filter((a) => ['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)),
+)
+const allSelected = computed(
+  () => actionableItems.value.length > 0 && selectedIds.value.length === actionableItems.value.length,
+)
+function toggleAll() {
+  selectedIds.value = allSelected.value ? [] : actionableItems.value.map((a) => a.id)
+}
+function isSelectable(a) {
+  return ['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)
+}
+
+const bulkBusy = ref(false)
+async function runBulk(action, confirmText) {
+  if (!selectedIds.value.length || bulkBusy.value) return
+  if (confirmText && !window.confirm(confirmText)) return
+  bulkBusy.value = true
+  try {
+    const { data } = await assignmentApi.bulk(action, [...selectedIds.value])
+    if (data.errors?.length) {
+      alert(`Xong ${data.succeeded} phiếu.\nKhông làm được:\n` + data.errors.join('\n'))
+    }
+    load()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Thao tác thất bại')
+  } finally {
+    bulkBusy.value = false
+  }
+}
+
+/* ── Thao tác trên từng dòng ── */
+
+async function remindOne(a) {
+  try {
+    await assignmentApi.remind(a.id)
+    alert(`Đã gửi lại lời mời cho ${a.teacherName}.`)
+    load()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Gửi nhắc thất bại')
+  }
+}
+
+const approveTarget = ref(null) // phiếu đang chờ admin ép duyệt
+const approveNote = ref('')
+async function confirmForceApprove() {
+  if (!approveTarget.value) return
+  try {
+    await assignmentApi.forceApprove(approveTarget.value.id, approveNote.value)
+    approveTarget.value = null
+    approveNote.value = ''
+    load()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Ép duyệt thất bại')
+    approveTarget.value = null
+  }
+}
+
+/* ── Hiển thị kết quả quét trùng giờ ── */
+
+/** "07:00:00" → "07:00" (bảng trùng giờ chỉ cần giờ:phút). */
+function hhmm(t) {
+  return t ? String(t).slice(0, 5) : '—'
+}
+
+/** Một phía của cặp trùng: "TH Dư Hàng · 1A3 · Tiết 1 (07:00–07:35) · #461". */
+function sideLabel(s) {
+  if (!s) return '—'
+  const where = [s.schoolName, s.className, s.subjectName].filter(Boolean).join(' · ')
+  return `${where} · ${tietShort(s.periodNumber, s.sessionType)} (${hhmm(s.startTime)}–${hhmm(s.endTime)}) · #${s.assignmentId}`
 }
 
 /* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
@@ -335,11 +614,25 @@ async function confirmPurge() {
     <div class="page-head">
       <div>
         <h2 class="title">
-          {{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}
+          {{
+            inTrash
+              ? 'Thùng rác — Phân công đã xóa'
+              : inConflicts
+                ? 'Trùng giờ giáo viên'
+                : 'Phân công giảng dạy'
+          }}
         </h2>
+        <p v-if="inConflicts" class="subtitle">
+          Các cặp tiết của cùng một giáo viên bị đè giờ lên nhau — tính cả trường hợp ở
+          <strong>hai trường khác nhau</strong>. Hãy hủy bớt một trong hai phân công.
+        </p>
       </div>
       <div class="head-actions">
-        <template v-if="!inTrash">
+        <template v-if="view === 'list'">
+          <button class="btn btn-outline" @click="showConflicts">
+            Trùng giờ
+            <span v-if="conflicts.length" class="count-pill">{{ conflicts.length }}</span>
+          </button>
           <button class="btn btn-outline" @click="showTrash">Thùng rác</button>
           <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
         </template>
@@ -348,7 +641,7 @@ async function confirmPurge() {
     </div>
 
     <!-- Tìm kiếm phân công theo GV/trường/lớp/môn (chỉ ở danh sách đang hoạt động) -->
-    <div v-if="!inTrash" class="filter-bar">
+    <div v-if="view === 'list'" class="filter-bar">
       <label class="field field--wide">
         <span>Tìm kiếm</span>
         <input
@@ -366,10 +659,101 @@ async function confirmPurge() {
       </div>
     </div>
 
-    <div class="table-wrap">
+    <!-- Tab trạng thái: việc cần xử lý (Chờ xác nhận / Hết hạn / Bị từ chối) đứng trước -->
+    <div v-if="view === 'list'" class="status-tabs">
+      <button
+        v-for="t in STATUS_TABS"
+        :key="t.code"
+        class="status-tab"
+        :class="{ 'status-tab--on': statusFilter === t.code }"
+        @click="selectTab(t.code)"
+      >
+        {{ t.label }}
+        <span v-if="t.code && statusCounts[t.code]" class="status-tab__n">{{
+          statusCounts[t.code]
+        }}</span>
+      </button>
+    </div>
+
+    <!-- Thanh thao tác hàng loạt: đầu kỳ phân công cả chục GV, bấm từng dòng quá chậm -->
+    <div v-if="view === 'list' && selectedIds.length" class="bulk-bar">
+      <span class="bulk-bar__count">Đã chọn {{ selectedIds.length }} phiếu</span>
+      <button class="btn btn-sm btn-outline" :disabled="bulkBusy" @click="runBulk('remind')">
+        Nhắc giáo viên
+      </button>
+      <button
+        class="btn btn-sm btn-outline"
+        :disabled="bulkBusy"
+        @click="
+          runBulk(
+            'force-approve',
+            `Duyệt thay giáo viên ${selectedIds.length} phiếu? Lịch sẽ có hiệu lực ngay dù giáo viên chưa xác nhận.`,
+          )
+        "
+      >
+        Ép duyệt
+      </button>
+      <button
+        class="btn btn-sm btn-danger"
+        :disabled="bulkBusy"
+        @click="runBulk('cancel', `Hủy ${selectedIds.length} phiếu và đưa vào thùng rác?`)"
+      >
+        Hủy phiếu
+      </button>
+      <button class="btn btn-sm btn-outline" @click="selectedIds = []">Bỏ chọn</button>
+    </div>
+
+    <!-- Kết quả quét trùng giờ -->
+    <div v-if="inConflicts" class="table-wrap">
       <table class="table">
         <thead>
           <tr>
+            <th>Giáo viên</th>
+            <th>Thứ</th>
+            <th>Giờ đè nhau</th>
+            <th>Ô lịch 1</th>
+            <th>Ô lịch 2</th>
+            <th>Giai đoạn chồng</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading">
+            <td colspan="6" class="text-center text-muted">Đang quét…</td>
+          </tr>
+          <tr v-else-if="!conflicts.length">
+            <td colspan="6" class="text-center text-muted">
+              Không có tiết nào bị trùng giờ. 👍
+            </td>
+          </tr>
+          <tr v-for="(c, i) in pagedItems" :key="i">
+            <td class="font-medium">{{ c.teacherName }}</td>
+            <td>{{ c.dayOfWeekLabel }}</td>
+            <td>
+              <span class="badge badge-red">{{ hhmm(c.overlapFrom) }}–{{ hhmm(c.overlapTo) }}</span>
+            </td>
+            <td class="small">{{ sideLabel(c.first) }}</td>
+            <td class="small">{{ sideLabel(c.second) }}</td>
+            <td class="text-muted small">
+              {{ c.overlapStart }} → {{ c.overlapEnd ?? 'không giới hạn' }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div v-else class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th v-if="!inTrash" class="col-check">
+              <input
+                type="checkbox"
+                :checked="allSelected"
+                :disabled="!actionableItems.length"
+                aria-label="Chọn tất cả phiếu thao tác được"
+                @change="toggleAll"
+              />
+            </th>
             <th>Giáo viên</th>
             <th>Trường</th>
             <th>Lớp</th>
@@ -382,10 +766,10 @@ async function confirmPurge() {
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="8" class="text-center text-muted">Đang tải…</td>
+            <td colspan="9" class="text-center text-muted">Đang tải…</td>
           </tr>
           <tr v-else-if="!currentList.length">
-            <td colspan="8" class="text-center text-muted">
+            <td colspan="9" class="text-center text-muted">
               {{
                 inTrash
                   ? 'Thùng rác trống'
@@ -396,6 +780,15 @@ async function confirmPurge() {
             </td>
           </tr>
           <tr v-for="a in pagedItems" :key="a.id">
+            <td v-if="!inTrash" class="col-check">
+              <input
+                v-if="isSelectable(a)"
+                v-model="selectedIds"
+                type="checkbox"
+                :value="a.id"
+                :aria-label="`Chọn phiếu của ${a.teacherName}`"
+              />
+            </td>
             <td class="font-medium">{{ a.teacherName }}</td>
             <td>{{ a.schoolName }}</td>
             <td>{{ a.className ?? '—' }}</td>
@@ -405,7 +798,8 @@ async function confirmPurge() {
             </td>
             <td>
               <span v-for="s in a.slots" :key="s.id" class="chip"
-                >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType) }}</span
+                >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType)
+                }}<template v-if="s.className"> · {{ s.className }}</template></span
               >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
@@ -416,12 +810,54 @@ async function confirmPurge() {
                   'badge-green': a.status === 'ACTIVE',
                   'badge-gray': a.status === 'CANCELLED',
                   'badge-blue': a.status === 'COMPLETED',
+                  'badge-amber': a.status === 'PENDING',
+                  'badge-red': a.status === 'REJECTED' || a.status === 'EXPIRED',
                 }"
                 >{{ STATUS_LABEL[a.status] ?? a.status }}</span
               >
+              <!-- Đếm ngược hạn: vàng khi sắp hết, đỏ khi đã quá — admin nhìn là biết phiếu nào gấp -->
+              <div
+                v-if="deadlineLevel(a)"
+                class="deadline"
+                :class="`deadline--${deadlineLevel(a)}`"
+                :title="deadlineFull(a)"
+              >
+                {{ deadlineText(a) }}
+              </div>
+              <div v-if="a.status === 'REJECTED' && a.rejectionReason" class="reject-why">
+                “{{ a.rejectionReason }}”
+              </div>
+              <div v-else-if="a.confirmSource === 'ADMIN'" class="reject-why">
+                Duyệt thay bởi trung tâm
+              </div>
             </td>
             <td class="actions">
               <template v-if="!inTrash">
+                <!-- Phiếu chưa có hiệu lực: nhắc lại / duyệt thay / sửa rồi gửi lại -->
+                <button
+                  v-if="a.status === 'PENDING'"
+                  class="btn btn-sm btn-outline"
+                  title="Gửi lại lời mời cho giáo viên"
+                  @click="remindOne(a)"
+                >
+                  Nhắc
+                </button>
+                <button
+                  v-if="a.status === 'PENDING' || a.status === 'EXPIRED'"
+                  class="btn btn-sm btn-outline"
+                  title="Duyệt thay giáo viên — lịch có hiệu lực ngay"
+                  @click="((approveTarget = a), (approveNote = ''))"
+                >
+                  Ép duyệt
+                </button>
+                <button
+                  v-if="['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)"
+                  class="btn btn-sm btn-outline"
+                  title="Sửa rồi gửi lại lời mời (đổi được giáo viên)"
+                  @click="openEdit(a)"
+                >
+                  Sửa
+                </button>
                 <button
                   v-if="a.status !== 'COMPLETED'"
                   class="btn btn-sm btn-danger"
@@ -447,7 +883,12 @@ async function confirmPurge() {
     <!-- Modal tạo phân công -->
     <div v-if="modal.open" class="modal-overlay" @click.self="modal.open = false">
       <div class="modal-box modal-lg">
-        <h3>Tạo phân công</h3>
+        <h3>{{ modal.editId ? `Sửa phân công #${modal.editId}` : 'Tạo phân công' }}</h3>
+        <p v-if="modal.editId" class="modal-note">
+          Lưu xong phiếu quay về <strong>Chờ xác nhận</strong> và giáo viên nhận lại lời mời, hạn
+          trả lời tính lại từ đầu. Trường và môn không đổi được — muốn đổi thì hủy phiếu và tạo
+          phiếu mới.
+        </p>
 
         <div class="grid2">
           <div class="form-group">
@@ -459,25 +900,20 @@ async function confirmPurge() {
           </div>
           <div class="form-group">
             <label>Môn học *</label>
-            <select v-model="modal.form.subjectId">
+            <select v-model="modal.form.subjectId" :disabled="!!modal.editId">
               <option value="">-- Chọn môn --</option>
               <option v-for="s in options.subjects" :key="s.id" :value="s.id">{{ s.name }}</option>
             </select>
           </div>
           <div class="form-group">
             <label>Trường *</label>
-            <select v-model="modal.form.schoolId" @change="onSchoolChange">
+            <select
+              v-model="modal.form.schoolId"
+              :disabled="!!modal.editId"
+              @change="onSchoolChange"
+            >
               <option value="">-- Chọn trường --</option>
               <option v-for="s in options.schools" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Lớp *</label>
-            <select v-model="modal.form.classId" :disabled="!scoped.classes.length">
-              <option value="">
-                {{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}
-              </option>
-              <option v-for="c in scoped.classes" :key="c.id" :value="c.id">{{ c.name }}</option>
             </select>
           </div>
           <div class="form-group">
@@ -491,9 +927,9 @@ async function confirmPurge() {
           </div>
         </div>
 
-        <!-- Slots -->
+        <!-- Slots: mỗi dòng là Thứ + Tiết + LỚP (một tiết một lớp) -->
         <div class="slots-block">
-          <label class="slots-label">Các tiết dạy trong tuần *</label>
+          <label class="slots-label">Các tiết dạy trong tuần * — mỗi tiết chọn lớp riêng</label>
           <div class="slot-add">
             <select v-model="modal.slotDraft.dayOfWeek" @change="pickFirstFreePeriod">
               <option v-for="d in DAYS" :key="d.code" :value="d.code">{{ d.label }}</option>
@@ -506,26 +942,35 @@ async function confirmPurge() {
                 v-for="p in scoped.periods"
                 :key="p.id"
                 :value="p.id"
-                :disabled="!!periodTakenReason(p, modal.slotDraft.dayOfWeek)"
+                :disabled="!!periodConflict(p, modal.slotDraft.dayOfWeek)"
               >
                 {{ tietLabel(p.periodNumber, p.sessionType)
                 }}{{ periodTakenSuffix(p, modal.slotDraft.dayOfWeek) }}
               </option>
             </select>
+            <select v-model="modal.slotDraft.classId" :disabled="!scoped.classes.length">
+              <option value="">
+                {{ scoped.classes.length ? '-- Chọn lớp --' : 'Chọn trường trước' }}
+              </option>
+              <option v-for="c in scoped.classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+            </select>
             <button
               class="btn btn-outline btn-sm"
               type="button"
-              :disabled="!modal.slotDraft.periodId || !!draftReason"
+              :disabled="!modal.slotDraft.periodId || !modal.slotDraft.classId || !!draftConflict"
               @click="addSlot"
             >
               + Thêm tiết
             </button>
           </div>
-          <p v-if="draftReason === 'busy'" class="slot-hint slot-hint--warn">
-            Giáo viên đã có lịch dạy tiết này — vui lòng chọn tiết khác.
+          <p v-if="draftConflict?.kind === 'busy'" class="slot-hint slot-hint--warn">
+            Giáo viên đã bận khung giờ này{{
+              draftConflict.label ? ` (${draftConflict.label})` : ''
+            }}
+            — vui lòng chọn tiết khác.
           </p>
-          <p v-else-if="draftReason === 'added'" class="slot-hint slot-hint--muted">
-            Tiết này đã có trong danh sách bên dưới.
+          <p v-else-if="draftConflict?.kind === 'added'" class="slot-hint slot-hint--muted">
+            Khung giờ này đã có trong danh sách bên dưới.
           </p>
           <div class="chips">
             <span v-for="(s, i) in modal.form.slots" :key="i" class="chip chip-lg">
@@ -543,8 +988,38 @@ async function confirmPurge() {
         <div class="modal-actions">
           <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
           <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit">
-            {{ modal.saving ? 'Đang lưu…' : 'Tạo phân công' }}
+            {{
+              modal.saving
+                ? 'Đang lưu…'
+                : modal.editId
+                  ? 'Lưu & gửi lại lời mời'
+                  : 'Tạo phân công'
+            }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ép duyệt thay giáo viên -->
+    <div v-if="approveTarget" class="modal-overlay" @click.self="approveTarget = null">
+      <div class="modal-box modal-sm">
+        <h3>Duyệt thay giáo viên</h3>
+        <p>
+          Duyệt phân công của <strong>{{ approveTarget.teacherName }}</strong> tại
+          {{ approveTarget.schoolName }} mà <strong>không cần giáo viên xác nhận</strong>? Lịch sẽ
+          có hiệu lực ngay và được tính công, tính lương.
+        </p>
+        <div class="form-group">
+          <label>Ghi chú (không bắt buộc)</label>
+          <input
+            v-model="approveNote"
+            type="text"
+            placeholder="vd: đã trao đổi trực tiếp với giáo viên"
+          />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="approveTarget = null">Không</button>
+          <button class="btn btn-primary" @click="confirmForceApprove">Ép duyệt</button>
         </div>
       </div>
     </div>
@@ -724,11 +1199,133 @@ async function confirmPurge() {
   background: rgba(37, 99, 235, 0.12);
   color: #1e40af;
 }
+.badge-red {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+.badge-amber {
+  background: rgba(217, 119, 6, 0.14);
+  color: #b45309;
+}
+/* Tab lọc theo trạng thái */
+.status-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.status-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--c-border);
+  border-radius: 9999px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.status-tab--on {
+  border-color: var(--c-primary);
+  background: rgba(249, 115, 22, 0.12);
+  color: var(--c-primary);
+}
+.status-tab__n {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: var(--c-border);
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+}
+.status-tab--on .status-tab__n {
+  background: var(--c-primary);
+  color: #fff;
+}
+/* Thanh thao tác hàng loạt */
+.bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  border: 1px solid var(--c-primary);
+  border-radius: 10px;
+  background: rgba(249, 115, 22, 0.08);
+}
+.bulk-bar__count {
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+.col-check {
+  width: 34px;
+  text-align: center;
+}
+/* Đếm ngược hạn xác nhận dưới badge trạng thái */
+.deadline {
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.deadline--ok {
+  color: var(--c-text-muted);
+}
+.deadline--warn {
+  color: #b45309;
+}
+.deadline--over {
+  color: #b91c1c;
+}
+.reject-why {
+  margin-top: 3px;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--c-text-muted);
+  max-width: 190px;
+}
+.modal-note {
+  margin: -4px 0 14px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(249, 115, 22, 0.08);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--c-text);
+}
+/* Số vụ trùng giờ ngay trên nút — người xếp lịch thấy ngay mà không cần bấm vào xem. */
+.count-pill {
+  display: inline-block;
+  min-width: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.subtitle {
+  margin: 4px 0 0;
+  font-size: 0.84rem;
+  color: var(--c-text-muted);
+  max-width: 68ch;
+}
 /* Chữ đậm chìm trên nền tối → dùng tông sáng hơn */
 :root[data-theme='dark'] .chip {
   color: #a5b4fc;
 }
 :root[data-theme='dark'] .badge-blue {
   color: #93c5fd;
+}
+:root[data-theme='dark'] .badge-red {
+  color: #fca5a5;
 }
 </style>

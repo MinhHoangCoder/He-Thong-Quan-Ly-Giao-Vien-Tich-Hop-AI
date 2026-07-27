@@ -5,6 +5,7 @@ import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.ScheduleEventResponse;
 import com.kdc.tsdms.dto.ScheduleFilterOptions;
 import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -13,6 +14,7 @@ import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -47,6 +49,7 @@ public class ScheduleService {
 
     private final ScheduleRepository scheduleRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
     private final SchoolClassRepository classRepo;
@@ -56,6 +59,7 @@ public class ScheduleService {
     public ScheduleService(
             ScheduleRepository scheduleRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             TeacherRepository teacherRepo,
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
@@ -63,11 +67,29 @@ public class ScheduleService {
             PeriodRepository periodRepo) {
         this.scheduleRepo = scheduleRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+    }
+
+    /**
+     * Lớp THẬT của một buổi dạy: lấy theo ô lịch gốc đã sinh ra buổi ({@code SourceSlotId})
+     * — từ V16 mỗi tiết mang lớp riêng, nên KHÔNG được đọc {@code Assignment.ClassId} nữa
+     * (đọc ở đó thì cả 3 tiết sáng đều hiện cùng một lớp). Fallback về lớp cấp phân công
+     * chỉ dành cho dữ liệu cũ chưa có slot/lớp.
+     */
+    private Integer classIdOf(Schedule s, Assignment a, Map<Integer, AssignmentSlot> slotCache) {
+        if (s.getSourceSlotId() != null) {
+            AssignmentSlot slot = slotCache.computeIfAbsent(
+                    s.getSourceSlotId(), id -> slotRepo.findById(id).orElse(null));
+            if (slot != null && slot.getClassId() != null) {
+                return slot.getClassId();
+            }
+        }
+        return a.getClassId();
     }
 
     @Transactional(readOnly = true)
@@ -105,6 +127,7 @@ public class ScheduleService {
         Map<Integer, SchoolClass> classCache = new HashMap<>();
         Map<Integer, Subject> subjectCache = new HashMap<>();
         Map<Integer, Period> periodCache = new HashMap<>();
+        Map<Integer, AssignmentSlot> slotCache = new HashMap<>();
 
         List<ScheduleEventResponse> out = new ArrayList<>();
         for (Schedule s : schedules) {
@@ -116,7 +139,8 @@ public class ScheduleService {
             if (schoolId != null && !schoolId.equals(a.getSchoolId())) {
                 continue;
             }
-            if (classId != null && !classId.equals(a.getClassId())) {
+            Integer eventClassId = classIdOf(s, a, slotCache);
+            if (classId != null && !classId.equals(eventClassId)) {
                 continue;
             }
 
@@ -135,10 +159,10 @@ public class ScheduleService {
             School school = schoolCache.computeIfAbsent(
                     a.getSchoolId(), id -> schoolRepo.findById(id).orElse(null));
             e.schoolName = school != null ? school.getName() : "(Trường #" + a.getSchoolId() + ")";
-            e.classId = a.getClassId();
-            if (a.getClassId() != null) {
+            e.classId = eventClassId;
+            if (eventClassId != null) {
                 SchoolClass c = classCache.computeIfAbsent(
-                        a.getClassId(), id -> classRepo.findById(id).orElse(null));
+                        eventClassId, id -> classRepo.findById(id).orElse(null));
                 e.className = c != null ? c.getName() : null;
             }
             e.subjectId = a.getSubjectId();
@@ -193,6 +217,7 @@ public class ScheduleService {
         List<Schedule> schedules = scheduleRepo.findByTeacherIdAndStatusAndDeletedFalse(teacherId, APPROVED);
 
         Map<Integer, Assignment> aCache = new HashMap<>();
+        Map<Integer, AssignmentSlot> slotCache = new HashMap<>();
         Map<Integer, String> schools = new LinkedHashMap<>(); // schoolId -> tên trường
         Map<Integer, MyScheduleFilters.ClassOption> classes = new LinkedHashMap<>();
         for (Schedule s : schedules) {
@@ -204,8 +229,9 @@ public class ScheduleService {
             schools.computeIfAbsent(
                     a.getSchoolId(),
                     id -> schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")"));
-            if (a.getClassId() != null) {
-                classes.computeIfAbsent(a.getClassId(), id -> {
+            Integer eventClassId = classIdOf(s, a, slotCache);
+            if (eventClassId != null) {
+                classes.computeIfAbsent(eventClassId, id -> {
                     String name =
                             classRepo.findById(id).map(SchoolClass::getName).orElse("(Lớp #" + id + ")");
                     return new MyScheduleFilters.ClassOption(id, name, a.getSchoolId());
