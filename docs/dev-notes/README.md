@@ -51,6 +51,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-07-21 | backend | TeacherController — bỏ neo role, chuyển sang phân quyền theo permission | [2026-07-21-be-teacher-controller-rbac.md](2026-07-21-be-teacher-controller-rbac.md) |
 | 2026-07-21 | frontend | Route 404 catch-all dùng chung | [2026-07-21-fe-route-404-catchall.md](2026-07-21-fe-route-404-catchall.md) |
 | 2026-07-25 | backend | Cấu hình gửi mail — secret local qua `mail-local.properties` | [2026-07-25-be-mail-local-config.md](2026-07-25-be-mail-local-config.md) |
+| 2026-07-28 | backend | Chống dội mail ở luồng Quên mật khẩu (throttle theo tài khoản) | [2026-07-28-backend-chong-doi-mail-quen-mat-khau.md](2026-07-28-backend-chong-doi-mail-quen-mat-khau.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
