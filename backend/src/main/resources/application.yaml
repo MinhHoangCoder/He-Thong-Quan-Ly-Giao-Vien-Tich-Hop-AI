@@ -101,3 +101,6 @@ tsdms:
     # Địa chỉ hiển thị người gửi. Gmail chỉ cho gửi dưới danh nghĩa chính tài khoản đã xác thực,
     # nên phần email trong <...> phải khớp MAIL_USERNAME. Đổi qua env khi dùng tài khoản khác.
     from: ${MAIL_FROM:KDC EduOps <kdceduopsai@gmail.com>}
+    # Gửi mail hỏng thì có in link đặt lại mật khẩu ra log không. Link chứa TOKEN CÒN SỐNG
+    # -> ai đọc được log là đổi được mật khẩu người đó. Chỉ bật tạm trên máy chưa cấu hình SMTP.
+    log-reset-link: ${MAIL_LOG_RESET_LINK:false}
