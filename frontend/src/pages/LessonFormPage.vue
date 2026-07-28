@@ -92,6 +92,14 @@ const canvaError = ref('')
 
 const deletingFileId = ref(null)
 
+/** Số từ hiện tại của ô Mô tả — dùng để hiển thị bộ đếm & chặn submit khi vượt 200 từ. */
+const MAX_DESCRIPTION_WORDS = 200
+const descriptionWordCount = computed(() => {
+  const trimmed = form.description.trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
+})
+const descriptionTooLong = computed(() => descriptionWordCount.value > MAX_DESCRIPTION_WORDS)
+
 async function loadMeta() {
   try {
     const [catsRes, subRes, gradeRes, brRes] = await Promise.all([
@@ -153,6 +161,10 @@ async function onSubmit() {
   }
   if (!form.title.trim()) {
     errorMsg.value = 'Tiêu đề không được để trống.'
+    return
+  }
+  if (descriptionTooLong.value) {
+    errorMsg.value = `Mô tả tối đa ${MAX_DESCRIPTION_WORDS} từ (hiện tại: ${descriptionWordCount.value} từ).`
     return
   }
 
@@ -339,7 +351,11 @@ onMounted(async () => {
               v-model="form.description"
               rows="2"
               placeholder="Tóm tắt ngắn về bài giảng..."
+              :class="{ 'input-error': descriptionTooLong }"
             ></textarea>
+            <small :class="{ 'field-error': descriptionTooLong }">
+              {{ descriptionWordCount }}/{{ MAX_DESCRIPTION_WORDS }} từ
+            </small>
           </label>
 
           <!-- Hàng 5: Trạng thái -->
@@ -601,6 +617,12 @@ onMounted(async () => {
 .field select:focus,
 .field textarea:focus {
   border-color: var(--c-primary, #f97316);
+}
+.field .input-error {
+  border-color: #ef4444;
+}
+.field .field-error {
+  color: #ef4444;
 }
 
 .form-footer {

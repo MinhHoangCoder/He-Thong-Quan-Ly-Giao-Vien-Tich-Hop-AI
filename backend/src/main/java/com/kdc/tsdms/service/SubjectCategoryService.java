@@ -18,6 +18,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SubjectCategoryService {
 
+    /**
+     * Giới hạn mô tả nhóm môn học: tối đa 200 TỪ (không phải ký tự). @Size trên
+     * SubjectCategoryRequest chỉ đếm ký tự nên không đủ để chặn theo số từ ->
+     * chặn thêm ở đây, trước khi lưu (áp dụng cho cả tạo mới lẫn sửa).
+     */
+    private static final int MAX_DESCRIPTION_WORDS = 200;
+
     private final SubjectCategoryRepository categoryRepo;
     private final SubjectRepository subjectRepo;
 
@@ -55,6 +62,7 @@ public class SubjectCategoryService {
         if (categoryRepo.existsByCodeAndDeletedFalse(req.code())) {
             throw new ApiException(HttpStatus.CONFLICT, "Code '" + req.code() + "' đã tồn tại");
         }
+        validateDescriptionWordLimit(req.description());
         SubjectCategory sc = new SubjectCategory();
         apply(sc, req);
         sc.setCreatedBy(SecurityUtils.currentUserId());
@@ -68,6 +76,7 @@ public class SubjectCategoryService {
         if (categoryRepo.existsByCodeAndDeletedFalseAndIdNot(req.code(), id)) {
             throw new ApiException(HttpStatus.CONFLICT, "Code '" + req.code() + "' đã được dùng bởi nhóm môn khác");
         }
+        validateDescriptionWordLimit(req.description());
         apply(sc, req);
         sc.setUpdatedAt(Instant.now());
         sc.setUpdatedBy(SecurityUtils.currentUserId());
@@ -90,6 +99,20 @@ public class SubjectCategoryService {
     }
 
     /* ── PRIVATE ── */
+
+    /**
+     * Đếm số từ (tách theo khoảng trắng) của mô tả và chặn nếu vượt quá
+     * {@link #MAX_DESCRIPTION_WORDS}. Mô tả rỗng/null luôn hợp lệ.
+     */
+    private void validateDescriptionWordLimit(String description) {
+        if (description == null || description.isBlank()) return;
+        int wordCount = description.trim().split("\\s+").length;
+        if (wordCount > MAX_DESCRIPTION_WORDS) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Mô tả tối đa " + MAX_DESCRIPTION_WORDS + " từ (hiện tại: " + wordCount + " từ)");
+        }
+    }
 
     private SubjectCategory getOrThrow(Integer id) {
         return categoryRepo

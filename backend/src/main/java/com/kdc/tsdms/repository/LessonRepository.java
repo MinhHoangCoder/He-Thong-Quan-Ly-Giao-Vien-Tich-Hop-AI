@@ -1,6 +1,7 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.Lesson;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,6 +18,13 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
     long countBySubjectIdAndDeletedFalse(Integer subjectId);
 
     /**
+     * Lấy toàn bộ bài giảng (chưa xóa mềm) thuộc 1 môn học — dùng để xóa mềm
+     * hàng loạt khi môn học đã bị tắt hoạt động (DISABLED) và người dùng xác nhận
+     * xóa môn kèm các bài giảng liên quan.
+     */
+    List<Lesson> findBySubjectIdAndDeletedFalse(Integer subjectId);
+
+    /**
      * Tìm kiếm bài giảng có phân trang + lọc — lọc theo Category (TÊN nhóm từ
      * SubjectCategory, qua bảng Subject), GradeLevel (LIKE), Status, và keyword
      * tiêu đề.
@@ -26,7 +34,7 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
      * - gradeLevel : NULL/blank = tất cả khối
      * - status : DRAFT | PUBLISHED | ARCHIVED, NULL/blank = tất cả
      * - keyword : tìm theo tiêu đề HOẶC tên môn học, không phân biệt hoa thường
-     *             (khớp tên môn để link "Bài giảng" từ Lịch dạy lọc đúng theo môn của buổi).
+     * (khớp tên môn để link "Bài giảng" từ Lịch dạy lọc đúng theo môn của buổi).
      */
     @Query("""
                SELECT l FROM Lesson l

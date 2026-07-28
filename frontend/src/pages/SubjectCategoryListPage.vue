@@ -175,6 +175,12 @@ async function reloadSubjects(categoryId) {
   }
 }
 
+/** Đếm số từ của 1 chuỗi (tách theo khoảng trắng) — dùng để giới hạn mô tả 200 từ. */
+function countWords(str) {
+  const trimmed = (str || '').trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
 /* ── Validate: nhóm môn (mirror SubjectCategoryRequest phía backend) ── */
 const CATEGORY_CODE_RE = /^[A-Z0-9_]{2,50}$/
 function validateCategoryForm(form) {
@@ -185,8 +191,8 @@ function validateCategoryForm(form) {
   else if (!CATEGORY_CODE_RE.test(code)) errors.code = 'Chỉ chữ hoa, số, dấu _ (2-50 ký tự)'
   if (!name) errors.name = 'Tên nhóm môn không được để trống'
   else if (name.length > 100) errors.name = 'Tên tối đa 100 ký tự'
-  if (form.description && form.description.length > 200)
-    errors.description = 'Mô tả tối đa 200 ký tự'
+  if (form.description && countWords(form.description) > 200)
+    errors.description = 'Mô tả tối đa 200 từ (hiện tại: ' + countWords(form.description) + ' từ)'
   return errors
 }
 
@@ -620,6 +626,7 @@ async function confirmDeleteSubject() {
           <small v-if="modal.errors.description" class="field-error">{{
             modal.errors.description
           }}</small>
+          <small v-else class="field-hint">{{ countWords(modal.form.description) }}/200 từ</small>
         </div>
 
         <div class="form-group">
@@ -749,6 +756,21 @@ async function confirmDeleteSubject() {
         <p>
           Bạn có chắc muốn xóa môn học <strong>{{ deleteSubjectTarget.name }}</strong
           >?
+        </p>
+
+        <p
+          v-if="deleteSubjectTarget.lessonCount > 0 && deleteSubjectTarget.status === 'DISABLED'"
+          class="msg msg--warning"
+        >
+          Môn học này đang tắt hoạt động và có
+          <strong>{{ deleteSubjectTarget.lessonCount }}</strong>
+          bài giảng liên quan. Xóa môn học sẽ <strong>xóa luôn toàn bộ</strong> các bài giảng đó.
+        </p>
+
+        <p v-else-if="deleteSubjectTarget.lessonCount > 0" class="msg msg--error">
+          Môn học này đang có {{ deleteSubjectTarget.lessonCount }} bài giảng và vẫn đang
+          <strong>hoạt động</strong>. Vui lòng tắt trạng thái hoạt động trước, sau đó mới có thể xóa
+          (kèm xóa các bài giảng liên quan).
         </p>
 
         <div class="modal__actions">
@@ -1279,6 +1301,10 @@ tbody tr:hover {
   color: #dc2626 !important;
 }
 
+.field-hint {
+  color: var(--c-text-muted);
+}
+
 /* ================= Message ================= */
 
 .msg {
@@ -1295,6 +1321,14 @@ tbody tr:hover {
 }
 :root[data-theme='dark'] .msg--error {
   color: #f87171;
+}
+
+.msg--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #a16207;
+}
+:root[data-theme='dark'] .msg--warning {
+  color: #fbbf24;
 }
 
 .total {

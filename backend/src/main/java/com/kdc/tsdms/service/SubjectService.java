@@ -2,6 +2,7 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.SubjectRequest;
 import com.kdc.tsdms.dto.SubjectResponse;
+import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
@@ -91,8 +92,28 @@ public class SubjectService {
         Subject s = getOrThrow(id);
         long used = countLessons(id);
         if (used > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT, "Không thể xóa: môn học đang được dùng bởi " + used + " bài giảng");
+            // FIX (2026-07-28): trước đây LUÔN chặn xóa môn học nếu còn bài giảng
+            // tham chiếu, bất kể trạng thái. Theo yêu cầu mới: nếu môn học đã bị
+            // TẮT HOẠT ĐỘNG (status = DISABLED) thì cho phép xóa, đồng thời xóa
+            // mềm (cascade) luôn TẤT CẢ bài giảng đang thuộc môn này — tránh để
+            // lại bài giảng "mồ côi" trỏ tới 1 môn học đã bị xóa.
+            // Môn học còn ACTIVE thì vẫn chặn như cũ để không xóa nhầm dữ liệu
+            // đang được dùng.
+            if (!"DISABLED".equals(s.getStatus())) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Không thể xóa: môn học đang được dùng bởi " + used
+                                + " bài giảng. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
+            }
+            Instant now = Instant.now();
+            Integer uid = SecurityUtils.currentUserId();
+            List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(id);
+            for (Lesson l : lessons) {
+                l.setDeleted(true);
+                l.setDeletedAt(now);
+                l.setDeletedBy(uid);
+            }
+            lessonRepo.saveAll(lessons);
         }
         s.setDeleted(true);
         s.setDeletedAt(Instant.now());

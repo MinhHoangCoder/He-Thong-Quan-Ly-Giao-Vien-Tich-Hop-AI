@@ -57,6 +57,14 @@ public class LessonService {
             Paths.get("uploads/lessons").toAbsolutePath().normalize();
 
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
+
+    /**
+     * Giới hạn mô tả bài giảng: tối đa 200 TỪ (không phải ký tự). @Size trên
+     * LessonRequest chỉ đếm ký tự nên không đủ để chặn theo số từ -> chặn thêm ở
+     * đây, trước khi lưu (áp dụng cho cả tạo mới lẫn sửa).
+     */
+    private static final int MAX_DESCRIPTION_WORDS = 200;
+
     /** Khối lớp gợi ý cho dropdown — text tự do, không ràng buộc DB. */
     private static final List<String> GRADE_LEVELS =
             List.of("Lớp 1", "Lớp 2", "Lớp 3", "Lớp 4", "Lớp 5", "Lớp 6", "Lớp 7", "Lớp 8", "Lớp 9");
@@ -172,6 +180,7 @@ public class LessonService {
     @Transactional
     public LessonResponse create(LessonRequest req) {
         validateRefs(req);
+        validateDescriptionWordLimit(req.description());
         Lesson lesson = new Lesson();
         apply(lesson, req);
         lesson.setCreatedBy(SecurityUtils.currentUserId());
@@ -188,6 +197,7 @@ public class LessonService {
     public LessonResponse update(Integer id, LessonRequest req) {
         Lesson lesson = getOrThrow(id);
         validateRefs(req);
+        validateDescriptionWordLimit(req.description());
         apply(lesson, req);
         lesson.setUpdatedAt(Instant.now());
         lesson.setUpdatedBy(SecurityUtils.currentUserId());
@@ -310,33 +320,24 @@ public class LessonService {
     public LessonFileResponse addCanvaLink(Integer lessonId, CanvaLinkRequest req) {
         Lesson lesson = getOrThrow(lessonId);
 
-        // FIX (2026-07-10): mỗi bài giảng chỉ nên có 1 link Canva "chính".
-        // Trước đây mỗi lần bấm "Thêm" lại INSERT một LessonFile mới, nên khi
-        // GV sửa/cập nhật link Canva của 1 bài giảng đã có, hệ thống tồn tại
-        // song song NHIỀU bản ghi fileType=canva (cũ lẫn mới). Phía GV (chỉ xem)
-        // hiển thị tất cả các file này -> bấm "Xem" có thể trúng link Canva CŨ
-        // đã lỗi thời thay vì link vừa cập nhật.
-        // -> Nếu bài giảng đã có sẵn 1 file canva, CẬP NHẬT lại file đó (UPDATE)
-        // thay vì tạo thêm bản ghi mới. Nếu chưa có thì mới INSERT.
-        LessonFile lf = lessonFileRepo.findByLessonId(lessonId).stream()
-                .filter(f -> "canva".equalsIgnoreCase(f.getFileType()))
-                .findFirst()
-                .orElseGet(LessonFile::new);
-
-        boolean isNew = lf.getId() == null;
-
+        // FIX (2026-07-28): bản vá trước (2026-07-10) coi mỗi bài giảng chỉ có 1
+        // link Canva "chính" nên tìm bản ghi fileType=canva ĐẦU TIÊN của bài giảng
+        // rồi UPDATE đè lên nó thay vì tạo bản ghi mới. Hệ quả: khi người dùng
+        // thêm link Canva thứ 2, backend trả về CÙNG id với link thứ nhất (vì đã
+        // bị ghi đè trong DB), trong khi FE (LessonFormPage.vue) vẫn push thêm 1
+        // phần tử mới vào mảng hiển thị -> mảng có 2 dòng NHÌN khác nhau nhưng
+        // TRÙNG id. Bấm xóa 1 dòng (theo id) sẽ khớp cả 2 dòng trùng id đó -> cả
+        // 2 biến mất cùng lúc thay vì xóa từng cái.
+        // -> Mỗi lần "Thêm" LUÔN INSERT một bản ghi LessonFile MỚI (id riêng), để
+        // 1 bài giảng có thể có nhiều link Canva (nhiều "slide") và xóa được từng
+        // link một cách độc lập.
+        LessonFile lf = new LessonFile();
         lf.setLessonId(lessonId);
         lf.setFileName(req.fileName());
         lf.setFileUrl(req.canvaUrl());
         lf.setFileType("canva");
         lf.setFileSizeKb(null);
-
-        if (isNew) {
-            lf.setCreatedBy(SecurityUtils.currentUserId());
-        } else {
-            lf.setUpdatedAt(Instant.now());
-            lf.setUpdatedBy(SecurityUtils.currentUserId());
-        }
+        lf.setCreatedBy(SecurityUtils.currentUserId());
 
         lesson.setUpdatedAt(Instant.now());
         lesson.setUpdatedBy(SecurityUtils.currentUserId());
@@ -376,6 +377,20 @@ public class LessonService {
         return lessonRepo
                 .findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy bài giảng id=" + id));
+    }
+
+    /**
+     * Đếm số từ (tách theo khoảng trắng) của mô tả và chặn nếu vượt quá
+     * {@link #MAX_DESCRIPTION_WORDS}. Mô tả rỗng/null luôn hợp lệ.
+     */
+    private void validateDescriptionWordLimit(String description) {
+        if (description == null || description.isBlank()) return;
+        int wordCount = description.trim().split("\\s+").length;
+        if (wordCount > MAX_DESCRIPTION_WORDS) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Mô tả tối đa " + MAX_DESCRIPTION_WORDS + " từ (hiện tại: " + wordCount + " từ)");
+        }
     }
 
     private void validateRefs(LessonRequest req) {
