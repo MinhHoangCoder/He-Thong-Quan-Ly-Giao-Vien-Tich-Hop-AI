@@ -25,7 +25,9 @@ const newRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-new' : 'l
    State
 ========================= */
 
-const PAGE_SIZE = 10
+// Kho bài giảng hiển thị dạng nhóm Khối > Danh mục > Bài giảng nên không dùng
+// phân trang nhỏ (sẽ làm vỡ nhóm giữa 2 trang) — lấy 1 lượt với size đủ lớn.
+const PAGE_SIZE = 1000
 
 const loading = ref(false)
 const error = ref('')
@@ -187,6 +189,54 @@ function confirmDelete(id) {
   deleteId.value = id
 }
 
+/* =========================
+   Nhóm: Khối > Danh mục > Bài giảng
+========================= */
+
+/**
+ * Kho bài giảng hiển thị theo cấu trúc Khối lớp -> Danh mục -> Bài giảng thay
+ * vì bảng phẳng, để dễ định vị bài giảng theo đúng khối/nhóm môn.
+ * Thứ tự Khối theo `gradeLevels` (Lớp 1..9), Danh mục theo `categories`
+ * (alphabet, load từ SubjectCategory ACTIVE); phần không xác định được xếp
+ * cuối trong mục "Chưa phân loại".
+ */
+const groupedLessons = computed(() => {
+  const gradeOrder = gradeLevels.value
+  const categoryOrder = categories.value.map((c) => c.name)
+
+  const gradeMap = new Map()
+  for (const lesson of lessons.value) {
+    const gradeKey = lesson.gradeLevel || 'Chưa phân loại'
+    if (!gradeMap.has(gradeKey)) gradeMap.set(gradeKey, new Map())
+    const catMap = gradeMap.get(gradeKey)
+    const catKey = lesson.category || 'Chưa phân loại'
+    if (!catMap.has(catKey)) catMap.set(catKey, [])
+    catMap.get(catKey).push(lesson)
+  }
+
+  const byKnownOrder = (order) => (a, b) => {
+    const ia = order.indexOf(a)
+    const ib = order.indexOf(b)
+    if (ia === -1 && ib === -1) return a.localeCompare(b)
+    if (ia === -1) return 1
+    if (ib === -1) return -1
+    return ia - ib
+  }
+
+  return [...gradeMap.keys()].sort(byKnownOrder(gradeOrder)).map((gradeKey) => {
+    const catMap = gradeMap.get(gradeKey)
+    const catKeys = [...catMap.keys()].sort(byKnownOrder(categoryOrder))
+    return {
+      grade: gradeKey,
+      total: catKeys.reduce((sum, k) => sum + catMap.get(k).length, 0),
+      categories: catKeys.map((catKey) => ({
+        category: catKey,
+        items: catMap.get(catKey),
+      })),
+    }
+  })
+})
+
 async function doDelete() {
   if (!deleteId.value) return
 
@@ -290,87 +340,91 @@ onMounted(async () => {
       bài giảng
     </p>
 
-    <!-- ================= TABLE ================= -->
+    <!-- ================= KHO BÀI GIẢNG: Khối > Danh mục > Bài giảng ================= -->
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Tiêu đề</th>
+    <p v-if="loading" class="empty-state">Đang tải...</p>
 
-            <th>Danh mục</th>
+    <p v-else-if="lessons.length === 0" class="empty-state">Không có dữ liệu</p>
 
-            <th>Môn học</th>
+    <div v-else class="lesson-tree">
+      <details v-for="grp in groupedLessons" :key="grp.grade" class="grade-group" open>
+        <summary class="grade-group__head">
+          <span class="grade-group__title">Khối {{ grp.grade }}</span>
+          <span class="grade-group__count">{{ grp.total }} bài</span>
+        </summary>
 
-            <th>Khối</th>
+        <details
+          v-for="catGrp in grp.categories"
+          :key="grp.grade + '-' + catGrp.category"
+          class="cat-group"
+          open
+        >
+          <summary class="cat-group__head">
+            <span class="cat-badge">{{ catGrp.category }}</span>
+            <span class="cat-group__count">{{ catGrp.items.length }} bài</span>
+          </summary>
 
-            <th>Trạng thái</th>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Tiêu đề</th>
+                  <th>Môn học</th>
+                  <th>Trạng thái</th>
+                  <th width="120">Thao tác</th>
+                </tr>
+              </thead>
 
-            <th width="120">Thao tác</th>
-          </tr>
-        </thead>
+              <tbody>
+                <tr v-for="lesson in catGrp.items" :key="lesson.id">
+                  <td class="col-title">
+                    <div class="title-text">
+                      {{ lesson.title }}
+                    </div>
 
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="6" class="empty">Đang tải...</td>
-          </tr>
+                    <div v-if="lesson.description" class="desc-text">
+                      {{ lesson.description }}
+                    </div>
+                  </td>
 
-          <tr v-else-if="lessons.length === 0">
-            <td colspan="6" class="empty">Không có dữ liệu</td>
-          </tr>
+                  <td>
+                    {{ lesson.subjectName || '-' }}
+                  </td>
 
-          <tr v-for="lesson in lessons" :key="lesson.id">
-            <td class="col-title">
-              <div class="title-text">
-                {{ lesson.title }}
-              </div>
+                  <td>
+                    <span class="badge" :class="STATUS_MAP[lesson.status]?.cls">
+                      {{ STATUS_MAP[lesson.status]?.label }}
+                    </span>
+                  </td>
 
-              <div v-if="lesson.description" class="desc-text">
-                {{ lesson.description }}
-              </div>
-            </td>
+                  <td class="col-actions">
+                    <button
+                      class="act-btn"
+                      title="Sửa"
+                      @click="
+                        router.push({
+                          name: editRouteName,
+                          params: { id: lesson.id },
+                        })
+                      "
+                    >
+                      Sửa
+                    </button>
 
-            <td>
-              <span class="cat-badge">
-                {{ lesson.category || '-' }}
-              </span>
-            </td>
-
-            <td>
-              {{ lesson.subjectName || '-' }}
-            </td>
-
-            <td>
-              {{ lesson.gradeLevel || '-' }}
-            </td>
-
-            <td>
-              <span class="badge" :class="STATUS_MAP[lesson.status]?.cls">
-                {{ STATUS_MAP[lesson.status]?.label }}
-              </span>
-            </td>
-
-            <td class="col-actions">
-              <button
-                class="act-btn"
-                title="Sửa"
-                @click="
-                  router.push({
-                    name: editRouteName,
-                    params: { id: lesson.id },
-                  })
-                "
-              >
-                Sửa
-              </button>
-
-              <button class="act-btn act-btn--del" title="Xóa" @click="confirmDelete(lesson.id)">
-                Xóa
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+                    <button
+                      class="act-btn act-btn--del"
+                      title="Xóa"
+                      @click="confirmDelete(lesson.id)"
+                    >
+                      Xóa
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </details>
     </div>
 
     <!-- ================= PAGINATION ================= -->
@@ -583,6 +637,83 @@ tbody tr:hover {
   text-align: center;
   color: var(--c-text-muted);
   padding: 35px;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--c-text-muted);
+  padding: 35px;
+  background: var(--c-surface);
+  border-radius: 14px;
+  border: 1px solid var(--c-border);
+}
+
+/* ================= Kho bài giảng: nhóm Khối > Danh mục ================= */
+
+.lesson-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.grade-group {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  padding: 4px 16px 16px;
+}
+
+.grade-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 4px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.grade-group__head::-webkit-details-marker {
+  display: none;
+}
+
+.grade-group__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.cat-group {
+  margin: 10px 0 0;
+  padding-left: 8px;
+  border-left: 3px solid var(--c-surface-2);
+}
+
+.cat-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 4px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cat-group__head::-webkit-details-marker {
+  display: none;
+}
+
+.cat-group__count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+}
+
+.cat-group .table-wrap {
+  margin-top: 6px;
 }
 
 /* ================= Lesson ================= */
