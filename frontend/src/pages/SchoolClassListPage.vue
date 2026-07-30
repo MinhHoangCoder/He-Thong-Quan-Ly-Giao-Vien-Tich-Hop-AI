@@ -574,8 +574,9 @@ function clearFieldError(field) {
   if (modal.errors[field]) delete modal.errors[field]
 }
 
-/** Chuẩn hóa hậu tố tên lớp khi gõ (A1/B20) — tách khỏi inline handler vì prettier
- * bỏ dấu ; giữa 2 câu lệnh inline làm Vue compiler vỡ khi build. */
+// Chuẩn hóa ô "hậu tố lớp": viết hoa + bỏ ký tự không phải chữ/số, rồi xóa lỗi field.
+// Tách thành hàm để KHÔNG nhồi 2 câu lệnh vào @input (Prettier no-semi gỡ dấu ; sẽ
+// khiến trình biên dịch template Vue báo "Unexpected token, expected ,").
 function onClassSuffixInput() {
   modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '')
   clearFieldError('classSuffix')

@@ -350,6 +350,14 @@ function openEdit(row) {
 /** Dialog in-app xác nhận lưu trùng kỳ (thay window.confirm — hiện được thông tin phiếu cũ). */
 const dupConfirm = reactive({ open: false, message: '', payload: null })
 
+// Mở form Sửa từ modal chi tiết rồi đóng modal chi tiết. Gộp thành 1 hàm để KHÔNG
+// nhồi nhiều câu lệnh vào @click — Prettier (cấu hình no-semi) từng gỡ dấu ; khiến
+// trình biên dịch template Vue báo "Unexpected token, expected ,".
+function editFromDetail() {
+  openEdit(detail.value)
+  detail.value = null
+}
+
 async function saveModal(payload) {
   modal.saving = true
   modal.error = ''

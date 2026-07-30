@@ -3,6 +3,7 @@ package com.kdc.tsdms.service;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
 import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Attendance;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
@@ -12,6 +13,7 @@ import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
@@ -46,6 +48,7 @@ public class AttendanceService {
     private final ScheduleRepository scheduleRepo;
     private final TeacherRepository teacherRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final SchoolRepository schoolRepo;
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
@@ -57,6 +60,7 @@ public class AttendanceService {
             ScheduleRepository scheduleRepo,
             TeacherRepository teacherRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
@@ -66,6 +70,7 @@ public class AttendanceService {
         this.scheduleRepo = scheduleRepo;
         this.teacherRepo = teacherRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.schoolRepo = schoolRepo;
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
@@ -154,10 +159,19 @@ public class AttendanceService {
             School school = schoolCache.computeIfAbsent(
                     a.getSchoolId(), id -> schoolRepo.findById(id).orElse(null));
             r.schoolName = school != null ? school.getName() : "(Trường #" + a.getSchoolId() + ")";
-            r.classId = a.getClassId();
-            if (a.getClassId() != null) {
+            // Lớp lấy từ ô lịch gốc của buổi (V16 — mỗi tiết một lớp), fallback lớp cấp
+            // phân công cho dữ liệu cũ.
+            Integer classId = a.getClassId();
+            if (s.getSourceSlotId() != null) {
+                AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+                if (slot != null && slot.getClassId() != null) {
+                    classId = slot.getClassId();
+                }
+            }
+            r.classId = classId;
+            if (classId != null) {
                 SchoolClass c = classCache.computeIfAbsent(
-                        a.getClassId(), id -> classRepo.findById(id).orElse(null));
+                        classId, id -> classRepo.findById(id).orElse(null));
                 r.className = c != null ? c.getName() : null;
             }
             r.subjectId = a.getSubjectId();

@@ -90,6 +90,10 @@ tsdms:
   reset:
     token-ttl: 30m # link đặt lại mật khẩu hết hạn sau 30 phút
     base-url: ${APP_BASE_URL:http://localhost:5173} # FE base url để ghép link reset
+    # Chống dội mail vào hòm thư nạn nhân: rate-limit phía dưới đếm theo IP nên đổi IP là
+    # né được; 2 mốc này đếm theo CHÍNH TÀI KHOẢN bị nhắm tới (xem PasswordResetService).
+    resend-cooldown: 1m # phải nghỉ 1 phút giữa 2 mail đặt lại mật khẩu của cùng tài khoản
+    max-per-day: 5 # tối đa 5 mail / tài khoản / 24 giờ
   rate-limit:
     enabled: true
     capacity: 5 # tối đa 5 lần thử dồn dập / IP / endpoint (login, forgot/reset-password)
@@ -101,3 +105,6 @@ tsdms:
     # Địa chỉ hiển thị người gửi. Gmail chỉ cho gửi dưới danh nghĩa chính tài khoản đã xác thực,
     # nên phần email trong <...> phải khớp MAIL_USERNAME. Đổi qua env khi dùng tài khoản khác.
     from: ${MAIL_FROM:KDC EduOps <kdceduopsai@gmail.com>}
+    # Gửi mail hỏng thì có in link đặt lại mật khẩu ra log không. Link chứa TOKEN CÒN SỐNG
+    # -> ai đọc được log là đổi được mật khẩu người đó. Chỉ bật tạm trên máy chưa cấu hình SMTP.
+    log-reset-link: ${MAIL_LOG_RESET_LINK:false}

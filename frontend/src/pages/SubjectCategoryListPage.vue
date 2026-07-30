@@ -175,6 +175,12 @@ async function reloadSubjects(categoryId) {
   }
 }
 
+/** Đếm số từ của 1 chuỗi (tách theo khoảng trắng) — dùng để giới hạn mô tả 200 từ. */
+function countWords(str) {
+  const trimmed = (str || '').trim()
+  return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
 /* ── Validate: nhóm môn (mirror SubjectCategoryRequest phía backend) ── */
 const CATEGORY_CODE_RE = /^[A-Z0-9_]{2,50}$/
 function validateCategoryForm(form) {
@@ -185,8 +191,8 @@ function validateCategoryForm(form) {
   else if (!CATEGORY_CODE_RE.test(code)) errors.code = 'Chỉ chữ hoa, số, dấu _ (2-50 ký tự)'
   if (!name) errors.name = 'Tên nhóm môn không được để trống'
   else if (name.length > 100) errors.name = 'Tên tối đa 100 ký tự'
-  if (form.description && form.description.length > 200)
-    errors.description = 'Mô tả tối đa 200 ký tự'
+  if (form.description && countWords(form.description) > 200)
+    errors.description = 'Mô tả tối đa 200 từ (hiện tại: ' + countWords(form.description) + ' từ)'
   return errors
 }
 
@@ -294,6 +300,11 @@ function openEditSubject(subject) {
     open: true,
     mode: 'edit',
     id: subject.id,
+    // FIX (2026-07-30): sửa môn học lồng trong 1 nhóm thì nhóm môn luôn được
+    // giữ cố định theo nhóm hiện tại (không cho đổi nhóm ở đây) — chỉ hiển thị
+    // tên nhóm read-only, tương tự lúc tạo mới. categoryId vẫn giữ nguyên
+    // trong form để gửi lên API khi lưu.
+    categoryName: subject.categoryName ?? '',
     form: {
       code: subject.code,
       name: subject.name,
@@ -456,7 +467,7 @@ async function confirmDeleteSubject() {
                 <button
                   class="act-btn act-btn--del"
                   title="Xóa"
-                  :disabled="item.subjectCount > 0"
+                  :disabled="item.status !== 'DISABLED'"
                   @click="deleteTarget = item"
                 >
                   Xóa
@@ -520,7 +531,7 @@ async function confirmDeleteSubject() {
                           <button
                             class="act-btn act-btn--del"
                             title="Xóa"
-                            :disabled="s.lessonCount > 0"
+                            :disabled="s.status !== 'DISABLED'"
                             @click="deleteSubjectTarget = s"
                           >
                             Xóa
@@ -620,6 +631,7 @@ async function confirmDeleteSubject() {
           <small v-if="modal.errors.description" class="field-error">{{
             modal.errors.description
           }}</small>
+          <small v-else class="field-hint">{{ countWords(modal.form.description) }}/200 từ</small>
         </div>
 
         <div class="form-group">
@@ -649,6 +661,11 @@ async function confirmDeleteSubject() {
         <p>
           Bạn có chắc muốn xóa nhóm môn <strong>{{ deleteTarget.name }}</strong
           >?
+        </p>
+
+        <p v-if="deleteTarget.subjectCount > 0" class="msg msg--warning">
+          Nhóm môn này có <strong>{{ deleteTarget.subjectCount }}</strong> môn học. Xóa nhóm sẽ
+          <strong>xóa luôn toàn bộ</strong> các môn học đó (kèm bài giảng liên quan).
         </p>
 
         <div class="modal__actions">
@@ -690,23 +707,13 @@ async function confirmDeleteSubject() {
           }}</small>
         </div>
 
-        <div v-if="subjectModal.mode === 'create'" class="form-group">
+        <div class="form-group">
           <label>Nhóm môn</label>
           <input :value="subjectModal.categoryName" disabled />
-        </div>
-        <div v-else class="form-group">
-          <label>Nhóm môn *</label>
-          <select
-            v-model="subjectModal.form.categoryId"
-            :class="{ 'input-error': subjectModal.errors.categoryId }"
-            @change="clearSubjectFieldError('categoryId')"
-          >
-            <option :value="null">-- Chọn nhóm môn --</option>
-            <option v-for="c in allCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <small v-if="subjectModal.errors.categoryId" class="field-error">{{
-            subjectModal.errors.categoryId
-          }}</small>
+          <small class="field-hint">
+            Môn học luôn thuộc nhóm đang mở — không thể đổi nhóm ở đây. Muốn chuyển nhóm khác, hãy
+            xóa môn học này (sau khi tắt hoạt động) rồi tạo lại trong nhóm mong muốn.
+          </small>
         </div>
 
         <div class="form-group">
@@ -749,6 +756,12 @@ async function confirmDeleteSubject() {
         <p>
           Bạn có chắc muốn xóa môn học <strong>{{ deleteSubjectTarget.name }}</strong
           >?
+        </p>
+
+        <p v-if="deleteSubjectTarget.lessonCount > 0" class="msg msg--warning">
+          Môn học này đang tắt hoạt động và có
+          <strong>{{ deleteSubjectTarget.lessonCount }}</strong>
+          bài giảng liên quan. Xóa môn học sẽ <strong>xóa luôn toàn bộ</strong> các bài giảng đó.
         </p>
 
         <div class="modal__actions">
@@ -1279,6 +1292,10 @@ tbody tr:hover {
   color: #dc2626 !important;
 }
 
+.field-hint {
+  color: var(--c-text-muted);
+}
+
 /* ================= Message ================= */
 
 .msg {
@@ -1295,6 +1312,14 @@ tbody tr:hover {
 }
 :root[data-theme='dark'] .msg--error {
   color: #f87171;
+}
+
+.msg--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #a16207;
+}
+:root[data-theme='dark'] .msg--warning {
+  color: #fbbf24;
 }
 
 .total {

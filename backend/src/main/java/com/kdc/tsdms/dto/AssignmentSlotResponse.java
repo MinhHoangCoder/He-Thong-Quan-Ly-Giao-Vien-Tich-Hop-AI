@@ -35,6 +35,12 @@ public class AssignmentSlotResponse {
     /** Giờ kết thúc tiết, vd: 07:35 */
     public LocalTime endTime;
 
+    // ── Lớp dạy ở CHÍNH tiết này (V16) ──────────────────────────────────
+    public Integer classId;
+
+    /** Tên lớp, vd: "1A1" — null nếu slot chưa gắn lớp (dữ liệu trước V16). */
+    public String className;
+
     /** ACTIVE | CANCELLED */
     public String status;
 
@@ -46,12 +52,23 @@ public class AssignmentSlotResponse {
      * @param period entity Period tương ứng (có thể null nếu Period bị xóa mềm)
      */
     public static AssignmentSlotResponse fromEntity(AssignmentSlot slot, Period period) {
+        return fromEntity(slot, period, null);
+    }
+
+    /**
+     * Bản đầy đủ: kèm tên lớp của slot (Service tra {@code SchoolClass} rồi truyền vào).
+     *
+     * @param className tên lớp dạy ở tiết này (null nếu slot chưa gắn lớp)
+     */
+    public static AssignmentSlotResponse fromEntity(AssignmentSlot slot, Period period, String className) {
         AssignmentSlotResponse r = new AssignmentSlotResponse();
         r.id = slot.getId();
         r.assignmentId = slot.getAssignmentId();
         r.dayOfWeek = slot.getDayOfWeek();
         r.dayOfWeekLabel = mapDayLabel(slot.getDayOfWeek()); // tự map sang tiếng Việt
         r.periodId = slot.getPeriodId();
+        r.classId = slot.getClassId();
+        r.className = className;
 
         // Gắn thêm thông tin tiết học nếu Period còn tồn tại
         if (period != null) {

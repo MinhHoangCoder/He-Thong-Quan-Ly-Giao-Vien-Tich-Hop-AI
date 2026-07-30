@@ -15,9 +15,9 @@ import java.util.List;
  *   <li>Chọn môn     → {@code subjectId}</li>
  *   <li>Chọn trường  → {@code schoolId}</li>
  *   <li>Chọn khối    → frontend lọc, không cần trường riêng</li>
- *   <li>Chọn lớp     → {@code classId}</li>
  *   <li>Chọn thứ     → nằm trong {@code slots[].dayOfWeek}</li>
  *   <li>Chọn tiết    → nằm trong {@code slots[].periodId}</li>
+ *   <li>Chọn lớp     → nằm trong {@code slots[].classId} (MỖI TIẾT một lớp, V16)</li>
  *   <li>Chọn GV      → {@code teacherId}</li>
  * </ol>
  *
@@ -42,10 +42,12 @@ public record AssignmentCreateRequest(
         @NotNull(message = "Vui lòng chọn môn học") Integer subjectId,
 
         /**
-         * Lớp cụ thể (→ SchoolClass) — BẮT BUỘC trong nghiệp vụ phân công GV
-         * (Service validate, không thể null khi gọi endpoint này).
+         * Lớp MẶC ĐỊNH của phân công (→ SchoolClass) — từ V16 lớp thật nằm ở từng slot
+         * ({@link AssignmentSlotRequest#classId()}), trường này chỉ còn là giá trị dự phòng
+         * cho slot không ghi lớp (và cho client cũ chỉ biết gửi 1 lớp). Nullable: Service
+         * chấp nhận null miễn là MỌI slot đều có lớp.
          */
-        @NotNull(message = "Vui lòng chọn lớp học") Integer classId,
+        Integer classId,
 
         /** Ngày bắt đầu giai đoạn phân công. */
         @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,

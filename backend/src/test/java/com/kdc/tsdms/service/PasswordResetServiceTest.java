@@ -19,6 +19,7 @@ import com.kdc.tsdms.security.JwtService;
 import com.kdc.tsdms.security.ResetProperties;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -97,6 +98,7 @@ class PasswordResetServiceTest {
         when(appUserRepo.findByEmailAndDeletedFalse("gv01@tsdms.local")).thenReturn(Optional.of(u));
         when(jwtService.generateOpaqueToken()).thenReturn("raw-token-123");
         when(jwtService.sha256("raw-token-123")).thenReturn("hashed-token");
+        when(resetProps.getMaxPerDay()).thenReturn(5);
         when(resetProps.getTokenTtl()).thenReturn(Duration.ofMinutes(30));
         when(resetProps.getBaseUrl()).thenReturn("http://localhost:5173");
         when(displayNameResolver.resolve(u)).thenReturn("Nguyễn Văn An");
@@ -131,6 +133,70 @@ class PasswordResetServiceTest {
 
         verify(resetRepo, never()).save(any());
         verify(emailService, never()).sendPasswordReset(anyString(), anyString(), anyString());
+    }
+
+    // ---------- forgot(): chống dội mail (email bombing) ----------
+
+    @Test
+    void forgot_withinCooldown_silentlySkipsSecondMail() {
+        // Vừa phát link 10 giây trước, cooldown 1 phút -> yêu cầu này bị bỏ qua.
+        // Rate limit theo IP không đỡ được kịch bản này vì kẻ tấn công chỉ cần đổi IP.
+        AppUser u = user(42, "gv01", "gv01@tsdms.local");
+        PasswordResetToken justIssued = usableToken(42);
+        justIssued.setCreatedAt(Instant.now().minus(Duration.ofSeconds(10)));
+
+        when(appUserRepo.findByEmailAndDeletedFalse("gv01@tsdms.local")).thenReturn(Optional.of(u));
+        when(resetProps.getMaxPerDay()).thenReturn(5);
+        when(resetProps.getResendCooldown()).thenReturn(Duration.ofMinutes(1));
+        when(resetRepo.findTopByAppUserIdOrderByIdDesc(42)).thenReturn(Optional.of(justIssued));
+
+        service.forgot("gv01@tsdms.local");
+
+        // Im lặng HỆT nhánh email lạ -> kẻ tấn công không suy ra được email có thật hay không.
+        verify(resetRepo, never()).save(any());
+        verify(emailService, never()).sendPasswordReset(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void forgot_dailyLimitReached_silentlySkips() {
+        // Đã phát đủ 5 link trong 24h -> chặn, kể cả khi đã qua thời gian nghỉ.
+        AppUser u = user(42, "gv01", "gv01@tsdms.local");
+        when(appUserRepo.findByEmailAndDeletedFalse("gv01@tsdms.local")).thenReturn(Optional.of(u));
+        when(resetProps.getMaxPerDay()).thenReturn(5);
+        when(resetRepo.countByAppUserIdAndCreatedAtAfter(eq(42), any(Instant.class)))
+                .thenReturn(5L);
+
+        service.forgot("gv01@tsdms.local");
+
+        verify(resetRepo, never()).save(any());
+        verify(emailService, never()).sendPasswordReset(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void forgot_newLink_expiresPreviousActiveLinks() {
+        // Phát link mới -> link cũ còn sống bị đẩy hết hạn, chỉ 1 link dùng được tại 1 thời điểm.
+        AppUser u = user(42, "gv01", "gv01@tsdms.local");
+        PasswordResetToken older = usableToken(42);
+
+        when(appUserRepo.findByEmailAndDeletedFalse("gv01@tsdms.local")).thenReturn(Optional.of(u));
+        when(resetProps.getMaxPerDay()).thenReturn(5);
+        when(resetProps.getTokenTtl()).thenReturn(Duration.ofMinutes(30));
+        when(resetProps.getBaseUrl()).thenReturn("http://localhost:5173");
+        when(jwtService.generateOpaqueToken()).thenReturn("raw-token-456");
+        when(jwtService.sha256("raw-token-456")).thenReturn("hashed-456");
+        when(displayNameResolver.resolve(u)).thenReturn("Nguyễn Văn An");
+        when(resetRepo.findByAppUserIdAndUsedAtIsNullAndExpiresAtAfter(eq(42), any(Instant.class)))
+                .thenReturn(List.of(older));
+
+        service.forgot("gv01@tsdms.local");
+
+        assertThat(older.isUsable()).isFalse();
+        verify(resetRepo).saveAll(List.of(older));
+        verify(emailService)
+                .sendPasswordReset(
+                        "gv01@tsdms.local",
+                        "Nguyễn Văn An",
+                        "http://localhost:5173/reset-password?token=raw-token-456");
     }
 
     // ---------- reset() ----------

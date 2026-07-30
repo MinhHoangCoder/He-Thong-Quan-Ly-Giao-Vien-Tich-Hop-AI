@@ -2,6 +2,7 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.SubjectRequest;
 import com.kdc.tsdms.dto.SubjectResponse;
+import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
@@ -89,10 +90,30 @@ public class SubjectService {
     @Transactional
     public void delete(Integer id) {
         Subject s = getOrThrow(id);
+        // FIX (2026-07-30): quy tắc xóa môn học nay CHỈ dựa vào trạng thái
+        // (status), không còn dựa vào việc còn bài giảng tham chiếu hay không:
+        // - status = ACTIVE (đang hoạt động) -> LUÔN chặn xóa, kể cả khi chưa
+        // có bài giảng nào, để tránh xóa nhầm 1 môn đang được dùng trong giảng
+        // dạy.
+        // - status = DISABLED (đã tắt hoạt động) -> cho phép xóa, đồng thời xóa
+        // mềm (cascade) luôn TẤT CẢ bài giảng đang thuộc môn này — tránh để lại
+        // bài giảng "mồ côi" trỏ tới 1 môn học đã bị xóa.
+        if (!"DISABLED".equals(s.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa: môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
+        }
         long used = countLessons(id);
         if (used > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT, "Không thể xóa: môn học đang được dùng bởi " + used + " bài giảng");
+            Instant now = Instant.now();
+            Integer uid = SecurityUtils.currentUserId();
+            List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(id);
+            for (Lesson l : lessons) {
+                l.setDeleted(true);
+                l.setDeletedAt(now);
+                l.setDeletedBy(uid);
+            }
+            lessonRepo.saveAll(lessons);
         }
         s.setDeleted(true);
         s.setDeletedAt(Instant.now());

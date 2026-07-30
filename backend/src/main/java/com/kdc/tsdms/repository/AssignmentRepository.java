@@ -1,6 +1,7 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.Assignment;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -48,4 +49,7 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
 
     /** Mọi phân công (kể cả xóa mềm) còn trỏ ClassId — chặn xóa vĩnh viễn lớp. */
     long countByClassId(Integer classId);
+
+    /** Phiếu đang chờ mà đã quá hạn trả lời — tác vụ nền quét để chuyển sang "Hết hạn". */
+    List<Assignment> findByStatusAndConfirmDeadlineBeforeAndDeletedFalse(String status, LocalDateTime deadline);
 }

@@ -2,6 +2,7 @@ package com.kdc.tsdms.dto;
 
 import com.kdc.tsdms.entity.Assignment;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -38,8 +39,23 @@ public class AssignmentResponse {
     public LocalDate startDate;
     public LocalDate endDate;
 
-    /** ACTIVE | COMPLETED | CANCELLED */
+    /** PENDING | ACTIVE | REJECTED | EXPIRED | COMPLETED | CANCELLED. */
     public String status;
+
+    // ── Luồng xác nhận của giáo viên (V17) ───────────────────────────────
+    /** Hạn giáo viên phải trả lời; null với phiếu cũ tạo trước khi có luồng xác nhận. */
+    public LocalDateTime confirmDeadline;
+
+    public LocalDateTime confirmedAt;
+
+    /** TEACHER = giáo viên tự xác nhận | ADMIN = admin ép duyệt thay. */
+    public String confirmSource;
+
+    /** Lý do giáo viên từ chối (chỉ có khi status = REJECTED). */
+    public String rejectionReason;
+
+    /** Ghi chú admin nhập khi ép duyệt. */
+    public String approvalNote;
 
     /**
      * Danh sách slot Thứ+Tiết của phân công này.
@@ -66,6 +82,21 @@ public class AssignmentResponse {
             String subjectName,
             String className,
             List<AssignmentSlotResponse> slots) {
+        return fromEntity(a, teacherName, schoolName, subjectName, className, slots, a.getStatus());
+    }
+
+    /**
+     * @param status trạng thái HIỂN THỊ — service truyền vào để phiếu chờ đã quá hạn hiện ngay là
+     *     EXPIRED, không phải đợi tác vụ nền ghi lại DB
+     */
+    public static AssignmentResponse fromEntity(
+            Assignment a,
+            String teacherName,
+            String schoolName,
+            String subjectName,
+            String className,
+            List<AssignmentSlotResponse> slots,
+            String status) {
 
         AssignmentResponse r = new AssignmentResponse();
         r.id = a.getId();
@@ -79,7 +110,12 @@ public class AssignmentResponse {
         r.className = className;
         r.startDate = a.getStartDate();
         r.endDate = a.getEndDate();
-        r.status = a.getStatus();
+        r.status = status;
+        r.confirmDeadline = a.getConfirmDeadline();
+        r.confirmedAt = a.getConfirmedAt();
+        r.confirmSource = a.getConfirmSource();
+        r.rejectionReason = a.getRejectionReason();
+        r.approvalNote = a.getApprovalNote();
         r.slots = slots;
         return r;
     }

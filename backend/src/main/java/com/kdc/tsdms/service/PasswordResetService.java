@@ -8,7 +8,11 @@ import com.kdc.tsdms.repository.PasswordResetTokenRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.security.JwtService;
 import com.kdc.tsdms.security.ResetProperties;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -17,6 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 /** Luồng QUÊN MẬT KHẨU: forgot (sinh token + gửi email) và reset (đổi mật khẩu bằng token). */
 @Service
 public class PasswordResetService {
+
+    private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
+
+    /** Cửa sổ tính hạn mức "tối đa N email/tài khoản". */
+    private static final Duration DAILY_WINDOW = Duration.ofHours(24);
 
     private final AppUserRepository appUserRepo;
     private final PasswordResetTokenRepository resetRepo;
@@ -51,17 +60,78 @@ public class PasswordResetService {
         // Nếu email tồn tại -> sinh token + gửi mail. Nếu KHÔNG -> vẫn im lặng,
         // tránh để kẻ xấu dò email nào có trong hệ thống (user enumeration).
         appUserRepo.findByEmailAndDeletedFalse(email).ifPresent(user -> {
+            Instant now = Instant.now();
+
+            // Vượt hạn mức -> BỎ QUA, nhưng vẫn im lặng y hệt nhánh "email không tồn tại":
+            // controller luôn trả về cùng một câu chung nên kẻ tấn công không phân biệt được
+            // "email không có trong hệ thống" với "email có nhưng đang bị chặn".
+            if (throttled(user.getId(), now)) {
+                return;
+            }
+
+            // Mỗi lần phát link mới thì mọi link cũ còn sống bị vô hiệu -> chỉ 1 link dùng được
+            // tại một thời điểm (mail cũ bị lộ về sau cũng vô dụng).
+            expireActiveTokens(user.getId(), now);
+
             String rawToken = jwtService.generateOpaqueToken();
 
             PasswordResetToken prt = new PasswordResetToken();
             prt.setAppUserId(user.getId());
             prt.setTokenHash(jwtService.sha256(rawToken));
-            prt.setExpiresAt(Instant.now().plus(resetProps.getTokenTtl()));
+            prt.setExpiresAt(now.plus(resetProps.getTokenTtl()));
             resetRepo.save(prt);
 
             String link = resetProps.getBaseUrl() + "/reset-password?token=" + rawToken;
             emailService.sendPasswordReset(user.getEmail(), displayNameResolver.resolve(user), link);
         });
+    }
+
+    /**
+     * Chặn quấy rối qua hộp thư (email bombing): rate limit hiện có đếm theo IP nên kẻ tấn
+     * công đổi IP là gửi được vô hạn mail đặt lại mật khẩu vào hòm thư nạn nhân. Ở đây đếm
+     * theo CHÍNH TÀI KHOẢN bị nhắm tới: phải nghỉ {@code resend-cooldown} giữa 2 lần và tối đa
+     * {@code max-per-day} mail trong 24 giờ.
+     *
+     * <p>Người dùng thật lỡ bấm nhiều lần thì chờ 1 phút; hết hạn mức ngày thì nhờ admin đặt
+     * lại mật khẩu hộ (Cài đặt → Tài khoản) — đánh đổi có chủ ý, thà phiền còn hơn để hòm thư
+     * của họ bị dội mail.
+     */
+    private boolean throttled(Integer appUserId, Instant now) {
+        long sentToday = resetRepo.countByAppUserIdAndCreatedAtAfter(appUserId, now.minus(DAILY_WINDOW));
+        if (sentToday >= resetProps.getMaxPerDay()) {
+            log.warn("Bỏ qua yêu cầu đặt lại mật khẩu: tài khoản uid={} đã vượt {} lần/24h", appUserId, sentToday);
+            return true;
+        }
+
+        Instant lastIssuedAt = resetRepo
+                .findTopByAppUserIdOrderByIdDesc(appUserId)
+                .map(this::issuedAt)
+                .orElse(null);
+        if (lastIssuedAt != null
+                && lastIssuedAt.plus(resetProps.getResendCooldown()).isAfter(now)) {
+            log.warn("Bỏ qua yêu cầu đặt lại mật khẩu: tài khoản uid={} còn trong thời gian nghỉ", appUserId);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Thời điểm phát phiếu. {@code CreatedAt} do DB tự điền (insertable=false) nên bản ghi vừa
+     * lưu trong CÙNG transaction có thể còn null — khi đó suy ngược từ hạn dùng.
+     */
+    private Instant issuedAt(PasswordResetToken token) {
+        return token.getCreatedAt() != null
+                ? token.getCreatedAt()
+                : token.getExpiresAt().minus(resetProps.getTokenTtl());
+    }
+
+    /** Đẩy hạn dùng của mọi phiếu còn sống về hiện tại -> {@code isUsable()} trả về false. */
+    private void expireActiveTokens(Integer appUserId, Instant now) {
+        List<PasswordResetToken> active = resetRepo.findByAppUserIdAndUsedAtIsNullAndExpiresAtAfter(appUserId, now);
+        for (PasswordResetToken token : active) {
+            token.setExpiresAt(now);
+        }
+        resetRepo.saveAll(active);
     }
 
     @Transactional
