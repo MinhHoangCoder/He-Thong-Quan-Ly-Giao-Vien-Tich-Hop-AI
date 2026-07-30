@@ -2,10 +2,12 @@
 /**
  * Workbench dùng chung cho Staff / Admin / School:
  * KPI + filter + bảng + modal tạo/sửa + xóa.
- * portal: 'staff' | 'admin' | 'school' — chỉ khác nhãn & ẩn filter nguồn với school.
+ * portal: 'staff' | 'admin' | 'school' — khác nhãn / scope school.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { evaluationApi } from '@/api/evaluations'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 import { formatDateTime } from '@/utils/format'
 import StarRating from '@/components/evaluation/StarRating.vue'
 import EvaluationFormModal from '@/components/evaluation/EvaluationFormModal.vue'
@@ -20,9 +22,6 @@ const props = defineProps({
 
 const isSchool = computed(() => props.portal === 'school')
 const PAGE_SIZE = 10
-const coverageSchoolId = ref('')
-const coverageBranchId = ref('')
-const filterMeta = ref({ schools: [], branches: [], schoolScoped: false })
 
 const loading = ref(false)
 const error = ref('')
@@ -35,13 +34,30 @@ const stats = ref(null)
 const teachers = ref([])
 const periodPresets = ref([])
 const suggestedPeriod = ref('')
+/** Dropdown lọc trường (dùng cho panel "GV cần đánh giá" + modal tạo). */
+const schools = ref([])
+const schoolScoped = ref(false)
 
 const filter = reactive({
   keyword: '',
   score: '',
-  source: '',
   periodNote: '',
 })
+
+/**
+ * Bộ lọc ĐÃ ÁP DỤNG (bấm Lọc/Enter) — bảng và phân trang chỉ dùng bản này.
+ * Tách khỏi `filter` (đang gõ dở) để chuyển trang không lôi keyword chưa xác nhận vào request.
+ */
+const applied = reactive({
+  keyword: '',
+  score: '',
+  periodNote: '',
+})
+
+const route = useRoute()
+const router = useRouter()
+
+let unevalSearchTimer = null
 
 const modal = reactive({
   open: false,
@@ -59,7 +75,17 @@ const uneval = reactive({
   open: false,
   loading: false,
   keyword: '',
+  schoolId: '', // '' = tất cả trường
   data: null, // UnevaluatedTeachersResponse
+})
+
+/** Chỉ hiện nút chọn trường khi thực sự có nhiều trường để chọn. */
+const canPickSchool = computed(() => !schoolScoped.value && schools.value.length > 1)
+
+/** Tên trường đang lọc — hiển thị trên chip trạng thái. */
+const unevalSchoolName = computed(() => {
+  if (!uneval.schoolId) return ''
+  return schools.value.find((s) => String(s.id) === String(uneval.schoolId))?.name || ''
 })
 
 const avgLabel = computed(() => {
@@ -89,37 +115,38 @@ const coverageTitle = computed(() => {
   return `Còn ${unevalCount.value} giáo viên chưa được đánh giá`
 })
 
-/** Chưa có filter + chưa có data → empty “lần đầu”. */
+/** Nhãn cạnh con số lớn — không lặp lại số đã hiển thị. */
+const coverageHeadline = computed(() => {
+  if (unevalCount.value == null) return 'Đang tính tiến độ kỳ…'
+  if (coverageDone.value) return 'Đã chấm đủ mọi giáo viên trong kỳ'
+  return 'giáo viên chưa được đánh giá'
+})
+
+/** Chưa có filter + chưa có data (và KHÔNG phải đang lỗi API) → empty “lần đầu”. */
 const isPristineEmpty = computed(() => {
   return (
     !loading.value &&
+    !error.value &&
     totalItems.value === 0 &&
-    !filter.keyword &&
-    !filter.score &&
-    !filter.source &&
-    !filter.periodNote
+    !applied.keyword &&
+    !applied.score &&
+    !applied.periodNote
   )
 })
-
-function isNew(row) {
-  if (!row?.createdAt) return false
-  const t = new Date(row.createdAt).getTime()
-  if (Number.isNaN(t)) return false
-  return Date.now() - t < 7 * 24 * 60 * 60 * 1000
-}
 
 async function loadMeta() {
   try {
     const tasks = [
       evaluationApi.periodMeta(),
-      evaluationApi.stats(buildStatsParams()),
+      evaluationApi.stats(),
       evaluationApi.filterMeta().catch(() => ({ data: null })),
     ]
     const [metaRes, statsRes, filterRes] = await Promise.all(tasks)
     periodPresets.value = metaRes.data?.presets || []
     suggestedPeriod.value = metaRes.data?.suggested || ''
     stats.value = statsRes.data
-    if (filterRes?.data) filterMeta.value = filterRes.data
+    schools.value = filterRes.data?.schools || []
+    schoolScoped.value = !!filterRes.data?.schoolScoped
     // preload 1 trang GV (form tự load đầy đủ khi mở)
     const period = filter.periodNote || metaRes.data?.suggested
     const { data: teacherData } = await evaluationApi
@@ -138,26 +165,27 @@ async function loadMeta() {
   }
 }
 
+/** Bỏ response đến muộn (gõ nhanh → request cũ có thể về sau request mới). */
+let unevalReqSeq = 0
+
 async function loadUnevaluated() {
+  const seq = ++unevalReqSeq
   uneval.loading = true
   try {
     const params = {
       periodNote: coveragePeriod.value || undefined,
       keyword: uneval.keyword || undefined,
-    }
-    if (!isSchool.value && coverageSchoolId.value) {
-      params.schoolId = Number(coverageSchoolId.value)
-    }
-    if (coverageBranchId.value) {
-      params.branchId = Number(coverageBranchId.value)
+      schoolId: uneval.schoolId ? Number(uneval.schoolId) : undefined,
     }
     const { data } = await evaluationApi.unevaluatedTeachers(params)
+    if (seq !== unevalReqSeq) return
     uneval.data = data
   } catch (e) {
+    if (seq !== unevalReqSeq) return
     console.error(e)
     uneval.data = null
   } finally {
-    uneval.loading = false
+    if (seq === unevalReqSeq) uneval.loading = false
   }
 }
 
@@ -167,18 +195,48 @@ function openUnevaluatedPanel() {
   loadUnevaluated()
 }
 
-function onUnevalSearch() {
+/**
+ * Đóng panel: từ khóa chỉ có nghĩa trong panel — phải bỏ đi và tải lại,
+ * nếu không card coverage ngoài dashboard sẽ hiển thị số liệu đã bị lọc theo tên.
+ * (Lọc trường thì giữ — card có hiện tên trường đang lọc.)
+ */
+function closeUnevalPanel() {
+  uneval.open = false
+  clearTimeout(unevalSearchTimer)
+  if (uneval.keyword) {
+    uneval.keyword = ''
+    loadUnevaluated()
+  }
+}
+
+/** Tìm ngay khi gõ từng chữ (debounce ngắn). */
+function onUnevalKeywordInput() {
+  clearTimeout(unevalSearchTimer)
+  unevalSearchTimer = setTimeout(() => {
+    if (uneval.open) loadUnevaluated()
+  }, 150)
+}
+
+/** Đổi trường lọc trong panel → tải lại ngay. */
+function onUnevalSchoolChange() {
+  loadUnevaluated()
+}
+
+function clearUnevalFilters() {
+  uneval.keyword = ''
+  uneval.schoolId = ''
   loadUnevaluated()
 }
 
 function evaluateTeacher(t) {
-  uneval.open = false
+  closeUnevalPanel()
   Object.assign(modal, {
     open: true,
     mode: 'create',
     initial: null,
     prefill: {
       teacherId: t.id,
+      teacherName: t.name,
       periodNote: uneval.data?.periodNote || coveragePeriod.value || suggestedPeriod.value,
     },
     saving: false,
@@ -188,38 +246,47 @@ function evaluateTeacher(t) {
 
 function buildListParams() {
   const params = { page: page.value, size: PAGE_SIZE }
-  if (filter.keyword) params.keyword = filter.keyword
-  if (filter.score) params.score = Number(filter.score)
-  if (filter.periodNote) params.periodNote = filter.periodNote
-  if (!isSchool.value && filter.source) params.source = filter.source
+  if (applied.keyword) params.keyword = applied.keyword
+  if (applied.score) params.score = Number(applied.score)
+  if (applied.periodNote) params.periodNote = applied.periodNote
   return params
 }
 
-function buildStatsParams() {
-  const params = {}
-  if (!isSchool.value && filter.source) params.source = filter.source
-  return params
-}
+/** Chỉ nhận kết quả của lượt gọi mới nhất — đổi lọc/trang nhanh không bị dữ liệu cũ đè. */
+const latestList = useLatestRequest()
 
 async function loadList() {
   loading.value = true
   error.value = ''
-  try {
-    const { data } = await evaluationApi.list(buildListParams())
-    items.value = data.content || []
-    totalPages.value = data.totalPages || 0
-    totalItems.value = data.totalElements || 0
-  } catch (e) {
-    console.error(e)
-    error.value = e.response?.data?.message || 'Không tải được danh sách đánh giá.'
-  } finally {
-    loading.value = false
-  }
+  await latestList(
+    () => evaluationApi.list(buildListParams()),
+    ({ data }) => {
+      items.value = data.content || []
+      totalPages.value = data.totalPages || 0
+      totalItems.value = data.totalElements || 0
+      loading.value = false
+    },
+    (e) => {
+      console.error(e)
+      error.value = e.response?.data?.message || 'Không tải được danh sách đánh giá.'
+      loading.value = false
+    },
+  )
+}
+
+/** Ghi bộ lọc + trang lên URL query — F5/Back không mất trạng thái đang xem. */
+function syncQuery() {
+  const q = {}
+  if (applied.keyword) q.keyword = applied.keyword
+  if (applied.score) q.score = applied.score
+  if (applied.periodNote) q.period = applied.periodNote
+  if (page.value > 0) q.page = String(page.value + 1)
+  router.replace({ query: q }).catch(() => {})
 }
 
 async function refreshStats() {
   try {
-    const { data } = await evaluationApi.stats(buildStatsParams())
+    const { data } = await evaluationApi.stats()
     stats.value = data
   } catch {
     /* ignore */
@@ -227,7 +294,11 @@ async function refreshStats() {
 }
 
 function applyFilter() {
+  applied.keyword = filter.keyword
+  applied.score = filter.score
+  applied.periodNote = filter.periodNote
   page.value = 0
+  syncQuery()
   loadList()
   refreshStats()
   loadUnevaluated()
@@ -236,7 +307,6 @@ function applyFilter() {
 function clearFilter() {
   filter.keyword = ''
   filter.score = ''
-  filter.source = ''
   filter.periodNote = ''
   applyFilter()
 }
@@ -244,6 +314,7 @@ function clearFilter() {
 function goPage(p) {
   if (p < 0 || p >= totalPages.value) return
   page.value = p
+  syncQuery()
   loadList()
 }
 
@@ -258,6 +329,13 @@ function openCreate() {
   })
 }
 
+/** Từ drawer chi tiết → mở modal sửa và đóng drawer. */
+function editFromDetail() {
+  const row = detail.value
+  detail.value = null
+  if (row) openEdit(row)
+}
+
 function openEdit(row) {
   Object.assign(modal, {
     open: true,
@@ -269,6 +347,9 @@ function openEdit(row) {
   })
 }
 
+/** Dialog in-app xác nhận lưu trùng kỳ (thay window.confirm — hiện được thông tin phiếu cũ). */
+const dupConfirm = reactive({ open: false, message: '', payload: null })
+
 async function saveModal(payload) {
   modal.saving = true
   modal.error = ''
@@ -276,30 +357,36 @@ async function saveModal(payload) {
     if (modal.mode === 'edit' && modal.initial?.id) {
       await evaluationApi.update(modal.initial.id, payload)
     } else {
-      try {
-        await evaluationApi.create(payload)
-      } catch (e) {
-        // BE 409 trùng kỳ — hỏi lại + force
-        if (e.response?.status === 409 && !payload.forceDuplicate) {
-          const ok = window.confirm(
-            e.response?.data?.message || 'Đã có đánh giá cùng kỳ. Vẫn lưu thêm?',
-          )
-          if (!ok) return
-          await evaluationApi.create({ ...payload, forceDuplicate: true })
-        } else {
-          throw e
-        }
-      }
+      await evaluationApi.create(payload)
     }
     modal.open = false
     await loadList()
     await refreshStats()
     await loadUnevaluated()
   } catch (e) {
-    modal.error = e.response?.data?.message || 'Lưu đánh giá thất bại'
+    // BE 409 trùng kỳ (cả tạo lẫn sửa) — hỏi lại bằng dialog rồi gửi kèm forceDuplicate.
+    if (e.response?.status === 409 && !payload.forceDuplicate) {
+      dupConfirm.message = e.response?.data?.message || 'Đã có đánh giá cùng kỳ. Vẫn lưu thêm?'
+      dupConfirm.payload = payload
+      dupConfirm.open = true
+    } else {
+      modal.error = e.response?.data?.message || 'Lưu đánh giá thất bại'
+    }
   } finally {
     modal.saving = false
   }
+}
+
+function cancelDuplicateSave() {
+  dupConfirm.open = false
+  dupConfirm.payload = null
+}
+
+async function confirmDuplicateSave() {
+  const payload = { ...dupConfirm.payload, forceDuplicate: true }
+  dupConfirm.open = false
+  dupConfirm.payload = null
+  await saveModal(payload)
 }
 
 async function doDelete() {
@@ -307,6 +394,11 @@ async function doDelete() {
   try {
     await evaluationApi.remove(deleteTarget.value.id)
     deleteTarget.value = null
+    // Vừa xóa bản ghi cuối của trang cuối → lùi 1 trang, khỏi kẹt ở "Trang 3/2" trống.
+    if (items.value.length === 1 && page.value > 0) {
+      page.value -= 1
+      syncQuery()
+    }
     await loadList()
     await refreshStats()
     await loadUnevaluated()
@@ -316,16 +408,28 @@ async function doDelete() {
   }
 }
 
-function sourceLabel(row) {
-  if (row.source === 'CENTER') return 'Trung tâm'
-  return row.schoolName || 'Trường'
+/** Cắt preview nhận xét theo KÝ TỰ thật (Array.from) — slice code-unit có thể chém đôi emoji. */
+function previewComment(comment) {
+  if (!comment) return '—'
+  const chars = Array.from(comment)
+  return chars.length > 60 ? chars.slice(0, 60).join('') + '…' : comment
 }
 
-function sourceClass(row) {
-  return row.source === 'CENTER' ? 'badge--center' : 'badge--school'
+/** Khôi phục bộ lọc + trang từ URL query (đồng bộ 2 chiều với syncQuery). */
+function restoreFromQuery() {
+  const q = route.query
+  if (q.keyword) filter.keyword = String(q.keyword)
+  if (q.score) filter.score = String(q.score)
+  if (q.period) filter.periodNote = String(q.period)
+  applied.keyword = filter.keyword
+  applied.score = filter.score
+  applied.periodNote = filter.periodNote
+  const p = Number(q.page)
+  if (Number.isInteger(p) && p > 1) page.value = p - 1
 }
 
 onMounted(async () => {
+  restoreFromQuery()
   await loadMeta()
   await loadList()
 })
@@ -336,7 +440,7 @@ onMounted(async () => {
     <div class="page__head">
       <div>
         <h1 class="page__title">{{ title }}</h1>
-        <p class="page__sub">{{ subtitle }}</p>
+        <p v-if="subtitle" class="page__sub">{{ subtitle }}</p>
       </div>
       <button class="btn" type="button" @click="openCreate">
         <SvgIcon name="plus" :size="16" /> Tạo đánh giá
@@ -372,70 +476,83 @@ onMounted(async () => {
     </section>
 
     <!--
-      Coverage kỳ: thẻ hành động full-width — số còn lại + progress + chevron.
-      Không dùng chữ “bấm để xem…”; clickability = layout + hover + mũi tên.
+      Hai panel cân đối: coverage kỳ (trái) ↔ phân bố điểm (phải).
+      Cùng chiều cao, cùng bo góc; xuống 1 cột khi hẹp.
     -->
-    <button
-      type="button"
-      class="coverage"
-      :class="{
-        'coverage--alert': unevalCount > 0,
-        'coverage--ok': coverageDone,
-        'coverage--loading': unevalCount == null,
-      }"
-      :disabled="unevalCount == null"
-      :aria-label="coverageTitle"
-      @click="openUnevaluatedPanel"
-    >
-      <div class="coverage__icon" aria-hidden="true">
-        <SvgIcon :name="coverageDone ? 'attendance' : 'teacher'" :size="22" />
-      </div>
-      <div class="coverage__body">
-        <div class="coverage__top">
-          <span class="coverage__title">{{ coverageTitle }}</span>
+    <section class="insight-grid">
+      <!--
+        Coverage kỳ: thẻ hành động — số còn lại + progress + chevron.
+        Không dùng chữ “bấm để xem…”; clickability = layout + hover + mũi tên.
+      -->
+      <button
+        type="button"
+        class="coverage"
+        :class="{
+          'coverage--alert': unevalCount > 0,
+          'coverage--ok': coverageDone,
+          'coverage--loading': unevalCount == null,
+        }"
+        :disabled="unevalCount == null"
+        :aria-label="coverageTitle"
+        @click="openUnevaluatedPanel"
+      >
+        <div class="coverage__head">
+          <div class="coverage__icon" aria-hidden="true">
+            <SvgIcon :name="coverageDone ? 'attendance' : 'teacher'" :size="20" />
+          </div>
+          <span class="coverage__label">Tiến độ chấm điểm</span>
           <span v-if="uneval.data?.periodNote || coveragePeriod" class="coverage__period">
             {{ uneval.data?.periodNote || coveragePeriod }}
           </span>
+          <span class="coverage__chev" aria-hidden="true">›</span>
         </div>
-        <div class="coverage__bar" aria-hidden="true">
-          <div class="coverage__fill" :style="{ width: coveragePct + '%' }" />
-        </div>
-        <div class="coverage__meta">
-          <template v-if="uneval.data">
-            Đã chấm <strong>{{ uneval.data.evaluatedCount }}</strong>
-            /
-            {{ uneval.data.totalTeachers }}
-            · {{ coveragePct }}%
-          </template>
-          <template v-else>Đang tính theo kỳ hiện tại…</template>
-        </div>
-      </div>
-      <div class="coverage__side">
-        <span v-if="unevalCount > 0" class="coverage__count">{{ unevalCount }}</span>
-        <span v-else-if="coverageDone" class="coverage__check">✓</span>
-        <span class="coverage__chev" aria-hidden="true">›</span>
-      </div>
-    </button>
 
-    <!-- Phân bố sao -->
-    <div v-if="stats && stats.totalCount" class="dist card-soft">
-      <span class="dist__label">Phân bố điểm</span>
-      <div v-for="n in [5, 4, 3, 2, 1]" :key="n" class="dist__row">
-        <span class="dist__star">{{ n }}★</span>
-        <div class="dist__bar">
-          <div
-            class="dist__fill"
-            :style="{
-              width:
-                stats.totalCount > 0
-                  ? Math.round((stats['score' + n] / stats.totalCount) * 100) + '%'
-                  : '0%',
-            }"
-          />
+        <div class="coverage__main">
+          <span v-if="unevalCount > 0" class="coverage__count">{{ unevalCount }}</span>
+          <span v-else-if="coverageDone" class="coverage__check">✓</span>
+          <span class="coverage__title">{{ coverageHeadline }}</span>
         </div>
-        <span class="dist__n">{{ stats['score' + n] || 0 }}</span>
+
+        <div class="coverage__foot">
+          <div class="coverage__bar" aria-hidden="true">
+            <div class="coverage__fill" :style="{ width: coveragePct + '%' }" />
+          </div>
+          <div class="coverage__meta">
+            <template v-if="uneval.data">
+              Đã chấm <strong>{{ uneval.data.evaluatedCount }}</strong> /
+              {{ uneval.data.totalTeachers }} · {{ coveragePct }}%
+              <template v-if="unevalSchoolName"> · {{ unevalSchoolName }}</template>
+            </template>
+            <template v-else>Đang tính theo kỳ hiện tại…</template>
+          </div>
+        </div>
+      </button>
+
+      <!-- Phân bố sao -->
+      <div v-if="stats && stats.totalCount" class="dist card-soft">
+        <div class="dist__head">
+          <span class="dist__label">Phân bố điểm</span>
+          <span class="dist__total">{{ stats.totalCount }} lượt</span>
+        </div>
+        <div class="dist__rows">
+          <div v-for="n in [5, 4, 3, 2, 1]" :key="n" class="dist__row">
+            <span class="dist__star">{{ n }}★</span>
+            <div class="dist__bar">
+              <div
+                class="dist__fill"
+                :style="{
+                  width:
+                    stats.totalCount > 0
+                      ? Math.round((stats['score' + n] / stats.totalCount) * 100) + '%'
+                      : '0%',
+                }"
+              />
+            </div>
+            <span class="dist__n">{{ stats['score' + n] || 0 }}</span>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
 
     <!-- Filter -->
     <div class="filter-bar">
@@ -454,17 +571,9 @@ onMounted(async () => {
           <option v-for="n in 5" :key="n" :value="n">{{ n }} sao</option>
         </select>
       </label>
-      <label v-if="!isSchool" class="field">
-        <span>Nguồn</span>
-        <select v-model="filter.source" @change="applyFilter">
-          <option value="">Tất cả</option>
-          <option value="SCHOOL">Trường</option>
-          <option value="CENTER">Trung tâm</option>
-        </select>
-      </label>
       <label class="field field--period">
         <span>Kỳ</span>
-        <select v-model="filter.periodNote" @change="applyFilter">
+        <select v-model="filter.periodNote" class="period-select" @change="applyFilter">
           <option value="">Tất cả</option>
           <option v-if="suggestedPeriod" :value="suggestedPeriod">
             {{ suggestedPeriod }} (gợi ý)
@@ -484,13 +593,20 @@ onMounted(async () => {
       </div>
     </div>
 
-    <p v-if="error" class="msg msg--error">{{ error }}</p>
-    <p v-if="!loading && totalItems > 0" class="total">
+    <p v-if="!loading && !error && totalItems > 0" class="total">
       Tổng cộng <strong>{{ totalItems }}</strong> lượt đánh giá
     </p>
 
+    <!-- API lỗi: nói thẳng là lỗi + nút thử lại — không giả vờ "chưa có đánh giá nào" -->
+    <div v-if="error" class="empty-hero">
+      <div class="empty-hero__icon">⚠️</div>
+      <h3 class="empty-hero__title">Không tải được danh sách đánh giá</h3>
+      <p class="empty-hero__sub">{{ error }}</p>
+      <button class="btn" type="button" @click="loadList">Thử lại</button>
+    </div>
+
     <!-- Empty state lần đầu -->
-    <div v-if="isPristineEmpty" class="empty-hero">
+    <div v-else-if="isPristineEmpty" class="empty-hero">
       <div class="empty-hero__icon">★</div>
       <h3 class="empty-hero__title">Chưa có đánh giá nào</h3>
       <p class="empty-hero__sub">
@@ -508,7 +624,6 @@ onMounted(async () => {
             <th>Giáo viên</th>
             <th>Điểm</th>
             <th>Kỳ</th>
-            <th v-if="!isSchool">Nguồn</th>
             <th>Người đánh giá</th>
             <th>Nhận xét</th>
             <th>Thời gian</th>
@@ -517,39 +632,27 @@ onMounted(async () => {
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td :colspan="isSchool ? 7 : 8" class="empty">Đang tải…</td>
+            <td colspan="7" class="empty">Đang tải…</td>
           </tr>
           <tr v-else-if="items.length === 0">
-            <td :colspan="isSchool ? 7 : 8" class="empty">
+            <td colspan="7" class="empty">
               Không có kết quả khớp bộ lọc —
               <button type="button" class="linkish" @click="clearFilter">xóa lọc</button>
             </td>
           </tr>
           <tr v-for="row in items" :key="row.id">
             <td class="col-title">
-              <div class="title-text">
-                {{ row.teacherName }}
-                <span v-if="isNew(row)" class="badge badge--new">Mới</span>
-              </div>
+              <div class="title-text">{{ row.teacherName }}</div>
             </td>
             <td>
               <StarRating :model-value="row.score" :size="14" />
               <span class="score-inline">{{ row.score }}</span>
             </td>
             <td>{{ row.periodNote || '—' }}</td>
-            <td v-if="!isSchool">
-              <span class="badge" :class="sourceClass(row)">{{ sourceLabel(row) }}</span>
-            </td>
             <td>{{ row.evaluatorName }}</td>
             <td class="col-comment">
               <button type="button" class="linkish" @click="detail = row">
-                {{
-                  row.comment
-                    ? row.comment.length > 60
-                      ? row.comment.slice(0, 60) + '…'
-                      : row.comment
-                    : '—'
-                }}
+                {{ previewComment(row.comment) }}
               </button>
             </td>
             <td class="muted">{{ formatDateTime(row.createdAt) }}</td>
@@ -598,6 +701,7 @@ onMounted(async () => {
       :open="modal.open"
       :mode="modal.mode"
       :teachers="teachers"
+      :schools="schools"
       :period-presets="periodPresets"
       :suggested-period="suggestedPeriod"
       :initial="modal.initial"
@@ -605,13 +709,13 @@ onMounted(async () => {
       :saving="modal.saving"
       :error="modal.error"
       :lock-teacher="isSchool"
-      :school-scoped="isSchool"
+      :school-scoped="isSchool || schoolScoped"
       @close="modal.open = false"
       @save="saveModal"
     />
 
     <!-- Panel: GV chưa đánh giá trong kỳ -->
-    <div v-if="uneval.open" class="modal-backdrop" @click.self="uneval.open = false">
+    <div v-if="uneval.open" class="modal-backdrop" @click.self="closeUnevalPanel">
       <div class="modal uneval-modal" role="dialog" aria-modal="true">
         <div class="modal__head">
           <div>
@@ -624,80 +728,91 @@ onMounted(async () => {
               <span class="modal__period-tag">{{ uneval.data.periodNote }}</span>
               · Đã chấm {{ uneval.data.evaluatedCount }}/{{ uneval.data.totalTeachers }} · Còn
               <strong>{{ uneval.data.unevaluatedCount }}</strong>
+              <template v-if="unevalSchoolName"> · {{ unevalSchoolName }}</template>
             </p>
           </div>
-          <button type="button" class="modal__x" @click="uneval.open = false">×</button>
+          <button type="button" class="modal__x" @click="closeUnevalPanel">×</button>
         </div>
         <div class="modal__body">
-          <div class="uneval-filters">
-            <select
-              v-if="!isSchool && filterMeta.schools?.length"
-              v-model="coverageSchoolId"
-              class="uneval-select"
-              @change="onUnevalSearch"
-            >
-              <option value="">Mọi trường</option>
-              <option v-for="s in filterMeta.schools" :key="s.id" :value="String(s.id)">
-                {{ s.name }}
-              </option>
-            </select>
-            <select
-              v-if="filterMeta.branches?.length"
-              v-model="coverageBranchId"
-              class="uneval-select"
-              @change="onUnevalSearch"
-            >
-              <option value="">Mọi chi nhánh</option>
-              <option v-for="b in filterMeta.branches" :key="b.id" :value="String(b.id)">
-                {{ b.name }}
-              </option>
-            </select>
-          </div>
           <div class="uneval-search-row">
             <input
               v-model="uneval.keyword"
               type="search"
               class="uneval-search-input"
-              placeholder="Tìm theo tên / SĐT…"
-              @keyup.enter="onUnevalSearch"
+              placeholder="Nhập tên giáo viên để tìm…"
+              @input="onUnevalKeywordInput"
             />
-            <button type="button" class="btn btn--ghost" @click="onUnevalSearch">Lọc</button>
+            <select
+              v-if="canPickSchool"
+              v-model="uneval.schoolId"
+              class="uneval-school-select"
+              aria-label="Lọc theo trường"
+              @change="onUnevalSchoolChange"
+            >
+              <option value="">🏫 Tất cả trường</option>
+              <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
+            </select>
+            <button
+              v-if="uneval.keyword || uneval.schoolId"
+              type="button"
+              class="btn btn--ghost btn--sm"
+              @click="clearUnevalFilters"
+            >
+              Xóa lọc
+            </button>
           </div>
           <div v-if="uneval.loading" class="empty">Đang tải…</div>
-          <ul v-else-if="uneval.data?.teachers?.length" class="uneval-list">
-            <li v-for="t in uneval.data.teachers" :key="t.id" class="uneval-item">
-              <div class="uneval-item__avatar" aria-hidden="true">
-                {{ (t.name || '?').trim().charAt(0).toUpperCase() }}
-              </div>
-              <div class="uneval-item__info">
-                <div class="title-text">{{ t.name }}</div>
-                <div class="uneval-item__schools">
-                  {{ t.schoolsLabel || 'Chưa phân công trường' }}
-                </div>
-                <div class="muted">
-                  <template v-if="t.branchName">{{ t.branchName }} · </template>
-                  <template v-if="t.totalCount">
-                    TB {{ t.averageScore != null ? Number(t.averageScore).toFixed(1) : '—' }}/5 ·
-                    {{ t.totalCount }} lượt
-                  </template>
-                  <template v-else>Chưa từng có đánh giá</template>
-                </div>
-              </div>
-              <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">
-                Chấm điểm
-              </button>
-            </li>
-          </ul>
+          <div v-else-if="uneval.data?.teachers?.length" class="uneval-table-wrap">
+            <table class="uneval-table">
+              <thead>
+                <tr>
+                  <th>Giáo viên</th>
+                  <th>Liên hệ</th>
+                  <th>Trường</th>
+                  <th>Chi nhánh</th>
+                  <th>Thống kê</th>
+                  <th width="120">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="t in uneval.data.teachers" :key="t.id">
+                  <td>
+                    <div class="uneval-name-cell">
+                      <div class="uneval-item__avatar" aria-hidden="true">
+                        {{ (t.name || '?').trim().charAt(0).toUpperCase() }}
+                      </div>
+                      <div class="title-text">{{ t.name }}</div>
+                    </div>
+                  </td>
+                  <td class="muted">{{ t.phone || '—' }}</td>
+                  <td>{{ t.schoolsLabel || 'Chưa phân công trường' }}</td>
+                  <td class="muted">{{ t.branchName || '—' }}</td>
+                  <td class="muted">
+                    <template v-if="t.totalCount">
+                      TB {{ t.averageScore != null ? Number(t.averageScore).toFixed(1) : '—' }}/5 ·
+                      {{ t.totalCount }} lượt
+                    </template>
+                    <template v-else>Chưa từng có đánh giá</template>
+                  </td>
+                  <td>
+                    <button type="button" class="btn btn--sm" @click="evaluateTeacher(t)">
+                      Chấm điểm
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div v-else class="empty empty--ok">
             {{
               uneval.data?.unevaluatedCount === 0
                 ? 'Không còn ai trong hàng đợi — kỳ này đã phủ đủ.'
-                : 'Không khớp tên tìm kiếm.'
+                : 'Không khớp bộ lọc hiện tại.'
             }}
           </div>
         </div>
         <div class="modal__foot">
-          <button type="button" class="btn btn--ghost" @click="uneval.open = false">Đóng</button>
+          <button type="button" class="btn btn--ghost" @click="closeUnevalPanel">Đóng</button>
         </div>
       </div>
     </div>
@@ -716,7 +831,6 @@ onMounted(async () => {
             <StarRating :model-value="detail.score" /> {{ detail.score }}/5
           </p>
           <p><strong>Kỳ:</strong> {{ detail.periodNote || '—' }}</p>
-          <p><strong>Nguồn:</strong> {{ sourceLabel(detail) }}</p>
           <p><strong>Người đánh giá:</strong> {{ detail.evaluatorName }}</p>
           <p><strong>Thời gian:</strong> {{ formatDateTime(detail.createdAt) }}</p>
           <p class="detail-comment">
@@ -728,14 +842,28 @@ onMounted(async () => {
             v-if="detail.canEdit"
             type="button"
             class="btn btn--ghost"
-            @click="
-              openEdit(detail);
-              detail = null
-            "
+            @click="editFromDetail"
           >
             Sửa
           </button>
           <button type="button" class="btn" @click="detail = null">Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Xác nhận lưu trùng kỳ (in-app, thay window.confirm) -->
+    <div v-if="dupConfirm.open" class="modal-backdrop" @click.self="cancelDuplicateSave">
+      <div class="modal confirm-modal">
+        <div class="modal__head">
+          <h2 class="modal__title">Trùng kỳ đánh giá</h2>
+          <button type="button" class="modal__x" @click="cancelDuplicateSave">×</button>
+        </div>
+        <div class="modal__body">
+          <p>{{ dupConfirm.message }}</p>
+        </div>
+        <div class="modal__foot">
+          <button type="button" class="btn btn--ghost" @click="cancelDuplicateSave">Hủy</button>
+          <button type="button" class="btn" @click="confirmDuplicateSave">Vẫn lưu thêm</button>
         </div>
       </div>
     </div>
@@ -787,20 +915,31 @@ onMounted(async () => {
   gap: 0.85rem;
   margin-bottom: 1rem;
 }
-/* —— Coverage strip (chưa đánh giá) —— */
+/* —— Hai panel cân đối: coverage ↔ phân bố điểm —— */
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 0.85rem;
+  align-items: stretch;
+  margin-bottom: 1rem;
+}
+.insight-grid > * {
+  margin: 0 !important;
+  min-height: 100%;
+}
+
+/* —— Coverage panel (chưa đánh giá) —— */
 .coverage {
   width: 100%;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 0.9rem;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
   text-align: left;
-  margin: 0 0 1rem;
-  padding: 0.95rem 1.1rem;
-  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  border-radius: 12px;
   border: 1px solid var(--c-border);
   background: var(--c-surface);
-  box-shadow: var(--a-shadow);
   cursor: pointer;
   font: inherit;
   color: var(--c-text);
@@ -808,6 +947,28 @@ onMounted(async () => {
     border-color 0.18s ease,
     box-shadow 0.18s ease,
     transform 0.18s ease;
+}
+.coverage__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.coverage__label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--c-text);
+}
+.coverage__head .coverage__chev {
+  margin-left: auto;
+}
+.coverage__main {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2.2rem;
+}
+.coverage__foot {
+  margin-top: auto;
 }
 .coverage:hover:not(:disabled) {
   transform: translateY(-2px);
@@ -846,32 +1007,24 @@ onMounted(async () => {
 }
 .coverage--ok .coverage__check {
   color: #22c55e;
-  font-size: 1.35rem;
-  font-weight: 700;
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
 }
 .coverage__icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
   display: grid;
   place-items: center;
   background: var(--c-surface-2);
   color: var(--c-text-muted);
-}
-.coverage__body {
-  min-width: 0;
-}
-.coverage__top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.4rem 0.75rem;
-  margin-bottom: 0.4rem;
+  flex-shrink: 0;
 }
 .coverage__title {
-  font-weight: 700;
-  font-size: 0.98rem;
-  line-height: 1.25;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.3;
 }
 .coverage__period {
   font-size: 0.75rem;
@@ -902,18 +1055,12 @@ onMounted(async () => {
 .coverage__meta strong {
   color: var(--c-text);
 }
-.coverage__side {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
 .coverage__count {
-  font-size: 1.65rem;
+  font-size: 2rem;
   font-weight: 800;
   line-height: 1;
-  min-width: 1.5rem;
-  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 .coverage__chev {
   font-size: 1.5rem;
@@ -929,8 +1076,15 @@ onMounted(async () => {
   color: var(--c-primary, #f97316);
 }
 
-.uneval-modal {
-  width: min(520px, 100%);
+/* .modal khai báo sau nên cần tăng specificity mới ghi đè được width */
+.modal.uneval-modal {
+  width: min(1240px, 96vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal.uneval-modal .modal__body {
+  overflow: auto;
 }
 .modal__lead {
   margin: 0.25rem 0 0;
@@ -942,30 +1096,16 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--c-primary, #f97316);
 }
-.uneval-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin-bottom: 0.55rem;
-}
-.uneval-select {
-  flex: 1;
-  min-width: 140px;
-  border: 1px solid var(--c-input-border);
-  border-radius: 8px;
-  padding: 0.45rem 0.6rem;
-  background: var(--c-surface);
-  color: var(--c-text);
-  font: inherit;
-  font-size: 0.88rem;
-}
 .uneval-search-row {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.85rem;
 }
 .uneval-search-input {
   flex: 1;
+  min-width: 200px;
   border: 1px solid var(--c-input-border);
   border-radius: 8px;
   padding: 0.5rem 0.7rem;
@@ -973,36 +1113,60 @@ onMounted(async () => {
   color: var(--c-text);
   font: inherit;
 }
-.uneval-item__schools {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--c-primary, #f97316);
-  margin: 0.1rem 0;
+.uneval-school-select {
+  min-width: 200px;
+  max-width: 280px;
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  padding: 0.5rem 0.7rem;
+  background: var(--c-surface-2);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
-.uneval-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 360px;
+.uneval-table-wrap {
+  max-height: min(58vh, 560px);
   overflow: auto;
   border: 1px solid var(--c-border);
   border-radius: 12px;
   background: var(--c-surface);
 }
-.uneval-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 0.9rem;
-  border-bottom: 1px solid var(--c-border-soft);
-  background: var(--c-surface);
-  color: var(--c-text);
+.uneval-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
 }
-.uneval-item:hover {
+.uneval-table th,
+.uneval-table td {
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border-soft);
+  color: var(--c-text);
+  vertical-align: middle;
+}
+.uneval-table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.uneval-table tbody tr:hover {
   background: var(--c-surface-2);
 }
-.uneval-item:last-child {
+.uneval-table tbody tr:last-child td {
   border-bottom: 0;
+}
+.uneval-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 .uneval-item__avatar {
   width: 36px;
@@ -1015,17 +1179,6 @@ onMounted(async () => {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-}
-.uneval-item__info {
-  flex: 1;
-  min-width: 0;
-  color: var(--c-text);
-}
-.uneval-item__info .title-text {
-  color: var(--c-text);
-}
-.uneval-item__info .muted {
-  color: var(--c-text-muted);
 }
 .empty--ok {
   color: color-mix(in srgb, #22c55e 85%, var(--c-text));
@@ -1044,22 +1197,45 @@ onMounted(async () => {
   background: var(--c-surface);
   border: 1px solid var(--c-border);
   border-radius: 12px;
-  padding: 0.9rem 1rem;
-  margin-bottom: 1rem;
+  padding: 0.9rem 1.1rem;
+}
+.dist {
+  display: flex;
+  flex-direction: column;
+}
+.dist__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
 }
 .dist__label {
   font-weight: 600;
   font-size: 0.9rem;
   color: var(--c-text);
-  display: block;
-  margin-bottom: 0.5rem;
+}
+.dist__total {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: var(--c-surface-2);
+  border-radius: 999px;
+  padding: 0.12rem 0.55rem;
+}
+/* Chia đều chiều cao còn lại → cân với panel coverage bên trái */
+.dist__rows {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
 }
 .dist__row {
   display: grid;
-  grid-template-columns: 36px 1fr 32px;
+  grid-template-columns: 30px 1fr 34px;
   gap: 0.5rem;
   align-items: center;
-  margin-bottom: 0.3rem;
 }
 .dist__star {
   font-size: 0.8rem;
@@ -1082,6 +1258,7 @@ onMounted(async () => {
   font-size: 0.8rem;
   color: var(--c-text-muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 .filter-bar {
   display: flex;
@@ -1109,6 +1286,17 @@ onMounted(async () => {
 .field--period {
   min-width: 160px;
 }
+/* Ẩn icon mũi tên dropdown của select Kỳ */
+.period-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none;
+  padding-right: 0.6rem;
+}
+.period-select::-ms-expand {
+  display: none;
+}
 .empty-hero {
   text-align: center;
   padding: 2.5rem 1.25rem;
@@ -1131,12 +1319,6 @@ onMounted(async () => {
   margin: 0 0 1rem;
   color: var(--c-text-muted);
   font-size: 0.92rem;
-}
-.badge--new {
-  margin-left: 0.4rem;
-  background: color-mix(in srgb, #22c55e 18%, var(--c-surface-2));
-  color: color-mix(in srgb, #22c55e 75%, var(--c-text));
-  vertical-align: middle;
 }
 .field input,
 .field select {
@@ -1242,21 +1424,6 @@ th {
   color: var(--c-text-muted);
   font-size: 0.85rem;
   white-space: nowrap;
-}
-.badge {
-  display: inline-block;
-  padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-.badge--center {
-  background: color-mix(in srgb, #2563eb 18%, var(--c-surface-2));
-  color: color-mix(in srgb, #60a5fa 70%, var(--c-text));
-}
-.badge--school {
-  background: color-mix(in srgb, #f97316 18%, var(--c-surface-2));
-  color: color-mix(in srgb, #fb923c 70%, var(--c-text));
 }
 .col-actions {
   white-space: nowrap;

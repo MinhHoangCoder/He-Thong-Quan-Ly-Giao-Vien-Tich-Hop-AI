@@ -690,6 +690,10 @@ CREATE TABLE Attendance (
     CONSTRAINT CK_Attendance_Time CHECK (CheckIn IS NULL OR CheckOut IS NULL OR CheckIn < CheckOut)
 );
 CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
+-- Mỗi buổi dạy chỉ 1 dòng chấm công (chặn race double-click check-in — V16);
+-- ScheduleId NULL = chấm công tay không gắn buổi, cho phép nhiều dòng.
+CREATE UNIQUE NONCLUSTERED INDEX UX_Attendance_ScheduleId
+    ON Attendance(ScheduleId) WHERE ScheduleId IS NOT NULL;
 
 /* ========== Bảng 22b: PartTimeShiftRequest — NV PART-TIME ĐĂNG KÝ CA (thêm ở V10) ==========
    Ý nghĩa : Nhân viên part-time đăng ký ca làm theo ngày/buổi; HR duyệt hoặc từ chối.

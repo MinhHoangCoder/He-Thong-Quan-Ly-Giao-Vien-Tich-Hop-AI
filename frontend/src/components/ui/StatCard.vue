@@ -1,6 +1,6 @@
 <script setup>
 // Thẻ thống kê nhỏ ở đầu dashboard.
-import { ref, onMounted, computed } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 
 const props = defineProps({
@@ -12,14 +12,19 @@ const props = defineProps({
   color: { type: String, default: '#f97316' }, // màu nhấn của icon
 })
 
-// ⭐ HIỆU ỨNG ĐẾM SỐ (count-up): khi thẻ vừa hiện, số nhảy từ 0 → giá trị thật.
-// Chỉ áp dụng khi value là số. Nếu là chuỗi (vd "96%") thì hiển thị nguyên.
-const isNumber = typeof props.value === 'number'
-const display = ref(isNumber ? 0 : props.value)
+// ⭐ HIỆU ỨNG ĐẾM SỐ (count-up): số nhảy dần tới giá trị thật. Chuỗi (vd "4.5/5") hiển thị nguyên.
+// PHẢI theo dõi prop bằng watch: nhiều dashboard render thẻ TRƯỚC khi API về —
+// đọc props.value một lần lúc setup sẽ đóng băng thẻ ở giá trị ban đầu ('—'/0) vĩnh viễn.
+const display = ref(typeof props.value === 'number' ? 0 : props.value)
+let raf = null
 
-onMounted(() => {
-  if (!isNumber) return
-  const target = props.value
+function animateTo(target) {
+  cancelAnimationFrame(raf)
+  if (typeof target !== 'number') {
+    display.value = target
+    return
+  }
+  const from = typeof display.value === 'number' ? display.value : 0
   const duration = 900 // ms
   const start = performance.now()
   // requestAnimationFrame = trình duyệt gọi lại hàm này ~60 lần/giây để vẽ mượt.
@@ -27,11 +32,18 @@ onMounted(() => {
     const p = Math.min(1, (now - start) / duration)
     // easeOutCubic: nhanh lúc đầu, chậm dần về cuối cho tự nhiên.
     const eased = 1 - Math.pow(1 - p, 3)
-    display.value = Math.round(target * eased)
-    if (p < 1) requestAnimationFrame(tick)
+    display.value = Math.round(from + (target - from) * eased)
+    if (p < 1) raf = requestAnimationFrame(tick)
   }
-  requestAnimationFrame(tick)
-})
+  raf = requestAnimationFrame(tick)
+}
+
+onMounted(() => animateTo(props.value))
+watch(
+  () => props.value,
+  (v) => animateTo(v),
+)
+onBeforeUnmount(() => cancelAnimationFrame(raf))
 
 // nền nhạt cho ô icon (mã màu + độ trong suốt '1a' ≈ 10%)
 const iconStyle = computed(() => ({ background: props.color + '1a', color: props.color }))

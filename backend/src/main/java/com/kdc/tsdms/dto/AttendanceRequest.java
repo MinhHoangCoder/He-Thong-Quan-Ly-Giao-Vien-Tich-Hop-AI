@@ -23,4 +23,15 @@ public record AttendanceRequest(
         /** PRESENT | ABSENT | LATE | LEAVE */
         @Pattern(regexp = "PRESENT|ABSENT|LATE|LEAVE", message = "Trạng thái không hợp lệ") String status,
 
-        String note) {}
+        String note) {
+
+    /**
+     * Body GV tự check-in/out (POST /checkin, /checkout).
+     * Giờ vào/ra KHÔNG nhận từ client — server tự lấy giờ hiện tại (chống sửa giờ).
+     */
+    public record Checkin(
+            @NotNull(message = "Thiếu buổi dạy (scheduleId)")
+            Long scheduleId,
+
+            String note) {}
+}

@@ -14,6 +14,12 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
     /** Trường đã từng/đang phân công GV này chưa (dùng khi SCHOOL chấm điểm). */
     boolean existsByTeacherIdAndSchoolIdAndDeletedFalse(Integer teacherId, Integer schoolId);
 
+    /**
+     * Như trên nhưng LOẠI phân công theo status (vd CANCELLED — GV từ chối, chưa từng dạy):
+     * SCHOOL chỉ được chấm điểm / xem summary GV có phân công còn hiệu lực tại trường mình.
+     */
+    boolean existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(Integer teacherId, Integer schoolId, String status);
+
     /** Danh sách TeacherId đã từng phân công tại 1 trường (dropdown đánh giá phía School). */
     @Query("SELECT DISTINCT a.teacherId FROM Assignment a WHERE a.schoolId = :schoolId AND a.deleted = false")
     List<Integer> findDistinctTeacherIdsBySchoolId(@Param("schoolId") Integer schoolId);

@@ -5,6 +5,7 @@ import com.kdc.tsdms.dto.AttendanceResponse;
 import com.kdc.tsdms.service.AttendanceService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -22,6 +23,9 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/attendance")
 public class AttendanceController {
 
+    /** JVM ghim UTC — "tháng hiện tại" mặc định phải tính theo giờ Việt Nam. */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final AttendanceService service;
 
     public AttendanceController(AttendanceService service) {
@@ -35,7 +39,7 @@ public class AttendanceController {
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.list(teacherId, f, t);
@@ -51,10 +55,36 @@ public class AttendanceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String status) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.listMine(f, t, status);
+    }
+
+    /* ── GV tự check-in/out ───────────────────────────────────────── */
+
+    /** Trạng thái check-in các buổi dạy HÔM NAY của chính GV (nút Check in/out ở dashboard). */
+    @GetMapping("/checkin/today")
+    @PreAuthorize("hasRole('TEACHER')")
+    public AttendanceResponse.CheckinToday checkinToday() {
+        return service.checkinToday();
+    }
+
+    /**
+     * GV check-in một buổi dạy hôm nay (chỉ khi hôm nay có lịch dạy đã duyệt của chính mình).
+     * Giờ vào = giờ SERVER, client không gửi được.
+     */
+    @PostMapping("/checkin")
+    @PreAuthorize("hasRole('TEACHER')")
+    public AttendanceResponse checkIn(@Valid @RequestBody AttendanceRequest.Checkin req) {
+        return service.checkIn(req);
+    }
+
+    /** GV check-out buổi đã check-in — giờ ra = giờ SERVER. */
+    @PostMapping("/checkout")
+    @PreAuthorize("hasRole('TEACHER')")
+    public AttendanceResponse checkOut(@Valid @RequestBody AttendanceRequest.Checkin req) {
+        return service.checkOut(req);
     }
 
     /** Sinh chấm công hàng loạt từ các buổi đã duyệt trong khoảng ngày. */

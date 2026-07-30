@@ -25,7 +25,7 @@ const copy = computed(() => {
     case 'admin':
       return {
         title: 'Đánh giá giáo viên',
-        subtitle: 'Quản trị toàn hệ thống — chấm điểm, lọc theo nguồn & kỳ',
+        subtitle: '',
       }
     case 'school':
       return {

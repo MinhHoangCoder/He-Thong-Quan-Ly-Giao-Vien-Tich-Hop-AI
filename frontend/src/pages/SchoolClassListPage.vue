@@ -78,7 +78,11 @@ const purgeTarget = ref(null)
 /** Suy cấp trường từ tên (THPT/THCS trước TH để tránh khớp nhầm). */
 function detectSchoolLevel(name) {
   const n = (name || '').toUpperCase().normalize('NFC')
-  if (n.includes('THPT') || n.includes('TRUNG HOC PHO THONG') || n.includes('TRUNG HỌC PHỔ THÔNG')) {
+  if (
+    n.includes('THPT') ||
+    n.includes('TRUNG HOC PHO THONG') ||
+    n.includes('TRUNG HỌC PHỔ THÔNG')
+  ) {
     return 'THPT'
   }
   if (n.includes('THCS') || n.includes('TRUNG HOC CO SO') || n.includes('TRUNG HỌC CƠ SỞ')) {
@@ -259,8 +263,11 @@ function jumpPage() {
 }
 
 /* ── Load ── */
+const loadError = ref('')
+
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await classApi.list({
       keyword: keyword.value || undefined,
@@ -272,12 +279,26 @@ async function load() {
     })
     items.value = res.data.content
     total.value = res.data.totalElements
-  } catch {
+  } catch (e) {
+    // Nói rõ là LỖI (vd 403 không có quyền) thay vì hiện "0 lớp học" như hệ thống trống.
     items.value = []
     total.value = 0
+    loadError.value =
+      e.response?.status === 403
+        ? 'Tài khoản của bạn không có quyền xem lớp học.'
+        : (e.response?.data?.message ?? 'Không tải được danh sách lớp học.')
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * Kẹp lại chỉ số trang sau khi xóa bớt `removed` bản ghi — xóa hết trang cuối
+ * mà giữ nguyên page thì request kế trả trang rỗng dù vẫn còn dữ liệu.
+ */
+function clampPageAfterRemove(removed) {
+  const maxPage = Math.max(0, Math.ceil((total.value - removed) / pageSize) - 1)
+  if (page.value > maxPage) page.value = maxPage
 }
 
 async function loadSchools() {
@@ -553,6 +574,13 @@ function clearFieldError(field) {
   if (modal.errors[field]) delete modal.errors[field]
 }
 
+/** Chuẩn hóa hậu tố tên lớp khi gõ (A1/B20) — tách khỏi inline handler vì prettier
+ * bỏ dấu ; giữa 2 câu lệnh inline làm Vue compiler vỡ khi build. */
+function onClassSuffixInput() {
+  modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '')
+  clearFieldError('classSuffix')
+}
+
 async function saveModal() {
   modal.errors = validateForm(modal.form)
   if (Object.keys(modal.errors).length) return
@@ -613,6 +641,7 @@ async function confirmDelete() {
   try {
     await classApi.remove(deleteTarget.value.id)
     deleteTarget.value = null
+    clampPageAfterRemove(1)
     await load()
     await loadExistingGrades()
   } catch (e) {
@@ -659,8 +688,7 @@ function toggleSelectAll() {
 }
 
 const allSelected = computed(
-  () =>
-    items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
+  () => items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
 )
 
 /** Chọn tất cả trong thùng rác (list 1 trang, không phân trang). */
@@ -673,32 +701,29 @@ function toggleSelectAllTrash() {
 
 const allTrashSelected = computed(
   () =>
-    trashItems.value.length > 0 &&
-    trashItems.value.every((i) => selectedIds.value.includes(i.id)),
+    trashItems.value.length > 0 && trashItems.value.every((i) => selectedIds.value.includes(i.id)),
 )
 
 const trashBatchBusy = ref(false)
 const trashBatchRestoreOpen = ref(false)
 const trashBatchPurgeOpen = ref(false)
 
+/* Batch qua 1 endpoint BE (transaction): lỗi 1 lớp là rollback cả lô + báo đúng lớp lỗi —
+ * thay cho N request song song từng lớp (nửa thành công nửa thất bại khó lần). */
 async function confirmTrashBatchRestore() {
   if (!selectedIds.value.length) return
   trashBatchBusy.value = true
   try {
-    const results = await Promise.allSettled(
-      selectedIds.value.map((id) => classApi.restore(id)),
-    )
-    const failed = results.filter((r) => r.status === 'rejected').length
-    const ok = results.length - failed
+    await classApi.restoreMany([...selectedIds.value])
     trashBatchRestoreOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
     await loadTrash()
-    if (failed) {
-      alert(`Khôi phục xong ${ok} lớp; ${failed} lớp lỗi (có thể trùng tên/năm với lớp đang có).`)
-    }
   } catch (e) {
-    alert(e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại')
+    alert(
+      (e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại') +
+        ' — chưa lớp nào được khôi phục.',
+    )
   } finally {
     trashBatchBusy.value = false
   }
@@ -708,18 +733,15 @@ async function confirmTrashBatchPurge() {
   if (!selectedIds.value.length) return
   trashBatchBusy.value = true
   try {
-    const results = await Promise.allSettled(selectedIds.value.map((id) => classApi.purge(id)))
-    const failed = results.filter((r) => r.status === 'rejected').length
-    const ok = results.length - failed
+    await classApi.purgeMany([...selectedIds.value])
     trashBatchPurgeOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
     await loadTrash()
-    if (failed) {
-      alert(`Đã xóa hẳn ${ok} lớp; ${failed} lớp lỗi (có thể còn ràng buộc dữ liệu).`)
-    }
   } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại')
+    alert(
+      (e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại') + ' — chưa lớp nào bị xóa.',
+    )
   } finally {
     trashBatchBusy.value = false
   }
@@ -734,10 +756,12 @@ async function confirmBatchDelete() {
   if (!selectedIds.value.length) return
   batchDeleting.value = true
   try {
+    const removed = selectedIds.value.length
     await classApi.removeMany([...selectedIds.value])
     batchDeleteOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
+    clampPageAfterRemove(removed)
     await load()
     await loadExistingGrades()
   } catch (e) {
@@ -803,9 +827,6 @@ function formatDeletedAt(iso) {
     <div class="page__head">
       <div>
         <h1 class="page__title">Lớp học</h1>
-        <p class="page__sub">
-          Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học
-        </p>
       </div>
       <div class="page__head-actions">
         <button
@@ -893,9 +914,7 @@ function formatDeletedAt(iso) {
         Tổng cộng
         <strong>{{ total }}</strong>
         lớp học
-        <span v-if="deleteMode" class="total-hint">
-          — đã chọn {{ selectedIds.length }}
-        </span>
+        <span v-if="deleteMode" class="total-hint"> — đã chọn {{ selectedIds.length }} </span>
       </p>
 
       <div class="table-wrap">
@@ -921,6 +940,13 @@ function formatDeletedAt(iso) {
           <tbody>
             <tr v-if="loading">
               <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+            </tr>
+            <!-- Lỗi API (vd không có quyền): nói thẳng, đừng giả vờ "Không có dữ liệu" -->
+            <tr v-else-if="loadError">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">
+                ⚠️ {{ loadError }}
+                <button type="button" class="act-btn" @click="load">Thử lại</button>
+              </td>
             </tr>
             <tr v-else-if="items.length === 0">
               <td :colspan="deleteMode ? 7 : 6" class="empty">Không có dữ liệu</td>
@@ -980,11 +1006,7 @@ function formatDeletedAt(iso) {
         <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(page + 1)">
           ›
         </button>
-        <button
-          class="pg-btn"
-          :disabled="page >= totalPages - 1"
-          @click="goPage(totalPages - 1)"
-        >
+        <button class="pg-btn" :disabled="page >= totalPages - 1" @click="goPage(totalPages - 1)">
           »
         </button>
         <input
@@ -1170,7 +1192,9 @@ function formatDeletedAt(iso) {
               class="combo__list"
               role="listbox"
             >
-              <li v-if="schoolsForLevel.length === 0" class="combo__empty">Không tìm thấy trường</li>
+              <li v-if="schoolsForLevel.length === 0" class="combo__empty">
+                Không tìm thấy trường
+              </li>
               <li
                 v-for="s in schoolsForLevel"
                 :key="s.id"
@@ -1183,7 +1207,9 @@ function formatDeletedAt(iso) {
               </li>
             </ul>
           </div>
-          <small v-if="modal.errors.schoolId" class="field-error">{{ modal.errors.schoolId }}</small>
+          <small v-if="modal.errors.schoolId" class="field-error">{{
+            modal.errors.schoolId
+          }}</small>
         </div>
 
         <!-- 3. Khối — nút -->
@@ -1208,7 +1234,9 @@ function formatDeletedAt(iso) {
           <div v-else class="chip-row chip-row--placeholder">
             <span class="chip-placeholder">Chọn cấp trường để hiện khối</span>
           </div>
-          <small v-if="modal.errors.gradeNum" class="field-error">{{ modal.errors.gradeNum }}</small>
+          <small v-if="modal.errors.gradeNum" class="field-error">{{
+            modal.errors.gradeNum
+          }}</small>
         </div>
 
         <!-- 4. Hậu tố lớp → gộp tên -->
@@ -1224,18 +1252,15 @@ function formatDeletedAt(iso) {
               placeholder="A1 / B20"
               maxlength="3"
               :class="{ 'input-error': modal.errors.classSuffix }"
-              @input="
-                modal.form.classSuffix = modal.form.classSuffix.toUpperCase().replace(/[^A-Z0-9]/g, '');
-                clearFieldError('classSuffix')
-              "
+              @input="onClassSuffixInput"
             />
           </div>
           <small v-if="modal.errors.classSuffix" class="field-error">{{
             modal.errors.classSuffix
           }}</small>
           <small v-else-if="composedClassName" class="field-ok">
-            Tên lớp: <strong>{{ composedClassName }}</strong>
-            · DB khối: <strong>{{ gradeLabel(modal.form.gradeNum) }}</strong>
+            Tên lớp: <strong>{{ composedClassName }}</strong> · DB khối:
+            <strong>{{ gradeLabel(modal.form.gradeNum) }}</strong>
           </small>
         </div>
 
@@ -1359,7 +1384,11 @@ function formatDeletedAt(iso) {
           >
             Hủy
           </button>
-          <button class="btn btn--danger" :disabled="trashBatchBusy" @click="confirmTrashBatchPurge">
+          <button
+            class="btn btn--danger"
+            :disabled="trashBatchBusy"
+            @click="confirmTrashBatchPurge"
+          >
             {{ trashBatchBusy ? 'Đang xóa...' : 'Xóa vĩnh viễn' }}
           </button>
         </div>

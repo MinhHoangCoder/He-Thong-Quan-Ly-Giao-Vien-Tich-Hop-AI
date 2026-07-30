@@ -41,6 +41,166 @@ const monthEvents = ref([])
 const monthAttendance = ref([])
 const evalStats = ref(null)
 
+/* ── Check in/out ──
+ * Luật đơn giản: hôm nay có buổi dạy đã duyệt thì check-in/out được;
+ * giờ vào/ra do SERVER ghi — FE chỉ gửi scheduleId và hiển thị trạng thái. */
+const checkin = ref(null) // CheckinToday { date, sessions[] }
+const checkinBusy = ref(false)
+const checkinMsg = ref('') // thông báo kết quả/lỗi dưới header
+const checkinMsgType = ref('info') // info | ok | err
+
+/**
+ * Buổi mà nút header hành động được. BE trả state theo cửa sổ giờ:
+ * OPEN (trong cửa sổ) / CHECKED_IN / DONE / NOT_YET (chưa mở) / MISSED (quá giờ)
+ * / LOCKED (kế toán đã ghi Vắng/Nghỉ phép) — nên OPEN luôn là buổi đúng giờ hiện tại.
+ */
+const activeSession = computed(() => {
+  const list = checkin.value?.sessions || []
+  return list.find((s) => s.state === 'CHECKED_IN') || list.find((s) => s.state === 'OPEN') || null
+})
+
+const allDone = computed(() => {
+  const list = checkin.value?.sessions || []
+  return list.length > 0 && list.every((s) => s.state === 'DONE')
+})
+
+/** HH:MM từ chuỗi LocalDateTime "2026-07-26T07:00:00". */
+const hhmmDT = (dt) => String(dt || '').slice(11, 16)
+
+/** Giờ MỞ cửa sổ check-in của một buổi (trước giờ dạy 30 phút — khớp BE). */
+function openAt(s) {
+  const d = new Date(s.startTime)
+  if (Number.isNaN(d.getTime())) return ''
+  d.setMinutes(d.getMinutes() - 30)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/** Nhãn trạng thái từng buổi trong panel chấm công. */
+function stateLabel(s) {
+  switch (s.state) {
+    case 'OPEN':
+      return 'Đang mở'
+    case 'CHECKED_IN':
+      return `Đã vào ${hhmm(s.checkIn)}`
+    case 'DONE':
+      return `✓ ${hhmm(s.checkIn)}–${hhmm(s.checkOut)}`
+    case 'NOT_YET':
+      return `Mở lúc ${openAt(s)}`
+    case 'MISSED':
+      return 'Quá giờ — chưa chấm'
+    case 'LOCKED':
+      return 'Kế toán đã ghi nhận'
+    default:
+      return s.state || ''
+  }
+}
+
+/** Nút LUÔN hiển thị — không có lịch thì disabled kèm ghi chú (tránh "biến mất" khó hiểu). */
+const checkinButton = computed(() => {
+  const s = activeSession.value
+  if (s?.state === 'CHECKED_IN') return { label: 'Check out', mode: 'out', disabled: false }
+  if (s?.state === 'OPEN') return { label: 'Check in', mode: 'in', disabled: false }
+  if (allDone.value) return { label: '✓ Đã chấm công hôm nay', mode: null, disabled: true }
+  const list = checkin.value?.sessions || []
+  const notYet = list.find((x) => x.state === 'NOT_YET')
+  if (notYet) {
+    return {
+      label: 'Check in',
+      mode: null,
+      disabled: true,
+      hint: `Chưa tới giờ — buổi ${hhmmDT(notYet.startTime)} mở check-in lúc ${openAt(notYet)}`,
+    }
+  }
+  if (list.some((x) => x.state === 'MISSED')) {
+    return {
+      label: 'Check in',
+      mode: null,
+      disabled: true,
+      hint: 'Đã quá giờ chấm công buổi hôm nay.',
+    }
+  }
+  if (list.some((x) => x.state === 'LOCKED')) {
+    return {
+      label: 'Check in',
+      mode: null,
+      disabled: true,
+      hint: 'Buổi hôm nay đã được kế toán ghi nhận Vắng/Nghỉ phép',
+    }
+  }
+  return {
+    label: 'Check in',
+    mode: null,
+    disabled: true,
+    hint: checkin.value
+      ? 'Hôm nay không có lịch dạy — không cần chấm công'
+      : 'Chưa tải được trạng thái chấm công',
+  }
+})
+
+async function loadCheckin() {
+  try {
+    const { data } = await attendanceApi.checkinToday()
+    checkin.value = data
+  } catch (e) {
+    checkin.value = null
+    // Nói rõ vì sao nút bị khóa thay vì im lặng (trừ khi đã có thông báo khác).
+    if (!checkinMsg.value) {
+      checkinMsgType.value = 'err'
+      checkinMsg.value =
+        e?.response?.data?.message || 'Không tải được trạng thái chấm công hôm nay.'
+    }
+  }
+}
+
+/** Chấm công 1 buổi cụ thể — gọi từ nút header (buổi active) hoặc nút riêng từng buổi. */
+async function doCheckin(session, mode) {
+  if (!session || !mode || checkinBusy.value) return
+
+  let note = undefined
+  if (mode === 'in') {
+    const startTimeMs = session.startTime ? new Date(session.startTime).getTime() : 0
+    const isLate = startTimeMs > 0 && Date.now() > startTimeMs + 15 * 60 * 1000
+    if (isLate) {
+      const input = window.prompt(
+        'Bạn đang check-in muộn (>15 phút). Vui lòng nhập lý do đi muộn (không bắt buộc):',
+        '',
+      )
+      if (input === null) return // Người dùng bấm Hủy, hủy thao tác check-in
+      note = input.trim() || undefined
+    }
+  }
+
+  checkinBusy.value = true
+  checkinMsg.value = ''
+  try {
+    const body = { scheduleId: session.scheduleId, note }
+    const { data } =
+      mode === 'out' ? await attendanceApi.checkOut(body) : await attendanceApi.checkIn(body)
+    checkinMsgType.value = 'ok'
+    checkinMsg.value =
+      mode === 'out'
+        ? `Đã check-out lúc ${hhmm(data.checkOut)} — ${session.schoolName || 'trường'}.`
+        : `Đã check-in lúc ${hhmm(data.checkIn)} — ${session.schoolName || 'trường'}${
+            data.status === 'LATE' ? ' (ghi nhận vào muộn)' : ''
+          }.`
+    // Làm mới trạng thái nút + bảng công tháng (giờ công thay đổi).
+    await loadCheckin()
+    try {
+      const att = await attendanceApi.mine({ from: iso(monStart), to: iso(monEnd) })
+      monthAttendance.value = att.data || []
+    } catch {
+      /* giữ số liệu cũ */
+    }
+  } catch (e) {
+    checkinMsgType.value = 'err'
+    checkinMsg.value = e?.response?.data?.message || e?.message || 'Chấm công thất bại.'
+    // Trạng thái có thể đã đổi phía server (vd buổi vừa hết giờ) — tải lại cho khớp.
+    await loadCheckin()
+  } finally {
+    checkinBusy.value = false
+  }
+}
+
 async function load() {
   loading.value = true
   error.value = ''
@@ -65,6 +225,7 @@ async function load() {
   } catch {
     evalStats.value = null
   }
+  await loadCheckin()
 }
 onMounted(load)
 
@@ -90,6 +251,13 @@ const todaySessions = computed(() =>
     .slice()
     .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || '')),
 )
+
+/** Tra trạng thái chấm công theo scheduleId — gắn chip + nút vào thẻ "Lịch dạy hôm nay". */
+const checkinBySchedule = computed(() => {
+  const map = {}
+  for (const s of checkin.value?.sessions || []) map[s.scheduleId] = s
+  return map
+})
 const weekCount = computed(() => weekEvents.value.length)
 const todayLabel = new Intl.DateTimeFormat('vi-VN', {
   weekday: 'long',
@@ -108,6 +276,12 @@ const avgScore = computed(() => {
   const a = evalStats.value?.averageScore
   return a == null ? '—' : `${Number(a).toFixed(1)}/5`
 })
+/** Ghi chú dưới thẻ Điểm đánh giá — nói rõ "chưa có phiếu nào" thay vì chỉ dấu gạch. */
+const avgScoreHint = computed(() => {
+  if (!evalStats.value) return ''
+  const n = evalStats.value.totalCount || 0
+  return n ? `${n} lượt đánh giá` : 'Chưa có đánh giá nào'
+})
 
 /* ── 4 thẻ đầu trang ── */
 const stats = computed(() => [
@@ -124,7 +298,13 @@ const stats = computed(() => [
     value: `${Math.round(monthHours.value)}h`,
     color: '#f59e0b',
   },
-  { icon: 'evaluation', label: 'Điểm đánh giá', value: avgScore.value, color: '#2563eb' },
+  {
+    icon: 'evaluation',
+    label: 'Điểm đánh giá',
+    value: avgScore.value,
+    hint: avgScoreHint.value,
+    color: '#2563eb',
+  },
 ])
 
 /* ── Số liệu giảng dạy (phạm vi tháng này) ── */
@@ -159,8 +339,28 @@ const sessionStyle = (s) => ({
 <template>
   <div class="page-head">
     <h1 class="page-head__title">Xin chào, {{ firstName }}</h1>
-    <span v-if="loading" class="dash-loading">Đang tải…</span>
+    <div class="page-head__actions">
+      <span v-if="loading" class="dash-loading">Đang tải…</span>
+      <button
+        class="btn btn-primary checkin-btn"
+        :class="{ 'checkin-btn--out': checkinButton.mode === 'out' }"
+        :disabled="checkinButton.disabled || checkinBusy"
+        :title="checkinButton.hint || activeSession?.schoolName || ''"
+        @click="doCheckin(activeSession, checkinButton.mode)"
+      >
+        <SvgIcon name="attendance" :size="17" />
+        {{ checkinBusy ? 'Đang xử lý…' : checkinButton.label }}
+      </button>
+    </div>
   </div>
+
+  <!-- Trạng thái chấm công từng buổi nằm NGAY trong thẻ "Lịch dạy hôm nay" bên dưới
+       (không lặp lại thông tin buổi dạy ở đây) — chỉ giữ 1 dòng lý do khi nút bị khóa. -->
+  <p v-if="checkinButton.hint" class="checkin-target">{{ checkinButton.hint }}</p>
+
+  <p v-if="checkinMsg" class="checkin-msg" :class="`checkin-msg--${checkinMsgType}`">
+    {{ checkinMsg }}
+  </p>
 
   <p v-if="error" class="dash-error">{{ error }}</p>
 
@@ -184,6 +384,30 @@ const sessionStyle = (s) => ({
             <small>
               {{ t.schoolName }}<template v-if="t.className"> · Lớp {{ t.className }}</template>
             </small>
+          </div>
+          <!-- Trạng thái chấm công của chính buổi này + nút khi đang trong cửa sổ -->
+          <div v-if="checkinBySchedule[t.id]" class="timeline__checkin">
+            <span
+              class="checkin-state"
+              :class="`checkin-state--${checkinBySchedule[t.id].state.toLowerCase()}`"
+            >
+              {{ stateLabel(checkinBySchedule[t.id]) }}
+            </span>
+            <button
+              v-if="['OPEN', 'CHECKED_IN'].includes(checkinBySchedule[t.id].state)"
+              type="button"
+              class="btn btn-primary checkin-state__btn"
+              :class="{ 'checkin-btn--out': checkinBySchedule[t.id].state === 'CHECKED_IN' }"
+              :disabled="checkinBusy"
+              @click="
+                doCheckin(
+                  checkinBySchedule[t.id],
+                  checkinBySchedule[t.id].state === 'CHECKED_IN' ? 'out' : 'in',
+                )
+              "
+            >
+              {{ checkinBySchedule[t.id].state === 'CHECKED_IN' ? 'Check out' : 'Check in' }}
+            </button>
           </div>
         </li>
       </ul>
@@ -253,6 +477,93 @@ const sessionStyle = (s) => ({
 .dash-loading {
   font-size: 0.82rem;
   color: var(--a-text-muted);
+}
+.page-head__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+/* Nút Check in/out — cùng vị trí/kiểu với "Tạo phân công" bên admin (.btn-primary global) */
+.checkin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.checkin-btn--out {
+  background: linear-gradient(135deg, #34d399, #059669);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.28);
+}
+.checkin-target {
+  margin: -0.9rem 0 1rem;
+  font-size: 0.82rem;
+  color: var(--a-text-muted);
+  text-align: right;
+}
+/* Chip + nút chấm công gắn trong dòng "Lịch dạy hôm nay" */
+.timeline__checkin {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+}
+.checkin-state {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+}
+.checkin-state--open {
+  background: #ecfdf5;
+  color: #047857;
+}
+.checkin-state--checked_in {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.checkin-state--done {
+  background: #f0fdf4;
+  color: #15803d;
+}
+.checkin-state--missed,
+.checkin-state--locked {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+.checkin-state__btn {
+  padding: 0.25rem 0.7rem;
+  font-size: 0.78rem;
+}
+:root[data-theme='dark'] .checkin-state {
+  background: rgba(148, 163, 184, 0.15);
+  color: #cbd5e1;
+}
+.checkin-msg {
+  margin: -0.6rem 0 1rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  font-size: 0.86rem;
+}
+.checkin-msg--info {
+  background: rgba(37, 99, 235, 0.09);
+  color: #2563eb;
+}
+.checkin-msg--ok {
+  background: rgba(22, 163, 74, 0.1);
+  color: #15803d;
+}
+.checkin-msg--err {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+}
+:root[data-theme='dark'] .checkin-msg--ok {
+  color: #4ade80;
+}
+:root[data-theme='dark'] .checkin-msg--err {
+  color: #f87171;
+}
+:root[data-theme='dark'] .checkin-msg--info {
+  color: #93c5fd;
 }
 .dash-error {
   margin: 0 0 1rem;
@@ -327,7 +638,8 @@ const sessionStyle = (s) => ({
 }
 .timeline__item {
   display: grid;
-  grid-template-columns: 48px 16px 1fr;
+  /* cột 4 (auto) dành cho chip/nút chấm công — tự biến mất khi buổi không có dữ liệu */
+  grid-template-columns: 48px 16px 1fr auto;
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0;

@@ -17,4 +17,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
 
     /** Tránh sinh trùng khi generate chấm công từ lịch dạy. */
     boolean existsByScheduleId(Long scheduleId);
+
+    /** Dòng chấm công của một buổi dạy (lấy dòng đầu — bảng không có unique constraint). */
+    java.util.Optional<Attendance> findFirstByScheduleIdOrderByIdAsc(Long scheduleId);
 }

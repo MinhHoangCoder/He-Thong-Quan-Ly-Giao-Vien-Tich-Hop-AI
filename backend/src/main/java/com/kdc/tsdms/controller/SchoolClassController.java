@@ -67,7 +67,9 @@ public class SchoolClassController {
             @RequestParam(required = false) String gradeLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Order.desc("id")));
+        // Kẹp size 1..100 — không có cận trên thì client gửi size=1000000 kéo cả bảng.
+        Pageable pageable =
+                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Order.desc("id")));
         return service.search(keyword, schoolId, status, gradeLevel, pageable);
     }
 
@@ -114,6 +116,21 @@ public class SchoolClassController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
     public ResponseEntity<Void> purge(@PathVariable Integer id) {
         service.purge(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Khôi phục nhiều lớp từ thùng rác trong 1 request. Body: [1, 2, 3]. */
+    @PostMapping("/trash/batch-restore")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public List<SchoolClassResponse> batchRestore(@RequestBody List<Integer> ids) {
+        return service.restoreMany(ids);
+    }
+
+    /** Xóa vĩnh viễn nhiều lớp trong thùng rác trong 1 request. Body: [1, 2, 3]. */
+    @PostMapping("/trash/batch-purge")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public ResponseEntity<Void> batchPurge(@RequestBody List<Integer> ids) {
+        service.purgeMany(ids);
         return ResponseEntity.noContent().build();
     }
 }

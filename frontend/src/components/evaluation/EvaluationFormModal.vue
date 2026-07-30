@@ -1,17 +1,20 @@
 <script setup>
 /**
  * Modal tạo / sửa đánh giá.
- * Tìm GV: tên/SĐT + lọc trường/CN + chỉ chưa chấm + phân trang (scale).
- * Hiển thị trường đang dạy + chi nhánh để phân biệt người trùng tên.
+ * Tìm GV theo tên (gõ là tìm ngay) + dropdown + phân trang.
+ * Sửa: khóa GV và hiển thị đúng tên giáo viên.
  */
 import { reactive, ref, watch, computed } from 'vue'
 import { evaluationApi } from '@/api/evaluations'
+import { useLatestRequest } from '@/composables/useLatestRequest'
 import StarRating from '@/components/evaluation/StarRating.vue'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   mode: { type: String, default: 'create' },
   teachers: { type: Array, default: () => [] },
+  /** [{ id, name }] — dropdown lọc trường khi tìm GV (optional). */
+  schools: { type: Array, default: () => [] },
   periodPresets: { type: Array, default: () => [] },
   suggestedPeriod: { type: String, default: '' },
   initial: { type: Object, default: null },
@@ -19,7 +22,6 @@ const props = defineProps({
   saving: { type: Boolean, default: false },
   error: { type: String, default: '' },
   lockTeacher: { type: Boolean, default: false },
-  /** Ẩn lọc trường khi portal school (đã scope sẵn). */
   schoolScoped: { type: Boolean, default: false },
 })
 
@@ -36,6 +38,8 @@ const summary = ref(null)
 const summaryLoading = ref(false)
 
 const teacherQuery = ref('')
+/** Lọc GV theo trường — '' = tất cả trường (không bắt buộc chọn). */
+const schoolFilter = ref('')
 const teacherOptions = ref([])
 const teachersLoading = ref(false)
 const pickerOpen = ref(false)
@@ -43,23 +47,31 @@ const teacherPage = ref(0)
 const teacherTotalPages = ref(0)
 const teacherTotal = ref(0)
 const PAGE_SIZE = 20
-
-const filters = reactive({
-  schoolId: '',
-  branchId: '',
-  onlyUnevaluated: false,
-})
-const filterMeta = ref({ schools: [], branches: [], schoolScoped: false })
+/** Tên GV đã chọn (để hiện đúng khi sửa / prefill). */
+const lockedTeacherName = ref('')
 
 let searchTimer = null
 
+/** Khóa chọn GV khi sửa — luôn hiện đúng tên, không hiện bộ lọc trường/CN. */
+const teacherLocked = computed(() => props.mode === 'edit')
+
+/** Chỉ hiện dropdown trường khi có >1 lựa chọn thật sự (school portal chỉ có 1). */
+const canPickSchool = computed(
+  () => !teacherLocked.value && !props.schoolScoped && (props.schools?.length || 0) > 1,
+)
+
+const COMMENT_MAX = 300
+
+/**
+ * Không gate độ dài nhận xét ở đây: phiếu cũ (thời hạn 1000 ký tự) có thể vượt 300 —
+ * nếu khóa nút thì user không thấy lý do; để validate() báo lỗi rõ ràng khi bấm lưu.
+ */
 const canSubmit = computed(() => {
   return (
     !!form.teacherId &&
     form.score >= 1 &&
     form.score <= 5 &&
     !!(form.periodNote && form.periodNote.trim()) &&
-    (!form.comment || form.comment.length <= 1000) &&
     form.periodNote.trim().length <= 50
   )
 })
@@ -67,7 +79,12 @@ const canSubmit = computed(() => {
 const selectedTeacher = computed(() => {
   const id = form.teacherId
   if (!id) return null
-  return teacherOptions.value.find((t) => t.id === id) || null
+  return (
+    teacherOptions.value.find((t) => t.id === id) ||
+    (lockedTeacherName.value
+      ? { id, name: lockedTeacherName.value, schoolsLabel: props.initial?.schoolName || '' }
+      : null)
+  )
 })
 
 const summaryText = computed(() => {
@@ -78,38 +95,48 @@ const summaryText = computed(() => {
   return `TB ${avg}/5 · ${s.count} lượt đánh giá`
 })
 
-const showSchoolFilter = computed(() => !props.schoolScoped && !filterMeta.value.schoolScoped)
-
+// KHÔNG theo dõi suggestedPeriod: prop này về muộn (sau khi meta load xong) sẽ
+// kích hoạt lại watch và reset trắng form user đang nhập. Chỉ reset khi modal
+// thực sự mở / đổi phiếu (initial/prefill được gán cùng lúc với open ở parent).
 watch(
-  () => [props.open, props.initial, props.prefill, props.suggestedPeriod],
+  () => [props.open, props.initial, props.prefill],
   async () => {
     if (!props.open) return
     Object.keys(errors).forEach((k) => delete errors[k])
     summary.value = null
     teacherQuery.value = ''
+    schoolFilter.value = ''
+    lockedTeacherName.value = ''
     pickerOpen.value = false
     teacherPage.value = 0
-    filters.schoolId = ''
-    filters.branchId = ''
-    filters.onlyUnevaluated = false
 
     if (props.mode === 'edit' && props.initial) {
       form.teacherId = props.initial.teacherId
       form.score = props.initial.score ?? 0
       form.comment = props.initial.comment ?? ''
       form.periodNote = props.initial.periodNote ?? props.suggestedPeriod ?? ''
+      lockedTeacherName.value = props.initial.teacherName || ''
+      teacherQuery.value = props.initial.teacherName || ''
     } else {
       form.teacherId = props.prefill?.teacherId ?? null
       form.score = 0
       form.comment = ''
       form.periodNote = props.prefill?.periodNote || props.suggestedPeriod || ''
+      lockedTeacherName.value = props.prefill?.teacherName || ''
+      teacherQuery.value = props.prefill?.teacherName || ''
     }
 
-    await loadFilterMeta()
-    await loadTeachers({ reset: true })
+    if (!teacherLocked.value) {
+      await loadTeachers({ reset: true })
+    }
     if (form.teacherId) {
-      const t = teacherOptions.value.find((x) => x.id === form.teacherId)
-      if (t) teacherQuery.value = t.name
+      if (!teacherQuery.value) {
+        const t = teacherOptions.value.find((x) => x.id === form.teacherId)
+        if (t) {
+          teacherQuery.value = t.name
+          lockedTeacherName.value = t.name
+        }
+      }
       loadSummary(form.teacherId)
     }
   },
@@ -119,7 +146,7 @@ watch(
 watch(
   () => form.periodNote,
   () => {
-    if (!props.open) return
+    if (!props.open || teacherLocked.value) return
     teacherPage.value = 0
     loadTeachers({ reset: true })
   },
@@ -134,29 +161,45 @@ watch(
   },
 )
 
-async function loadFilterMeta() {
-  try {
-    const { data } = await evaluationApi.filterMeta()
-    filterMeta.value = data || { schools: [], branches: [], schoolScoped: false }
-  } catch {
-    filterMeta.value = { schools: [], branches: [], schoolScoped: props.schoolScoped }
-  }
-}
+// Đóng modal: dọn debounce đang chờ + vô hiệu request đang bay (không còn request mồ côi).
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) {
+      clearTimeout(searchTimer)
+      teacherReqSeq++
+      latestSummary.invalidate()
+      dupAsk.open = false
+    }
+  },
+)
 
 function buildTeacherParams(page) {
-  const params = {
+  return {
     periodNote: form.periodNote || props.suggestedPeriod || undefined,
     keyword: teacherQuery.value?.trim() || undefined,
+    schoolId: schoolFilter.value ? Number(schoolFilter.value) : undefined,
     page,
     size: PAGE_SIZE,
   }
-  if (filters.schoolId) params.schoolId = Number(filters.schoolId)
-  if (filters.branchId) params.branchId = Number(filters.branchId)
-  if (filters.onlyUnevaluated) params.onlyUnevaluated = true
-  return params
 }
 
+/** Đổi trường → tìm lại từ trang đầu, mở luôn danh sách gợi ý. */
+function onSchoolFilterChange() {
+  pickerOpen.value = true
+  loadTeachers({ reset: true })
+}
+
+function clearSchoolFilter() {
+  schoolFilter.value = ''
+  onSchoolFilterChange()
+}
+
+/** Bỏ response đến muộn (gõ nhanh → request cũ có thể về sau request mới). */
+let teacherReqSeq = 0
+
 async function loadTeachers({ reset = false, append = false } = {}) {
+  const seq = ++teacherReqSeq
   if (reset) {
     teacherPage.value = 0
     if (!append) teacherOptions.value = []
@@ -164,11 +207,13 @@ async function loadTeachers({ reset = false, append = false } = {}) {
   teachersLoading.value = true
   try {
     const { data } = await evaluationApi.teachers(buildTeacherParams(teacherPage.value))
+    if (seq !== teacherReqSeq) return
     const list = data?.content || []
     teacherOptions.value = append ? [...teacherOptions.value, ...list] : list
     teacherTotalPages.value = data?.totalPages ?? 0
     teacherTotal.value = data?.totalElements ?? list.length
   } catch {
+    if (seq !== teacherReqSeq) return
     if (!append) {
       teacherOptions.value = (props.teachers || []).map((t) => ({
         ...t,
@@ -176,23 +221,19 @@ async function loadTeachers({ reset = false, append = false } = {}) {
       }))
     }
   } finally {
-    teachersLoading.value = false
+    if (seq === teacherReqSeq) teachersLoading.value = false
   }
 }
 
+/** Gõ chữ cái nào là tìm ngay (debounce rất ngắn). */
 function onTeacherQueryInput() {
   pickerOpen.value = true
   if (selectedTeacher.value && teacherQuery.value !== selectedTeacher.value.name) {
     form.teacherId = null
+    lockedTeacherName.value = ''
   }
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => loadTeachers({ reset: true }), 280)
-}
-
-function onFilterChange() {
-  teacherPage.value = 0
-  loadTeachers({ reset: true })
-  pickerOpen.value = true
+  searchTimer = setTimeout(() => loadTeachers({ reset: true }), 120)
 }
 
 function loadMoreTeachers() {
@@ -204,6 +245,7 @@ function loadMoreTeachers() {
 function pickTeacher(t) {
   form.teacherId = t.id
   teacherQuery.value = t.name
+  lockedTeacherName.value = t.name
   pickerOpen.value = false
   if (errors.teacherId) delete errors.teacherId
 }
@@ -211,31 +253,39 @@ function pickTeacher(t) {
 function clearTeacher() {
   form.teacherId = null
   teacherQuery.value = ''
+  lockedTeacherName.value = ''
   summary.value = null
   pickerOpen.value = true
   loadTeachers({ reset: true })
 }
 
+/** Chỉ nhận thống kê của GV chọn SAU CÙNG — đổi GV nhanh không hiện nhầm số liệu GV trước. */
+const latestSummary = useLatestRequest()
+
 async function loadSummary(teacherId) {
   summaryLoading.value = true
-  try {
-    const { data } = await evaluationApi.teacherSummary(teacherId)
-    summary.value = data
-  } catch {
-    summary.value = null
-  } finally {
-    summaryLoading.value = false
-  }
+  await latestSummary(
+    () => evaluationApi.teacherSummary(teacherId),
+    ({ data }) => {
+      summary.value = data
+      summaryLoading.value = false
+    },
+    () => {
+      summary.value = null
+      summaryLoading.value = false
+    },
+  )
 }
 
 function validate() {
   Object.keys(errors).forEach((k) => delete errors[k])
-  if (!form.teacherId) errors.teacherId = 'Chọn giáo viên (tìm theo tên / SĐT / trường)'
+  if (!form.teacherId) errors.teacherId = 'Chọn giáo viên (tìm theo tên)'
   if (!form.score || form.score < 1 || form.score > 5) errors.score = 'Chọn điểm từ 1 đến 5 sao'
   const period = (form.periodNote || '').trim()
   if (!period) errors.periodNote = 'Kỳ đánh giá bắt buộc'
   else if (period.length > 50) errors.periodNote = 'Kỳ đánh giá tối đa 50 ký tự'
-  if (form.comment && form.comment.length > 1000) errors.comment = 'Nhận xét tối đa 1000 ký tự'
+  if (form.comment && form.comment.length > COMMENT_MAX)
+    errors.comment = `Nhận xét tối đa ${COMMENT_MAX} ký tự`
   return Object.keys(errors).length === 0
 }
 
@@ -249,6 +299,9 @@ function buildPayload(forceDuplicate = false) {
   }
 }
 
+/** Hỏi xác nhận trùng kỳ NGAY TRONG modal (thay window.confirm của trình duyệt). */
+const dupAsk = reactive({ open: false, message: '' })
+
 async function submit() {
   if (!validate()) return
   if (props.mode === 'create') {
@@ -258,16 +311,24 @@ async function submit() {
         periodNote: form.periodNote.trim(),
       })
       if (data.duplicate) {
-        const ok = window.confirm(data.message || 'Đã có đánh giá cùng kỳ. Vẫn lưu?')
-        if (!ok) return
-        emit('save', buildPayload(true))
+        dupAsk.message = data.message || 'Đã có đánh giá cùng kỳ. Vẫn lưu thêm?'
+        dupAsk.open = true
         return
       }
     } catch {
-      /* BE 409 */
+      /* lỗi check trùng → cứ gửi, BE còn chốt chặn 409 */
     }
   }
   emit('save', buildPayload(false))
+}
+
+function cancelDupAsk() {
+  dupAsk.open = false
+}
+
+function confirmDupAsk() {
+  dupAsk.open = false
+  emit('save', buildPayload(true))
 }
 
 function pickPreset(p) {
@@ -276,7 +337,6 @@ function pickPreset(p) {
 
 function optionHint(t) {
   const parts = []
-  if (t.branchName) parts.push(t.branchName)
   if (t.averageScore != null) parts.push(`TB ${Number(t.averageScore).toFixed(1)}`)
   if (t.totalCount) parts.push(`${t.totalCount} lượt`)
   if (t.evaluatedInPeriod) parts.push(`đã chấm kỳ (${t.evalsInPeriod})`)
@@ -286,13 +346,14 @@ function optionHint(t) {
 </script>
 
 <template>
-  <div v-if="open" class="modal-backdrop" @click.self="emit('close')">
+  <!-- Đang lưu thì không cho đóng (backdrop lẫn nút ×) — lỗi lưu sẽ bị nuốt mất nếu modal biến mất -->
+  <div v-if="open" class="modal-backdrop" @click.self="!saving && emit('close')">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal__head">
         <h2 class="modal__title">
           {{ mode === 'edit' ? 'Sửa đánh giá' : 'Tạo đánh giá giáo viên' }}
         </h2>
-        <button type="button" class="modal__x" @click="emit('close')">×</button>
+        <button type="button" class="modal__x" :disabled="saving" @click="emit('close')">×</button>
       </div>
 
       <div class="modal__body">
@@ -301,49 +362,39 @@ function optionHint(t) {
         <div class="field">
           <span>Giáo viên <em>*</em></span>
 
-          <!-- Bộ lọc đa tiêu chí (staff/admin) -->
-          <div v-if="!(lockTeacher && mode === 'edit')" class="filter-row">
-            <select
-              v-if="showSchoolFilter"
-              v-model="filters.schoolId"
-              class="filter-select"
-              @change="onFilterChange"
-            >
-              <option value="">Mọi trường</option>
-              <option v-for="s in filterMeta.schools" :key="s.id" :value="String(s.id)">
-                {{ s.name }}
-              </option>
-            </select>
-            <select
-              v-if="filterMeta.branches?.length"
-              v-model="filters.branchId"
-              class="filter-select"
-              @change="onFilterChange"
-            >
-              <option value="">Mọi chi nhánh</option>
-              <option v-for="b in filterMeta.branches" :key="b.id" :value="String(b.id)">
-                {{ b.name }}
-              </option>
-            </select>
-            <label class="filter-check">
-              <input v-model="filters.onlyUnevaluated" type="checkbox" @change="onFilterChange" />
-              Chỉ chưa chấm kỳ
-            </label>
+          <!-- Chế độ sửa: chỉ hiện tên GV, không chọn lại -->
+          <div v-if="teacherLocked" class="teacher-locked">
+            <strong>{{ lockedTeacherName || teacherQuery || '—' }}</strong>
           </div>
 
-          <div class="picker" :class="{ 'picker--locked': lockTeacher && mode === 'edit' }">
+          <div v-else class="picker">
+            <!-- Lọc theo trường (không bắt buộc) — thu hẹp danh sách GV -->
+            <div v-if="canPickSchool" class="picker__school">
+              <select v-model="schoolFilter" @change="onSchoolFilterChange">
+                <option value="">🏫 Tất cả trường</option>
+                <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+              <button
+                v-if="schoolFilter"
+                type="button"
+                class="picker__school-clear"
+                title="Bỏ lọc trường"
+                @click="clearSchoolFilter"
+              >
+                ×
+              </button>
+            </div>
             <div class="picker__row">
               <input
                 v-model="teacherQuery"
                 type="search"
                 autocomplete="off"
-                placeholder="Tìm theo tên hoặc SĐT…"
-                :disabled="lockTeacher && mode === 'edit'"
+                placeholder="Nhập tên giáo viên để tìm…"
                 @focus="pickerOpen = true"
                 @input="onTeacherQueryInput"
               />
               <button
-                v-if="form.teacherId && !(lockTeacher && mode === 'edit')"
+                v-if="form.teacherId"
                 type="button"
                 class="picker__clear"
                 title="Bỏ chọn"
@@ -352,15 +403,17 @@ function optionHint(t) {
                 ×
               </button>
             </div>
-            <div v-if="pickerOpen && !(lockTeacher && mode === 'edit')" class="picker__list">
+            <div v-if="pickerOpen" class="picker__list">
               <div v-if="teachersLoading && !teacherOptions.length" class="picker__empty">
                 Đang tải…
               </div>
               <div v-else-if="!teacherOptions.length" class="picker__empty">
                 {{
-                  schoolScoped || filterMeta.schoolScoped
-                    ? 'Không có GV phân công tại trường (hoặc không khớp bộ lọc).'
-                    : 'Không tìm thấy giáo viên khớp.'
+                  schoolScoped
+                    ? 'Không có GV phân công tại trường (hoặc không khớp tên).'
+                    : schoolFilter
+                      ? 'Không có giáo viên khớp tại trường đã chọn.'
+                      : 'Không tìm thấy giáo viên khớp.'
                 }}
               </div>
               <button
@@ -375,7 +428,7 @@ function optionHint(t) {
                 @click="pickTeacher(t)"
               >
                 <span class="picker__name">{{ t.name }}</span>
-                <span class="picker__schools">{{ t.schoolsLabel || 'Chưa phân công trường' }}</span>
+                <span v-if="t.schoolsLabel" class="picker__schools">{{ t.schoolsLabel }}</span>
                 <span class="picker__meta">{{ optionHint(t) }}</span>
                 <span v-if="!t.evaluatedInPeriod" class="pill pill--todo">Cần chấm</span>
                 <span v-else class="pill pill--done">Đã chấm</span>
@@ -396,12 +449,20 @@ function optionHint(t) {
             </div>
           </div>
           <small v-if="errors.teacherId" class="field__err">{{ errors.teacherId }}</small>
-          <div v-if="form.teacherId && selectedTeacher" class="summary-box">
+          <div v-if="form.teacherId && selectedTeacher && !teacherLocked" class="summary-box">
             <div class="summary-box__line">
               <strong>{{ selectedTeacher.name }}</strong>
               <span v-if="selectedTeacher.phone" class="muted"> · {{ selectedTeacher.phone }}</span>
             </div>
-            <div class="summary-box__line muted">{{ selectedTeacher.schoolsLabel }}</div>
+            <div v-if="selectedTeacher.schoolsLabel" class="summary-box__line muted">
+              {{ selectedTeacher.schoolsLabel }}
+            </div>
+            <div class="summary-box__line">
+              <span v-if="summaryLoading">Đang tải thống kê…</span>
+              <span v-else-if="summary">{{ summaryText }}</span>
+            </div>
+          </div>
+          <div v-else-if="form.teacherId && teacherLocked" class="summary-box">
             <div class="summary-box__line">
               <span v-if="summaryLoading">Đang tải thống kê…</span>
               <span v-else-if="summary">{{ summaryText }}</span>
@@ -424,11 +485,8 @@ function optionHint(t) {
             v-model="form.periodNote"
             maxlength="50"
             placeholder="vd: HK2 2025-2026"
-            list="period-presets"
+            autocomplete="off"
           />
-          <datalist id="period-presets">
-            <option v-for="p in periodPresets" :key="p" :value="p" />
-          </datalist>
           <div v-if="periodPresets.length" class="chips">
             <button
               v-for="p in periodPresets"
@@ -449,15 +507,34 @@ function optionHint(t) {
           <textarea
             v-model="form.comment"
             rows="4"
-            maxlength="1000"
+            :maxlength="COMMENT_MAX"
             placeholder="Nhận xét về chuyên môn, thái độ, quản lý lớp..."
           />
-          <small class="field__hint">{{ (form.comment || '').length }}/1000</small>
+          <small
+            class="field__hint"
+            :class="{
+              'field__hint--warn':
+                (form.comment || '').length >= COMMENT_MAX - 30 &&
+                (form.comment || '').length <= COMMENT_MAX,
+              'field__hint--over': (form.comment || '').length > COMMENT_MAX,
+            }"
+          >
+            {{ (form.comment || '').length }}/{{ COMMENT_MAX }}
+          </small>
           <small v-if="errors.comment" class="field__err">{{ errors.comment }}</small>
         </label>
       </div>
 
-      <div class="modal__foot">
+      <!-- Xác nhận trùng kỳ ngay trong modal -->
+      <div v-if="dupAsk.open" class="dup-ask">
+        <p class="dup-ask__msg">⚠️ {{ dupAsk.message }}</p>
+        <div class="dup-ask__actions">
+          <button type="button" class="btn btn--ghost" @click="cancelDupAsk">Hủy</button>
+          <button type="button" class="btn" @click="confirmDupAsk">Vẫn lưu thêm</button>
+        </div>
+      </div>
+
+      <div v-else class="modal__foot">
         <button type="button" class="btn btn--ghost" :disabled="saving" @click="emit('close')">
           Hủy
         </button>
@@ -537,8 +614,7 @@ function optionHint(t) {
 }
 .field input,
 .field textarea,
-.picker__row input,
-.filter-select {
+.picker__row input {
   border: 1px solid var(--c-input-border, #d5dde8);
   border-radius: 8px;
   padding: 0.55rem 0.7rem;
@@ -559,31 +635,58 @@ function optionHint(t) {
 .field__hint {
   color: var(--c-text-muted);
   font-size: 0.78rem;
+  align-self: flex-end;
+  font-variant-numeric: tabular-nums;
 }
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: center;
+.field__hint--warn {
+  color: var(--c-primary, #f97316);
+  font-weight: 600;
 }
-.filter-select {
-  width: auto;
-  min-width: 140px;
-  flex: 1;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.85rem;
+.field__hint--over {
+  color: var(--c-danger, #ef4444);
+  font-weight: 700;
 }
-.filter-check {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.82rem;
-  color: var(--c-text-muted);
-  white-space: nowrap;
-  cursor: pointer;
+.teacher-locked {
+  border: 1px solid var(--c-border, #e6ebf2);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  background: var(--c-surface-2, #f1f5f9);
+  color: var(--c-text);
+  font-size: 0.95rem;
 }
 .picker {
   position: relative;
+}
+.picker__school {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+.picker__school select {
+  width: 100%;
+  border: 1px solid var(--c-input-border, #d5dde8);
+  border-radius: 8px;
+  padding: 0.45rem 2rem 0.45rem 0.7rem;
+  background: var(--c-surface-2, #f1f5f9);
+  color: var(--c-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.picker__school-clear {
+  position: absolute;
+  right: 0.45rem;
+  border: 0;
+  background: var(--c-surface);
+  border-radius: 50%;
+  width: 1.3rem;
+  height: 1.3rem;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  line-height: 1;
 }
 .picker__row {
   position: relative;
@@ -756,5 +859,23 @@ function optionHint(t) {
   background: #fef2f2;
   color: #b91c1c;
   font-size: 0.88rem;
+}
+.dup-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--c-border-soft, #f1f5f9);
+  background: #fffbeb;
+}
+.dup-ask__msg {
+  margin: 0;
+  color: #92400e;
+  font-size: 0.88rem;
+}
+.dup-ask__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }
 </style>

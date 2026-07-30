@@ -18,6 +18,15 @@ const STATUSES = [
 const statusMeta = (code) =>
   STATUSES.find((s) => s.code === code) ?? { label: code, cls: 'badge-gray' }
 
+/** Nguồn ghi nhận: buổi GV tự bấm Check in (SELF) khác buổi hệ thống/kế toán ghi hộ. */
+const METHOD_LABELS = {
+  SELF: 'Tự chấm',
+  EMPLOYEE: 'Hệ thống',
+  SCHOOL: 'Trường',
+  DEVICE: 'Thiết bị',
+}
+const methodLabel = (m) => METHOD_LABELS[m] || '—'
+
 // Format ngày theo GIỜ ĐỊA PHƯƠNG (yyyy-MM-dd). KHÔNG dùng toISOString() vì nó quy về
 // UTC → ở múi giờ VN (UTC+7) mốc 00:00 bị lùi 1 ngày, làm khoảng lọc mặc định lệch:
 // lọt ngày cuối tháng trước và thiếu ngày cuối tháng này. (Trang Lịch dạy đã dùng cách này.)
@@ -143,15 +152,16 @@ const totalHours = computed(() =>
             <th>Ra</th>
             <th>Giờ</th>
             <th>Trạng thái</th>
+            <th>Nguồn</th>
             <th>Ghi chú</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="11" class="text-center text-muted">Đang tải…</td>
+            <td colspan="12" class="text-center text-muted">Đang tải…</td>
           </tr>
           <tr v-else-if="!rows.length">
-            <td colspan="11" class="text-center text-muted">
+            <td colspan="12" class="text-center text-muted">
               Chưa có dữ liệu chấm công cho kỳ này.
             </td>
           </tr>
@@ -169,6 +179,14 @@ const totalHours = computed(() =>
               <span class="badge" :class="statusMeta(r.status).cls">{{
                 statusMeta(r.status).label
               }}</span>
+            </td>
+            <td>
+              <span
+                class="badge"
+                :class="r.checkInMethod === 'SELF' ? 'badge-green' : 'badge-gray'"
+              >
+                {{ methodLabel(r.checkInMethod) }}
+              </span>
             </td>
             <td class="text-muted small">{{ r.note ?? '—' }}</td>
           </tr>
