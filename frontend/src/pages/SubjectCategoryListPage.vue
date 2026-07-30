@@ -300,6 +300,11 @@ function openEditSubject(subject) {
     open: true,
     mode: 'edit',
     id: subject.id,
+    // FIX (2026-07-30): sửa môn học lồng trong 1 nhóm thì nhóm môn luôn được
+    // giữ cố định theo nhóm hiện tại (không cho đổi nhóm ở đây) — chỉ hiển thị
+    // tên nhóm read-only, tương tự lúc tạo mới. categoryId vẫn giữ nguyên
+    // trong form để gửi lên API khi lưu.
+    categoryName: subject.categoryName ?? '',
     form: {
       code: subject.code,
       name: subject.name,
@@ -462,7 +467,7 @@ async function confirmDeleteSubject() {
                 <button
                   class="act-btn act-btn--del"
                   title="Xóa"
-                  :disabled="item.subjectCount > 0"
+                  :disabled="item.status !== 'DISABLED'"
                   @click="deleteTarget = item"
                 >
                   Xóa
@@ -526,7 +531,7 @@ async function confirmDeleteSubject() {
                           <button
                             class="act-btn act-btn--del"
                             title="Xóa"
-                            :disabled="s.lessonCount > 0"
+                            :disabled="s.status !== 'DISABLED'"
                             @click="deleteSubjectTarget = s"
                           >
                             Xóa
@@ -658,6 +663,11 @@ async function confirmDeleteSubject() {
           >?
         </p>
 
+        <p v-if="deleteTarget.subjectCount > 0" class="msg msg--warning">
+          Nhóm môn này có <strong>{{ deleteTarget.subjectCount }}</strong> môn học. Xóa nhóm sẽ
+          <strong>xóa luôn toàn bộ</strong> các môn học đó (kèm bài giảng liên quan).
+        </p>
+
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
           <button class="btn btn--danger" @click="confirmDelete">Xóa</button>
@@ -697,23 +707,13 @@ async function confirmDeleteSubject() {
           }}</small>
         </div>
 
-        <div v-if="subjectModal.mode === 'create'" class="form-group">
+        <div class="form-group">
           <label>Nhóm môn</label>
           <input :value="subjectModal.categoryName" disabled />
-        </div>
-        <div v-else class="form-group">
-          <label>Nhóm môn *</label>
-          <select
-            v-model="subjectModal.form.categoryId"
-            :class="{ 'input-error': subjectModal.errors.categoryId }"
-            @change="clearSubjectFieldError('categoryId')"
-          >
-            <option :value="null">-- Chọn nhóm môn --</option>
-            <option v-for="c in allCategories" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-          <small v-if="subjectModal.errors.categoryId" class="field-error">{{
-            subjectModal.errors.categoryId
-          }}</small>
+          <small class="field-hint">
+            Môn học luôn thuộc nhóm đang mở — không thể đổi nhóm ở đây. Muốn chuyển nhóm khác, hãy
+            xóa môn học này (sau khi tắt hoạt động) rồi tạo lại trong nhóm mong muốn.
+          </small>
         </div>
 
         <div class="form-group">
@@ -758,19 +758,10 @@ async function confirmDeleteSubject() {
           >?
         </p>
 
-        <p
-          v-if="deleteSubjectTarget.lessonCount > 0 && deleteSubjectTarget.status === 'DISABLED'"
-          class="msg msg--warning"
-        >
+        <p v-if="deleteSubjectTarget.lessonCount > 0" class="msg msg--warning">
           Môn học này đang tắt hoạt động và có
           <strong>{{ deleteSubjectTarget.lessonCount }}</strong>
           bài giảng liên quan. Xóa môn học sẽ <strong>xóa luôn toàn bộ</strong> các bài giảng đó.
-        </p>
-
-        <p v-else-if="deleteSubjectTarget.lessonCount > 0" class="msg msg--error">
-          Môn học này đang có {{ deleteSubjectTarget.lessonCount }} bài giảng và vẫn đang
-          <strong>hoạt động</strong>. Vui lòng tắt trạng thái hoạt động trước, sau đó mới có thể xóa
-          (kèm xóa các bài giảng liên quan).
         </p>
 
         <div class="modal__actions">

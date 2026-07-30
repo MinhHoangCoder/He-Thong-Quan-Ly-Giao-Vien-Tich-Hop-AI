@@ -2,8 +2,11 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.SubjectCategoryRequest;
 import com.kdc.tsdms.dto.SubjectCategoryResponse;
+import com.kdc.tsdms.entity.Lesson;
+import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.LessonRepository;
 import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.security.SecurityUtils;
@@ -27,10 +30,13 @@ public class SubjectCategoryService {
 
     private final SubjectCategoryRepository categoryRepo;
     private final SubjectRepository subjectRepo;
+    private final LessonRepository lessonRepo;
 
-    public SubjectCategoryService(SubjectCategoryRepository categoryRepo, SubjectRepository subjectRepo) {
+    public SubjectCategoryService(
+            SubjectCategoryRepository categoryRepo, SubjectRepository subjectRepo, LessonRepository lessonRepo) {
         this.categoryRepo = categoryRepo;
         this.subjectRepo = subjectRepo;
+        this.lessonRepo = lessonRepo;
     }
 
     /* ── Dropdown cho form (chỉ ACTIVE) ── */
@@ -84,13 +90,43 @@ public class SubjectCategoryService {
     }
 
     /* ── Xóa mềm ── */
+    /**
+     * FIX (2026-07-30): quy tắc xóa nhóm môn học nay CHỈ dựa vào trạng thái
+     * (status):
+     * - status = ACTIVE (đang hoạt động) -> LUÔN chặn xóa, kể cả khi nhóm chưa
+     * có môn học nào, để tránh xóa nhầm 1 nhóm đang được dùng.
+     * - status = DISABLED (đã tắt hoạt động) -> cho phép xóa, đồng thời xóa mềm
+     * (cascade) toàn bộ môn học thuộc nhóm này, và với mỗi môn học đó, cascade
+     * tiếp xuống toàn bộ bài giảng đang thuộc môn — tránh để lại môn học/bài
+     * giảng "mồ côi" trỏ tới 1 nhóm môn đã bị xóa.
+     */
     @Transactional
     public void delete(Integer id) {
         SubjectCategory sc = getOrThrow(id);
-        long used = countSubjects(id);
-        if (used > 0) {
+        if (!"DISABLED".equals(sc.getStatus())) {
             throw new ApiException(
-                    HttpStatus.CONFLICT, "Không thể xóa: nhóm môn đang được dùng bởi " + used + " môn học");
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa: nhóm môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
+        }
+        List<Subject> subjects = subjectRepo.findByCategoryIdAndDeletedFalseOrderByName(id);
+        if (!subjects.isEmpty()) {
+            Instant now = Instant.now();
+            Integer uid = SecurityUtils.currentUserId();
+            for (Subject s : subjects) {
+                List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(s.getId());
+                if (!lessons.isEmpty()) {
+                    for (Lesson l : lessons) {
+                        l.setDeleted(true);
+                        l.setDeletedAt(now);
+                        l.setDeletedBy(uid);
+                    }
+                    lessonRepo.saveAll(lessons);
+                }
+                s.setDeleted(true);
+                s.setDeletedAt(now);
+                s.setDeletedBy(uid);
+            }
+            subjectRepo.saveAll(subjects);
         }
         sc.setDeleted(true);
         sc.setDeletedAt(Instant.now());

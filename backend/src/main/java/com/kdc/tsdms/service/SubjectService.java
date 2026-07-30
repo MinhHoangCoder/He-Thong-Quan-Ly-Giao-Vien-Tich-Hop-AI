@@ -90,21 +90,21 @@ public class SubjectService {
     @Transactional
     public void delete(Integer id) {
         Subject s = getOrThrow(id);
+        // FIX (2026-07-30): quy tắc xóa môn học nay CHỈ dựa vào trạng thái
+        // (status), không còn dựa vào việc còn bài giảng tham chiếu hay không:
+        // - status = ACTIVE (đang hoạt động) -> LUÔN chặn xóa, kể cả khi chưa
+        // có bài giảng nào, để tránh xóa nhầm 1 môn đang được dùng trong giảng
+        // dạy.
+        // - status = DISABLED (đã tắt hoạt động) -> cho phép xóa, đồng thời xóa
+        // mềm (cascade) luôn TẤT CẢ bài giảng đang thuộc môn này — tránh để lại
+        // bài giảng "mồ côi" trỏ tới 1 môn học đã bị xóa.
+        if (!"DISABLED".equals(s.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa: môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
+        }
         long used = countLessons(id);
         if (used > 0) {
-            // FIX (2026-07-28): trước đây LUÔN chặn xóa môn học nếu còn bài giảng
-            // tham chiếu, bất kể trạng thái. Theo yêu cầu mới: nếu môn học đã bị
-            // TẮT HOẠT ĐỘNG (status = DISABLED) thì cho phép xóa, đồng thời xóa
-            // mềm (cascade) luôn TẤT CẢ bài giảng đang thuộc môn này — tránh để
-            // lại bài giảng "mồ côi" trỏ tới 1 môn học đã bị xóa.
-            // Môn học còn ACTIVE thì vẫn chặn như cũ để không xóa nhầm dữ liệu
-            // đang được dùng.
-            if (!"DISABLED".equals(s.getStatus())) {
-                throw new ApiException(
-                        HttpStatus.CONFLICT,
-                        "Không thể xóa: môn học đang được dùng bởi " + used
-                                + " bài giảng. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
-            }
             Instant now = Instant.now();
             Integer uid = SecurityUtils.currentUserId();
             List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(id);
