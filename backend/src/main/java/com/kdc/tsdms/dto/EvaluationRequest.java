@@ -23,7 +23,7 @@ public record EvaluationRequest(
 
         @NotNull(message = "Thiếu điểm đánh giá") @Min(value = 1, message = "Điểm tối thiểu là 1") @Max(value = 5, message = "Điểm tối đa là 5") Short score,
 
-        @Size(max = 1000, message = "Nhận xét tối đa 1000 ký tự") String comment,
+        @Size(max = 300, message = "Nhận xét tối đa 300 ký tự") String comment,
 
         @NotBlank(message = "Kỳ đánh giá không được để trống") @Size(max = 50, message = "Kỳ đánh giá tối đa 50 ký tự") String periodNote,
         /** Chỉ dùng khi CREATE — bỏ qua cảnh báo trùng kỳ. */

@@ -57,9 +57,9 @@ export const classApi = {
     return http.post(`/classes/trash/${id}/restore`)
   },
 
-  /** Khôi phục nhiều. */
+  /** Khôi phục nhiều — 1 request, BE chạy trong 1 transaction (lỗi 1 lớp là rollback cả lô). */
   restoreMany(ids) {
-    return Promise.all(ids.map((id) => http.post(`/classes/trash/${id}/restore`)))
+    return http.post('/classes/trash/batch-restore', ids)
   },
 
   /** Xóa vĩnh viễn (chỉ khi đang ở thùng rác). */
@@ -67,8 +67,8 @@ export const classApi = {
     return http.delete(`/classes/trash/${id}`)
   },
 
-  /** Xóa vĩnh viễn nhiều. */
+  /** Xóa vĩnh viễn nhiều — 1 request, BE chạy trong 1 transaction. */
   purgeMany(ids) {
-    return Promise.all(ids.map((id) => http.delete(`/classes/trash/${id}`)))
+    return http.post('/classes/trash/batch-purge', ids)
   },
 }

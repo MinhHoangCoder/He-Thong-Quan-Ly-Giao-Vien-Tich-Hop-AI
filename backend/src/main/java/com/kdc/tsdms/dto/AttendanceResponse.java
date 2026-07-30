@@ -6,6 +6,7 @@ import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.List;
 
 /**
  * DTO chi tiết 1 dòng chấm công — kèm tên GV + số giờ làm (tự tính từ giờ vào/ra)
@@ -67,4 +68,24 @@ public class AttendanceResponse {
         long minutes = Duration.between(in, out).toMinutes();
         return BigDecimal.valueOf(minutes).divide(BigDecimal.valueOf(60), 2, RoundingMode.HALF_UP);
     }
+
+    /**
+     * Trạng thái check-in của MỘT buổi dạy hôm nay (GET /checkin/today).
+     *
+     * @param state OPEN (chưa check-in) | CHECKED_IN (đã vào, chưa ra) | DONE (đã vào + ra)
+     */
+    public record CheckinSession(
+            Long scheduleId,
+            Integer schoolId,
+            String schoolName,
+            String subjectName,
+            String className,
+            java.time.LocalDateTime startTime,
+            java.time.LocalDateTime endTime,
+            String state,
+            LocalTime checkIn,
+            LocalTime checkOut) {}
+
+    /** Toàn cảnh check-in hôm nay của GV đang đăng nhập. */
+    public record CheckinToday(LocalDate date, List<CheckinSession> sessions) {}
 }

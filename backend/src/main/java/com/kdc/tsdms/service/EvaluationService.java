@@ -19,6 +19,7 @@ import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -34,7 +35,12 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Nghiệp vụ module Đánh giá giáo viên ({@code TeacherEvaluation}).
@@ -49,6 +55,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class EvaluationService {
 
+    /**
+     * Giờ nghiệp vụ Việt Nam — JVM bị ghim UTC (TsdmsApplication) nên mọi chỗ cần
+     * "hôm nay" để suy ra kỳ/năm học phải đi qua đây, không dùng LocalDate.now() trần.
+     */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final TeacherEvaluationRepository evaluationRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
@@ -56,6 +68,8 @@ public class EvaluationService {
     private final AppUserRepository userRepo;
     private final AssignmentRepository assignmentRepo;
     private final DisplayNameResolver displayNameResolver;
+    private final NotificationService notificationService;
+    private final TransactionTemplate notifyTx;
 
     public EvaluationService(
             TeacherEvaluationRepository evaluationRepo,
@@ -64,7 +78,9 @@ public class EvaluationService {
             BranchRepository branchRepo,
             AppUserRepository userRepo,
             AssignmentRepository assignmentRepo,
-            DisplayNameResolver displayNameResolver) {
+            DisplayNameResolver displayNameResolver,
+            NotificationService notificationService,
+            PlatformTransactionManager txManager) {
         this.evaluationRepo = evaluationRepo;
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
@@ -72,6 +88,11 @@ public class EvaluationService {
         this.userRepo = userRepo;
         this.assignmentRepo = assignmentRepo;
         this.displayNameResolver = displayNameResolver;
+        this.notificationService = notificationService;
+        // afterCommit chạy khi transaction gốc đã đóng — ghi Notification lúc đó phải mở
+        // TRANSACTION MỚI, nếu không lệnh insert không bao giờ được flush (mất thông báo êm ru).
+        this.notifyTx = new TransactionTemplate(txManager);
+        this.notifyTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /* ── Metadata ─────────────────────────────────────────────────── */
@@ -82,14 +103,14 @@ public class EvaluationService {
      */
     @Transactional(readOnly = true)
     public List<String> periodPresets() {
-        String ay = academicYearLabel(LocalDate.now());
+        String ay = academicYearLabel(LocalDate.now(BUSINESS_ZONE));
         return List.of("HK1 " + ay, "HK2 " + ay, "Tổng kết năm " + ay, "Tổng kết hợp đồng", "Đánh giá thử việc");
     }
 
     /** Preset + kỳ gợi ý theo tháng (HK1: 8–12, HK2: 1–5, 6–7: tổng kết năm). */
     @Transactional(readOnly = true)
     public EvaluationResponse.PeriodMeta periodMeta() {
-        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(LocalDate.now()));
+        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(LocalDate.now(BUSINESS_ZONE)));
     }
 
     /**
@@ -208,18 +229,20 @@ public class EvaluationService {
             Pageable pageable) {
 
         Scope scope = resolveReadScope(teacherId, schoolId, source);
-        Specification<TeacherEvaluation> spec = buildSpec(scope, score, periodNote, keyword);
+        Specification<TeacherEvaluation> spec =
+                buildSpec(scope, score, periodNote, keyword, keywordTeacherIds(keyword));
 
         Page<TeacherEvaluation> page = evaluationRepo.findAll(spec, pageable);
         NameBag names = loadNames(page.getContent());
-        return page.map(e -> toResponse(e, names));
+        ViewerCtx ctx = viewerCtx();
+        return page.map(e -> toResponse(e, names, ctx));
     }
 
     @Transactional(readOnly = true)
     public EvaluationResponse getById(Integer id) {
         TeacherEvaluation e = getActiveOrThrow(id);
         assertCanView(e);
-        return toResponse(e, loadNames(List.of(e)));
+        return toResponse(e, loadNames(List.of(e)), viewerCtx());
     }
 
     /* ── CRUD ─────────────────────────────────────────────────────── */
@@ -236,8 +259,9 @@ public class EvaluationService {
         if (isSchoolActor()) {
             School school = requireMySchool();
             schoolId = school.getId();
-            // Chỉ chấm GV đã/đang phân công tại trường mình
-            if (!assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalse(teacher.getId(), schoolId)) {
+            // Chỉ chấm GV có phân công còn hiệu lực tại trường mình (CANCELLED = chưa từng dạy)
+            if (!assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(
+                    teacher.getId(), schoolId, "CANCELLED")) {
                 throw new ApiException(
                         HttpStatus.BAD_REQUEST, "Chỉ đánh giá giáo viên đã được phân công tại trường bạn");
             }
@@ -269,7 +293,8 @@ public class EvaluationService {
         e.setCreatedBy(evaluatorId);
 
         TeacherEvaluation saved = evaluationRepo.save(e);
-        return toResponse(saved, loadNames(List.of(saved)));
+        notifyAfterCommit(() -> notifyTeacherOfEvaluation(saved, "Bạn có đánh giá mới"));
+        return toResponse(saved, loadNames(List.of(saved)), viewerCtx());
     }
 
     @Transactional
@@ -284,6 +309,31 @@ public class EvaluationService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không được đổi giáo viên của phiếu đánh giá");
         }
 
+        Integer oldTeacherId = e.getTeacherId();
+        String oldPeriod = e.getPeriodNote();
+        boolean teacherChanged = !Objects.equals(oldTeacherId, req.teacherId());
+        boolean periodChanged = !Objects.equals(oldPeriod, period);
+
+        // Sửa sang kỳ/GV khác cũng phải qua cảnh báo trùng như khi tạo (đếm theo người chấm của phiếu).
+        if ((teacherChanged || periodChanged) && !Boolean.TRUE.equals(req.forceDuplicate())) {
+            long dup = countDuplicates(req.teacherId(), e.getEvaluatorUserId(), period, id);
+            if (dup > 0) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Đã có đánh giá cho giáo viên này trong kỳ \""
+                                + period
+                                + "\" ("
+                                + dup
+                                + " phiếu). Gửi lại kèm xác nhận để lưu thêm.");
+            }
+        }
+
+        // Chỉ báo GV khi nội dung họ nhìn thấy thực sự đổi (tránh spam khi re-save y nguyên).
+        boolean changed = !Objects.equals(e.getScore(), req.score())
+                || !Objects.equals(e.getComment(), trimToNull(req.comment()))
+                || periodChanged
+                || teacherChanged;
+
         e.setTeacherId(req.teacherId());
         e.setScore(req.score());
         e.setComment(trimToNull(req.comment()));
@@ -292,7 +342,17 @@ public class EvaluationService {
         e.setUpdatedBy(requireCurrentUserId());
 
         TeacherEvaluation saved = evaluationRepo.save(e);
-        return toResponse(saved, loadNames(List.of(saved)));
+        Long refId = saved.getId() == null ? null : saved.getId().longValue();
+        if (teacherChanged) {
+            // GV cũ: phiếu không còn thuộc về họ; GV mới: với họ đây là đánh giá mới, không phải "cập nhật".
+            notifyAfterCommit(() -> {
+                notifyEvaluationRemoved(oldTeacherId, oldPeriod, refId);
+                notifyTeacherOfEvaluation(saved, "Bạn có đánh giá mới");
+            });
+        } else if (changed) {
+            notifyAfterCommit(() -> notifyTeacherOfEvaluation(saved, "Đánh giá về bạn vừa được cập nhật"));
+        }
+        return toResponse(saved, loadNames(List.of(saved)), viewerCtx());
     }
 
     @Transactional
@@ -303,6 +363,63 @@ public class EvaluationService {
         e.setDeletedAt(Instant.now());
         e.setDeletedBy(requireCurrentUserId());
         evaluationRepo.save(e);
+        Integer teacherId = e.getTeacherId();
+        String period = e.getPeriodNote();
+        Long refId = e.getId() == null ? null : e.getId().longValue();
+        notifyAfterCommit(() -> notifyEvaluationRemoved(teacherId, period, refId));
+    }
+
+    /**
+     * Chạy việc gửi thông báo SAU khi transaction commit: lỗi khi ghi Notification không làm
+     * rollback phiếu đánh giá, và rollback phiếu thì không gửi nhầm thông báo.
+     */
+    private void notifyAfterCommit(Runnable task) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    notifyTx.executeWithoutResult(status -> task.run());
+                } catch (RuntimeException ex) {
+                    // Thông báo là phụ — nuốt lỗi để không ảnh hưởng response nghiệp vụ chính.
+                }
+            }
+        });
+    }
+
+    /** Báo GV khi một phiếu đánh giá không còn thuộc về họ (bị gỡ hoặc chuyển sang GV khác). */
+    private void notifyEvaluationRemoved(Integer teacherId, String period, Long refId) {
+        StringBuilder content = new StringBuilder("Một đánh giá về bạn");
+        if (period != null && !period.isBlank()) {
+            content.append(" (kỳ ").append(period).append(")");
+        }
+        content.append(" đã được gỡ bỏ.");
+        notificationService.publishToTeacher(
+                teacherId, "Đánh giá đã được gỡ", content.toString(), "EVALUATION", "TeacherEvaluation", refId, false);
+    }
+
+    /**
+     * Báo cho GV về phiếu đánh giá (tạo mới / cập nhật) — điểm + kỳ + trích nhận xét.
+     * Không nêu tên người chấm (trang "Đánh giá của tôi" cũng ẩn thông tin này).
+     * No-op nếu GV chưa gắn tài khoản (publishToTeacher tự xử lý).
+     */
+    private void notifyTeacherOfEvaluation(TeacherEvaluation e, String title) {
+        StringBuilder content = new StringBuilder();
+        content.append("Điểm ").append(e.getScore()).append("/5");
+        if (e.getPeriodNote() != null && !e.getPeriodNote().isBlank()) {
+            content.append(" · Kỳ ").append(e.getPeriodNote());
+        }
+        if (e.getComment() != null && !e.getComment().isBlank()) {
+            content.append(" — \"").append(e.getComment()).append("\"");
+        }
+        content.append(". Vào mục Đánh giá để xem chi tiết.");
+        notificationService.publishToTeacher(
+                e.getTeacherId(),
+                title,
+                content.toString(),
+                "EVALUATION",
+                "TeacherEvaluation",
+                e.getId() == null ? null : e.getId().longValue(),
+                false);
     }
 
     /* ── Stats / summary ──────────────────────────────────────────── */
@@ -348,9 +465,17 @@ public class EvaluationService {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Bạn chỉ xem được đánh giá của chính mình");
             }
         }
-        // SCHOOL: vẫn cho xem summary GV (chỉ dựa trên đánh giá trường mình đã chấm)
-        Integer schoolFilter =
+        // SCHOOL: chỉ xem summary GV có phân công còn hiệu lực tại trường mình
+        // (chặn dò tên/điểm GV bất kỳ theo id), và chỉ tính phiếu trường mình đã chấm.
+        // Gán MỘT LẦN (không gán lại) để biến còn effectively-final cho lambda filter bên dưới.
+        final Integer schoolFilter =
                 isSchoolActor() && !isStaffOrAdmin() ? requireMySchool().getId() : null;
+        if (schoolFilter != null
+                && !assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(
+                        teacherId, schoolFilter, "CANCELLED")) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN, "Chỉ xem đánh giá của giáo viên đã được phân công tại trường bạn");
+        }
 
         List<TeacherEvaluation> list = evaluationRepo.findByTeacherIdAndDeletedFalseOrderByCreatedAtDesc(teacherId);
         if (schoolFilter != null) {
@@ -412,7 +537,22 @@ public class EvaluationService {
         return new Scope(teacherId, schoolId, centerOnly, schoolOnly);
     }
 
-    private Specification<TeacherEvaluation> buildSpec(Scope scope, Short score, String periodNote, String keyword) {
+    /**
+     * Ids GV khớp keyword — tính MỘT lần mỗi request rồi truyền vào Specification,
+     * vì Specification được Spring chạy 2 lần (count + content) và trước đây mỗi lần
+     * đều load toàn bộ bảng Teacher vào bộ nhớ.
+     */
+    private List<Integer> keywordTeacherIds(String keyword) {
+        if (keyword == null || keyword.isBlank()) return List.of();
+        String kw = keyword.trim().toLowerCase();
+        return teacherRepo.findByDeletedFalse().stream()
+                .filter(t -> teacherFullName(t).toLowerCase().contains(kw))
+                .map(Teacher::getId)
+                .toList();
+    }
+
+    private Specification<TeacherEvaluation> buildSpec(
+            Scope scope, Short score, String periodNote, String keyword, List<Integer> keywordTeacherIds) {
         return (root, query, cb) -> {
             List<Predicate> preds = new ArrayList<>();
             preds.add(cb.isFalse(root.get("deleted")));
@@ -439,17 +579,13 @@ public class EvaluationService {
             }
             if (keyword != null && !keyword.isBlank()) {
                 String kw = keyword.trim().toLowerCase();
-                // Tìm theo tên GV + comment + periodNote
-                List<Integer> teacherIds = teacherRepo.findByDeletedFalse().stream()
-                        .filter(t -> teacherFullName(t).toLowerCase().contains(kw))
-                        .map(Teacher::getId)
-                        .toList();
+                // Tìm theo tên GV (ids đã tính sẵn ngoài Specification) + comment + periodNote
                 Predicate byComment = cb.like(cb.lower(cb.coalesce(root.get("comment"), "")), "%" + kw + "%");
                 Predicate byPeriod = cb.like(cb.lower(cb.coalesce(root.get("periodNote"), "")), "%" + kw + "%");
-                if (teacherIds.isEmpty()) {
+                if (keywordTeacherIds.isEmpty()) {
                     preds.add(cb.or(byComment, byPeriod));
                 } else {
-                    preds.add(cb.or(root.get("teacherId").in(teacherIds), byComment, byPeriod));
+                    preds.add(cb.or(root.get("teacherId").in(keywordTeacherIds), byComment, byPeriod));
                 }
             }
             return cb.and(preds.toArray(Predicate[]::new));
@@ -498,13 +634,24 @@ public class EvaluationService {
         throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền sửa đánh giá này");
     }
 
-    private boolean canEditFlag(TeacherEvaluation e) {
-        try {
-            assertCanEdit(e);
-            return true;
-        } catch (ApiException ex) {
-            return false;
-        }
+    /**
+     * Ngữ cảnh người xem, tính MỘT lần mỗi request rồi dùng cho cả trang kết quả —
+     * trước đây mỗi dòng lại gọi requireMySchool() (N+1 query với tài khoản SCHOOL).
+     */
+    private record ViewerCtx(boolean staffOrAdmin, boolean schoolActor, Integer mySchoolId, boolean teacherOnly) {}
+
+    private ViewerCtx viewerCtx() {
+        boolean staff = isStaffOrAdmin();
+        boolean school = !staff && isSchoolActor();
+        return new ViewerCtx(staff, school, school ? requireMySchool().getId() : null, isTeacherOnly());
+    }
+
+    /** Bản không-ném-exception của assertCanEdit, dùng ngữ cảnh đã tính sẵn. */
+    private boolean canEdit(TeacherEvaluation e, ViewerCtx ctx) {
+        if (ctx.teacherOnly()) return false;
+        if (ctx.staffOrAdmin()) return true;
+        if (ctx.schoolActor()) return Objects.equals(ctx.mySchoolId(), e.getSchoolId());
+        return false;
     }
 
     /* ── Mapping / names ──────────────────────────────────────────── */
@@ -542,15 +689,20 @@ public class EvaluationService {
         return new NameBag(teacherNames, userNames, schoolNames);
     }
 
-    private EvaluationResponse toResponse(TeacherEvaluation e, NameBag names) {
+    private EvaluationResponse toResponse(TeacherEvaluation e, NameBag names, ViewerCtx ctx) {
         String source = e.getSchoolId() == null ? "CENTER" : "SCHOOL";
-        boolean editable = canEditFlag(e);
+        boolean editable = canEdit(e, ctx);
+        // Thiết kế ẩn danh với GIÁO VIÊN: không trả id/tên người chấm (FE không hiện,
+        // nhưng trước đây mở DevTools là thấy) — chỉ giữ nguồn CENTER/SCHOOL.
+        boolean hideEvaluator = ctx.teacherOnly();
         return new EvaluationResponse(
                 e.getId(),
                 e.getTeacherId(),
                 names.teacherNames().getOrDefault(e.getTeacherId(), "GV #" + e.getTeacherId()),
-                e.getEvaluatorUserId(),
-                names.userNames().getOrDefault(e.getEvaluatorUserId(), "User #" + e.getEvaluatorUserId()),
+                hideEvaluator ? null : e.getEvaluatorUserId(),
+                hideEvaluator
+                        ? null
+                        : names.userNames().getOrDefault(e.getEvaluatorUserId(), "User #" + e.getEvaluatorUserId()),
                 e.getSchoolId(),
                 e.getSchoolId() == null
                         ? null
@@ -618,7 +770,7 @@ public class EvaluationService {
 
     private String resolvePeriod(String periodNote) {
         String t = trimToNull(periodNote);
-        return t != null ? t : suggestedPeriod(LocalDate.now());
+        return t != null ? t : suggestedPeriod(LocalDate.now(BUSINESS_ZONE));
     }
 
     /**

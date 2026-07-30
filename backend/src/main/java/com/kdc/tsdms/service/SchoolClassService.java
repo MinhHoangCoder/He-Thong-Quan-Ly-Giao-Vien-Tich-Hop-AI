@@ -13,9 +13,12 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -47,6 +50,9 @@ public class SchoolClassService {
 
     private static final int YEAR_RANGE = 5;
 
+    /** JVM ghim UTC — "năm học hiện tại" phải suy từ ngày theo giờ Việt Nam. */
+    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
+
     private final SchoolClassRepository classRepo;
     private final SchoolRepository schoolRepo;
     private final ClassEnrollmentRepository enrollmentRepo;
@@ -72,7 +78,16 @@ public class SchoolClassService {
 
     @Transactional(readOnly = true)
     public List<String> listExistingGradeLevels() {
-        return classRepo.findDistinctGradeLevels();
+        // Sắp theo SỐ khối — ORDER BY chuỗi cho "Khối 1, Khối 10, Khối 11, Khối 2…"
+        return classRepo.findDistinctGradeLevels().stream()
+                .sorted(Comparator.comparingInt(SchoolClassService::gradeSortKey)
+                        .thenComparing(Comparator.naturalOrder()))
+                .toList();
+    }
+
+    private static int gradeSortKey(String gradeLevel) {
+        Matcher m = GRADE_NUM_IN_TEXT.matcher(gradeLevel == null ? "" : gradeLevel);
+        return m.find() ? Integer.parseInt(m.group(1)) : Integer.MAX_VALUE;
     }
 
     @Transactional(readOnly = true)
@@ -86,7 +101,7 @@ public class SchoolClassService {
     @Transactional(readOnly = true)
     public Page<SchoolClassResponse> search(
             String keyword, Integer schoolId, String status, String gradeLevel, Pageable pageable) {
-        String kw = blankToNull(keyword);
+        String kw = escapeLike(blankToNull(keyword));
         String st = blankToNull(status);
         String gl = blankToNull(gradeLevel);
         Page<SchoolClass> page = classRepo.search(kw, schoolId, st, gl, pageable);
@@ -106,7 +121,7 @@ public class SchoolClassService {
     @Transactional
     public SchoolClassResponse create(SchoolClassRequest req) {
         requireSchool(req.schoolId());
-        ValidatedClassFields fields = validateBusiness(req);
+        ValidatedClassFields fields = validateBusiness(req, null);
         assertNoDuplicate(req.schoolId(), fields.name(), fields.year(), null);
         SchoolClass sc = new SchoolClass();
         apply(sc, req.schoolId(), fields);
@@ -118,8 +133,24 @@ public class SchoolClassService {
     public SchoolClassResponse update(Integer id, SchoolClassRequest req) {
         SchoolClass sc = getOrThrow(id);
         requireSchool(req.schoolId());
-        ValidatedClassFields fields = validateBusiness(req);
+        ValidatedClassFields fields = validateBusiness(req, sc.getSchoolYear());
         assertNoDuplicate(req.schoolId(), fields.name(), fields.year(), id);
+        // Đổi TRƯỜNG/NĂM HỌC của lớp còn học sinh/phân công sẽ làm dữ liệu lệch âm thầm
+        // (Assignment.schoolId vẫn trỏ trường cũ, HS trường A nằm trong lớp trường B…)
+        // — chặn giống luật chặn xóa lớp.
+        boolean movingSchool = !Objects.equals(sc.getSchoolId(), req.schoolId());
+        boolean changingYear = sc.getSchoolYear() != null && !sc.getSchoolYear().equalsIgnoreCase(fields.year());
+        if (movingSchool || changingYear) {
+            long students = enrollmentRepo.countByClassId(id);
+            long assignments = assignmentRepo.countByClassIdAndDeletedFalse(id);
+            if (students > 0 || assignments > 0) {
+                throw new ApiException(
+                        HttpStatus.CONFLICT,
+                        "Không thể đổi trường/năm học của lớp '" + sc.getName() + "': đang có "
+                                + students + " học sinh và " + assignments
+                                + " phân công gắn với lớp — gỡ hết trước khi chuyển");
+            }
+        }
         apply(sc, req.schoolId(), fields);
         sc.setUpdatedAt(Instant.now());
         sc.setUpdatedBy(SecurityUtils.currentUserId());
@@ -175,6 +206,27 @@ public class SchoolClassService {
         sc.setUpdatedAt(Instant.now());
         sc.setUpdatedBy(SecurityUtils.currentUserId());
         return SchoolClassResponse.fromEntity(classRepo.save(sc), schoolName(sc.getSchoolId()));
+    }
+
+    /** Khôi phục nhiều lớp từ thùng rác — 1 request, dừng ngay nếu 1 id lỗi (rollback cả lô). */
+    @Transactional
+    public List<SchoolClassResponse> restoreMany(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Danh sách id rỗng");
+        }
+        return ids.stream().filter(Objects::nonNull).map(this::restore).toList();
+    }
+
+    /** Xóa vĩnh viễn nhiều lớp — 1 request, dừng ngay nếu 1 id lỗi (rollback cả lô). */
+    @Transactional
+    public void purgeMany(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Danh sách id rỗng");
+        }
+        for (Integer id : ids) {
+            if (id == null) continue;
+            purge(id);
+        }
     }
 
     /**
@@ -250,7 +302,12 @@ public class SchoolClassService {
         }
     }
 
-    private ValidatedClassFields validateBusiness(SchoolClassRequest req) {
+    /**
+     * @param existingYear năm học hiện tại của lớp (khi SỬA) — GIỮ NGUYÊN năm cũ thì bỏ
+     *     check khoảng ±{@value YEAR_RANGE} năm, để lớp dữ liệu cũ vẫn sửa được trạng
+     *     thái/khối mà không bị ép đổi năm. Tạo mới truyền {@code null}.
+     */
+    private ValidatedClassFields validateBusiness(SchoolClassRequest req, String existingYear) {
         String rawName = normalizeSpaces(req.name());
         String year = normalizeSpaces(req.schoolYear());
         String status = req.status() != null ? req.status() : "ACTIVE";
@@ -289,11 +346,14 @@ public class SchoolClassService {
         if (y2 != y1 + 1) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Năm học phải liên tiếp (vd: 2025-2026)");
         }
-        int currentStart = currentSchoolYearStart();
-        if (y1 < currentStart - YEAR_RANGE || y1 > currentStart + YEAR_RANGE) {
-            throw new ApiException(
-                    HttpStatus.BAD_REQUEST,
-                    "Năm học chỉ cho phép trong khoảng ±" + YEAR_RANGE + " năm so với năm học hiện tại");
+        boolean keepingOldYear = existingYear != null && existingYear.equalsIgnoreCase(year);
+        if (!keepingOldYear) {
+            int currentStart = currentSchoolYearStart();
+            if (y1 < currentStart - YEAR_RANGE || y1 > currentStart + YEAR_RANGE) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Năm học chỉ cho phép trong khoảng ±" + YEAR_RANGE + " năm so với năm học hiện tại");
+            }
         }
 
         return new ValidatedClassFields(name, grade, year, status);
@@ -324,7 +384,7 @@ public class SchoolClassService {
     }
 
     private static int currentSchoolYearStart() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(BUSINESS_ZONE);
         return today.getMonthValue() >= 9 ? today.getYear() : today.getYear() - 1;
     }
 
@@ -375,5 +435,16 @@ public class SchoolClassService {
         }
         String t = s.trim().replaceAll("\\s+", " ");
         return t.isEmpty() ? null : t;
+    }
+
+    /**
+     * Escape wildcard của SQL Server LIKE (%, _, [) bằng ký tự thoát '!' — khớp
+     * {@code ESCAPE '!'} trong query search. Không escape thì gõ '%' trả về tất cả.
+     */
+    private static String escapeLike(String s) {
+        if (s == null) {
+            return null;
+        }
+        return s.replace("!", "!!").replace("%", "!%").replace("_", "!_").replace("[", "![");
     }
 }

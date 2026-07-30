@@ -20,6 +20,21 @@ export const attendanceApi = {
     })
   },
 
+  /** Trạng thái check-in các buổi dạy HÔM NAY của chính GV (nút Check in/out). */
+  checkinToday() {
+    return http.get('/attendance/checkin/today')
+  },
+
+  /** GV check-in một buổi dạy hôm nay — body { scheduleId }; giờ vào do server ghi. */
+  checkIn(body) {
+    return http.post('/attendance/checkin', body)
+  },
+
+  /** GV check-out buổi đã check-in — body { scheduleId }; giờ ra do server ghi. */
+  checkOut(body) {
+    return http.post('/attendance/checkout', body)
+  },
+
   /** Sinh chấm công hàng loạt từ lịch dạy đã duyệt trong khoảng ngày. */
   generate(from, to) {
     return http.post('/attendance/generate', null, { params: { from, to } })

@@ -25,6 +25,10 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
 
     List<SchoolClass> findBySchoolIdAndDeletedFalseAndStatusOrderByName(Integer schoolId, String status);
 
+    /**
+     * Keyword do service escape sẵn (escapeLike) với ký tự thoát '!': %, _, [ của
+     * SQL Server LIKE là wildcard — không escape thì gõ '%' sẽ khớp tất cả.
+     */
     @Query("""
             SELECT sc FROM SchoolClass sc
             WHERE sc.deleted = false
@@ -32,9 +36,9 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
               AND (:status IS NULL OR sc.status = :status)
               AND (:gradeLevel IS NULL OR sc.gradeLevel = :gradeLevel)
               AND (:keyword IS NULL
-                   OR LOWER(sc.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(sc.gradeLevel) LIKE LOWER(CONCAT('%', :keyword, '%'))
-                   OR LOWER(sc.schoolYear) LIKE LOWER(CONCAT('%', :keyword, '%')))
+                   OR LOWER(sc.name) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!'
+                   OR LOWER(sc.gradeLevel) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!'
+                   OR LOWER(sc.schoolYear) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!')
             """)
     Page<SchoolClass> search(
             @Param("keyword") String keyword,

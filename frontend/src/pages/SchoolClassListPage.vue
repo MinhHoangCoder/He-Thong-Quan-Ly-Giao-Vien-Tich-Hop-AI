@@ -263,8 +263,11 @@ function jumpPage() {
 }
 
 /* ── Load ── */
+const loadError = ref('')
+
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await classApi.list({
       keyword: keyword.value || undefined,
@@ -276,12 +279,26 @@ async function load() {
     })
     items.value = res.data.content
     total.value = res.data.totalElements
-  } catch {
+  } catch (e) {
+    // Nói rõ là LỖI (vd 403 không có quyền) thay vì hiện "0 lớp học" như hệ thống trống.
     items.value = []
     total.value = 0
+    loadError.value =
+      e.response?.status === 403
+        ? 'Tài khoản của bạn không có quyền xem lớp học.'
+        : (e.response?.data?.message ?? 'Không tải được danh sách lớp học.')
   } finally {
     loading.value = false
   }
+}
+
+/**
+ * Kẹp lại chỉ số trang sau khi xóa bớt `removed` bản ghi — xóa hết trang cuối
+ * mà giữ nguyên page thì request kế trả trang rỗng dù vẫn còn dữ liệu.
+ */
+function clampPageAfterRemove(removed) {
+  const maxPage = Math.max(0, Math.ceil((total.value - removed) / pageSize) - 1)
+  if (page.value > maxPage) page.value = maxPage
 }
 
 async function loadSchools() {
@@ -625,6 +642,7 @@ async function confirmDelete() {
   try {
     await classApi.remove(deleteTarget.value.id)
     deleteTarget.value = null
+    clampPageAfterRemove(1)
     await load()
     await loadExistingGrades()
   } catch (e) {
@@ -691,22 +709,22 @@ const trashBatchBusy = ref(false)
 const trashBatchRestoreOpen = ref(false)
 const trashBatchPurgeOpen = ref(false)
 
+/* Batch qua 1 endpoint BE (transaction): lỗi 1 lớp là rollback cả lô + báo đúng lớp lỗi —
+ * thay cho N request song song từng lớp (nửa thành công nửa thất bại khó lần). */
 async function confirmTrashBatchRestore() {
   if (!selectedIds.value.length) return
   trashBatchBusy.value = true
   try {
-    const results = await Promise.allSettled(selectedIds.value.map((id) => classApi.restore(id)))
-    const failed = results.filter((r) => r.status === 'rejected').length
-    const ok = results.length - failed
+    await classApi.restoreMany([...selectedIds.value])
     trashBatchRestoreOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
     await loadTrash()
-    if (failed) {
-      alert(`Khôi phục xong ${ok} lớp; ${failed} lớp lỗi (có thể trùng tên/năm với lớp đang có).`)
-    }
   } catch (e) {
-    alert(e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại')
+    alert(
+      (e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại') +
+        ' — chưa lớp nào được khôi phục.',
+    )
   } finally {
     trashBatchBusy.value = false
   }
@@ -716,18 +734,15 @@ async function confirmTrashBatchPurge() {
   if (!selectedIds.value.length) return
   trashBatchBusy.value = true
   try {
-    const results = await Promise.allSettled(selectedIds.value.map((id) => classApi.purge(id)))
-    const failed = results.filter((r) => r.status === 'rejected').length
-    const ok = results.length - failed
+    await classApi.purgeMany([...selectedIds.value])
     trashBatchPurgeOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
     await loadTrash()
-    if (failed) {
-      alert(`Đã xóa hẳn ${ok} lớp; ${failed} lớp lỗi (có thể còn ràng buộc dữ liệu).`)
-    }
   } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại')
+    alert(
+      (e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại') + ' — chưa lớp nào bị xóa.',
+    )
   } finally {
     trashBatchBusy.value = false
   }
@@ -742,10 +757,12 @@ async function confirmBatchDelete() {
   if (!selectedIds.value.length) return
   batchDeleting.value = true
   try {
+    const removed = selectedIds.value.length
     await classApi.removeMany([...selectedIds.value])
     batchDeleteOpen.value = false
     selectedIds.value = []
     deleteMode.value = false
+    clampPageAfterRemove(removed)
     await load()
     await loadExistingGrades()
   } catch (e) {
@@ -811,7 +828,6 @@ function formatDeletedAt(iso) {
     <div class="page__head">
       <div>
         <h1 class="page__title">Lớp học</h1>
-        <p class="page__sub">Quản lý lớp theo cấp TH / THCS, khối chuẩn và năm học</p>
       </div>
       <div class="page__head-actions">
         <button
@@ -925,6 +941,13 @@ function formatDeletedAt(iso) {
           <tbody>
             <tr v-if="loading">
               <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+            </tr>
+            <!-- Lỗi API (vd không có quyền): nói thẳng, đừng giả vờ "Không có dữ liệu" -->
+            <tr v-else-if="loadError">
+              <td :colspan="deleteMode ? 7 : 6" class="empty">
+                ⚠️ {{ loadError }}
+                <button type="button" class="act-btn" @click="load">Thử lại</button>
+              </td>
             </tr>
             <tr v-else-if="items.length === 0">
               <td :colspan="deleteMode ? 7 : 6" class="empty">Không có dữ liệu</td>

@@ -42,13 +42,15 @@ export const staffRoutes = [
     meta: { layout: 'staff', roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'] },
   },
   // ── Đánh giá giáo viên ──────────────────────────────────────────
+  // Chỉ ACADEMIC có quyền EVALUATION_* (V3) — mở cho cả 4 phòng ban thì
+  // HR/Kế toán/Sales vào được trang nhưng mọi API trả 403, nhìn như trang trống.
   {
     path: '/staff/evaluations',
     name: 'staff-evaluations',
     component: () => import('@/pages/EvaluationPage.vue'),
     meta: {
       layout: 'staff',
-      roles: ['ACCOUNTANT', 'HR', 'ACADEMIC', 'SALES'],
+      roles: ['ACADEMIC'],
       evaluationPortal: 'staff',
     },
   },
