@@ -141,8 +141,7 @@ public class SubjectCategoryService {
      * {@link #MAX_DESCRIPTION_WORDS}. Mô tả rỗng/null luôn hợp lệ.
      */
     private void validateDescriptionWordLimit(String description) {
-        if (description == null || description.isBlank())
-            return;
+        if (description == null || description.isBlank()) return;
         int wordCount = description.trim().split("\\s+").length;
         if (wordCount > MAX_DESCRIPTION_WORDS) {
             throw new ApiException(
