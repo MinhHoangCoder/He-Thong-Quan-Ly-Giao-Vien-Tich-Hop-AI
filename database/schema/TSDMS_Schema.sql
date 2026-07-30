@@ -690,7 +690,7 @@ CREATE TABLE Attendance (
     CONSTRAINT CK_Attendance_Time CHECK (CheckIn IS NULL OR CheckOut IS NULL OR CheckIn < CheckOut)
 );
 CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
--- Mỗi buổi dạy chỉ 1 dòng chấm công (chặn race double-click check-in — V16);
+-- Mỗi buổi dạy chỉ 1 dòng chấm công (chặn race double-click check-in — V19);
 -- ScheduleId NULL = chấm công tay không gắn buổi, cho phép nhiều dòng.
 CREATE UNIQUE NONCLUSTERED INDEX UX_Attendance_ScheduleId
     ON Attendance(ScheduleId) WHERE ScheduleId IS NOT NULL;
