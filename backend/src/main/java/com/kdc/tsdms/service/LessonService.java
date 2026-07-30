@@ -19,6 +19,7 @@ import com.kdc.tsdms.security.SecurityUtils;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -33,6 +34,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -380,6 +382,25 @@ public class LessonService {
     }
 
     /**
+     * Làm sạch tên file trước khi đưa vào header Content-Disposition.
+     *
+     * <p>{@link ContentDisposition} escape dấu nháy kép và mã hóa tên có dấu, nhưng KHÔNG
+     * bỏ ký tự điều khiển: tên chứa xuống dòng (CR/LF) vẫn lọt nguyên vào phần
+     * {@code filename="..."}. Mà xuống dòng giữa header chính là cách chèn header giả —
+     * nhẹ thì Tomcat chặn và trả 500, nặng thì client đọc nhầm response. Người dùng gõ tay
+     * không tạo ra tên như vậy, nhưng request nặn thủ công (curl/Postman) thì có.
+     *
+     * <p>Package-private để test gọi trực tiếp — cùng kiểu với hằng đơn giá của PayrollService.
+     */
+    static String safeFileName(String raw) {
+        if (raw == null) {
+            return "tai-lieu";
+        }
+        String cleaned = raw.replaceAll("\\p{Cntrl}", "").trim();
+        return cleaned.isEmpty() ? "tai-lieu" : cleaned;
+    }
+
+    /**
      * Đếm số từ (tách theo khoảng trắng) của mô tả và chặn nếu vượt quá
      * {@link #MAX_DESCRIPTION_WORDS}. Mô tả rỗng/null luôn hợp lệ.
      */
@@ -509,8 +530,18 @@ public class LessonService {
                 throw new ApiException(HttpStatus.NOT_FOUND, "File không tồn tại trên server: " + file.getFileName());
             }
 
+            // FileName là tên NGƯỜI DÙNG đặt lúc upload -> KHÔNG ghép thẳng vào header.
+            // Ghép chuỗi tay có 2 vấn đề:
+            //   1. Tên chứa dấu " sẽ cắt ngang giá trị header -> trình duyệt đọc sai tên,
+            //      xa hơn là mở đường cho chèn header giả (header injection).
+            //   2. Tên tiếng Việt có dấu về máy thành chuỗi rác "GiÃ¡o Ã¡n ToÃ¡n.pdf".
+            // ContentDisposition lo cả hai: escape dấu " và thêm filename*=UTF-8'' (RFC 5987).
+            ContentDisposition disposition = ContentDisposition.attachment()
+                    .filename(safeFileName(file.getFileName()), StandardCharsets.UTF_8)
+                    .build();
+
             return ResponseEntity.ok()
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFileName() + "\"")
+                    .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                     .body(resource);
 
         } catch (ApiException e) {
