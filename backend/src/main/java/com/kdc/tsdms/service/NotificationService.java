@@ -194,11 +194,6 @@ public class NotificationService {
         return repo.save(n);
     }
 
-    private void markReadNow(Notification n) {
-        n.setRead(true);
-        n.setReadAt(Instant.now());
-    }
-
     /** Thông báo phải thuộc người gọi + đang cần hành động + chưa xử lý. */
     private Notification actionableOrThrow(Long id) {
         Notification n = ownedOrThrow(id);
@@ -219,13 +214,6 @@ public class NotificationService {
             throw new ApiException(HttpStatus.FORBIDDEN, "Không thể truy cập thông báo này");
         }
         return n;
-    }
-
-    private String currentTeacherName() {
-        return teacherRepo
-                .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
-                .map(t -> (t.getLastName() + " " + t.getFirstName()).trim())
-                .orElse("Giáo viên");
     }
 
     private Integer currentUser() {
