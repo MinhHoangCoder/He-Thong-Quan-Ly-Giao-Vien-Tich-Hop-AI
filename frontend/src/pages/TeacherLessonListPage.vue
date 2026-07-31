@@ -236,7 +236,6 @@ onMounted(async () => {
     <div class="page__head">
       <div>
         <h1 class="page__title">Kho bài giảng</h1>
-        <p class="page__sub">Danh sách các bài giảng đã được xuất bản</p>
       </div>
     </div>
 
