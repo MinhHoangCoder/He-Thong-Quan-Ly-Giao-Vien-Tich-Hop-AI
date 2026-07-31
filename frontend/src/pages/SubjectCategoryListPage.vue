@@ -366,13 +366,6 @@ async function confirmDeleteSubject() {
     <div class="page__head">
       <div>
         <h1 class="page__title">Nhóm môn học</h1>
-        <p class="page__sub">
-          {{
-            readOnly
-              ? 'Chế độ xem — bấm vào 1 dòng để xem các môn học trong nhóm.'
-              : 'Quản lý nhóm môn và các môn học trực thuộc'
-          }}
-        </p>
       </div>
 
       <button v-if="!readOnly" class="btn" @click="openCreate">+ Thêm nhóm môn</button>

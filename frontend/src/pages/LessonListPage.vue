@@ -271,7 +271,6 @@ onMounted(async () => {
     <div class="page__head">
       <div>
         <h1 class="page__title">Kho bài giảng</h1>
-        <p class="page__sub">Quản lý bài giảng theo danh mục và khối lớp</p>
       </div>
 
       <button class="btn" @click="router.push({ name: newRouteName })">+ Thêm bài giảng</button>
