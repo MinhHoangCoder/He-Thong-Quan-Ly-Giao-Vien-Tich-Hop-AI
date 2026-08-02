@@ -90,6 +90,7 @@ public class TeacherService {
         t.setAddress(req.getAddress());
         t.setHireDate(req.getHireDate());
         t.setEmploymentType(req.getEmploymentType());
+        t.setTeachingExperience(req.getTeachingExperience());
         t.setStatus(req.getStatus() != null && !req.getStatus().isBlank() ? req.getStatus() : "ACTIVE");
 
         Teacher saved = teacherRepo.save(t);
@@ -122,6 +123,7 @@ public class TeacherService {
         t.setLastName(req.getLastName());
         t.setStatus(req.getStatus());
         t.setEmploymentType(req.getEmploymentType());
+        t.setTeachingExperience(req.getTeachingExperience());
         t.setDateOfBirth(req.getDateOfBirth());
         t.setGender(req.getGender());
         t.setIdCardNo(req.getIdCardNo());
@@ -294,6 +296,7 @@ public class TeacherService {
                 .address(t.getAddress())
                 .hireDate(t.getHireDate())
                 .employmentType(t.getEmploymentType())
+                .teachingExperience(t.getTeachingExperience())
                 .status(t.getStatus())
                 .certificates(certs)
                 .contract(contract);

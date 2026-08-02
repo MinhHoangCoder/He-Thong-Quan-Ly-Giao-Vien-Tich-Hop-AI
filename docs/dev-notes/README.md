@@ -53,6 +53,8 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-07-25 | backend | Cấu hình gửi mail — secret local qua `mail-local.properties` | [2026-07-25-be-mail-local-config.md](2026-07-25-be-mail-local-config.md) |
 | 2026-07-28 | backend | Chống dội mail ở luồng Quên mật khẩu (throttle theo tài khoản) | [2026-07-28-backend-chong-doi-mail-quen-mat-khau.md](2026-07-28-backend-chong-doi-mail-quen-mat-khau.md) |
 
+| 2026-08-02 | database | Teacher: đổi EmploymentType sang Cơ hữu/Thỉnh giảng + thêm Kinh nghiệm giảng dạy (V20) | [2026-08-02-database-teacher-emptype-experience.md](2026-08-02-database-teacher-emptype-experience.md) |
+
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
 
