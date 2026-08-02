@@ -64,9 +64,16 @@ Backend đã xong và tự chạy được; các mục dưới đây nằm ở F
 |---|---|---|
 | 1 | Đổi `value` của 3 dropdown loại hình sang `CO_HUU`/`THINH_GIANG` | `TeacherListPage.vue` dòng ~980 (lọc), ~1421 (form Tạo), ~1779 (form Sửa) |
 | 2 | Sửa bảng map nhãn, bỏ `CONTRACT` | `TeacherListPage.vue:512` — `empLabel` |
-| 3 | Sửa bảng map nhãn trang Hồ sơ (đang là "Toàn thời gian/Bán thời gian/Hợp đồng", để nguyên sẽ hiện chữ thô `CO_HUU`) | `MyProfilePage.vue:136-140` — `EMPLOYMENT_LABELS` |
-| 4 | Thêm `maxlength="500"` cho textarea Kinh nghiệm giảng dạy + bind `teachingExperience` vào form Tạo/Sửa | `TeacherListPage.vue` |
-| 5 | Hiển thị Kinh nghiệm giảng dạy ở màn chi tiết GV (API đã trả sẵn trường này) | `TeacherListPage.vue` |
-| 6 | (BE, nhỏ) Muốn khoe kinh nghiệm ở trang "Hồ sơ của tôi" thì thêm trường vào `ProfileResponse` + `UserSettingsService` | `UserSettingsService.java:97` |
+| 3 | Thêm `maxlength="500"` cho textarea Kinh nghiệm giảng dạy + bind `teachingExperience` vào form Tạo/Sửa | `TeacherListPage.vue` |
+| 4 | Hiển thị Kinh nghiệm giảng dạy ở màn chi tiết GV (API đã trả sẵn trường này) | `TeacherListPage.vue` |
 
 Lưu ý cho mục 1: `PERM_MODULES` trong `utils/labels.js` cũng có khóa `CONTRACT: 'Hợp đồng giáo viên'` — **đừng đụng vào**, đó là nhãn của *quyền* `CONTRACT_VIEW`/`CONTRACT_MANAGE`, không phải loại hình làm việc.
+
+## 6. Trang "Hồ sơ của tôi" — đã làm luôn trong commit này
+
+Hai việc thuộc khu Hồ sơ/Cài đặt (`/me/**`) nên làm luôn cho trọn:
+
+- `ProfileResponse.TeacherDetail` += `teachingExperience`, `UserSettingsService.getProfile()` truyền vào; `MyProfilePage.vue` hiển thị ô "Kinh nghiệm giảng dạy" (chỉ với GV, `white-space: pre-line` để giữ xuống dòng người dùng gõ).
+- `EMPLOYMENT_LABELS` của `MyProfilePage.vue` cập nhật lại.
+
+**⚠ Bẫy ở bảng nhãn đó:** trang Hồ sơ dùng CHUNG cho giáo viên lẫn nhân viên trung tâm, mà cùng một trường `employmentType` lại mang **hai bộ giá trị khác nhau** — GV là `CO_HUU`/`THINH_GIANG` (bảng Teacher, V20), nhân viên là `FULL_TIME`/`PART_TIME` (bảng Employee, V10, không đổi). Nên bảng nhãn phải giữ đủ **cả 4 khóa**. Ai dọn dẹp kiểu "V20 đổi rồi thì xóa FULL_TIME/PART_TIME đi" sẽ làm hồ sơ của mọi nhân viên trung tâm hiện chữ thô `FULL_TIME`.

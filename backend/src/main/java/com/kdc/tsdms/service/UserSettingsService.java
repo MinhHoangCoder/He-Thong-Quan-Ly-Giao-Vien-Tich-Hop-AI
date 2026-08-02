@@ -84,7 +84,13 @@ public class UserSettingsService {
                             c.getName(), c.getIssuer(), c.getIssueDate(), c.getExpiryDate()))
                     .toList();
             var detail = new ProfileResponse.TeacherDetail(
-                    t.getIdCardNo(), t.getDateOfBirth(), t.getGender(), t.getAddress(), t.getHireDate(), certificates);
+                    t.getIdCardNo(),
+                    t.getDateOfBirth(),
+                    t.getGender(),
+                    t.getAddress(),
+                    t.getHireDate(),
+                    t.getTeachingExperience(),
+                    certificates);
             return new ProfileResponse(
                     user.getUsername(),
                     user.getEmail(),
