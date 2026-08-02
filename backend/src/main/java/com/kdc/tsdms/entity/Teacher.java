@@ -56,9 +56,13 @@ public class Teacher extends SoftDeletableEntity {
     @Column(name = "HireDate")
     private LocalDate hireDate;
 
-    /** FULL_TIME | PART_TIME | CONTRACT (nullable). */
+    /** CO_HUU (cơ hữu) | THINH_GIANG (thỉnh giảng) — nullable. Đổi ở V20. */
     @Column(name = "EmploymentType")
     private String employmentType;
+
+    /** Ghi chú nhanh về kinh nghiệm giảng dạy — văn bản tự do, không bắt buộc (V20). */
+    @Column(name = "TeachingExperience", length = 500)
+    private String teachingExperience;
 
     /** ACTIVE | RETIRED | SUSPENDED */
     @Column(name = "Status", nullable = false)

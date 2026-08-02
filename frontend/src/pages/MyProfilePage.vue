@@ -133,10 +133,16 @@ const initials = computed(() => {
 })
 
 /* ── Các hàm "dịch" giá trị thô sang chữ người đọc ── */
+// Trang này dùng CHUNG cho giáo viên lẫn nhân viên trung tâm, mà hai bên có HAI bộ
+// giá trị khác nhau ở cùng một trường `employmentType`:
+//   - Giáo viên (bảng Teacher, đổi ở V20): CO_HUU | THINH_GIANG
+//   - Nhân viên trung tâm (bảng Employee, V10): FULL_TIME | PART_TIME
+// Thiếu vế nào thì tài khoản bên đó sẽ thấy chữ thô kiểu "FULL_TIME" trên hồ sơ.
 const EMPLOYMENT_LABELS = {
+  CO_HUU: 'Cơ hữu',
+  THINH_GIANG: 'Thỉnh giảng',
   FULL_TIME: 'Toàn thời gian',
   PART_TIME: 'Bán thời gian',
-  CONTRACT: 'Hợp đồng',
 }
 const STATUS_LABELS = {
   ACTIVE: 'Đang hoạt động',
@@ -310,6 +316,14 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
             <div class="info-item">
               <dt>Trạng thái</dt>
               <dd>{{ statusLabel(p.profileStatus) || '—' }}</dd>
+            </div>
+            <!-- Ghi chú tự do, có thể dài & nhiều dòng nên chiếm trọn hàng (info-item--wide)
+                 và giữ nguyên xuống dòng người dùng đã gõ (white-space: pre-line). -->
+            <div v-if="isTeacher" class="info-item info-item--wide">
+              <dt>Kinh nghiệm giảng dạy</dt>
+              <dd class="info-text">
+                {{ p.teacher?.teachingExperience || 'Chưa cập nhật' }}
+              </dd>
             </div>
           </dl>
         </section>
@@ -613,6 +627,13 @@ const fmtDate = (d) => (d ? new Intl.DateTimeFormat('vi-VN').format(new Date(d))
   font-weight: 600;
   color: var(--a-text);
   overflow-wrap: anywhere;
+}
+/* Ghi chú dài (kinh nghiệm giảng dạy): giữ lại xuống dòng người dùng đã gõ và bỏ
+   chữ đậm — 500 ký tự mà in đậm hết thì nặng mắt so với các ô thông tin ngắn. */
+.info-text {
+  white-space: pre-line;
+  font-weight: 500;
+  line-height: 1.5;
 }
 
 /* Bằng cấp & chứng chỉ */

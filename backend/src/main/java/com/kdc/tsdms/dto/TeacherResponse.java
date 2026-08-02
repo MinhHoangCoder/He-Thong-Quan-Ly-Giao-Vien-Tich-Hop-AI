@@ -3,6 +3,7 @@ package com.kdc.tsdms.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -42,7 +43,11 @@ public class TeacherResponse {
 
         private String address;
         private LocalDate hireDate;
-        private String employmentType; // FULL_TIME | PART_TIME | CONTRACT
+
+        @Pattern(regexp = "CO_HUU|THINH_GIANG", message = "Loại hình chỉ nhận CO_HUU hoặc THINH_GIANG") private String employmentType;
+
+        @Size(max = 500, message = "Kinh nghiệm giảng dạy tối đa 500 ký tự") private String teachingExperience;
+
         private String status; // ACTIVE nếu để trống
         private List<CertificateRequest> certificates;
         private ContractRequest contract;
@@ -64,7 +69,10 @@ public class TeacherResponse {
 
         @NotBlank(message = "Trạng thái không được để trống") private String status; // ACTIVE | RETIRED | SUSPENDED
 
-        private String employmentType;
+        @Pattern(regexp = "CO_HUU|THINH_GIANG", message = "Loại hình chỉ nhận CO_HUU hoặc THINH_GIANG") private String employmentType;
+
+        @Size(max = 500, message = "Kinh nghiệm giảng dạy tối đa 500 ký tự") private String teachingExperience;
+
         private LocalDate dateOfBirth;
         private Boolean gender;
 
@@ -161,7 +169,8 @@ public class TeacherResponse {
         private String address;
         private LocalDate hireDate;
 
-        private String employmentType; // FULL_TIME | PART_TIME | CONTRACT
+        private String employmentType; // CO_HUU | THINH_GIANG
+        private String teachingExperience; // ghi chú tự do, có thể null
         private String status; // ACTIVE | RETIRED | SUSPENDED
 
         // Chỉ có khi xem CHI TIẾT 1 GV

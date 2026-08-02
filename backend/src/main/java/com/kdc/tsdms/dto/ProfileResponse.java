@@ -25,7 +25,11 @@ public record ProfileResponse(
         List<String> roles,
         /** Tên chi nhánh làm việc — có với GV/NV, null với trường/admin. */
         String branchName,
-        /** FULL_TIME | PART_TIME | CONTRACT — có với GV/NV. */
+        /**
+         * Loại hình làm việc — có với GV/NV. Hai tác nhân dùng HAI bộ giá trị khác nhau:
+         * giáo viên là CO_HUU | THINH_GIANG (đổi ở V20), nhân viên trung tâm vẫn là
+         * FULL_TIME | PART_TIME (bảng Employee, V10). FE phải map đủ cả 4 giá trị.
+         */
         String employmentType,
         /** Trạng thái hồ sơ tác nhân (ACTIVE...), khác với trạng thái tài khoản. */
         String profileStatus,
@@ -38,6 +42,8 @@ public record ProfileResponse(
             Boolean gender,
             String address,
             LocalDate hireDate,
+            /** Ghi chú kinh nghiệm giảng dạy (V20) — tự do, có thể null. */
+            String teachingExperience,
             List<CertificateItem> certificates) {}
 
     /** Bằng cấp / chứng chỉ — không kèm fileUrl (file thuộc trang quản lý GV của staff). */
