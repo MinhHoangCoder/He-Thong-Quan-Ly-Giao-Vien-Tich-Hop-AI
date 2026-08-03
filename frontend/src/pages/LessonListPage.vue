@@ -42,7 +42,10 @@ const totalItems = ref(0)
 
 const pageInput = ref('')
 
-const deleteId = ref(null)
+// FIX (2026-08): xóa bài giảng nay bắt gõ lại tiêu đề để xác nhận, cùng
+// pattern với xóa vĩnh viễn giáo viên ở TeacherListPage.vue (confirmPurge) —
+// tránh bấm nhầm Xóa vì bài giảng xóa xong sẽ mất kèm toàn bộ file/link đính kèm.
+const deleteTarget = reactive({ open: false, id: null, title: '', typedTitle: '', deleting: false })
 
 /* =========================
    Filter
@@ -185,9 +188,21 @@ function clearFilter() {
   loadLessons()
 }
 
-function confirmDelete(id) {
-  deleteId.value = id
+function confirmDelete(lesson) {
+  deleteTarget.open = true
+  deleteTarget.id = lesson.id
+  deleteTarget.title = lesson.title
+  deleteTarget.typedTitle = ''
+  deleteTarget.deleting = false
 }
+
+function closeDeleteModal() {
+  deleteTarget.open = false
+}
+
+const deleteConfirmValid = computed(
+  () => deleteTarget.typedTitle.trim().toLowerCase() === deleteTarget.title.trim().toLowerCase(),
+)
 
 /* =========================
    Nhóm: Khối > Danh mục > Bài giảng
@@ -238,20 +253,21 @@ const groupedLessons = computed(() => {
 })
 
 async function doDelete() {
-  if (!deleteId.value) return
+  if (!deleteTarget.id || !deleteConfirmValid.value || deleteTarget.deleting) return
 
+  deleteTarget.deleting = true
   try {
-    await lessonApi.remove(deleteId.value)
+    await lessonApi.remove(deleteTarget.id)
 
-    deleteId.value = null
+    deleteTarget.open = false
 
     loadLessons()
   } catch (e) {
     console.error(e)
 
     error.value = 'Xóa thất bại.'
-
-    deleteId.value = null
+  } finally {
+    deleteTarget.deleting = false
   }
 }
 
@@ -410,11 +426,7 @@ onMounted(async () => {
                       Sửa
                     </button>
 
-                    <button
-                      class="act-btn act-btn--del"
-                      title="Xóa"
-                      @click="confirmDelete(lesson.id)"
-                    >
+                    <button class="act-btn act-btn--del" title="Xóa" @click="confirmDelete(lesson)">
                       Xóa
                     </button>
                   </td>
@@ -467,16 +479,33 @@ onMounted(async () => {
 
     <!-- ================= DELETE MODAL ================= -->
 
-    <div v-if="deleteId" class="overlay" @click.self="deleteId = null">
+    <div v-if="deleteTarget.open" class="overlay" @click.self="closeDeleteModal">
       <div class="modal">
-        <h3>Xác nhận xóa</h3>
+        <h3>Xác nhận xóa bài giảng?</h3>
 
-        <p>Bạn có chắc muốn xóa bài giảng này?</p>
+        <p>
+          Gõ lại tiêu đề <strong>"{{ deleteTarget.title }}"</strong> để xác nhận xóa. Bài giảng và
+          toàn bộ file/link đính kèm sẽ không thể khôi phục.
+        </p>
+
+        <input
+          v-model="deleteTarget.typedTitle"
+          type="text"
+          class="form-input"
+          :placeholder="deleteTarget.title"
+          @keyup.enter="doDelete"
+        />
 
         <div class="modal__actions">
-          <button class="btn btn--ghost" @click="deleteId = null">Hủy</button>
+          <button class="btn btn--ghost" @click="closeDeleteModal">Hủy</button>
 
-          <button class="btn btn--danger" @click="doDelete">Xóa</button>
+          <button
+            class="btn btn--danger"
+            :disabled="!deleteConfirmValid || deleteTarget.deleting"
+            @click="doDelete"
+          >
+            {{ deleteTarget.deleting ? 'Đang xóa…' : 'Xóa' }}
+          </button>
         </div>
       </div>
     </div>
@@ -911,6 +940,21 @@ tbody tr:hover {
 
 .modal h3 {
   margin-top: 0;
+}
+
+.form-input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--c-input-border);
+  border-radius: 9px;
+  font-size: 14px;
+  color: var(--c-text);
+  background: var(--c-surface);
+  outline: none;
+  box-sizing: border-box;
+}
+.form-input:focus {
+  border-color: var(--c-primary, #f97316);
 }
 
 .modal__actions {
