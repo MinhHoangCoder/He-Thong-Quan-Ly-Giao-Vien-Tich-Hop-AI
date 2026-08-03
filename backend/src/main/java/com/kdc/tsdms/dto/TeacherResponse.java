@@ -159,7 +159,9 @@ public class TeacherResponse {
         private String lastName;
         private String fullName; // lastName + " " + firstName
 
-        private String PasswordHash;
+        // KHÔNG thêm trường mật khẩu (dù là hash) vào đây. DTO này trả cho CẢ danh sách GV,
+        // nên mỗi lần mở trang là chuỗi bcrypt của mọi giáo viên nằm sẵn trong tab Network —
+        // ai mở F12 cũng chép được về bẻ khóa offline. Sửa mật khẩu là việc của API riêng.
         private String email;
         private String username;
         private LocalDate dateOfBirth;

@@ -301,10 +301,11 @@ public class TeacherService {
                 .certificates(certs)
                 .contract(contract);
 
+        // Kèm thông tin tài khoản đăng nhập để màn hồ sơ GV hiển thị. CHỈ username + email:
+        // TUYỆT ĐỐI không đưa PasswordHash ra ngoài (xem ghi chú ở TeacherResponse.Response).
         if (t.getAppUserId() != null) {
             appUserRepository.findById(t.getAppUserId()).ifPresent(au -> builder.email(au.getEmail())
-                    .username(au.getUsername())
-                    .PasswordHash(au.getPasswordHash()));
+                    .username(au.getUsername()));
         }
 
         return builder.build();
