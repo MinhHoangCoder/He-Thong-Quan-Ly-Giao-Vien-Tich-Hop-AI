@@ -509,7 +509,10 @@ const statusClass = {
   RETIRED: 'badge--retired',
   SUSPENDED: 'badge--suspended',
 }
-const empLabel = { FULL_TIME: 'Cơ Hữu', PART_TIME: 'Thỉnh Giảng', CONTRACT: 'Hợp đồng' }
+// Khớp bộ giá trị của cột Teacher.EmploymentType sau migration V20 (trước là
+// FULL_TIME/PART_TIME/CONTRACT). Backend có @Pattern chặn giá trị lạ nên gửi mã cũ
+// lên sẽ ăn 400. Lưu ý bảng Employee (nhân viên trung tâm) VẪN dùng FULL_TIME/PART_TIME.
+const empLabel = { CO_HUU: 'Cơ hữu', THINH_GIANG: 'Thỉnh giảng' }
 // Bảng màu avatar xoay vòng theo id — chỉ để phân biệt trực quan giữa các dòng.
 const avatarPalette = ['#0ea5e9', '#22c55e', '#8b5cf6', '#f97316', '#ec4899', '#14b8a6', '#f43f5e']
 function avatarColor(id) {
@@ -977,8 +980,8 @@ function formatDate(d) {
 
         <select v-model="filters.employmentType" class="filter-select">
           <option value="">Tất cả loại hình</option>
-          <option value="FULL_TIME">Cơ hữu</option>
-          <option value="PART_TIME">Thỉnh giảng</option>
+          <option value="CO_HUU">Cơ hữu</option>
+          <option value="THINH_GIANG">Thỉnh giảng</option>
         </select>
 
         <select v-model="filters.branchId" class="filter-select">
@@ -1418,8 +1421,8 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="createModal.profile.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình hợp đồng --</option>
-                      <option value="FULL_TIME">Cơ hữu</option>
-                      <option value="PART_TIME">Thỉnh giảng</option>
+                      <option value="CO_HUU">Cơ hữu</option>
+                      <option value="THINH_GIANG">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
@@ -1776,8 +1779,8 @@ function formatDate(d) {
                     >Loại hình
                     <select v-model="editModal.form.employmentType" class="form-input">
                       <option value="">-- Chọn loại hình hợp đồng --</option>
-                      <option value="FULL_TIME">Cơ hữu</option>
-                      <option value="PART_TIME">Thỉnh giảng</option>
+                      <option value="CO_HUU">Cơ hữu</option>
+                      <option value="THINH_GIANG">Thỉnh giảng</option>
                     </select>
                   </label>
                   <label class="form-label"
