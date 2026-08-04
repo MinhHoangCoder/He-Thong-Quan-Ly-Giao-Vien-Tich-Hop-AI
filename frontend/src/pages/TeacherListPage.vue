@@ -449,6 +449,7 @@ async function submitCreate() {
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
+      email: a.email,     
       branchId: Number(p.branchId),
       firstName: p.firstName,
       lastName: p.lastName,
@@ -1627,7 +1628,7 @@ function formatDate(d) {
         <div v-if="confirmPurge.open" class="overlay" @click.self="closePurge">
           <div class="modal modal--sm">
             <div class="modal__icon modal__icon--warn">⚠️</div>
-            <h3 class="modal__title">Xóa vĩnh viễn giáo viên?</h3>
+            <h3 class="modal__title">Xóa vĩnh viễn giáo viên "{{ confirmPurge.name }}"?</h3>
             <p class="modal__body">Are you <strong> SURE ?</strong></p>
             <p class="modal__body">
               Gõ lại số điện thoại <strong>"{{ confirmPurge.phone }}"</strong> để xác nhận:
