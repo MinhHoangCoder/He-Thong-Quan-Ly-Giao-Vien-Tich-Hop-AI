@@ -1,5 +1,6 @@
 package com.kdc.tsdms.dto;
 
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -35,8 +36,7 @@ public class TeacherResponse {
         private LocalDate dateOfBirth;
         private Boolean gender;
 
-        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 12 số")
-        private String idCardNo;
+        @Pattern(regexp = "^\\d{12}$", message = "CCCD phải có 12 số") private String idCardNo;
 
         @Pattern(regexp = "^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")
         private String phone;
@@ -69,21 +69,71 @@ public class TeacherResponse {
 
         @NotBlank(message = "Trạng thái không được để trống") private String status; // ACTIVE | RETIRED | SUSPENDED
 
-        @Pattern(regexp = "CO_HUU|THINH_GIANG", message = "Loại hình chỉ nhận CO_HUU hoặc THINH_GIANG") private String employmentType;
+        @Pattern(regexp = "^$|CO_HUU|THINH_GIANG", message = "Loại hình phải là CO_HUU hoặc THINH_GIANG") private String employmentType; // CO_HUU | THINH_GIANG
 
         @Size(max = 500, message = "Kinh nghiệm giảng dạy tối đa 500 ký tự") private String teachingExperience;
 
         private LocalDate dateOfBirth;
         private Boolean gender;
 
-        @Pattern(regexp = "^\\d{9}(\\d{3})?$", message = "CCCD phải có 12 số")
-        private String idCardNo;
+        @Pattern(regexp = "^\\d{12}$", message = "CCCD phải có 12 số") private String idCardNo;
 
-        @Pattern(regexp = "^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")
+        @Pattern(regexp = "^$|^(\\+84|0)\\d{9,10}$", message = "Số điện thoại không hợp lệ")
         private String phone;
 
         private String address;
         private LocalDate hireDate;
+
+        // Tài khoản đăng nhập liên kết (bảng AppUser) — ĐỂ TRỐNG nghĩa là GIỮ NGUYÊN,
+        // không đổi. KHÔNG có field password ở đây: đổi mật khẩu phải qua luồng riêng
+        // (đặt lại mật khẩu), không lẫn vào form sửa hồ sơ để tránh lộ/ghi đè nhầm.
+        @Pattern(regexp = "^$|^.{3,50}$", message = "Tên đăng nhập phải từ 3-50 ký tự") private String username;
+
+        @NotBlank(message = "Email không được để trống") @Email(message = "Email không hợp lệ") private String email;
+    }
+
+    // ACCOUNT UPDATE REQUEST — dùng riêng cho PUT /teacher/{id}/account (đổi
+    // username/email tách khỏi form Sửa hồ sơ chính). KHÔNG có password: đổi mật khẩu
+    // phải qua luồng đặt lại mật khẩu riêng.
+    @Getter
+    @Setter
+    public static class AccountUpdateRequest {
+        @Pattern(regexp = "^$|^.{3,50}$", message = "Tên đăng nhập phải từ 3-50 ký tự") private String username;
+
+        @NotBlank(message = "Email không được để trống") @Email(message = "Email không hợp lệ") private String email;
+
+        // Để trống = GIỮ NGUYÊN mật khẩu cũ. Regex khớp với FE (utils/password.js):
+        // 8-72 ký tự, có ít nhất 1 hoa + 1 thường + 1 số.
+        @Pattern(
+                regexp = "^$|^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{5,72}$",
+                message = "Mật khẩu phải 5-72 ký tự, gồm chữ hoa, chữ thường và chữ số")
+        private String password;
+    }
+
+    // Response cho GET /teacher/{id}/account — chỉ username/email, KHÔNG bao giờ có passwordHash.
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AccountInfo {
+        private Integer id; // AppUserId
+        private String username;
+        private String email;
+    }
+
+    //   Response cho POST /teacher/{id}/account/reset-password (Admin đặt lại mật khẩu hộ).
+    //  tempPassword CHỈ xuất hiện DUY NHẤT trong response này — không được lưu ở đâu khác,
+    //  không log ra console/audit log. Admin đọc/gửi cho GV rồi màn hình đóng lại là mất.
+
+    @Getter
+    @Setter
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AdminResetPasswordResponse {
+        private String username;
+        private String tempPassword;
     }
 
     // CERTIFICATE — 1 GV có NHIỀU chứng chỉ=========================================
@@ -159,9 +209,6 @@ public class TeacherResponse {
         private String lastName;
         private String fullName; // lastName + " " + firstName
 
-        // KHÔNG thêm trường mật khẩu (dù là hash) vào đây. DTO này trả cho CẢ danh sách GV,
-        // nên mỗi lần mở trang là chuỗi bcrypt của mọi giáo viên nằm sẵn trong tab Network —
-        // ai mở F12 cũng chép được về bẻ khóa offline. Sửa mật khẩu là việc của API riêng.
         private String email;
         private String username;
         private LocalDate dateOfBirth;
@@ -172,7 +219,7 @@ public class TeacherResponse {
         private LocalDate hireDate;
 
         private String employmentType; // CO_HUU | THINH_GIANG
-        private String teachingExperience; // ghi chú tự do, có thể null
+        private String teachingExperience; // Kinh nghiem giang day
         private String status; // ACTIVE | RETIRED | SUSPENDED
 
         // Chỉ có khi xem CHI TIẾT 1 GV

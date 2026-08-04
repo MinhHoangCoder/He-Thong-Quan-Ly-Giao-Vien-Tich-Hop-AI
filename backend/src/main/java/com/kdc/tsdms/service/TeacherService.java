@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.dto.TeacherResponse;
+import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Certificate;
 import com.kdc.tsdms.entity.Contract;
 import com.kdc.tsdms.entity.Teacher;
@@ -11,12 +12,23 @@ import com.kdc.tsdms.repository.ContractRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.transaction.Transactional;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class TeacherService {
@@ -24,16 +36,22 @@ public class TeacherService {
     private final CertificateRepository ceRepo;
     private final ContractRepository contractRepo;
     private final AppUserRepository appUserRepository;
+    private final PasswordEncoder passwordEncoder;
+    private static final Path UPLOAD_ROOT =
+            Paths.get("uploads/teachers").toAbsolutePath().normalize();
+    private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
 
     public TeacherService(
             TeacherRepository teacherRepo,
             CertificateRepository ceRepo,
             ContractRepository contractRepo,
-            AppUserRepository appUserRepository) {
+            AppUserRepository appUserRepository,
+            PasswordEncoder passwordEncoder) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
         this.appUserRepository = appUserRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     // DANH SÁCH  ======================================
@@ -123,17 +141,94 @@ public class TeacherService {
         t.setLastName(req.getLastName());
         t.setStatus(req.getStatus());
         t.setEmploymentType(req.getEmploymentType());
-        t.setTeachingExperience(req.getTeachingExperience());
         t.setDateOfBirth(req.getDateOfBirth());
         t.setGender(req.getGender());
         t.setIdCardNo(req.getIdCardNo());
         t.setPhone(req.getPhone());
         t.setAddress(req.getAddress());
         t.setHireDate(req.getHireDate());
+        t.setTeachingExperience(req.getTeachingExperience());
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
 
+        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail(), null);
+
         return toResponse(teacherRepo.save(t), true);
+    }
+
+    /** Đọc username/email hiện tại — dùng cho GET /teacher/{id}/account (nạp form Sửa). */
+    public TeacherResponse.AccountInfo getAccount(Integer teacherId) {
+        Teacher t = findActiveOrThrow(teacherId);
+        boolean isStaff = SecurityUtils.hasRole("ADMIN")
+                || SecurityUtils.hasRole("EMPLOYEE")
+                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
+        if (!isStaff && !isOwner) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài khoản này");
+        }
+        AppUser au = appUserRepository
+                .findById(t.getAppUserId())
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản đăng nhập liên kết với giáo viên này"));
+        return TeacherResponse.AccountInfo.builder()
+                .id(au.getId())
+                .username(au.getUsername())
+                .email(au.getEmail())
+                .build();
+    }
+
+    /**
+     * Đổi RIÊNG username/email của tài khoản đăng nhập gắn với 1 GV — dùng cho
+     * PUT /teacher/{id}/account, tách khỏi form Sửa hồ sơ chính (updateTeacher ở trên
+     * vẫn nhận username/email luôn nếu FE gộp chung 1 request, 2 API dùng chung 1 hàm
+     * đồng bộ syncAppUserAccount() nên không lặp logic).
+     */
+    @Transactional
+    public TeacherResponse.Response updateAccount(Integer teacherId, TeacherResponse.AccountUpdateRequest req) {
+        Teacher t = findActiveOrThrow(teacherId);
+        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail(), req.getPassword());
+        return toResponse(t, true);
+    }
+
+    //   Đồng bộ username/email/password sang bảng AppUser — dùng CHUNG cho updateTeacher() và
+    //  updateAccount() để không viết trùng logic check-trùng 2 nơi.
+    //  newUsername/newEmail/newPassword để trống (null hoặc "") nghĩa là GIỮ NGUYÊN, không đổi.
+    //  Mật khẩu mới LUÔN được băm lại bằng BCrypt trước khi lưu — không bao giờ lưu thô.
+
+    private AppUser syncAppUserAccount(Integer appUserId, String newUsername, String newEmail, String newPassword) {
+        AppUser au = appUserRepository
+                .findById(appUserId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản đăng nhập liên kết với giáo viên này"));
+        boolean userChanged = false;
+        if (newUsername != null && !newUsername.isBlank()) {
+            String trimmed = newUsername.trim();
+            if (!trimmed.equals(au.getUsername())) {
+                if (appUserRepository.existsByUsernameAndDeletedFalseAndIdNot(trimmed, au.getId())) {
+                    throw new ApiException(HttpStatus.CONFLICT, "Tên đăng nhập \"" + trimmed + "\" đã được sử dụng");
+                }
+                au.setUsername(trimmed);
+                userChanged = true;
+            }
+        }
+        if (newEmail != null && !newEmail.isBlank()) {
+            String trimmed = newEmail.trim();
+            if (!trimmed.equalsIgnoreCase(au.getEmail())) {
+                if (appUserRepository.existsByEmailAndDeletedFalseAndIdNot(trimmed, au.getId())) {
+                    throw new ApiException(HttpStatus.CONFLICT, "Email \"" + trimmed + "\" đã được sử dụng");
+                }
+                au.setEmail(trimmed);
+                userChanged = true;
+            }
+        }
+        // Admin đặt mật khẩu mới hộ GV — không cần biết mật khẩu cũ (khác với self change-password).
+        // Sau khi đổi, thu hồi mọi phiên đang sống để buộc đăng nhập lại bằng mật khẩu mới.
+        if (newPassword != null && !newPassword.isBlank()) {
+            au.setPasswordHash(passwordEncoder.encode(newPassword));
+            userChanged = true;
+        }
+        if (userChanged) appUserRepository.save(au);
+        return au;
     }
     // delete (Chỉ Admin xóa) (ẩn khỏi ds)
 
@@ -205,14 +300,128 @@ public class TeacherService {
         return toCertDTO(ceRepo.save(buildCert(teacherId, req)));
     }
 
+    /**
+     * XÓA HẲN khỏi DB — khác với Teacher (có thùng rác/khôi phục), Certificate không
+     * có khái niệm lưu trữ tạm, xóa mềm chỉ tổ dồn rác vô ích. Dọn luôn file PDF vật
+     * lý trên đĩa để tránh rác kép (vừa rác DB vừa rác file không ai trỏ tới).
+     */
     @Transactional
     public void deleteCertificate(Integer teacherId, Integer certId) {
         Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ id=" + certId));
-        c.setDeleted(true);
-        c.setDeletedAt(Instant.now());
-        c.setDeletedBy(SecurityUtils.currentUserId());
-        ceRepo.save(c);
+        if (c.getFileUrl() != null && !c.getFileUrl().isBlank()) {
+            try {
+                Path path = UPLOAD_ROOT.resolve(c.getFileUrl()).normalize();
+                if (path.startsWith(UPLOAD_ROOT)) Files.deleteIfExists(path);
+            } catch (IOException ignored) {
+                // Không chặn việc xóa record chỉ vì lỗi xóa file vật lý (vd file đã mất sẵn)
+            }
+        }
+        ceRepo.delete(c);
+    }
+
+    //   Upload file PDF THẬT cho 1 bằng cấp/chứng chỉ đã tồn tại — TRƯỚC ĐÂY addCertificate()
+    //   chỉ lưu đúng chuỗi TÊN FILE do FE gửi lên (d.file.name), file thật chưa từng được
+    //   truyền lên server, nên FileUrl trong DB chỉ là chuỗi vô nghĩa, không mở được.
+    //   Dùng POST /teacher/{teacherId}/certificates/{certId}/file (multipart/form-data).
+
+    @Transactional
+    public TeacherResponse.CertificateDTO uploadCertificateFile(Integer teacherId, Integer certId, MultipartFile file) {
+        findActiveOrThrow(teacherId);
+        Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ id=" + certId));
+
+        if (file == null || file.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn file");
+        }
+        String original = file.getOriginalFilename() != null ? file.getOriginalFilename() : "file";
+
+        if (file.getSize() > MAX_UPLOAD_FILE_SIZE_BYTES) {
+            throw new ApiException(
+                    HttpStatus.PAYLOAD_TOO_LARGE,
+                    "File \"" + original + "\" vượt quá dung lượng cho phép (tối đa 20MB)");
+        }
+        if (!"application/pdf".equalsIgnoreCase(file.getContentType())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ cho phép upload file PDF");
+        }
+        int dot = original.lastIndexOf('.');
+        String ext = dot >= 0 ? original.substring(dot + 1).toLowerCase() : "";
+        if (!"pdf".equals(ext)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ cho phép upload file PDF");
+        }
+
+        // Đọc file vào bộ nhớ ĐÚNG 1 LẦN rồi dùng lại (check magic number + ghi đĩa) —
+        // trước đây gọi file.getInputStream() 2 lần riêng biệt, một số container servlet
+        // không đảm bảo đọc lại được lần 2, gây lỗi 500 không rõ nguyên nhân.
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Không thể đọc file PDF");
+        }
+        // Kiểm tra 4 byte đầu đúng magic number "%PDF" — chặn đổi đuôi .exe/.php thành .pdf giả
+        if (bytes.length < 4 || bytes[0] != '%' || bytes[1] != 'P' || bytes[2] != 'D' || bytes[3] != 'F') {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "File không phải PDF hợp lệ");
+        }
+
+        Path dir = UPLOAD_ROOT.resolve(String.valueOf(teacherId));
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Không tạo được thư mục lưu file");
+        }
+        String stored = UUID.randomUUID() + "." + ext;
+        Path target = dir.resolve(stored).normalize();
+        if (!target.startsWith(dir.normalize())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Tên file không hợp lệ");
+        }
+        try {
+            Files.write(target, bytes);
+        } catch (IOException e) {
+            throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi lưu file: " + original);
+        }
+
+        c.setFileUrl(teacherId + "/" + stored); // đường dẫn TƯƠNG ĐỐI so với UPLOAD_ROOT
+        return toCertDTO(ceRepo.save(c));
+    }
+
+    //   Mở/tải file PDF của 1 bằng cấp/chứng chỉ — trả "inline" (không phải "attachment")
+    //   để trình duyệt MỞ THẲNG PDF ở tab mới thay vì ép tải về, đúng ý "bấm vào để xem".
+    //   Cho phép cả staff (ADMIN/EMPLOYEE) lẫn CHÍNH giáo viên đó xem hồ sơ của mình.
+
+    @Transactional
+    public ResponseEntity<?> openCertificateFile(Integer teacherId, Integer certId) {
+        Teacher t = findActiveOrThrow(teacherId);
+        boolean isStaff = SecurityUtils.hasRole("ADMIN")
+                || SecurityUtils.hasRole("EMPLOYEE")
+                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
+        if (!isStaff && !isOwner) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem file này");
+        }
+        Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ id=" + certId));
+        if (c.getFileUrl() == null || c.getFileUrl().isBlank()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Chứng chỉ này chưa có file đính kèm");
+        }
+        try {
+            Path path = UPLOAD_ROOT.resolve(c.getFileUrl()).normalize();
+            if (!path.startsWith(UPLOAD_ROOT)) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Đường dẫn file không hợp lệ");
+            }
+            Resource resource = new UrlResource(path.toUri());
+            if (!resource.exists() || !resource.isReadable()) {
+                throw new ApiException(HttpStatus.NOT_FOUND, "File không tồn tại trên server");
+            }
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + c.getName() + ".pdf\"")
+                    .header(HttpHeaders.CONTENT_TYPE, "application/pdf")
+                    .body(resource);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy file");
+        }
     }
 
     // HỢP ĐỒNG — upsert ĐỘC LẬP sau khi GV đã tồn tại
@@ -282,6 +491,7 @@ public class TeacherService {
                     .orElse(null);
         }
 
+        AppUser user = appUserRepository.findById(t.getAppUserId()).orElse(null);
         TeacherResponse.Response.ResponseBuilder builder = TeacherResponse.Response.builder()
                 .id(t.getId())
                 .appUserId(t.getAppUserId())
@@ -289,6 +499,8 @@ public class TeacherService {
                 .firstName(t.getFirstName())
                 .lastName(t.getLastName())
                 .fullName(fullName(t.getLastName(), t.getFirstName()))
+                .email(user != null ? user.getEmail() : null)
+                .username(user != null ? user.getUsername() : null)
                 .dateOfBirth(t.getDateOfBirth())
                 .gender(t.getGender())
                 .idCardNo(t.getIdCardNo())
@@ -300,13 +512,6 @@ public class TeacherService {
                 .status(t.getStatus())
                 .certificates(certs)
                 .contract(contract);
-
-        // Kèm thông tin tài khoản đăng nhập để màn hồ sơ GV hiển thị. CHỈ username + email:
-        // TUYỆT ĐỐI không đưa PasswordHash ra ngoài (xem ghi chú ở TeacherResponse.Response).
-        if (t.getAppUserId() != null) {
-            appUserRepository.findById(t.getAppUserId()).ifPresent(au -> builder.email(au.getEmail())
-                    .username(au.getUsername()));
-        }
 
         return builder.build();
     }

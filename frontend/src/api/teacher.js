@@ -52,6 +52,29 @@ export const teacherApi = {
     return http.post(`/teacher/${teacherId}/certificates`, data)
   },
 
+  /**
+   * Upload file PDF thật cho 1 bằng cấp/chứng chỉ ĐÃ TỒN TẠI (multipart/form-data).
+   * Không set Content-Type thủ công: để axios tự sinh boundary đúng, tránh lỗi
+   * "chưa nhận được file" ở multipart phía Spring khi thiếu boundary.
+   */
+  uploadCertificateFile(teacherId, certId, file) {
+    const formData = new FormData()
+    formData.append('file', file)
+    return http.post(`/teacher/${teacherId}/certificates/${certId}/file`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  /**
+   * Mở/xem file PDF của 1 bằng cấp — endpoint cần header Authorization nên phải
+   * tải về dạng blob (không window.open thẳng URL được), FE tự tạo blob URL để mở.
+   */
+  openCertificateFile(teacherId, certId) {
+    return http.get(`/teacher/${teacherId}/certificates/${certId}/file`, {
+      responseType: 'blob',
+    })
+  },
+
   /** Xóa mềm 1 chứng chỉ/bằng cấp của GV. */
   deleteCertificate(teacherId, certId) {
     return http.delete(`/teacher/${teacherId}/certificates/${certId}`)
@@ -63,6 +86,6 @@ export const teacherApi = {
   // Cập nhật username/email/password của giáo viên này
   updateAccount(teacherId, payload) {
     // payload: { username?, email?, password? }
-    return http.patch(`/teacher/${teacherId}/account`, payload)
+    return http.put(`/teacher/${teacherId}/account`, payload)
   },
 }

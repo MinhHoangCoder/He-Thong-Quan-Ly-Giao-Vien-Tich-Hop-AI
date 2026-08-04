@@ -350,7 +350,6 @@ function openEdit(row) {
 /** Dialog in-app xác nhận lưu trùng kỳ (thay window.confirm — hiện được thông tin phiếu cũ). */
 const dupConfirm = reactive({ open: false, message: '', payload: null })
 
-
 async function saveModal(payload) {
   modal.saving = true
   modal.error = ''
