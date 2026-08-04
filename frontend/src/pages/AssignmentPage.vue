@@ -459,7 +459,8 @@ async function submit() {
     load()
   } catch (e) {
     modal.error =
-      e.response?.data?.message ?? (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
+      e.response?.data?.message ??
+      (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
   } finally {
     modal.saving = false
   }
@@ -504,7 +505,8 @@ const actionableItems = computed(() =>
   pagedItems.value.filter((a) => ['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)),
 )
 const allSelected = computed(
-  () => actionableItems.value.length > 0 && selectedIds.value.length === actionableItems.value.length,
+  () =>
+    actionableItems.value.length > 0 && selectedIds.value.length === actionableItems.value.length,
 )
 function toggleAll() {
   selectedIds.value = allSelected.value ? [] : actionableItems.value.map((a) => a.id)
@@ -721,9 +723,7 @@ async function confirmPurge() {
             <td colspan="6" class="text-center text-muted">Đang quét…</td>
           </tr>
           <tr v-else-if="!conflicts.length">
-            <td colspan="6" class="text-center text-muted">
-              Không có tiết nào bị trùng giờ. 👍
-            </td>
+            <td colspan="6" class="text-center text-muted">Không có tiết nào bị trùng giờ. 👍</td>
           </tr>
           <tr v-for="(c, i) in pagedItems" :key="i">
             <td class="font-medium">{{ c.teacherName }}</td>
@@ -989,11 +989,7 @@ async function confirmPurge() {
           <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
           <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit">
             {{
-              modal.saving
-                ? 'Đang lưu…'
-                : modal.editId
-                  ? 'Lưu & gửi lại lời mời'
-                  : 'Tạo phân công'
+              modal.saving ? 'Đang lưu…' : modal.editId ? 'Lưu & gửi lại lời mời' : 'Tạo phân công'
             }}
           </button>
         </div>

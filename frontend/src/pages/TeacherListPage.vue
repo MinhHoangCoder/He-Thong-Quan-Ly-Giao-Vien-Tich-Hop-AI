@@ -415,7 +415,7 @@ function openCreate() {
     employmentType: '',
   }
   createModal.degrees = [emptyDegree()]
-  createModal.experience = ''
+  createModal.teachingExperience = ''
   createModal.open = true
 }
 
@@ -460,17 +460,27 @@ async function submitCreate() {
       idCardNo: p.idCardNo || null,
       phone: p.phone || null,
       address: p.address || null,
+      teachingExperience: createModal.teachingExperience || null,
     })
 
     // 3) Bằng cấp + Trình độ  — lưu tên/nơi cấp/ngày; file PDF đính kèm chỉ lưu TÊN FILE
     const validDegrees = createModal.degrees.filter((d) => d.level)
     for (const d of validDegrees) {
-      await teacherApi.addCertificate(created.id, {
+      const { data: cert } = await teacherApi.addCertificate(created.id, {
         name: degreeName(d),
         issuer: null,
         issueDate: null,
-        fileUrl: d.file?.name || null,
       })
+      if (d.file) {
+        try {
+          await teacherApi.uploadCertificateFile(created.id, cert.id, d.file)
+        } catch {
+          showToast(
+            'Đã lưu "${degreeName(d)}" nhưng upload file thất bại, vào Sửa để tải lại',
+            'error',
+          )
+        }
+      }
     }
 
     createModal.open = false
@@ -628,6 +638,7 @@ const editModal = reactive({
     address: '',
     dateOfBirth: '',
     hireDate: '',
+    password: '',
     gender: null,
   },
   // Bằng cấp ĐÃ LƯU (BE dùng chung 1 bảng Certificate) + form thêm mới — gộp chung
@@ -717,7 +728,7 @@ async function openEdit(teacher) {
   editModal.activeTab = 'profile'
   editModal.existingCerts = []
   editModal.newDegrees = [emptyDegree()]
-  editModal.experience = ''
+  editModal.teachingExperience = teacher.teachingExperience || ''
   Object.keys(editFieldErrors).forEach((k) => (editFieldErrors[k] = ''))
   Object.assign(editModal.form, {
     branchId: teacher.branchId,
@@ -736,14 +747,18 @@ async function openEdit(teacher) {
     gender: teacher.gender,
   })
   editModal.open = true
-  // teacherApi.list() không trả kèm certificates — phải gọi get() riêng để tải đủ
-  // bằng cấp/chứng chỉ hiện có
   try {
     const { data } = await teacherApi.get(teacher.id)
     editModal.existingCerts = data.certificates || []
-    const { data: account } = await teacherApi.getAccount(teacher.id)
-    editModal.form.username = account.username || ''
-    editModal.form.email = account.email || ''
+  } catch {
+    /* lỗi bằng cấp không chặn form */
+  }
+
+  // Tải username/email riêng — BE xử lý qua appUserId trong service
+  try {
+    const { data } = await teacherApi.getAccount(teacher.id)
+    editModal.form.username = data.username || ''
+    editModal.form.email = data.email || ''
   } catch {
     // Lỗi tải bằng cấp không nên chặn cả form sửa — các tab khác vẫn dùng được
   }
@@ -758,6 +773,32 @@ async function removeExistingCert(certId) {
     showToast(e?.response?.data?.message || 'Xóa bằng cấp thất bại', 'error')
   }
 }
+
+//======================
+const viewingCertId = ref(null)
+/**
+ * Mở file PDF của 1 bằng cấp — endpoint cần header Authorization nên KHÔNG thể
+ * window.open() thẳng URL; phải tải về dạng blob rồi tự mở tab mới.
+ */
+async function viewCert(cert) {
+  viewingCertId.value = cert.id
+  try {
+    const response = await teacherApi.openCertificateFile(editModal.id, cert.id)
+    const blobUrl = window.URL.createObjectURL(
+      new Blob([response.data], { type: 'application/pdf' }),
+    )
+    window.open(blobUrl, '_blank', 'noopener')
+    setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60_000)
+  } catch (e) {
+    showToast(
+      e?.response?.data?.message || 'Không mở được file (có thể chưa có file đính kèm)',
+      'error',
+    )
+  } finally {
+    viewingCertId.value = null
+  }
+}
+//===================
 
 async function saveEdit() {
   const ok = [
@@ -781,15 +822,42 @@ async function saveEdit() {
       branchId: Number(editModal.form.branchId),
       gender: editModal.form.gender === '' ? null : editModal.form.gender,
       employmentType: editModal.form.employmentType || null,
+      teachingExperience: editModal.teachingExperience || null,
     })
-    // Bằng cấp/chứng chỉ mới thêm (nếu có) — cùng cơ chế với modal Tạo.
+
+    // Chỉ gửi những field người dùng thực sự thay đổi
+    const accountPayload = {}
+
+    if (editModal.form.username?.trim()) {
+      accountPayload.username = editModal.form.username.trim()
+    }
+
+    if (editModal.form.email?.trim()) {
+      accountPayload.email = editModal.form.email.trim()
+    }
+
+    if (Object.keys(accountPayload).length > 0) {
+      await teacherApi.updateAccount(editModal.id, accountPayload)
+    }
+
+    // Bằng cấp/chứng chỉ mới thêm — tạo record trước, upload file PDF thật ngay sau.
     const newOnes = editModal.newDegrees.filter((d) => d.level)
     for (const d of newOnes) {
-      await teacherApi.addCertificate(editModal.id, {
+      const { data: cert } = await teacherApi.addCertificate(editModal.id, {
         name: degreeName(d),
         issuer: null,
         issueDate: null,
       })
+      if (d.file) {
+        try {
+          await teacherApi.uploadCertificateFile(editModal.id, cert.id, d.file)
+        } catch {
+          showToast(
+            `Đã lưu "${degreeName(d)}" nhưng upload file thất bại, thử lại ở tab Bằng cấp`,
+            'error',
+          )
+        }
+      }
     }
     editModal.open = false
     showToast('Cập nhật giáo viên thành công')
@@ -869,6 +937,7 @@ function requestPurge(item) {
   confirmPurge.open = true
   confirmPurge.id = item.id
   confirmPurge.name = item.fullName
+  confirmPurge.phone = item.phone || ''
   confirmPurge.typedName = ''
   confirmPurge.purging = false
 }
@@ -877,9 +946,12 @@ function closePurge() {
   confirmPurge.open = false
 }
 
-const purgeConfirmValid = computed(
-  () => confirmPurge.typedName.trim().toLowerCase() === confirmPurge.name.trim().toLowerCase(),
-)
+const purgeConfirmValid = computed(() => {
+  if (confirmPurge.phone) {
+    return confirmPurge.typedName.trim() === confirmPurge.phone.trim()
+  }
+  return confirmPurge.typedName.trim().toLowerCase() === confirmPurge.name.trim().toLowerCase()
+})
 
 async function confirmDoPurge() {
   if (!purgeConfirmValid.value || confirmPurge.purging) return
@@ -1496,7 +1568,7 @@ function formatDate(d) {
                 <template v-else-if="createModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
                   <textarea
-                    v-model="createModal.experience"
+                    v-model="createModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
                     placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
@@ -1558,13 +1630,13 @@ function formatDate(d) {
             <h3 class="modal__title">Xóa vĩnh viễn giáo viên?</h3>
             <p class="modal__body">Are you <strong> SURE ?</strong></p>
             <p class="modal__body">
-              Gõ lại họ tên <strong>"{{ confirmPurge.name }}"</strong> để xác nhận:
+              Gõ lại số điện thoại <strong>"{{ confirmPurge.phone }}"</strong> để xác nhận:
             </p>
             <input
               v-model="confirmPurge.typedName"
               type="text"
               class="form-input"
-              :placeholder="confirmPurge.name"
+              :placeholder="confirmPurge.phone"
               @keyup.enter="confirmDoPurge"
             />
             <div class="modal__footer">
@@ -1802,10 +1874,22 @@ function formatDate(d) {
                   <div v-for="c in editModal.existingCerts" :key="c.id" class="existing-doc">
                     <div>
                       <strong>{{ c.name }}</strong>
+                      <span v-if="!c.fileUrl" class="existing-doc__nofile">— chưa có file kèm</span>
                     </div>
-                    <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
-                      ➖
-                    </button>
+                    <div class="existing-doc__actions">
+                      <button
+                        v-if="c.fileUrl"
+                        class="doc-view"
+                        title="Xem file PDF"
+                        :disabled="viewingCertId === c.id"
+                        @click="viewCert(c)"
+                      >
+                        {{ viewingCertId === c.id ? 'Đang mở…' : 'Xem' }}
+                      </button>
+                      <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
+                        ➖
+                      </button>
+                    </div>
                   </div>
 
                   <h4 class="create-section-title create-section-title--gap">Thêm bằng cấp mới</h4>
@@ -1860,57 +1944,12 @@ function formatDate(d) {
                   </button>
                 </template>
 
-                <!-- Tab: Chứng chỉ -->
-                <template v-else-if="editModal.activeTab === 'cert'">
-                  <div v-for="c in editModal.existingCerts" :key="c.id" class="existing-doc">
-                    <div>
-                      <strong>{{ c.name }}</strong>
-                      <span v-if="c.issuer"> · {{ c.issuer }}</span>
-                      <span v-if="c.issueDate"> · {{ formatDate(c.issueDate) }}</span>
-                    </div>
-                    <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
-                      ➖
-                    </button>
-                  </div>
-
-                  <h4 class="create-section-title create-section-title--gap">Thêm chứng chỉ mới</h4>
-                  <div v-for="(c, i) in editModal.newCerts" :key="i" class="doc-row">
-                    <input
-                      v-model="c.name"
-                      class="form-input"
-                      placeholder="Tên chứng chỉ (VD: TESOL, STEM-AI)"
-                    />
-                    <input v-model="c.issuer" class="form-input" placeholder="Nơi cấp" />
-                    <input v-model="c.issueDate" type="date" class="form-input" />
-                    <label class="doc-file">
-                      <SvgIcon name="subject" :size="14" />
-                      {{ c.file ? c.file.name : 'Chọn PDF' }}
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        hidden
-                        @change="onPickFile(c, $event)"
-                      />
-                    </label>
-                    <button
-                      v-if="editModal.newCerts.length > 1"
-                      class="doc-remove"
-                      @click="removeDoc(editModal.newCerts, i)"
-                    >
-                      ➖
-                    </button>
-                  </div>
-                  <button class="btn-add-row" @click="addDoc(editModal.newCerts)">
-                    <SvgIcon name="plus" :size="14" /> Thêm chứng chỉ
-                  </button>
-                </template>
-
                 <!-- Tab: Kinh nghiệm -->
                 <template v-else-if="editModal.activeTab === 'experience'">
                   <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
                   <p class="create-section-hint">Không bắt buộc — ghi chú nhanh.</p>
                   <textarea
-                    v-model="editModal.experience"
+                    v-model="editModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
                     placeholder="VD: 3 năm dạy ... tại ... từng phụ trách CLB ..."
