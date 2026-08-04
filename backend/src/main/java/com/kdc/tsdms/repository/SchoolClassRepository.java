@@ -23,6 +23,10 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
     boolean existsBySchoolIdAndNameAndSchoolYearAndDeletedFalseAndIdNot(
             Integer schoolId, String name, String schoolYear, Integer id);
 
+    boolean existsBySchoolIdAndNameAndDeletedFalse(Integer schoolId, String name);
+
+    boolean existsBySchoolIdAndNameAndDeletedFalseAndIdNot(Integer schoolId, String name, Integer id);
+
     List<SchoolClass> findBySchoolIdAndDeletedFalseAndStatusOrderByName(Integer schoolId, String status);
 
     /**

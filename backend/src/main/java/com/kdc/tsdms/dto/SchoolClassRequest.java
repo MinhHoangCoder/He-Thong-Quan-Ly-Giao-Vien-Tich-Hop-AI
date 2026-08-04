@@ -21,8 +21,7 @@ public record SchoolClassRequest(
 
         @NotBlank(message = "Khối không được để trống") @Size(max = 50, message = "Khối tối đa 50 ký tự") String gradeLevel,
 
-        @NotBlank(message = "Năm học không được để trống") @Size(max = 20, message = "Năm học tối đa 20 ký tự") @Pattern(regexp = "^\\d{4}-\\d{4}$", message = "Năm học dạng YYYY-YYYY (vd: 2025-2026)")
-        String schoolYear,
+        @Size(max = 20, message = "Năm học tối đa 20 ký tự") String schoolYear,
 
         @Pattern(regexp = "^(ACTIVE|INACTIVE)$", message = "Status phải là ACTIVE hoặc INACTIVE")
         String status) {}
