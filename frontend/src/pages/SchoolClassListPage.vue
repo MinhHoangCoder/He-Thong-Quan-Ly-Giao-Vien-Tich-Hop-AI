@@ -119,9 +119,16 @@ const schoolYearOptions = computed(() => {
   return list
 })
 
-/** Lưu DB: luôn "Khối 7" (không chỉ "7", không "Lớp 7"). */
+/** Lưu DB: chỉ số khối (ví dụ "7"). */
 function gradeLabel(num) {
-  return `Khối ${num}`
+  return String(num || '')
+}
+
+/** Hiển thị khối: tự động lọc bỏ chữ "Khối " nếu là dữ liệu cũ. */
+function displayGrade(val) {
+  if (!val) return ''
+  const m = String(val).match(/(?:Khối|Lớp)?\s*(\d{1,2})/i)
+  return m ? m[1] : String(val)
 }
 
 /** Tên lớp gộp: {số khối}{1 chữ}{số 1–20} → 7A1 */
@@ -463,25 +470,6 @@ function validateForm(form) {
       'Hậu tố: đúng 1 chữ cái + số 1–20 (bắt buộc). VD: A1, B20 — không A, không A21, không AB'
   }
 
-  const year = (form.schoolYear || '').trim()
-  if (!year) {
-    errors.schoolYear = 'Chọn năm học'
-  } else {
-    const m = year.match(YEAR_RE)
-    if (!m) errors.schoolYear = 'Năm học dạng YYYY-YYYY'
-    else {
-      const y1 = Number(m[1])
-      const y2 = Number(m[2])
-      if (y2 !== y1 + 1) errors.schoolYear = 'Hai năm phải liên tiếp (vd: 2025-2026)'
-      else {
-        const cur = currentSchoolYearStart()
-        if (y1 < cur - YEAR_RANGE || y1 > cur + YEAR_RANGE) {
-          errors.schoolYear = `Chỉ chọn năm trong khoảng ±${YEAR_RANGE} năm quanh năm học hiện tại`
-        }
-      }
-    }
-  }
-
   if (form.status && !['ACTIVE', 'INACTIVE'].includes(form.status)) {
     errors.status = 'Trạng thái không hợp lệ'
   }
@@ -489,8 +477,8 @@ function validateForm(form) {
   return errors
 }
 
-/** Kiểm tra trùng tên lớp cùng trường + năm học (gọi API, không chỉ trang hiện tại). */
-async function isDuplicateClass(schoolId, name, schoolYear, excludeId) {
+/** Kiểm tra trùng tên lớp cùng trường (gọi API, không chỉ trang hiện tại). */
+async function isDuplicateClass(schoolId, name, excludeId) {
   try {
     const { data } = await classApi.list({
       schoolId,
@@ -504,7 +492,6 @@ async function isDuplicateClass(schoolId, name, schoolYear, excludeId) {
       (c) =>
         c.schoolId === schoolId &&
         String(c.name || '').toUpperCase() === target &&
-        c.schoolYear === schoolYear &&
         c.id !== excludeId,
     )
   } catch {
@@ -588,22 +575,20 @@ async function saveModal() {
 
   const name = composeClassName(modal.form.gradeNum, modal.form.classSuffix)
   const schoolId = Number(modal.form.schoolId)
-  const schoolYear = modal.form.schoolYear.trim()
 
   modal.saving = true
   modal.error = ''
   try {
-    // Chặn trùng tên lớp (cùng trường + năm) trước khi gửi
+    // Chặn trùng tên lớp ở cùng trường trước khi gửi
     const dup = await isDuplicateClass(
       schoolId,
       name,
-      schoolYear,
       modal.mode === 'edit' ? modal.id : null,
     )
     if (dup) {
       modal.errors = {
         ...modal.errors,
-        classSuffix: `Lớp "${name}" năm ${schoolYear} đã tồn tại ở trường này`,
+        classSuffix: `Lớp "${name}" đã tồn tại ở trường này`,
       }
       return
     }
@@ -612,7 +597,6 @@ async function saveModal() {
       schoolId,
       name,
       gradeLevel: gradeLabel(modal.form.gradeNum),
-      schoolYear,
       status: modal.form.status,
     }
 
@@ -877,7 +861,7 @@ function formatDeletedAt(iso) {
           <span>Khối</span>
           <select v-model="filterGradeLevel" @change="onSearch">
             <option value="">Tất cả khối</option>
-            <option v-for="g in existingGrades" :key="g" :value="g">{{ g }}</option>
+            <option v-for="g in existingGrades" :key="g" :value="g">{{ displayGrade(g) }}</option>
           </select>
         </label>
 
@@ -933,24 +917,23 @@ function formatDeletedAt(iso) {
               <th>Tên lớp</th>
               <th>Trường</th>
               <th>Khối</th>
-              <th>Năm học</th>
               <th>Trạng thái</th>
               <th width="120">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+              <td :colspan="deleteMode ? 6 : 5" class="empty">Đang tải...</td>
             </tr>
             <!-- Lỗi API (vd không có quyền): nói thẳng, đừng giả vờ "Không có dữ liệu" -->
             <tr v-else-if="loadError">
-              <td :colspan="deleteMode ? 7 : 6" class="empty">
+              <td :colspan="deleteMode ? 6 : 5" class="empty">
                 ⚠️ {{ loadError }}
                 <button type="button" class="act-btn" @click="load">Thử lại</button>
               </td>
             </tr>
             <tr v-else-if="items.length === 0">
-              <td :colspan="deleteMode ? 7 : 6" class="empty">Không có dữ liệu</td>
+              <td :colspan="deleteMode ? 6 : 5" class="empty">Không có dữ liệu</td>
             </tr>
             <tr
               v-for="item in items"
@@ -969,10 +952,7 @@ function formatDeletedAt(iso) {
                 <div class="title-text">{{ item.name }}</div>
               </td>
               <td>{{ item.schoolName || '—' }}</td>
-              <td>{{ item.gradeLevel || '—' }}</td>
-              <td>
-                <code class="code-text">{{ item.schoolYear }}</code>
-              </td>
+              <td>{{ displayGrade(item.gradeLevel) || '—' }}</td>
               <td>
                 <span
                   class="badge"
@@ -1082,17 +1062,16 @@ function formatDeletedAt(iso) {
               <th>Tên lớp</th>
               <th>Trường</th>
               <th>Khối</th>
-              <th>Năm học</th>
               <th>Ngày xóa</th>
               <th width="180">Thao tác</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="trashLoading">
-              <td :colspan="deleteMode ? 7 : 6" class="empty">Đang tải...</td>
+              <td :colspan="deleteMode ? 6 : 5" class="empty">Đang tải...</td>
             </tr>
             <tr v-else-if="trashItems.length === 0">
-              <td :colspan="deleteMode ? 7 : 6" class="empty">Thùng rác trống</td>
+              <td :colspan="deleteMode ? 6 : 5" class="empty">Thùng rác trống</td>
             </tr>
             <tr
               v-for="item in trashItems"
@@ -1111,10 +1090,7 @@ function formatDeletedAt(iso) {
                 <div class="title-text">{{ item.name }}</div>
               </td>
               <td>{{ item.schoolName || '—' }}</td>
-              <td>{{ item.gradeLevel || '—' }}</td>
-              <td>
-                <code class="code-text">{{ item.schoolYear }}</code>
-              </td>
+              <td>{{ displayGrade(item.gradeLevel) || '—' }}</td>
               <td>{{ formatDeletedAt(item.deletedAt) }}</td>
               <td class="col-actions" @click.stop>
                 <button class="act-btn act-btn--restore" @click="restoreClass(item.id)">
@@ -1265,24 +1241,6 @@ function formatDeletedAt(iso) {
           </small>
         </div>
 
-        <!-- 5. Năm học -->
-        <div class="form-group">
-          <label>Năm học *</label>
-          <select
-            v-model="modal.form.schoolYear"
-            :class="{ 'input-error': modal.errors.schoolYear }"
-            @change="clearFieldError('schoolYear')"
-          >
-            <option v-for="y in schoolYearOptions" :key="y" :value="y">
-              {{ y }}{{ y === defaultSchoolYear() ? ' (hiện tại)' : '' }}
-            </option>
-          </select>
-          <small v-if="modal.errors.schoolYear" class="field-error">{{
-            modal.errors.schoolYear
-          }}</small>
-          <small v-else>Mặc định năm học hiện tại; có thể chọn ±{{ YEAR_RANGE }} năm.</small>
-        </div>
-
         <div class="form-group">
           <label>Trạng thái</label>
           <select v-model="modal.form.status">
@@ -1309,7 +1267,7 @@ function formatDeletedAt(iso) {
         <p>
           Chuyển lớp
           <strong>{{ deleteTarget.name }}</strong>
-          ({{ deleteTarget.schoolYear }}) vào thùng rác?
+          vào thùng rác?
         </p>
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
@@ -1341,7 +1299,7 @@ function formatDeletedAt(iso) {
         <p>
           Xóa hẳn lớp
           <strong>{{ purgeTarget.name }}</strong>
-          ({{ purgeTarget.schoolYear }}) — <strong>không hoàn tác</strong>.
+          — <strong>không hoàn tác</strong>.
         </p>
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="purgeTarget = null">Hủy</button>

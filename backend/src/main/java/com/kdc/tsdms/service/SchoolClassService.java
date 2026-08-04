@@ -36,9 +36,8 @@ public class SchoolClassService {
      * Chuẩn lưu GradeLevel trong DB: luôn dạng {@code Khối 7} (không chỉ {@code 7}, không {@code Lớp
      * 7}). Seed cũ có thể còn "Lớp 10" — khi sửa sẽ được chuẩn hóa.
      */
-    private static final Set<String> VALID_GRADES = Set.of(
-            "Khối 1", "Khối 2", "Khối 3", "Khối 4", "Khối 5", "Khối 6", "Khối 7", "Khối 8", "Khối 9", "Khối 10",
-            "Khối 11", "Khối 12");
+    private static final Set<String> VALID_GRADES =
+            Set.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
 
     private static final Pattern YEAR_PATTERN = Pattern.compile("^(\\d{4})-(\\d{4})$");
     private static final Pattern GRADE_NUM_IN_TEXT = Pattern.compile("(\\d{1,2})");
@@ -190,15 +189,9 @@ public class SchoolClassService {
                 .findByIdAndDeletedTrue(id)
                 .orElseThrow(
                         () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
-        if (classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(
-                sc.getSchoolId(), sc.getName(), sc.getSchoolYear())) {
+        if (classRepo.existsBySchoolIdAndNameAndDeletedFalse(sc.getSchoolId(), sc.getName())) {
             throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Không khôi phục được: lớp '"
-                            + sc.getName()
-                            + "' năm "
-                            + sc.getSchoolYear()
-                            + " đã tồn tại ở trường này");
+                    HttpStatus.CONFLICT, "Không khôi phục được: lớp '" + sc.getName() + "' đã tồn tại ở trường này");
         }
         sc.setDeleted(false);
         sc.setDeletedAt(null);
@@ -281,31 +274,25 @@ public class SchoolClassService {
      */
     private void assertNoDuplicate(Integer schoolId, String name, String year, Integer excludeId) {
         boolean exists = excludeId == null
-                ? classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalse(schoolId, name, year)
-                : classRepo.existsBySchoolIdAndNameAndSchoolYearAndDeletedFalseAndIdNot(
-                        schoolId, name, year, excludeId);
+                ? classRepo.existsBySchoolIdAndNameAndDeletedFalse(schoolId, name)
+                : classRepo.existsBySchoolIdAndNameAndDeletedFalseAndIdNot(schoolId, name, excludeId);
         // Thêm kiểm tra case-insensitive qua danh sách cùng trường (phòng client gửi 7a1 vs 7A1)
         if (!exists) {
             exists = classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "ACTIVE").stream()
-                            .anyMatch(c -> c.getSchoolYear().equalsIgnoreCase(year)
-                                    && c.getName().equalsIgnoreCase(name)
+                            .anyMatch(c -> c.getName().equalsIgnoreCase(name)
                                     && (excludeId == null || !excludeId.equals(c.getId())))
                     || classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "INACTIVE").stream()
-                            .anyMatch(c -> c.getSchoolYear().equalsIgnoreCase(year)
-                                    && c.getName().equalsIgnoreCase(name)
+                            .anyMatch(c -> c.getName().equalsIgnoreCase(name)
                                     && (excludeId == null || !excludeId.equals(c.getId())));
         }
         if (exists) {
             throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Lớp '" + name + "' năm học " + year + " đã tồn tại ở trường này — không được trùng");
+                    HttpStatus.CONFLICT, "Lớp '" + name + "' đã tồn tại ở trường này — không được trùng tên lớp");
         }
     }
 
     /**
-     * @param existingYear năm học hiện tại của lớp (khi SỬA) — GIỮ NGUYÊN năm cũ thì bỏ
-     *     check khoảng ±{@value YEAR_RANGE} năm, để lớp dữ liệu cũ vẫn sửa được trạng
-     *     thái/khối mà không bị ép đổi năm. Tạo mới truyền {@code null}.
+     * @param existingYear năm học hiện tại của lớp (khi SỬA) — GIỮ NGUYÊN năm cũ nếu client không gửi.
      */
     private ValidatedClassFields validateBusiness(SchoolClassRequest req, String existingYear) {
         String rawName = normalizeSpaces(req.name());
@@ -327,32 +314,41 @@ public class SchoolClassService {
 
         String grade = normalizeGradeLevel(req.gradeLevel());
         if (grade == null || !VALID_GRADES.contains(grade)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Khối không hợp lệ — chọn Khối 1 … Khối 12");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Khối không hợp lệ — chọn khối 1 … 12");
         }
-        // Số trong "Khối 7" phải khớp số đầu tên lớp "7A1"
-        String gradeNum = grade.replace("Khối ", "");
-        if (!gradeNum.equals(gradeNumFromName)) {
+        // Số khối "7" phải khớp số đầu tên lớp "7A1"
+        if (!grade.equals(gradeNumFromName)) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
                     "Tên lớp bắt đầu bằng " + gradeNumFromName + " nhưng khối đã chọn là " + grade);
         }
 
-        Matcher ym = YEAR_PATTERN.matcher(year == null ? "" : year);
-        if (!ym.matches()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Năm học phải dạng YYYY-YYYY");
-        }
-        int y1 = Integer.parseInt(ym.group(1));
-        int y2 = Integer.parseInt(ym.group(2));
-        if (y2 != y1 + 1) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Năm học phải liên tiếp (vd: 2025-2026)");
-        }
-        boolean keepingOldYear = existingYear != null && existingYear.equalsIgnoreCase(year);
-        if (!keepingOldYear) {
-            int currentStart = currentSchoolYearStart();
-            if (y1 < currentStart - YEAR_RANGE || y1 > currentStart + YEAR_RANGE) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST,
-                        "Năm học chỉ cho phép trong khoảng ±" + YEAR_RANGE + " năm so với năm học hiện tại");
+        // Nếu client không gửi year (UI đã bỏ trường Năm học), tự động chọn năm học hiện tại
+        if (year == null || year.isBlank()) {
+            if (existingYear != null && !existingYear.isBlank()) {
+                year = existingYear;
+            } else {
+                int currentStart = currentSchoolYearStart();
+                year = currentStart + "-" + (currentStart + 1);
+            }
+        } else {
+            Matcher ym = YEAR_PATTERN.matcher(year);
+            if (!ym.matches()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Năm học phải dạng YYYY-YYYY");
+            }
+            int y1 = Integer.parseInt(ym.group(1));
+            int y2 = Integer.parseInt(ym.group(2));
+            if (y2 != y1 + 1) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Năm học phải liên tiếp (vd: 2025-2026)");
+            }
+            boolean keepingOldYear = existingYear != null && existingYear.equalsIgnoreCase(year);
+            if (!keepingOldYear) {
+                int currentStart = currentSchoolYearStart();
+                if (y1 < currentStart - YEAR_RANGE || y1 > currentStart + YEAR_RANGE) {
+                    throw new ApiException(
+                            HttpStatus.BAD_REQUEST,
+                            "Năm học chỉ cho phép trong khoảng ±" + YEAR_RANGE + " năm so với năm học hiện tại");
+                }
             }
         }
 
@@ -360,7 +356,7 @@ public class SchoolClassService {
     }
 
     /**
-     * Chuẩn hóa mọi dạng client/seed → {@code Khối N}: "7", "Lớp 7", "Khối 7" → "Khối 7".
+     * Chuẩn hóa mọi dạng client/seed → {@code N}: "7", "Lớp 7", "Khối 7" → "7".
      */
     private static String normalizeGradeLevel(String raw) {
         if (raw == null) {
@@ -377,7 +373,7 @@ public class SchoolClassService {
         if (m.find()) {
             int n = Integer.parseInt(m.group(1));
             if (n >= 1 && n <= 12) {
-                return "Khối " + n;
+                return String.valueOf(n);
             }
         }
         return t;
