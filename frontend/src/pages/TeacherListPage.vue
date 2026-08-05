@@ -449,7 +449,7 @@ async function submitCreate() {
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
-      email: a.email,     
+      email: a.email,
       branchId: Number(p.branchId),
       firstName: p.firstName,
       lastName: p.lastName,
@@ -656,7 +656,23 @@ const editFieldErrors = reactive({
   idCardNo: '',
   dateOfBirth: '',
   hireDate: '',
+  password: '',
 })
+
+/**
+ * Ô mật khẩu ở tab Tài khoản: BỎ TRỐNG = giữ nguyên mật khẩu cũ, nên rỗng vẫn hợp lệ.
+ * Có gõ thì phải đủ mạnh — cùng chính sách với backend (@Pattern ở AccountUpdateRequest)
+ * và với các form khác trong dự án.
+ */
+function validateEditPassword() {
+  const v = editModal.form.password
+  if (v && !isStrongPassword(v)) {
+    editFieldErrors.password = `Chưa đủ mạnh: ${PASSWORD_HINT}`
+    return false
+  }
+  editFieldErrors.password = ''
+  return true
+}
 
 function validateEditLastName() {
   const v = editModal.form.lastName.trim()
@@ -808,10 +824,11 @@ async function saveEdit() {
     validateEditPhone(),
     validateEditIdCard(),
     validateEditDates(),
+    validateEditPassword(),
   ].every(Boolean)
   if (!ok) {
     editModal.error = 'Vui lòng kiểm tra lại các trường bị đánh dấu đỏ.'
-    editModal.activeTab = 'profile'
+    editModal.activeTab = 'profile' // mọi ô có validate (kể cả mật khẩu) đều nằm ở tab này
     return
   }
 
@@ -837,8 +854,16 @@ async function saveEdit() {
       accountPayload.email = editModal.form.email.trim()
     }
 
+    // Mật khẩu: để TRỐNG = giữ nguyên mật khẩu cũ (backend hiểu chuỗi rỗng như vậy).
+    // Chỉ gửi khi người dùng thực sự gõ vào ô này.
+    if (editModal.form.password) {
+      accountPayload.password = editModal.form.password
+    }
+
     if (Object.keys(accountPayload).length > 0) {
       await teacherApi.updateAccount(editModal.id, accountPayload)
+      // Không giữ mật khẩu trong bộ nhớ form sau khi đã lưu xong.
+      editModal.form.password = ''
     }
 
     // Bằng cấp/chứng chỉ mới thêm — tạo record trước, upload file PDF thật ngay sau.
@@ -1719,9 +1744,15 @@ function formatDate(d) {
                           v-model="editModal.form.password"
                           :type="showPassword ? 'text' : 'password'"
                           class="form-input"
-                          placeholder="Nhập mật khẩu"
+                          :class="{ 'form-input--error': editFieldErrors.password }"
+                          placeholder="Để trống nếu không đổi mật khẩu"
+                          autocomplete="new-password"
+                          @blur="validateEditPassword"
                         />
                       </label>
+                      <span v-if="editFieldErrors.password" class="field-error">{{
+                        editFieldErrors.password
+                      }}</span>
 
                       <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
                         <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
