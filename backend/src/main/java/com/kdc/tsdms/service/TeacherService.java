@@ -9,6 +9,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.transaction.Transactional;
@@ -37,6 +38,7 @@ public class TeacherService {
     private final ContractRepository contractRepo;
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenRepository refreshTokenRepo;
     private static final Path UPLOAD_ROOT =
             Paths.get("uploads/teachers").toAbsolutePath().normalize();
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
@@ -46,12 +48,14 @@ public class TeacherService {
             CertificateRepository ceRepo,
             ContractRepository contractRepo,
             AppUserRepository appUserRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            RefreshTokenRepository refreshTokenRepo) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
+        this.refreshTokenRepo = refreshTokenRepo;
     }
 
     // DANH SÁCH  ======================================
@@ -222,12 +226,19 @@ public class TeacherService {
             }
         }
         // Admin đặt mật khẩu mới hộ GV — không cần biết mật khẩu cũ (khác với self change-password).
-        // Sau khi đổi, thu hồi mọi phiên đang sống để buộc đăng nhập lại bằng mật khẩu mới.
-        if (newPassword != null && !newPassword.isBlank()) {
+        boolean passwordChanged = newPassword != null && !newPassword.isBlank();
+        if (passwordChanged) {
             au.setPasswordHash(passwordEncoder.encode(newPassword));
             userChanged = true;
         }
         if (userChanged) appUserRepository.save(au);
+
+        // Đổi mật khẩu mà KHÔNG thu hồi phiên thì gần như vô nghĩa: refresh token cũ sống 7 ngày
+        // nên kẻ đang chiếm phiên vẫn xin được access token mới bằng mật khẩu cũ đã bị thay.
+        // Mà admin đặt lại mật khẩu hộ thường chính vì nghi tài khoản bị lộ.
+        if (passwordChanged) {
+            refreshTokenRepo.revokeAllActiveByAppUserId(au.getId(), Instant.now());
+        }
         return au;
     }
     // delete (Chỉ Admin xóa) (ẩn khỏi ds)

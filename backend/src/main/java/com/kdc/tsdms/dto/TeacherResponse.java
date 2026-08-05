@@ -102,11 +102,13 @@ public class TeacherResponse {
 
         @NotBlank(message = "Email không được để trống") @Email(message = "Email không hợp lệ") private String email;
 
-        // Để trống = GIỮ NGUYÊN mật khẩu cũ. Regex khớp với FE (utils/password.js):
-        // 8-72 ký tự, có ít nhất 1 hoa + 1 thường + 1 số.
+        // Để trống = GIỮ NGUYÊN mật khẩu cũ. Độ dài PHẢI khớp 3 nơi còn lại của dự án
+        // (RegisterRequest, ResetPasswordRequest, ChangePasswordRequest) và FE utils/password.js:
+        // 8–72 ký tự, có ít nhất 1 hoa + 1 thường + 1 số. Trước đây chỗ này để {5,72} nên
+        // backend — chốt chặn CUỐI — lại dễ dãi hơn cả cảnh báo hiện trên màn hình.
         @Pattern(
-                regexp = "^$|^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{5,72}$",
-                message = "Mật khẩu phải 5-72 ký tự, gồm chữ hoa, chữ thường và chữ số")
+                regexp = "^$|^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,72}$",
+                message = "Mật khẩu 8–72 ký tự, phải có chữ hoa, chữ thường và chữ số")
         private String password;
     }
 
