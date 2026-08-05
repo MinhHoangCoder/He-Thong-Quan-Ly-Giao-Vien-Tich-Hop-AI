@@ -73,6 +73,7 @@ class PasswordResetServiceTest {
         u.setUsername(username);
         u.setEmail(email);
         u.setPasswordHash("oldHash");
+        u.setStatus("ACTIVE");
         return u;
     }
 
@@ -199,6 +200,20 @@ class PasswordResetServiceTest {
                         "http://localhost:5173/reset-password?token=raw-token-456");
     }
 
+    @Test
+    void forgot_lockedAccount_silentlySkips() {
+        // Tài khoản bị khóa thì có đặt lại mật khẩu cũng không đăng nhập được (AuthService chặn
+        // theo status) -> đừng gửi mail. Vẫn im lặng để không lộ trạng thái tài khoản ra ngoài.
+        AppUser locked = user(42, "gv01", "gv01@tsdms.local");
+        locked.setStatus("LOCKED");
+        when(appUserRepo.findByEmailAndDeletedFalse("gv01@tsdms.local")).thenReturn(Optional.of(locked));
+
+        service.forgot("gv01@tsdms.local");
+
+        verify(resetRepo, never()).save(any());
+        verify(emailService, never()).sendPasswordReset(anyString(), anyString(), anyString());
+    }
+
     // ---------- reset() ----------
 
     @Test
@@ -260,6 +275,58 @@ class PasswordResetServiceTest {
 
         verify(passwordEncoder, never()).encode(anyString());
         verify(refreshTokenRepo, never()).revokeAllActiveByAppUserId(any(), any());
+    }
+
+    @Test
+    void reset_lockedAccount_throws403AndKeepsOldPassword() {
+        // Admin khóa tài khoản SAU khi link đã gửi đi -> link không được phép cứu tài khoản đó.
+        AppUser locked = user(42, "gv01", "gv01@tsdms.local");
+        locked.setStatus("LOCKED");
+        PasswordResetToken prt = usableToken(42);
+        when(jwtService.sha256("raw-token-123")).thenReturn("hashed-token");
+        when(resetRepo.findByTokenHash("hashed-token")).thenReturn(Optional.of(prt));
+        when(appUserRepo.findById(42)).thenReturn(Optional.of(locked));
+
+        assertThatThrownBy(() -> service.reset("raw-token-123", "NewPass1"))
+                .satisfies(e -> assertStatus(e, HttpStatus.FORBIDDEN));
+
+        assertThat(locked.getPasswordHash()).isEqualTo("oldHash");
+        assertThat(prt.getUsedAt()).isNull(); // token chưa bị tiêu, người dùng vẫn dùng lại được
+        verify(refreshTokenRepo, never()).revokeAllActiveByAppUserId(any(), any());
+    }
+
+    @Test
+    void reset_softDeletedAccount_throws400() {
+        // Tài khoản bị xóa mềm sau khi phát link -> link phải chết theo, không hồi sinh được.
+        AppUser deleted = user(42, "gv01", "gv01@tsdms.local");
+        deleted.setDeleted(true);
+        PasswordResetToken prt = usableToken(42);
+        when(jwtService.sha256("raw-token-123")).thenReturn("hashed-token");
+        when(resetRepo.findByTokenHash("hashed-token")).thenReturn(Optional.of(prt));
+        when(appUserRepo.findById(42)).thenReturn(Optional.of(deleted));
+
+        assertThatThrownBy(() -> service.reset("raw-token-123", "NewPass1"))
+                .satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
+
+        assertThat(deleted.getPasswordHash()).isEqualTo("oldHash");
+    }
+
+    @Test
+    void reset_samePasswordAsCurrent_throws400() {
+        // Người dùng thường vào đây vì NGHI lộ mật khẩu -> đặt lại y hệt cái cũ là vô nghĩa.
+        // Cùng luật với luồng đổi mật khẩu ở trang Cài đặt.
+        AppUser u = user(42, "gv01", "gv01@tsdms.local");
+        PasswordResetToken prt = usableToken(42);
+        when(jwtService.sha256("raw-token-123")).thenReturn("hashed-token");
+        when(resetRepo.findByTokenHash("hashed-token")).thenReturn(Optional.of(prt));
+        when(appUserRepo.findById(42)).thenReturn(Optional.of(u));
+        when(passwordEncoder.matches("NewPass1", "oldHash")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.reset("raw-token-123", "NewPass1"))
+                .satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
+
+        verify(passwordEncoder, never()).encode(anyString());
+        assertThat(prt.getUsedAt()).isNull();
     }
 
     @Test
