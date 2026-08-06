@@ -27,6 +27,9 @@ public class PasswordResetService {
     /** Cửa sổ tính hạn mức "tối đa N email/tài khoản". */
     private static final Duration DAILY_WINDOW = Duration.ofHours(24);
 
+    /** Trạng thái tài khoản duy nhất được phép đặt lại mật khẩu. */
+    private static final String ACTIVE = "ACTIVE";
+
     private final AppUserRepository appUserRepo;
     private final PasswordResetTokenRepository resetRepo;
     private final RefreshTokenRepository refreshTokenRepo;
@@ -61,6 +64,16 @@ public class PasswordResetService {
         // tránh để kẻ xấu dò email nào có trong hệ thống (user enumeration).
         appUserRepo.findByEmailAndDeletedFalse(email).ifPresent(user -> {
             Instant now = Instant.now();
+
+            // Tài khoản bị khóa/ngưng thì link đặt lại cũng vô dụng (đăng nhập vẫn bị chặn ở
+            // AuthService) -> đừng gửi mail làm gì. Vẫn im lặng để không lộ trạng thái tài khoản.
+            if (!ACTIVE.equals(user.getStatus())) {
+                log.warn(
+                        "Bỏ qua yêu cầu đặt lại mật khẩu: tài khoản uid={} đang ở trạng thái {}",
+                        user.getId(),
+                        user.getStatus());
+                return;
+            }
 
             // Vượt hạn mức -> BỎ QUA, nhưng vẫn im lặng y hệt nhánh "email không tồn tại":
             // controller luôn trả về cùng một câu chung nên kẻ tấn công không phân biệt được
@@ -143,9 +156,25 @@ public class PasswordResetService {
         if (!prt.isUsable()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Token đã được dùng hoặc đã hết hạn");
         }
+        // Lọc deleted: tài khoản bị xóa mềm SAU khi phát link thì link cũng phải chết theo,
+        // nếu không thì cái link 30 phút đó vẫn hồi sinh được mật khẩu của tài khoản đã gỡ.
         AppUser user = appUserRepo
                 .findById(prt.getAppUserId())
+                .filter(u -> !u.isDeleted())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Tài khoản không tồn tại"));
+
+        // Bị khóa giữa chừng (admin khóa sau khi link đã gửi) -> không cho đặt lại. Người cầm
+        // token đã biết tài khoản có thật rồi nên báo lỗi rõ ràng ở đây không lộ thêm gì.
+        if (!ACTIVE.equals(user.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN, "Tài khoản đang bị khóa hoặc ngưng hoạt động. Vui lòng liên hệ quản trị.");
+        }
+
+        // Đặt lại đúng bằng mật khẩu cũ = không giải quyết được gì (thường người dùng vào đây
+        // vì nghi lộ mật khẩu). Chặn cho khớp với luồng đổi mật khẩu ở Cài đặt.
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Mật khẩu mới phải khác mật khẩu hiện tại");
+        }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         prt.setUsedAt(Instant.now()); // đánh dấu token đã dùng -> không tái sử dụng
