@@ -120,114 +120,135 @@ function onKey(e) {
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+
+/*
+ * Cờ cho phép luật in "ẩn mọi thứ trừ bảng" — CHỈ bật khi bảng đang mở.
+ * Không có cờ này thì người dùng bấm Ctrl+P ở bất kỳ trang nào cũng ra giấy trắng,
+ * vì luật kia là CSS toàn cục (phải toàn cục mới với tới được các thẻ anh em của body).
+ */
+const PRINT_FLAG = 'inv-printing'
+onMounted(() => document.body.classList.add(PRINT_FLAG))
+onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
 </script>
 
 <template>
-  <div class="inv-overlay" @click.self="emit('close')">
-    <div class="inv" role="dialog" aria-label="Lịch dạy chi tiết">
-      <div class="inv__head">
-        <h3>Lịch dạy chi tiết</h3>
-        <button class="inv__x" aria-label="Đóng" @click="emit('close')">×</button>
+  <!-- Teleport ra body: bảng phải là con TRỰC TIẾP của body thì luật in mới ẩn được
+       sidebar / chuông / nội dung trang phía sau bằng một selector anh-em duy nhất. -->
+  <Teleport to="body">
+    <div class="inv-overlay" @click.self="emit('close')">
+      <div class="inv" role="dialog" aria-label="Lịch dạy chi tiết">
+        <div class="inv__head">
+          <h3>Lịch dạy chi tiết</h3>
+          <button class="inv__x" aria-label="Đóng" @click="emit('close')">×</button>
+        </div>
+
+        <div v-if="loading" class="inv__state">Đang tải lịch dạy…</div>
+        <div v-else-if="error" class="inv__state inv__state--error">{{ error }}</div>
+
+        <template v-else-if="detail">
+          <!-- Tóm tắt: câu hỏi đầu tiên của giáo viên luôn là "dạy mấy tiết, những lớp nào" -->
+          <div class="inv__sum">
+            <div class="inv__where">
+              <strong>{{ detail.schoolName }}</strong>
+              <span>{{ detail.subjectName }}</span>
+            </div>
+            <div class="inv__facts">
+              <span class="inv__chip"
+                ><b>{{ totalPerWeek }}</b> tiết/tuần</span
+              >
+              <span class="inv__chip"
+                ><b>{{ classNames.length }}</b> lớp</span
+              >
+              <span class="inv__chip inv__chip--plain">
+                {{ fmtDate(detail.startDate) }} →
+                {{ detail.endDate ? fmtDate(detail.endDate) : 'không giới hạn' }}
+              </span>
+            </div>
+            <div v-if="classNames.length" class="inv__classes">
+              Lớp: <span v-for="c in classNames" :key="c" class="inv__class">{{ c }}</span>
+            </div>
+            <div
+              v-if="countdown"
+              class="inv__deadline"
+              :class="{ 'is-urgent': countdown.urgent, 'is-over': countdown.over }"
+            >
+              <SvgIcon name="clock" :size="14" />
+              {{ countdown.text }} để xác nhận
+            </div>
+          </div>
+
+          <!-- Lưới TKB: cột = thứ có dạy, dòng = tiết có dạy -->
+          <div class="inv__gridwrap">
+            <table v-if="rows.length" class="inv__grid">
+              <thead>
+                <tr>
+                  <th class="inv__corner">Tiết</th>
+                  <th v-for="d in days" :key="d.code">{{ d.label }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="r in rows" :key="r.periodNumber">
+                  <th class="inv__period" :class="r.afternoon ? 'pm' : 'am'">
+                    <span>{{ r.label }}</span>
+                    <small>{{ r.time }}</small>
+                  </th>
+                  <td v-for="d in days" :key="d.code">
+                    <span
+                      v-if="cellOf(d.code, r.periodNumber)"
+                      class="inv__cell"
+                      :class="r.afternoon ? 'pm' : 'am'"
+                    >
+                      {{ cellOf(d.code, r.periodNumber).className || 'Chưa gán lớp' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p v-else class="inv__state">Phiếu này chưa có tiết nào.</p>
+          </div>
+
+          <!-- Từ chối phải kèm lý do, hỏi ngay tại chỗ thay vì bắt đóng modal ra ngoài bấm -->
+          <div v-if="rejecting" class="inv__reject">
+            <label>Lý do từ chối *</label>
+            <textarea v-model="reason" rows="2" placeholder="Vì sao bạn không nhận lịch này?" />
+          </div>
+
+          <div class="inv__foot">
+            <button class="inv__link" @click="emit('open-schedule')">Xem trên lịch dạy</button>
+            <button class="inv__link" @click="printTable">In bảng</button>
+            <span class="inv__spacer" />
+            <template v-if="actionable">
+              <template v-if="rejecting">
+                <button
+                  class="inv__btn inv__btn--ghost"
+                  :disabled="busy"
+                  @click="rejecting = false"
+                >
+                  Bỏ
+                </button>
+                <button class="inv__btn inv__btn--danger" :disabled="busy" @click="submitReject">
+                  Gửi từ chối
+                </button>
+              </template>
+              <template v-else>
+                <button class="inv__btn inv__btn--ghost" :disabled="busy" @click="rejecting = true">
+                  Từ chối
+                </button>
+                <button
+                  class="inv__btn inv__btn--primary"
+                  :disabled="busy"
+                  @click="emit('confirm')"
+                >
+                  <SvgIcon name="check-all" :size="14" /> Xác nhận
+                </button>
+              </template>
+            </template>
+            <button v-else class="inv__btn inv__btn--ghost" @click="emit('close')">Đóng</button>
+          </div>
+        </template>
       </div>
-
-      <div v-if="loading" class="inv__state">Đang tải lịch dạy…</div>
-      <div v-else-if="error" class="inv__state inv__state--error">{{ error }}</div>
-
-      <template v-else-if="detail">
-        <!-- Tóm tắt: câu hỏi đầu tiên của giáo viên luôn là "dạy mấy tiết, những lớp nào" -->
-        <div class="inv__sum">
-          <div class="inv__where">
-            <strong>{{ detail.schoolName }}</strong>
-            <span>{{ detail.subjectName }}</span>
-          </div>
-          <div class="inv__facts">
-            <span class="inv__chip"
-              ><b>{{ totalPerWeek }}</b> tiết/tuần</span
-            >
-            <span class="inv__chip"
-              ><b>{{ classNames.length }}</b> lớp</span
-            >
-            <span class="inv__chip inv__chip--plain">
-              {{ fmtDate(detail.startDate) }} →
-              {{ detail.endDate ? fmtDate(detail.endDate) : 'không giới hạn' }}
-            </span>
-          </div>
-          <div v-if="classNames.length" class="inv__classes">
-            Lớp: <span v-for="c in classNames" :key="c" class="inv__class">{{ c }}</span>
-          </div>
-          <div
-            v-if="countdown"
-            class="inv__deadline"
-            :class="{ 'is-urgent': countdown.urgent, 'is-over': countdown.over }"
-          >
-            <SvgIcon name="clock" :size="14" />
-            {{ countdown.text }} để xác nhận
-          </div>
-        </div>
-
-        <!-- Lưới TKB: cột = thứ có dạy, dòng = tiết có dạy -->
-        <div class="inv__gridwrap">
-          <table v-if="rows.length" class="inv__grid">
-            <thead>
-              <tr>
-                <th class="inv__corner">Tiết</th>
-                <th v-for="d in days" :key="d.code">{{ d.label }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in rows" :key="r.periodNumber">
-                <th class="inv__period" :class="r.afternoon ? 'pm' : 'am'">
-                  <span>{{ r.label }}</span>
-                  <small>{{ r.time }}</small>
-                </th>
-                <td v-for="d in days" :key="d.code">
-                  <span
-                    v-if="cellOf(d.code, r.periodNumber)"
-                    class="inv__cell"
-                    :class="r.afternoon ? 'pm' : 'am'"
-                  >
-                    {{ cellOf(d.code, r.periodNumber).className || 'Chưa gán lớp' }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-else class="inv__state">Phiếu này chưa có tiết nào.</p>
-        </div>
-
-        <!-- Từ chối phải kèm lý do, hỏi ngay tại chỗ thay vì bắt đóng modal ra ngoài bấm -->
-        <div v-if="rejecting" class="inv__reject">
-          <label>Lý do từ chối *</label>
-          <textarea v-model="reason" rows="2" placeholder="Vì sao bạn không nhận lịch này?" />
-        </div>
-
-        <div class="inv__foot">
-          <button class="inv__link" @click="emit('open-schedule')">Xem trên lịch dạy</button>
-          <button class="inv__link" @click="printTable">In bảng</button>
-          <span class="inv__spacer" />
-          <template v-if="actionable">
-            <template v-if="rejecting">
-              <button class="inv__btn inv__btn--ghost" :disabled="busy" @click="rejecting = false">
-                Bỏ
-              </button>
-              <button class="inv__btn inv__btn--danger" :disabled="busy" @click="submitReject">
-                Gửi từ chối
-              </button>
-            </template>
-            <template v-else>
-              <button class="inv__btn inv__btn--ghost" :disabled="busy" @click="rejecting = true">
-                Từ chối
-              </button>
-              <button class="inv__btn inv__btn--primary" :disabled="busy" @click="emit('confirm')">
-                <SvgIcon name="check-all" :size="14" /> Xác nhận
-              </button>
-            </template>
-          </template>
-          <button v-else class="inv__btn inv__btn--ghost" @click="emit('close')">Đóng</button>
-        </div>
-      </template>
     </div>
-  </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -473,23 +494,80 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   color: var(--c-text);
 }
 
-/* ── In ra giấy: chỉ còn bảng, bỏ nền mờ và các nút ── */
+/* ══ IN RA GIẤY ══
+   Trải bảng thành nội dung thường của trang: bỏ lớp phủ, bỏ khung nổi, bỏ mọi thứ chỉ
+   có nghĩa trên màn hình (nút bấm, đếm ngược, ô nhập lý do). Giữ lại đúng ba phần:
+   tiêu đề — tóm tắt — lưới. */
 @media print {
   .inv-overlay {
     position: static;
+    display: block;
     padding: 0;
     background: none;
   }
   .inv {
     max-width: none;
     max-height: none;
+    padding: 0;
+    border-radius: 0;
     box-shadow: none;
     overflow: visible;
   }
   .inv__x,
   .inv__foot,
-  .inv__reject {
-    display: none;
+  .inv__reject,
+  .inv__deadline {
+    display: none !important;
+  }
+  /* Khối tóm tắt bỏ nền xám: máy in mặc định KHÔNG in nền, để lại thì ra một mảng trắng
+     lệch hẳn so với phần còn lại. */
+  .inv__sum {
+    padding: 0 0 0.4rem;
+    background: none;
+  }
+  .inv__chip {
+    padding: 0;
+    background: none;
+  }
+  .inv__chip::after {
+    content: ' · ';
+  }
+  .inv__chip:last-child::after {
+    content: '';
+  }
+  /* Viền đen mảnh thay cho màu token — bản in không phụ thuộc chế độ sáng/tối. */
+  .inv__grid th,
+  .inv__grid td {
+    border-color: #999;
+  }
+  .inv__grid thead th {
+    background: none;
+    border-bottom-width: 2px;
+  }
+  .inv__cell {
+    background: none !important;
+  }
+  .inv__grid {
+    page-break-inside: avoid;
+  }
+}
+</style>
+
+<!-- KHÔNG scoped: luật dưới đây phải với tới các thẻ ANH EM của bảng (sidebar, chuông,
+     nội dung trang) — thứ mà CSS scoped của component không chạm được. -->
+<style>
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 14mm;
+  }
+  /* Chỉ áp khi bảng ĐANG MỞ (component tự gắn/gỡ class inv-printing lên body). Không có
+     điều kiện này thì mọi lần Ctrl+P ở trang bất kỳ đều ra giấy trắng. */
+  body.inv-printing > *:not(.inv-overlay) {
+    display: none !important;
+  }
+  body.inv-printing {
+    background: #fff;
   }
 }
 </style>
