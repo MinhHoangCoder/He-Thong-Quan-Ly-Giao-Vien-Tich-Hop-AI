@@ -141,30 +141,56 @@ function branchName(branchId) {
 }
 
 /* ── Validate (mirror SchoolRequest phía backend) ── */
-const PHONE_RE = /^$|^(\+84|0)\d{9,10}$/
+const PHONE_RE = /^\d{10}$/ // chỉ số, không dấu +, không khoảng trắng
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const NAME_RE = /^[A-Za-zÀ-ỹĐđ]+(\s[A-Za-zÀ-ỹĐđ]+)*$/ // chỉ chữ cái + 1 khoảng trắng giữa các từ, không số/ký tự đặc biệt, không thừa dấu cách
 
 function validateForm(form) {
   const errors = {}
   const name = form.name.trim()
+  const address = form.address.trim()
+  const phone = form.phone.trim()
+  const contactPerson = form.contactPerson.trim()
 
   if (!form.branchId) errors.branchId = 'Vui lòng chọn chi nhánh phụ trách'
+
   if (!name) errors.name = 'Tên trường không được để trống'
   else if (name.length > 200) errors.name = 'Tên tối đa 200 ký tự'
-  if (form.address && form.address.length > 255) errors.address = 'Địa chỉ tối đa 255 ký tự'
-  if (form.phone && !PHONE_RE.test(form.phone)) errors.phone = 'Số điện thoại không hợp lệ'
-  if (form.email && !EMAIL_RE.test(form.email)) errors.email = 'Email không hợp lệ'
-  if (form.contactPerson && form.contactPerson.length > 150)
-    errors.contactPerson = 'Tên người liên hệ tối đa 150 ký tự'
-  if (
+  else if (!NAME_RE.test(name))
+    errors.name = 'Tên trường chỉ được chứa chữ cái và khoảng trắng, không chứa số hoặc ký tự đặc biệt'
+
+  if (!address) errors.address = 'Địa chỉ không được để trống'
+  else if (address.length > 255) errors.address = 'Địa chỉ tối đa 255 ký tự'
+
+  if (!phone) errors.phone = 'Số điện thoại không được để trống'
+  else if (!PHONE_RE.test(phone)) errors.phone = 'Số điện thoại chỉ được nhập số (10 chữ số)'
+
+  if (!form.email) errors.email = 'Email không được để trống'
+  else if (!EMAIL_RE.test(form.email)) errors.email = 'Email không hợp lệ'
+
+  if (!contactPerson) errors.contactPerson = 'Người liên hệ không được để trống'
+  else if (contactPerson.length > 150) errors.contactPerson = 'Tên người liên hệ tối đa 150 ký tự'
+  else if (!NAME_RE.test(contactPerson))
+    errors.contactPerson =
+      'Người liên hệ chỉ được chứa chữ cái và khoảng trắng, không chứa số hoặc ký tự đặc biệt'
+
+  if (!form.contractStartDate) errors.contractStartDate = 'Ngày bắt đầu hợp đồng không được để trống'
+
+  if (!form.contractEndDate) errors.contractEndDate = 'Ngày hết hạn hợp đồng không được để trống'
+  else if (
     form.contractStartDate &&
-    form.contractEndDate &&
     form.contractEndDate < form.contractStartDate
   ) {
     errors.contractEndDate = 'Ngày kết thúc phải sau ngày bắt đầu'
   }
 
   return errors
+}
+
+/** Chặn nhập ký tự không phải số ở ô SĐT ngay khi gõ. */
+function onPhoneInput(e) {
+  modal.form.phone = e.target.value.replace(/\D/g, '')
+  clearFieldError('phone')
 }
 
 /* ── Modal tạo/sửa ── */
@@ -216,10 +242,11 @@ async function saveModal() {
   const body = {
     ...modal.form,
     branchId: Number(modal.form.branchId),
-    address: modal.form.address || null,
-    phone: modal.form.phone || null,
+    name: modal.form.name.trim(),
+    address: modal.form.address.trim() || null,
+    phone: modal.form.phone.trim() || null,
     email: modal.form.email || null,
-    contactPerson: modal.form.contactPerson || null,
+    contactPerson: modal.form.contactPerson.trim() || null,
     contractStartDate: modal.form.contractStartDate || null,
     contractEndDate: modal.form.contractEndDate || null,
   }
@@ -436,7 +463,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
         </div>
 
         <div class="form-group">
-          <label>Địa chỉ</label>
+          <label>Địa chỉ *</label>
           <input
             v-model="modal.form.address"
             placeholder="VD: Lê Chân, Hải Phòng"
@@ -448,18 +475,19 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
 
         <div class="form-row">
           <div class="form-group">
-            <label>Số điện thoại</label>
+            <label>Số điện thoại *</label>
             <input
-              v-model="modal.form.phone"
+              :value="modal.form.phone"
               placeholder="10 số"
+              inputmode="numeric"
               :class="{ 'input-error': modal.errors.phone }"
-              @input="clearFieldError('phone')"
+              @input="onPhoneInput"
             />
             <small v-if="modal.errors.phone" class="field-error">{{ modal.errors.phone }}</small>
           </div>
 
           <div class="form-group">
-            <label>Email</label>
+            <label>Email *</label>
             <input
               v-model="modal.form.email"
               placeholder="school@example.com"
@@ -471,7 +499,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
         </div>
 
         <div class="form-group">
-          <label>Người liên hệ</label>
+          <label>Người liên hệ *</label>
           <input
             v-model="modal.form.contactPerson"
             placeholder="VD: Cô Nguyễn Thu Hằng"
@@ -485,12 +513,20 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
 
         <div class="form-row">
           <div class="form-group">
-            <label>Ngày bắt đầu hợp đồng</label>
-            <input v-model="modal.form.contractStartDate" type="date" />
+            <label>Ngày bắt đầu hợp đồng *</label>
+            <input
+              v-model="modal.form.contractStartDate"
+              type="date"
+              :class="{ 'input-error': modal.errors.contractStartDate }"
+              @input="clearFieldError('contractStartDate')"
+            />
+            <small v-if="modal.errors.contractStartDate" class="field-error">{{
+              modal.errors.contractStartDate
+            }}</small>
           </div>
 
           <div class="form-group">
-            <label>Ngày hết hạn hợp đồng</label>
+            <label>Ngày hết hạn hợp đồng *</label>
             <input
               v-model="modal.form.contractEndDate"
               type="date"

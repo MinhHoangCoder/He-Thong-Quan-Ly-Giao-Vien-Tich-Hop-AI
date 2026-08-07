@@ -9,7 +9,6 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
-import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.transaction.Transactional;
@@ -27,7 +26,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -37,8 +35,6 @@ public class TeacherService {
     private final CertificateRepository ceRepo;
     private final ContractRepository contractRepo;
     private final AppUserRepository appUserRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final RefreshTokenRepository refreshTokenRepo;
     private static final Path UPLOAD_ROOT =
             Paths.get("uploads/teachers").toAbsolutePath().normalize();
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
@@ -47,15 +43,11 @@ public class TeacherService {
             TeacherRepository teacherRepo,
             CertificateRepository ceRepo,
             ContractRepository contractRepo,
-            AppUserRepository appUserRepository,
-            PasswordEncoder passwordEncoder,
-            RefreshTokenRepository refreshTokenRepo) {
+            AppUserRepository appUserRepository) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
         this.appUserRepository = appUserRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.refreshTokenRepo = refreshTokenRepo;
     }
 
     // DANH SÁCH  ======================================
@@ -155,7 +147,7 @@ public class TeacherService {
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
 
-        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail(), null);
+        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail());
 
         return toResponse(teacherRepo.save(t), true);
     }
@@ -190,16 +182,17 @@ public class TeacherService {
     @Transactional
     public TeacherResponse.Response updateAccount(Integer teacherId, TeacherResponse.AccountUpdateRequest req) {
         Teacher t = findActiveOrThrow(teacherId);
-        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail(), req.getPassword());
+        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail());
         return toResponse(t, true);
     }
 
-    //   Đồng bộ username/email/password sang bảng AppUser — dùng CHUNG cho updateTeacher() và
+    //   Đồng bộ username/email sang bảng AppUser — dùng CHUNG cho updateTeacher() và
     //  updateAccount() để không viết trùng logic check-trùng 2 nơi.
-    //  newUsername/newEmail/newPassword để trống (null hoặc "") nghĩa là GIỮ NGUYÊN, không đổi.
-    //  Mật khẩu mới LUÔN được băm lại bằng BCrypt trước khi lưu — không bao giờ lưu thô.
+    //  newUsername/newEmail để trống (null hoặc "") nghĩa là GIỮ NGUYÊN, không đổi.
+    //  Mật khẩu KHÔNG thuộc phạm vi của Teacher module — việc tạo/đổi mật khẩu do
+    //  module Auth (RegistrationService, PasswordResetService, ChangePasswordRequest) lo.
 
-    private AppUser syncAppUserAccount(Integer appUserId, String newUsername, String newEmail, String newPassword) {
+    private AppUser syncAppUserAccount(Integer appUserId, String newUsername, String newEmail) {
         AppUser au = appUserRepository
                 .findById(appUserId)
                 .orElseThrow(() -> new ApiException(
@@ -225,20 +218,7 @@ public class TeacherService {
                 userChanged = true;
             }
         }
-        // Admin đặt mật khẩu mới hộ GV — không cần biết mật khẩu cũ (khác với self change-password).
-        boolean passwordChanged = newPassword != null && !newPassword.isBlank();
-        if (passwordChanged) {
-            au.setPasswordHash(passwordEncoder.encode(newPassword));
-            userChanged = true;
-        }
         if (userChanged) appUserRepository.save(au);
-
-        // Đổi mật khẩu mà KHÔNG thu hồi phiên thì gần như vô nghĩa: refresh token cũ sống 7 ngày
-        // nên kẻ đang chiếm phiên vẫn xin được access token mới bằng mật khẩu cũ đã bị thay.
-        // Mà admin đặt lại mật khẩu hộ thường chính vì nghi tài khoản bị lộ.
-        if (passwordChanged) {
-            refreshTokenRepo.revokeAllActiveByAppUserId(au.getId(), Instant.now());
-        }
         return au;
     }
     // delete (Chỉ Admin xóa) (ẩn khỏi ds)

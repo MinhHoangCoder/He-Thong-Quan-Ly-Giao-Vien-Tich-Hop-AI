@@ -9,9 +9,8 @@ import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
-import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
 /* ══════════════════════════════════════════════════════════
-   PHÂN QUYỀN THEO VAI TRÒjdnjdnvjdnsdjnvd
+   PHÂN QUYỀN THEO VAI TRÒ
    ADMIN / EMPLOYEE: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
    TEACHER: chỉ xem + sửa — KHÔNG có nút "Xóa" và tab "Lịch sử".
 ══════════════════════════════════════════════════════════ */
@@ -24,7 +23,6 @@ const canManage = computed(() => auth.roles.some((r) => ['ADMIN', 'EMPLOYEE'].in
 const loading = ref(false)
 const teachers = ref([])
 const branches = ref([])
-const showPassword = ref(false)
 
 // Bộ lọc
 const filters = reactive({
@@ -174,11 +172,19 @@ const DEGREE_LEVELS = ['Thạc sỹ', 'Cử nhân', 'Cao đẳng', 'Trung cấp'
 const MAJOR_GROUPS = [
   {
     label: 'Tin học',
-    options: ['Công nghệ thông tin', 'Khoa học máy tính', 'Sư phạm Tin học', 'Kỹ thuật phần mềm'],
+    options: [ 'Công nghệ thông tin',
+      'Khoa học máy tính',
+      'Kỹ thuật phần mềm',
+      'Hệ thống thông tin',
+      'Mạng máy tính và truyền thông dữ liệu',
+      'An toàn thông tin',
+      'Kỹ thuật máy tính',
+      'Tin học ứng dụng',
+      'Sư phạm Tin học',],
   },
   {
     label: 'Tiếng Anh',
-    options: ['Sư phạm Tiếng Anh', 'Ngôn ngữ Anh', 'Ngôn ngữ học ứng dụng'],
+    options: ['Sư phạm Tiếng Anh', 'Ngôn ngữ Anh'],
   },
   {
     label: 'STEM - AI',
@@ -192,7 +198,7 @@ const MAJOR_GROUPS = [
   },
   {
     label: 'Kĩ năng sống',
-    options: ['Tâm lý học', 'Giáo dục học', 'Công tác xã hội', 'Sư phạm Giáo dục công dân'],
+    options: ['Sư phạm Giáo dục công dân', 'Giáo dục kỹ năng sống'],
   },
 ]
 const MAJOR_OTHER = '__OTHER__'
@@ -229,7 +235,7 @@ const createModal = reactive({
   saving: false,
   error: '',
   activeTab: 'profile',
-  account: { username: '', email: '', password: '' },
+  account: { username: '', email: '' },
   profile: {
     branchId: '',
     lastName: '',
@@ -249,7 +255,6 @@ const createModal = reactive({
 const createFieldErrors = reactive({
   username: '',
   email: '',
-  password: '',
   lastName: '',
   firstName: '',
   phone: '',
@@ -287,20 +292,6 @@ function validateEmail() {
     return false
   }
   createFieldErrors.email = ''
-  return true
-}
-
-function validateCreatePassword() {
-  const v = createModal.account.password
-  if (!v) {
-    createFieldErrors.password = 'Không được để trống'
-    return false
-  }
-  if (!isStrongPassword(v)) {
-    createFieldErrors.password = `Chưa đủ mạnh: ${PASSWORD_HINT}`
-    return false
-  }
-  createFieldErrors.password = ''
   return true
 }
 
@@ -376,7 +367,6 @@ function validateAllCreateFields() {
   const results = [
     validateUsername(),
     validateEmail(),
-    validateCreatePassword(),
     validateLastName(),
     validateFirstName(),
     validatePhone(),
@@ -401,7 +391,7 @@ function openCreate() {
   createModal.error = ''
   createModal.saving = false
   Object.keys(createFieldErrors).forEach((k) => (createFieldErrors[k] = ''))
-  createModal.account = { username: '', email: '', password: '' }
+  createModal.account = { username: '', email: '' }
   createModal.profile = {
     branchId: branches.value[0]?.id || '',
     lastName: '',
@@ -434,7 +424,6 @@ async function submitCreate() {
       role: 'TEACHER',
       username: a.username,
       email: a.email,
-      password: a.password,
       firstName: p.firstName,
       lastName: p.lastName,
       phone: p.phone,
@@ -639,7 +628,6 @@ const editModal = reactive({
     address: '',
     dateOfBirth: '',
     hireDate: '',
-    password: '',
     gender: null,
   },
   // Bằng cấp ĐÃ LƯU (BE dùng chung 1 bảng Certificate) + form thêm mới — gộp chung
@@ -656,23 +644,7 @@ const editFieldErrors = reactive({
   idCardNo: '',
   dateOfBirth: '',
   hireDate: '',
-  password: '',
 })
-
-/**
- * Ô mật khẩu ở tab Tài khoản: BỎ TRỐNG = giữ nguyên mật khẩu cũ, nên rỗng vẫn hợp lệ.
- * Có gõ thì phải đủ mạnh — cùng chính sách với backend (@Pattern ở AccountUpdateRequest)
- * và với các form khác trong dự án.
- */
-function validateEditPassword() {
-  const v = editModal.form.password
-  if (v && !isStrongPassword(v)) {
-    editFieldErrors.password = `Chưa đủ mạnh: ${PASSWORD_HINT}`
-    return false
-  }
-  editFieldErrors.password = ''
-  return true
-}
 
 function validateEditLastName() {
   const v = editModal.form.lastName.trim()
@@ -753,7 +725,6 @@ async function openEdit(teacher) {
     lastName: teacher.lastName,
     username: '',
     email: '',
-    password: '',
     status: teacher.status,
     employmentType: teacher.employmentType || '',
     phone: teacher.phone || '',
@@ -824,11 +795,10 @@ async function saveEdit() {
     validateEditPhone(),
     validateEditIdCard(),
     validateEditDates(),
-    validateEditPassword(),
   ].every(Boolean)
   if (!ok) {
     editModal.error = 'Vui lòng kiểm tra lại các trường bị đánh dấu đỏ.'
-    editModal.activeTab = 'profile' // mọi ô có validate (kể cả mật khẩu) đều nằm ở tab này
+    editModal.activeTab = 'profile'
     return
   }
 
@@ -854,16 +824,8 @@ async function saveEdit() {
       accountPayload.email = editModal.form.email.trim()
     }
 
-    // Mật khẩu: để TRỐNG = giữ nguyên mật khẩu cũ (backend hiểu chuỗi rỗng như vậy).
-    // Chỉ gửi khi người dùng thực sự gõ vào ô này.
-    if (editModal.form.password) {
-      accountPayload.password = editModal.form.password
-    }
-
     if (Object.keys(accountPayload).length > 0) {
       await teacherApi.updateAccount(editModal.id, accountPayload)
-      // Không giữ mật khẩu trong bộ nhớ form sau khi đã lưu xong.
-      editModal.form.password = ''
     }
 
     // Bằng cấp/chứng chỉ mới thêm — tạo record trước, upload file PDF thật ngay sau.
@@ -1375,28 +1337,6 @@ function formatDate(d) {
                       }}</span>
                     </div>
                   </div>
-                  <div class="form-field">
-                    <label class="form-label"
-                      >Mật khẩu <span class="req">*</span>
-                      <input
-                        v-model="createModal.account.password"
-                        :type="showPassword ? 'text' : 'password'"
-                        class="form-input"
-                        :class="{ 'form-input--error': createFieldErrors.password }"
-                        placeholder="Ít nhất 8 ký tự, có hoa/thường/số"
-                        @blur="validateCreatePassword"
-                      />
-                    </label>
-
-                    <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
-                      <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
-                    </label>
-
-                    <span v-if="createFieldErrors.password" class="field-error">{{
-                      createFieldErrors.password
-                    }}</span>
-                  </div>
-
                   <h4 class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
                   <div class="form-row">
                     <div class="form-field">
@@ -1734,28 +1674,6 @@ function formatDate(d) {
                           class="form-input"
                           placeholder="VD: gv@tsdms.local"
                         />
-                      </label>
-                    </div>
-
-                    <div class="form-field">
-                      <label class="form-label">
-                        Mật khẩu
-                        <input
-                          v-model="editModal.form.password"
-                          :type="showPassword ? 'text' : 'password'"
-                          class="form-input"
-                          :class="{ 'form-input--error': editFieldErrors.password }"
-                          placeholder="Để trống nếu không đổi mật khẩu"
-                          autocomplete="new-password"
-                          @blur="validateEditPassword"
-                        />
-                      </label>
-                      <span v-if="editFieldErrors.password" class="field-error">{{
-                        editFieldErrors.password
-                      }}</span>
-
-                      <label style="margin-top: 4px; display: flex; align-items: center; gap: 6px">
-                        <input type="checkbox" v-model="showPassword" /> Hiện mật khẩu
                       </label>
                     </div>
                   </div>
