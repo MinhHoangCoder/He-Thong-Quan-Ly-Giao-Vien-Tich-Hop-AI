@@ -1,9 +1,11 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.dto.AssignmentInviteDetail;
 import com.kdc.tsdms.dto.NotificationCancelRequest;
 import com.kdc.tsdms.dto.NotificationListResponse;
 import com.kdc.tsdms.dto.NotificationResponse;
 import com.kdc.tsdms.service.AssignmentApprovalService;
+import com.kdc.tsdms.service.AssignmentService;
 import com.kdc.tsdms.service.NotificationService;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,10 +25,15 @@ public class NotificationController {
 
     private final NotificationService service;
     private final AssignmentApprovalService approvalService;
+    private final AssignmentService assignmentService;
 
-    public NotificationController(NotificationService service, AssignmentApprovalService approvalService) {
+    public NotificationController(
+            NotificationService service,
+            AssignmentApprovalService approvalService,
+            AssignmentService assignmentService) {
         this.service = service;
         this.approvalService = approvalService;
+        this.assignmentService = assignmentService;
     }
 
     /** Danh sách thông báo + số chưa đọc. */
@@ -51,6 +58,19 @@ public class NotificationController {
     @PostMapping("/read-all")
     public NotificationListResponse markAllRead() {
         return service.markAllRead();
+    }
+
+    /**
+     * Bảng LỊCH DẠY CHI TIẾT của lời mời trong thông báo (thứ + tiết + lớp) — giáo viên bấm vào
+     * dòng thông báo để xem thay vì đọc một dòng chữ dài.
+     *
+     * <p>Không gắn @PreAuthorize theo quyền quản trị: giáo viên vốn không có ASSIGNMENT_VIEW.
+     * Chốt chặn là quyền sở hữu THÔNG BÁO — {@code ownedAssignmentId} chỉ trả phân công của
+     * thông báo gửi cho chính người đang gọi.
+     */
+    @GetMapping("/{id}/assignment")
+    public AssignmentInviteDetail assignmentDetail(@PathVariable Long id) {
+        return assignmentService.inviteDetail(service.ownedAssignmentId(id));
     }
 
     /** Giáo viên XÁC NHẬN nhận lịch dạy → phân công có hiệu lực, lịch mới hiện ở màn giáo viên. */
