@@ -258,7 +258,7 @@ CREATE TABLE SubjectCategory (
              TeacherSubject; được Assignment tham chiếu.                          */
 CREATE TABLE Subject (
     Id           INT IDENTITY PRIMARY KEY,
-    Code         VARCHAR(20)   NOT NULL UNIQUE,      -- mã môn, vd: STEM01, CDS01
+    Code         VARCHAR(20)   NOT NULL,             -- mã môn, vd: STEM01, CDS01 (UNIQUE có lọc bên dưới)
     Name         NVARCHAR(150) NOT NULL,            -- tên môn
     CategoryId   INT           NULL,                -- → SubjectCategory (nhóm môn)
     Description  NVARCHAR(500) NULL,
@@ -275,6 +275,8 @@ CREATE TABLE Subject (
 );
 CREATE INDEX IX_Subject_Name     ON Subject(Name);        -- tìm môn theo tên
 CREATE INDEX IX_Subject_Category ON Subject(CategoryId);  -- lọc môn theo nhóm
+-- Mã môn DUY NHẤT, nhưng chỉ tính trên môn CHƯA xóa mềm (cho phép dùng lại mã của môn đã xóa).
+CREATE UNIQUE INDEX UX_Subject_Code ON Subject(Code) WHERE IsDeleted = 0;
 
 
 /* #####################################################################
