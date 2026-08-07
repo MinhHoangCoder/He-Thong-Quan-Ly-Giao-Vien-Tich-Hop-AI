@@ -26,6 +26,9 @@ public class AssignmentSlotResponse {
     /** Số thứ tự tiết trong ngày của trường đó, vd: 1, 2, 3... */
     public Short periodNumber;
 
+    /** Số tiết trong BUỔI (chiều đánh lại từ 1) — nhãn "C·T5" trên danh sách lấy từ đây. */
+    public Short indexInSession;
+
     /** MORNING | AFTERNOON */
     public String sessionType;
 
@@ -48,19 +51,13 @@ public class AssignmentSlotResponse {
      * Factory method tổng hợp từ entity AssignmentSlot + entity Period (join thủ công).
      * Service gọi sau khi đã load cả 2 entity riêng.
      *
-     * @param slot   entity AssignmentSlot
+     * @param slot slot entity AssignmentSlot
      * @param period entity Period tương ứng (có thể null nếu Period bị xóa mềm)
-     */
-    public static AssignmentSlotResponse fromEntity(AssignmentSlot slot, Period period) {
-        return fromEntity(slot, period, null);
-    }
-
-    /**
-     * Bản đầy đủ: kèm tên lớp của slot (Service tra {@code SchoolClass} rồi truyền vào).
-     *
      * @param className tên lớp dạy ở tiết này (null nếu slot chưa gắn lớp)
+     * @param indexInSession tiết thứ mấy trong buổi — Service tính bằng {@code PeriodSessionIndex}
      */
-    public static AssignmentSlotResponse fromEntity(AssignmentSlot slot, Period period, String className) {
+    public static AssignmentSlotResponse fromEntity(
+            AssignmentSlot slot, Period period, String className, Short indexInSession) {
         AssignmentSlotResponse r = new AssignmentSlotResponse();
         r.id = slot.getId();
         r.assignmentId = slot.getAssignmentId();
@@ -73,6 +70,7 @@ public class AssignmentSlotResponse {
         // Gắn thêm thông tin tiết học nếu Period còn tồn tại
         if (period != null) {
             r.periodNumber = period.getPeriodNumber();
+            r.indexInSession = indexInSession;
             r.sessionType = period.getSessionType();
             r.startTime = period.getStartTime();
             r.endTime = period.getEndTime();

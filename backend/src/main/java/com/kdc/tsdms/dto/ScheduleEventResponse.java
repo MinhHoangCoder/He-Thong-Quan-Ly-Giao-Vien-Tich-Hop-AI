@@ -26,7 +26,12 @@ public class ScheduleEventResponse {
     public Integer subjectId;
     public String subjectName;
     public Integer periodId;
+
+    /** Số tiết trong NGÀY (1..n) của trường đó. */
     public Short periodNumber;
+
+    /** Số tiết trong BUỔI (chiều đánh lại từ 1) — nhãn "Chiều · Tiết 5" lấy từ đây. */
+    public Short indexInSession;
 
     /** MORNING | AFTERNOON */
     public String sessionType;

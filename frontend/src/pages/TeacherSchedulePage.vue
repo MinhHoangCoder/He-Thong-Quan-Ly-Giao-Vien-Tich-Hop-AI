@@ -13,12 +13,11 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { scheduleApi } from '@/api/schedules'
-import { tietLabel } from '@/utils/period'
+import { tietLabel, periodRows } from '@/utils/period'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import Pagination from '@/components/ui/Pagination.vue'
 
 const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] // index 0 = Thứ 2, cuối là Chủ nhật
-const PERIODS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 /* ── Date helpers (local) ── */
 const iso = (d) =>
@@ -188,6 +187,9 @@ const weekDays = computed(() => {
 function cellEvents(period, dayIso) {
   return (eventsByDate.value[dayIso] || []).filter((e) => e.periodNumber === period)
 }
+// Dòng của lưới tuần bám khung tiết THẬT trong dữ liệu — GV dạy nhiều trường thì lưới
+// lấy theo trường có nhiều tiết nhất (tiểu học 10 tiết).
+const weekPeriodRows = computed(() => periodRows(events.value))
 
 /* ── Chi tiết ngày (chế độ tháng) ── */
 const selectedEvents = computed(() => eventsByDate.value[selectedIso.value] || [])
@@ -338,7 +340,8 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
           <div class="timeline__body">
             <strong>{{ t.subjectName }}</strong>
             <small>
-              {{ tietLabel(t.periodNumber, t.sessionType) }} · {{ t.schoolName }}
+              {{ tietLabel(t.periodNumber, t.sessionType, t.indexInSession) }} ·
+              {{ t.schoolName }}
               <template v-if="t.className"> · Lớp {{ t.className }}</template>
             </small>
           </div>
@@ -400,18 +403,22 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in PERIODS" :key="p" :class="{ 'week-sep': p === 6 }">
-            <td class="wperiod">{{ tietLabel(p) }}</td>
+          <tr
+            v-for="row in weekPeriodRows"
+            :key="row.periodNumber"
+            :class="{ 'week-sep': row.firstOfSession }"
+          >
+            <td class="wperiod">{{ row.label }}</td>
             <td v-for="d in weekDays" :key="d.iso" class="wcell">
               <button
-                v-for="e in cellEvents(p, d.iso)"
+                v-for="e in cellEvents(row.periodNumber, d.iso)"
                 :key="e.id"
                 class="wchip"
                 :style="{
                   background: subjectColor(e.subjectId) + '17',
                   borderLeftColor: subjectColor(e.subjectId),
                 }"
-                :title="`${tietLabel(e.periodNumber, e.sessionType)} · ${e.subjectName} · ${e.schoolName}${e.className ? ' · Lớp ' + e.className : ''} — bấm để mở bài giảng`"
+                :title="`${tietLabel(e.periodNumber, e.sessionType, e.indexInSession)} · ${e.subjectName} · ${e.schoolName}${e.className ? ' · Lớp ' + e.className : ''} — bấm để mở bài giảng`"
                 @click="openLessons(e)"
               >
                 <span class="wchip__subj">{{ e.subjectName }}</span>
@@ -476,7 +483,9 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
                 class="evrow"
                 :class="e.sessionType === 'AFTERNOON' ? 'pm' : 'am'"
               >
-                <span class="evrow__period">{{ tietLabel(e.periodNumber, e.sessionType) }}</span>
+                <span class="evrow__period">{{
+                  tietLabel(e.periodNumber, e.sessionType, e.indexInSession)
+                }}</span>
                 <span class="evrow__subject">{{ e.subjectName }}</span>
                 <span class="evrow__class">{{ e.className || '—' }}</span>
                 <button

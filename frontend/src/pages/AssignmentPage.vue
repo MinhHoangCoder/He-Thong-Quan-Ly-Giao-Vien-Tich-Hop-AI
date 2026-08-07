@@ -415,7 +415,9 @@ function slotLabel(s) {
   const d = DAYS.find((x) => x.code === s.dayOfWeek)?.label ?? s.dayOfWeek
   const p = scoped.periods.find((x) => x.id === s.periodId)
   const c = scoped.classes.find((x) => Number(x.id) === Number(s.classId))
-  const tiet = p ? tietLabel(p.periodNumber, p.sessionType) : 'Tiết #' + s.periodId
+  const tiet = p
+    ? tietLabel(p.periodNumber, p.sessionType, p.indexInSession)
+    : 'Tiết #' + s.periodId
   return `${d} · ${tiet} · ${c ? c.name : 'Lớp #' + s.classId}`
 }
 
@@ -571,7 +573,7 @@ function hhmm(t) {
 function sideLabel(s) {
   if (!s) return '—'
   const where = [s.schoolName, s.className, s.subjectName].filter(Boolean).join(' · ')
-  return `${where} · ${tietShort(s.periodNumber, s.sessionType)} (${hhmm(s.startTime)}–${hhmm(s.endTime)}) · #${s.assignmentId}`
+  return `${where} · ${tietShort(s.periodNumber, s.sessionType, s.indexInSession)} (${hhmm(s.startTime)}–${hhmm(s.endTime)}) · #${s.assignmentId}`
 }
 
 /* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
@@ -798,7 +800,8 @@ async function confirmPurge() {
             </td>
             <td>
               <span v-for="s in a.slots" :key="s.id" class="chip"
-                >{{ s.dayOfWeekLabel }} · {{ tietShort(s.periodNumber, s.sessionType)
+                >{{ s.dayOfWeekLabel }} ·
+                {{ tietShort(s.periodNumber, s.sessionType, s.indexInSession)
                 }}<template v-if="s.className"> · {{ s.className }}</template></span
               >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
@@ -944,7 +947,7 @@ async function confirmPurge() {
                 :value="p.id"
                 :disabled="!!periodConflict(p, modal.slotDraft.dayOfWeek)"
               >
-                {{ tietLabel(p.periodNumber, p.sessionType)
+                {{ tietLabel(p.periodNumber, p.sessionType, p.indexInSession)
                 }}{{ periodTakenSuffix(p, modal.slotDraft.dayOfWeek) }}
               </option>
             </select>

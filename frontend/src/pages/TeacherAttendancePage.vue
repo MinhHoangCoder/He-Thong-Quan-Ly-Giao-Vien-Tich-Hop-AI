@@ -168,7 +168,7 @@ const totalHours = computed(() =>
           <tr v-for="r in pagedRows" :key="r.id">
             <td class="mono">{{ r.workDate }}</td>
             <td>{{ weekdayLabel(r.workDate) }}</td>
-            <td>{{ tietLabel(r.periodNumber, r.sessionType) || '—' }}</td>
+            <td>{{ tietLabel(r.periodNumber, r.sessionType, r.indexInSession) || '—' }}</td>
             <td>{{ r.schoolName ?? '—' }}</td>
             <td>{{ r.className ? 'Lớp ' + r.className : '—' }}</td>
             <td class="font-medium">{{ r.subjectName ?? '—' }}</td>

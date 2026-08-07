@@ -41,6 +41,9 @@ public class AttendanceResponse {
     public Integer periodId;
     public Short periodNumber;
 
+    /** Số tiết trong BUỔI (chiều đánh lại từ 1) — nhãn "Chiều · Tiết 5" lấy từ đây. */
+    public Short indexInSession;
+
     /** MORNING | AFTERNOON */
     public String sessionType;
 

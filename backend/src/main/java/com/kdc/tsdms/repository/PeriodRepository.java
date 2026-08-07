@@ -12,4 +12,7 @@ public interface PeriodRepository extends JpaRepository<Period, Integer> {
 
     /** Tra một tiết cụ thể của trường. */
     Optional<Period> findBySchoolIdAndPeriodNumberAndDeletedFalse(Integer schoolId, Short periodNumber);
+
+    /** Số tiết của một BUỔI (MORNING|AFTERNOON) — dùng quy đổi "tiết thứ mấy trong buổi". */
+    int countBySchoolIdAndSessionTypeAndDeletedFalse(Integer schoolId, String sessionType);
 }
