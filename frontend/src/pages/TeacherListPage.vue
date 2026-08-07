@@ -172,7 +172,8 @@ const DEGREE_LEVELS = ['Thạc sỹ', 'Cử nhân', 'Cao đẳng', 'Trung cấp'
 const MAJOR_GROUPS = [
   {
     label: 'Tin học',
-    options: [ 'Công nghệ thông tin',
+    options: [
+      'Công nghệ thông tin',
       'Khoa học máy tính',
       'Kỹ thuật phần mềm',
       'Hệ thống thông tin',
@@ -180,7 +181,8 @@ const MAJOR_GROUPS = [
       'An toàn thông tin',
       'Kỹ thuật máy tính',
       'Tin học ứng dụng',
-      'Sư phạm Tin học',],
+      'Sư phạm Tin học',
+    ],
   },
   {
     label: 'Tiếng Anh',

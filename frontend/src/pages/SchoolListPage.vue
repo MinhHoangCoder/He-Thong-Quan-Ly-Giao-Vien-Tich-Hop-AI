@@ -157,7 +157,8 @@ function validateForm(form) {
   if (!name) errors.name = 'Tên trường không được để trống'
   else if (name.length > 200) errors.name = 'Tên tối đa 200 ký tự'
   else if (!NAME_RE.test(name))
-    errors.name = 'Tên trường chỉ được chứa chữ cái và khoảng trắng, không chứa số hoặc ký tự đặc biệt'
+    errors.name =
+      'Tên trường chỉ được chứa chữ cái và khoảng trắng, không chứa số hoặc ký tự đặc biệt'
 
   if (!address) errors.address = 'Địa chỉ không được để trống'
   else if (address.length > 255) errors.address = 'Địa chỉ tối đa 255 ký tự'
@@ -174,13 +175,11 @@ function validateForm(form) {
     errors.contactPerson =
       'Người liên hệ chỉ được chứa chữ cái và khoảng trắng, không chứa số hoặc ký tự đặc biệt'
 
-  if (!form.contractStartDate) errors.contractStartDate = 'Ngày bắt đầu hợp đồng không được để trống'
+  if (!form.contractStartDate)
+    errors.contractStartDate = 'Ngày bắt đầu hợp đồng không được để trống'
 
   if (!form.contractEndDate) errors.contractEndDate = 'Ngày hết hạn hợp đồng không được để trống'
-  else if (
-    form.contractStartDate &&
-    form.contractEndDate < form.contractStartDate
-  ) {
+  else if (form.contractStartDate && form.contractEndDate < form.contractStartDate) {
     errors.contractEndDate = 'Ngày kết thúc phải sau ngày bắt đầu'
   }
 

@@ -580,11 +580,7 @@ async function saveModal() {
   modal.error = ''
   try {
     // Chặn trùng tên lớp ở cùng trường trước khi gửi
-    const dup = await isDuplicateClass(
-      schoolId,
-      name,
-      modal.mode === 'edit' ? modal.id : null,
-    )
+    const dup = await isDuplicateClass(schoolId, name, modal.mode === 'edit' ? modal.id : null)
     if (dup) {
       modal.errors = {
         ...modal.errors,
