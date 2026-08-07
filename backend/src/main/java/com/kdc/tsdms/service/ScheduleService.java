@@ -128,6 +128,7 @@ public class ScheduleService {
         Map<Integer, Subject> subjectCache = new HashMap<>();
         Map<Integer, Period> periodCache = new HashMap<>();
         Map<Integer, AssignmentSlot> slotCache = new HashMap<>();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
 
         List<ScheduleEventResponse> out = new ArrayList<>();
         for (Schedule s : schedules) {
@@ -175,6 +176,7 @@ public class ScheduleService {
                 if (p != null) {
                     e.periodId = p.getId();
                     e.periodNumber = p.getPeriodNumber();
+                    e.indexInSession = sessionIndex.of(p);
                     e.sessionType = p.getSessionType();
                 }
             }

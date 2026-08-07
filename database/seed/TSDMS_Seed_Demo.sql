@@ -221,31 +221,41 @@ DECLARE @SchLQD  INT = (SELECT Id FROM School WHERE AppUserId = @USch5);
 
 /* =====================================================================
    11b) Period — KHUNG TIẾT theo TỪNG TRƯỜNG (mỗi trường giờ giấc riêng)
-        Minh họa per-school: THPT Demo dùng khung 9 tiết 35'; Tiểu học Ban
-        Mai khung 7 tiết 40', vào học muộn hơn → chứng minh Period khác nhau
-        giữa các trường. Sửa giờ/thêm-bớt tiết về sau = UPDATE/INSERT các dòng
-        này theo SchoolId (qua admin), KHÔNG đụng migration.
+        QUY ƯỚC (chốt ở V22): mỗi buổi RA CHƠI ĐÚNG 1 LẦN, ngay sau tiết 2;
+        các tiết còn lại nối liền nhau, KHÔNG có thời gian chuyển tiết. Cấp
+        THCS/THPT tiết 45' + ra chơi 10' (9 tiết/ngày); tiểu học tiết 35' +
+        ra chơi 15' (10 tiết/ngày, có "Chiều · Tiết 5"). Vào học 07:00 và
+        14:00, TAN muộn nhất 17:15.
+
+        Hai trường dưới đây vẫn KHÁC khung nhau (THPT Demo 45'/9 tiết vs Ban
+        Mai 35'/10 tiết) — Period là dữ liệu của TỪNG trường. Sửa giờ/thêm-bớt
+        tiết về sau = UPDATE/INSERT các dòng này theo SchoolId (qua admin),
+        KHÔNG đụng migration.
    ===================================================================== */
--- Trường THPT Demo (cấp 3): 9 tiết, mỗi tiết 35'
+-- Trường THPT Demo (cấp 3): 9 tiết, mỗi tiết 45', ra chơi 10' sau tiết 2 → tan chiều 17:10
 INSERT INTO Period (SchoolId, PeriodNumber, SessionType, StartTime, EndTime) VALUES
- (@SchDemo, 1, 'MORNING',   '07:00', '07:35'),
- (@SchDemo, 2, 'MORNING',   '07:40', '08:15'),
- (@SchDemo, 3, 'MORNING',   '08:30', '09:05'),
- (@SchDemo, 4, 'MORNING',   '09:10', '09:45'),
- (@SchDemo, 5, 'MORNING',   '09:50', '10:25'),
- (@SchDemo, 6, 'AFTERNOON', '14:00', '14:35'),
- (@SchDemo, 7, 'AFTERNOON', '14:40', '15:15'),
- (@SchDemo, 8, 'AFTERNOON', '15:30', '16:05'),
- (@SchDemo, 9, 'AFTERNOON', '16:10', '16:45');
--- Trường Tiểu học Ban Mai: 7 tiết, mỗi tiết 40', vào học 07:30 (khung KHÁC trường trên)
+ (@SchDemo, 1, 'MORNING',   '07:00', '07:45'),
+ (@SchDemo, 2, 'MORNING',   '07:45', '08:30'),   -- ra chơi 10'
+ (@SchDemo, 3, 'MORNING',   '08:40', '09:25'),
+ (@SchDemo, 4, 'MORNING',   '09:25', '10:10'),
+ (@SchDemo, 5, 'MORNING',   '10:10', '10:55'),
+ (@SchDemo, 6, 'AFTERNOON', '14:00', '14:45'),
+ (@SchDemo, 7, 'AFTERNOON', '14:45', '15:30'),   -- ra chơi 10'
+ (@SchDemo, 8, 'AFTERNOON', '15:40', '16:25'),
+ (@SchDemo, 9, 'AFTERNOON', '16:25', '17:10');
+-- Trường Tiểu học Ban Mai: 10 tiết, mỗi tiết 35', ra chơi 15' sau tiết 2 → tan chiều 17:10.
+-- Khung KHÁC trường trên (35'/10 tiết vs 45'/9 tiết) — Period là dữ liệu của TỪNG trường.
 INSERT INTO Period (SchoolId, PeriodNumber, SessionType, StartTime, EndTime) VALUES
- (@SchBM, 1, 'MORNING',   '07:30', '08:10'),
- (@SchBM, 2, 'MORNING',   '08:15', '08:55'),
- (@SchBM, 3, 'MORNING',   '09:15', '09:55'),
- (@SchBM, 4, 'MORNING',   '10:00', '10:40'),
- (@SchBM, 5, 'MORNING',   '10:45', '11:25'),
- (@SchBM, 6, 'AFTERNOON', '14:00', '14:40'),
- (@SchBM, 7, 'AFTERNOON', '14:45', '15:25');
+ (@SchBM,  1, 'MORNING',   '07:00', '07:35'),
+ (@SchBM,  2, 'MORNING',   '07:35', '08:10'),   -- ra chơi 15'
+ (@SchBM,  3, 'MORNING',   '08:25', '09:00'),
+ (@SchBM,  4, 'MORNING',   '09:00', '09:35'),
+ (@SchBM,  5, 'MORNING',   '09:35', '10:10'),
+ (@SchBM,  6, 'AFTERNOON', '14:00', '14:35'),
+ (@SchBM,  7, 'AFTERNOON', '14:35', '15:10'),   -- ra chơi 15'
+ (@SchBM,  8, 'AFTERNOON', '15:25', '16:00'),
+ (@SchBM,  9, 'AFTERNOON', '16:00', '16:35'),
+ (@SchBM, 10, 'AFTERNOON', '16:35', '17:10');   -- "Chiều · Tiết 5" của tiểu học
 -- (Các trường THCS/THPT khác dùng khung tương tự THPT Demo — thêm khi cần seed lịch dạy.)
 
 /* =====================================================================

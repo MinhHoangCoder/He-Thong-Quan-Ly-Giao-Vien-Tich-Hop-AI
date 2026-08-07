@@ -115,6 +115,7 @@ public class AttendanceService {
         Map<Integer, SchoolClass> classCache = new HashMap<>();
         Map<Integer, Subject> subjectCache = new HashMap<>();
         Map<Integer, Period> periodCache = new HashMap<>();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
 
         return items.stream()
                 .filter(a -> status == null || status.isBlank() || status.equalsIgnoreCase(a.getStatus()))
@@ -128,7 +129,8 @@ public class AttendanceService {
                             schoolCache,
                             classCache,
                             subjectCache,
-                            periodCache);
+                            periodCache,
+                            sessionIndex);
                     return r;
                 })
                 .toList();
@@ -143,7 +145,8 @@ public class AttendanceService {
             Map<Integer, School> schoolCache,
             Map<Integer, SchoolClass> classCache,
             Map<Integer, Subject> subjectCache,
-            Map<Integer, Period> periodCache) {
+            Map<Integer, Period> periodCache,
+            PeriodSessionIndex sessionIndex) {
         if (scheduleId == null) {
             return;
         }
@@ -185,6 +188,7 @@ public class AttendanceService {
             if (p != null) {
                 r.periodId = p.getId();
                 r.periodNumber = p.getPeriodNumber();
+                r.indexInSession = sessionIndex.of(p);
                 r.sessionType = p.getSessionType();
             }
         }

@@ -22,7 +22,12 @@ public class TeacherBusySlot {
 
     // ── Khung giờ thật của tiết ─────────────────────────────────────────
     public Integer periodId;
+
+    /** Số tiết trong NGÀY (1..n) của trường đó. */
     public Short periodNumber;
+
+    /** Số tiết trong BUỔI (chiều đánh lại từ 1) — dùng để hiển thị lý do bận. */
+    public Short indexInSession;
 
     /** MORNING | AFTERNOON */
     public String sessionType;

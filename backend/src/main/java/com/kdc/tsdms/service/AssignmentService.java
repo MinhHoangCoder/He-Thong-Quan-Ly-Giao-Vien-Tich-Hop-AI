@@ -224,10 +224,12 @@ public class AssignmentService {
                 .filter(c -> !c.isDeleted() && c.getSchoolId().equals(schoolId))
                 .map(c -> new OptionItem(c.getId(), c.getName()))
                 .toList();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
         List<PeriodOption> periods = periodRepo.findBySchoolIdAndDeletedFalseOrderByPeriodNumber(schoolId).stream()
                 .map(p -> new PeriodOption(
                         p.getId(),
                         p.getPeriodNumber(),
+                        sessionIndex.of(p),
                         p.getSessionType(),
                         p.getStartTime(),
                         p.getEndTime(),
@@ -252,6 +254,7 @@ public class AssignmentService {
         Map<Integer, String> schoolNames = new HashMap<>();
         Map<Integer, String> classNames = new HashMap<>();
         Map<Integer, String> subjectNames = new HashMap<>();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
 
         List<TeacherBusySlot> out = new ArrayList<>();
         for (AssignmentSlot slot : slotRepo.findByTeacherIdAndDeletedFalse(teacherId)) {
@@ -277,6 +280,7 @@ public class AssignmentService {
             b.dayOfWeekLabel = dayLabelVi(slot.getDayOfWeek());
             b.periodId = p.getId();
             b.periodNumber = p.getPeriodNumber();
+            b.indexInSession = sessionIndex.of(p);
             b.sessionType = p.getSessionType();
             b.startTime = p.getStartTime();
             b.endTime = p.getEndTime();
@@ -981,6 +985,7 @@ public class AssignmentService {
         // tập hợp các lớp KHÁC NHAU của các tiết, giữ thứ tự xuất hiện. LinkedHashSet vừa
         // khử trùng vừa giữ thứ tự.
         Set<String> classNames = new LinkedHashSet<>();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
         List<AssignmentSlotResponse> slots = new ArrayList<>();
         for (AssignmentSlot slot : slotEntities) {
             Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
@@ -994,7 +999,7 @@ public class AssignmentService {
             if (slotClassName != null) {
                 classNames.add(slotClassName);
             }
-            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName));
+            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, sessionIndex.of(p)));
         }
         String className = classNames.isEmpty()
                 ? (a.getClassId() == null

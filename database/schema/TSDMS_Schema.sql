@@ -462,7 +462,8 @@ CREATE TABLE Period (
     CreatedBy    INT           NULL,
     UpdatedAt    DATETIME2(3)  NULL,
     UpdatedBy    INT           NULL,
-    CONSTRAINT FK_Period_School FOREIGN KEY (SchoolId) REFERENCES School(Id)
+    CONSTRAINT FK_Period_School FOREIGN KEY (SchoolId) REFERENCES School(Id),
+    CONSTRAINT CK_Period_Time   CHECK (StartTime < EndTime)   -- V22
 );
 -- Trong 1 trường không trùng số tiết (trên bản ghi chưa xóa mềm)
 CREATE UNIQUE INDEX UX_Period_School_Number ON Period(SchoolId, PeriodNumber) WHERE IsDeleted = 0;
@@ -959,6 +960,34 @@ BEGIN
     FROM inserted i
     JOIN deleted  d ON i.Id = d.Id
     WHERE i.Status <> d.Status;   -- chỉ ghi khi trạng thái THỰC SỰ thay đổi
+END;
+GO
+
+/* #####################################################################
+   TRIGGER — chặn hai TIẾT cùng một trường đè giờ lên nhau (V22)
+   UX_Period_School_Number chỉ chặn trùng SỐ tiết, không chặn trùng GIỜ.
+   Period chưa có màn hình quản lý nên mọi thay đổi đi bằng SQL tay → đặt
+   chốt chặn ở tầng DB. So CHẶT: hai tiết liền kề (16:35 & 16:35) hợp lệ.
+   ##################################################################### */
+GO
+CREATE TRIGGER TR_Period_NoOverlap
+ON Period
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (
+        SELECT 1
+        FROM   inserted i
+        JOIN   Period p
+               ON p.SchoolId = i.SchoolId AND p.Id <> i.Id AND p.IsDeleted = 0
+        WHERE  i.IsDeleted = 0
+          AND  i.StartTime < p.EndTime
+          AND  p.StartTime < i.EndTime)
+    BEGIN
+        ROLLBACK TRANSACTION;
+        THROW 50022, N'Khung tiet bi de gio len nhau trong cung mot truong', 1;
+    END
 END;
 GO
 
