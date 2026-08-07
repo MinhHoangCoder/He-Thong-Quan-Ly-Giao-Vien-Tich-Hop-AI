@@ -680,13 +680,16 @@ CREATE TABLE Attendance (
     CheckOut          TIME(0)       NULL,             -- giờ ra
     Status            VARCHAR(20)   NOT NULL DEFAULT 'PRESENT'  -- PRESENT/ABSENT/LATE/LEAVE(nghỉ phép)
                       CONSTRAINT CK_Attendance_Status CHECK (Status IN ('PRESENT','ABSENT','LATE','LEAVE')),
-    CheckInMethod     VARCHAR(20)   NULL              -- AI ai/cái gì ghi nhận: SELF/EMPLOYEE/SCHOOL/DEVICE
-                      CONSTRAINT CK_Attendance_Method CHECK (CheckInMethod IN ('SELF','EMPLOYEE','SCHOOL','DEVICE')),
+    CheckInMethod     VARCHAR(20)   NULL              -- ai/cái gì ghi nhận: SELF/EMPLOYEE/SCHOOL/DEVICE/SYSTEM (V24)
+                      CONSTRAINT CK_Attendance_Method CHECK (CheckInMethod IN ('SELF','EMPLOYEE','SCHOOL','DEVICE','SYSTEM')),
     ConfirmedByUserId INT           NULL,             -- → AppUser (người XÁC NHẬN, vd: tài khoản trường)
     ConfirmedAt       DATETIME2(3)  NULL,             -- thời điểm xác nhận
     Note              NVARCHAR(255) NULL,
+    AutoCheckOut      BIT           NOT NULL DEFAULT 0,  -- V24: giờ ra do HỆ THỐNG chốt (GV quên bấm)
     CreatedAt         DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
     CreatedBy         INT           NULL,
+    UpdatedAt         DATETIME2(3)  NULL,             -- V24: trigger đọc để ghi nhật ký "ai sửa"
+    UpdatedBy         INT           NULL,
     FOREIGN KEY (TeacherId)         REFERENCES Teacher(Id),
     FOREIGN KEY (ScheduleId)        REFERENCES Schedule(Id),
     FOREIGN KEY (ConfirmedByUserId) REFERENCES AppUser(Id),
@@ -697,6 +700,28 @@ CREATE INDEX IX_Attendance_Teacher_Date ON Attendance(TeacherId, WorkDate);
 -- ScheduleId NULL = chấm công tay không gắn buổi, cho phép nhiều dòng.
 CREATE UNIQUE NONCLUSTERED INDEX UX_Attendance_ScheduleId
     ON Attendance(ScheduleId) WHERE ScheduleId IS NOT NULL;
+
+/* ========== Bảng 21b: AttendanceChangeLog — NHẬT KÝ sửa chấm công (thêm ở V24) ==========
+   Ý nghĩa : Chấm công là đầu vào tính lương, nên mọi lần thêm/sửa phải để lại vết.
+             Dòng log do TRIGGER sinh, ứng dụng chỉ ĐỌC — không đường ghi nào lọt sổ.
+   QUAN HỆ : AttendanceId → Attendance. ChangedByUserId NULL = do hệ thống (job) làm. */
+CREATE TABLE AttendanceChangeLog (
+    Id              BIGINT IDENTITY PRIMARY KEY,
+    AttendanceId    BIGINT       NOT NULL,
+    Action          VARCHAR(20)  NOT NULL           -- CREATE / UPDATE / AUTO_CHECKOUT / AUTO_ABSENT
+                    CONSTRAINT CK_AttChangeLog_Action
+                    CHECK (Action IN ('CREATE','UPDATE','AUTO_CHECKOUT','AUTO_ABSENT')),
+    OldStatus       VARCHAR(20)  NULL,
+    NewStatus       VARCHAR(20)  NULL,
+    OldCheckIn      TIME(0)      NULL,
+    NewCheckIn      TIME(0)      NULL,
+    OldCheckOut     TIME(0)      NULL,
+    NewCheckOut     TIME(0)      NULL,
+    ChangedByUserId INT          NULL,
+    ChangedAt       DATETIME2(3) NOT NULL DEFAULT SYSUTCDATETIME(),
+    CONSTRAINT FK_AttChangeLog_Attendance FOREIGN KEY (AttendanceId) REFERENCES Attendance(Id)
+);
+CREATE INDEX IX_AttChangeLog_Attendance ON AttendanceChangeLog(AttendanceId, ChangedAt DESC);
 
 /* ========== Bảng 22b: PartTimeShiftRequest — NV PART-TIME ĐĂNG KÝ CA (thêm ở V10) ==========
    Ý nghĩa : Nhân viên part-time đăng ký ca làm theo ngày/buổi; HR duyệt hoặc từ chối.
@@ -960,6 +985,42 @@ BEGIN
     FROM inserted i
     JOIN deleted  d ON i.Id = d.Id
     WHERE i.Status <> d.Status;   -- chỉ ghi khi trạng thái THỰC SỰ thay đổi
+END;
+GO
+
+/* #####################################################################
+   TRIGGER — ghi NHẬT KÝ mọi lần thêm/sửa chấm công (V24)
+   UPDATE chỉ ghi khi trạng thái/giờ vào/giờ ra THẬT SỰ đổi. Việc của hệ
+   thống nhận biết qua cờ AutoCheckOut và nguồn SYSTEM, vì job chạy nền
+   không có người dùng nào để ghi vào ChangedByUserId.
+   ##################################################################### */
+GO
+CREATE TRIGGER TR_Attendance_ChangeLog
+ON Attendance
+AFTER INSERT, UPDATE
+AS
+BEGIN
+    SET NOCOUNT ON;
+    INSERT INTO AttendanceChangeLog
+        (AttendanceId, Action, OldStatus, NewStatus, OldCheckIn, NewCheckIn, OldCheckOut, NewCheckOut, ChangedByUserId)
+    SELECT
+        i.Id,
+        CASE
+            WHEN d.Id IS NULL AND i.CheckInMethod = 'SYSTEM'          THEN 'AUTO_ABSENT'
+            WHEN d.Id IS NULL                                         THEN 'CREATE'
+            WHEN i.AutoCheckOut = 1 AND ISNULL(d.AutoCheckOut, 0) = 0 THEN 'AUTO_CHECKOUT'
+            ELSE 'UPDATE'
+        END,
+        d.Status, i.Status,
+        d.CheckIn, i.CheckIn,
+        d.CheckOut, i.CheckOut,
+        CASE WHEN d.Id IS NULL THEN i.CreatedBy ELSE i.UpdatedBy END
+    FROM inserted i
+    LEFT JOIN deleted d ON d.Id = i.Id
+    WHERE d.Id IS NULL
+       OR i.Status <> d.Status
+       OR ISNULL(CONVERT(varchar(8), i.CheckIn),  '') <> ISNULL(CONVERT(varchar(8), d.CheckIn),  '')
+       OR ISNULL(CONVERT(varchar(8), i.CheckOut), '') <> ISNULL(CONVERT(varchar(8), d.CheckOut), '');
 END;
 GO
 

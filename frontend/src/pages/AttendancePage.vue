@@ -24,6 +24,7 @@ const METHOD_LABELS = {
   EMPLOYEE: 'Nhân viên',
   SCHOOL: 'Trường',
   DEVICE: 'Thiết bị',
+  SYSTEM: 'Hệ thống',
 }
 const methodLabel = (m) => METHOD_LABELS[m] || '—'
 
@@ -79,7 +80,48 @@ async function load() {
   } finally {
     loading.value = false
   }
+  loadAttention()
 }
+
+/* ── Cần xử lý + nhật ký thay đổi ── */
+const attention = ref([])
+const attnOpen = ref(false)
+
+async function loadAttention() {
+  try {
+    const { data } = await attendanceApi.attention({ from: filter.from, to: filter.to })
+    attention.value = data
+  } catch {
+    attention.value = []
+  }
+}
+
+/** Vì sao dòng này lọt vào "Cần xử lý" — nói thẳng lý do thay vì bắt kế toán tự đoán. */
+function attentionReason(r) {
+  if (r.checkInMethod === 'SYSTEM') return 'Hệ thống ghi Vắng — hết buổi không có check-in'
+  if (r.autoCheckOut) return 'Hệ thống chốt hộ giờ ra — giáo viên quên check-out'
+  return 'Đã vào lớp nhưng chưa có giờ ra'
+}
+
+const logRow = ref(null)
+const logItems = ref([])
+const logLoading = ref(false)
+
+async function openLogs(r) {
+  logRow.value = r
+  logItems.value = []
+  logLoading.value = true
+  try {
+    const { data } = await attendanceApi.logs(r.id)
+    logItems.value = data
+  } catch {
+    logItems.value = []
+  } finally {
+    logLoading.value = false
+  }
+}
+const hhmm = (t) => (t ? String(t).slice(0, 5) : '—')
+const fmtAt = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN') : '')
 
 onMounted(() => {
   loadTeachers()
@@ -183,6 +225,23 @@ const presentCount = computed(
       <span v-if="info" class="info-text">{{ info }}</span>
     </div>
 
+    <!-- Cần xử lý: gom sẵn dòng bất thường thay vì bắt kế toán dò cả bảng bằng mắt -->
+    <section v-if="attention.length" class="attn card">
+      <button class="attn__head" @click="attnOpen = !attnOpen">
+        <strong>Cần xử lý</strong>
+        <span class="attn__count">{{ attention.length }}</span>
+        <span class="attn__toggle">{{ attnOpen ? 'Thu gọn' : 'Xem' }}</span>
+      </button>
+      <ul v-if="attnOpen" class="attn__list">
+        <li v-for="r in attention" :key="r.id">
+          <span class="mono">{{ r.workDate }}</span>
+          <span class="font-medium">{{ r.teacherName }}</span>
+          <span class="attn__why">{{ attentionReason(r) }}</span>
+          <button class="attn__link" @click="openLogs(r)">Nhật ký</button>
+        </li>
+      </ul>
+    </section>
+
     <div class="table-wrap">
       <table class="table">
         <thead>
@@ -270,10 +329,129 @@ const presentCount = computed(
         </div>
       </div>
     </div>
+
+    <!-- Nhật ký thay đổi: chấm công ra tiền lương nên phải truy được ai sửa, sửa gì -->
+    <div v-if="logRow" class="modal-overlay" @click.self="logRow = null">
+      <div class="modal-box modal-lg">
+        <h3>Nhật ký chấm công — {{ logRow.teacherName }} · {{ logRow.workDate }}</h3>
+        <p v-if="logLoading" class="text-muted small">Đang tải…</p>
+        <p v-else-if="!logItems.length" class="text-muted small">Chưa có thay đổi nào.</p>
+        <ul v-else class="log">
+          <li v-for="l in logItems" :key="l.id">
+            <div class="log__top">
+              <strong>{{ l.actionLabel }}</strong>
+              <span class="text-muted small">{{ l.changedByName }} · {{ fmtAt(l.changedAt) }}</span>
+            </div>
+            <div class="log__diff">
+              <span v-if="l.oldStatus !== l.newStatus">
+                Trạng thái: {{ l.oldStatus ?? '—' }} → <b>{{ l.newStatus ?? '—' }}</b>
+              </span>
+              <span v-if="hhmm(l.oldCheckIn) !== hhmm(l.newCheckIn)">
+                Vào: {{ hhmm(l.oldCheckIn) }} → <b>{{ hhmm(l.newCheckIn) }}</b>
+              </span>
+              <span v-if="hhmm(l.oldCheckOut) !== hhmm(l.newCheckOut)">
+                Ra: {{ hhmm(l.oldCheckOut) }} → <b>{{ hhmm(l.newCheckOut) }}</b>
+              </span>
+            </div>
+          </li>
+        </ul>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="logRow = null">Đóng</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* ── Cần xử lý ── */
+.attn {
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 3px solid var(--c-amber);
+}
+.attn__head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: 0;
+  background: none;
+  color: var(--c-text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.attn__count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--c-amber);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.attn__toggle {
+  margin-left: auto;
+  color: var(--c-primary);
+  font-size: 0.8rem;
+}
+.attn__list {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+.attn__list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.83rem;
+}
+.attn__why {
+  color: var(--c-text-muted);
+}
+.attn__link {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--c-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ── Nhật ký ── */
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.log li {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+}
+.log__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  font-size: 0.86rem;
+}
+.log__diff {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.9rem;
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

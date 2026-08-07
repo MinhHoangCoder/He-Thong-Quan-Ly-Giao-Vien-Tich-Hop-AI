@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
 import com.kdc.tsdms.entity.Assignment;
@@ -12,9 +13,12 @@ import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.AttendanceChangeLogRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -29,6 +33,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -53,6 +58,10 @@ public class AttendanceService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final PayrollRepository payrollRepo;
+    private final AttendanceChangeLogRepository changeLogRepo;
+    private final AppUserRepository userRepo;
+    private final DisplayNameResolver displayNameResolver;
     private final NotificationService notificationService;
 
     public AttendanceService(
@@ -65,6 +74,10 @@ public class AttendanceService {
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
             PeriodRepository periodRepo,
+            PayrollRepository payrollRepo,
+            AttendanceChangeLogRepository changeLogRepo,
+            AppUserRepository userRepo,
+            DisplayNameResolver displayNameResolver,
             NotificationService notificationService) {
         this.attendanceRepo = attendanceRepo;
         this.scheduleRepo = scheduleRepo;
@@ -75,6 +88,10 @@ public class AttendanceService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.payrollRepo = payrollRepo;
+        this.changeLogRepo = changeLogRepo;
+        this.userRepo = userRepo;
+        this.displayNameResolver = displayNameResolver;
         this.notificationService = notificationService;
     }
 
@@ -235,6 +252,75 @@ public class AttendanceService {
 
     /** Cửa sổ check-in mở SỚM NHẤT bao nhiêu phút trước giờ bắt đầu buổi dạy. */
     private static final int EARLY_CHECKIN_MIN = 30;
+
+    /**
+     * Kỳ lương đã CHỐT (FINALIZED) hoặc ĐÃ TRẢ (PAID) thì chấm công tháng đó khóa lại.
+     *
+     * <p>Chấm công là đầu vào tính tiền: sửa ngược một dòng sau khi đã trả lương làm lệch sổ
+     * mà không ai hay. Khóa ở tầng này vì luật cần join Attendance → Payroll theo tháng, DB
+     * không diễn đạt được bằng ràng buộc.
+     */
+    private static final Set<String> LOCKED_PAYROLL_STATUS = Set.of("FINALIZED", "PAID");
+
+    /**
+     * Các dòng chấm công CẦN NGƯỜI SOÁT LẠI trong khoảng ngày — gom về một chỗ cho kế toán
+     * thay vì bắt họ dò cả bảng bằng mắt. Gồm ba loại:
+     *
+     * <ul>
+     *   <li>hệ thống chốt hộ giờ ra (giáo viên quên check-out)
+     *   <li>hệ thống ghi Vắng (hết buổi không ai chấm)
+     *   <li>còn treo: đã vào nhưng chưa có giờ ra và job chưa kịp chốt
+     * </ul>
+     */
+    @Transactional(readOnly = true)
+    public List<AttendanceResponse> attention(LocalDate from, LocalDate to) {
+        Map<Integer, String> nameCache = new HashMap<>();
+        return attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from, to).stream()
+                .filter(a -> a.isAutoCheckOut()
+                        || "SYSTEM".equals(a.getCheckInMethod())
+                        || (a.getCheckIn() != null && a.getCheckOut() == null))
+                .map(a -> AttendanceResponse.fromEntity(a, teacherName(a.getTeacherId(), nameCache)))
+                .toList();
+    }
+
+    /** Nhật ký thay đổi của một dòng chấm công (do trigger DB ghi, chỉ đọc). */
+    @Transactional(readOnly = true)
+    public List<AttendanceChangeLogResponse> changeLog(Long attendanceId) {
+        Map<Integer, String> userNames = new HashMap<>();
+        return changeLogRepo.findByAttendanceIdOrderByChangedAtDescIdDesc(attendanceId).stream()
+                .map(l -> AttendanceChangeLogResponse.fromEntity(
+                        l,
+                        l.getChangedByUserId() == null
+                                ? null
+                                : userNames.computeIfAbsent(l.getChangedByUserId(), id -> userRepo.findById(id)
+                                        .map(displayNameResolver::resolve)
+                                        .orElse("Người dùng #" + id))))
+                .toList();
+    }
+
+    /** Kỳ lương của tháng chứa {@code workDate} đã chốt chưa? */
+    @Transactional(readOnly = true)
+    public boolean isPeriodLocked(Integer teacherId, LocalDate workDate) {
+        if (teacherId == null || workDate == null) {
+            return false;
+        }
+        return payrollRepo
+                .findByTeacherIdAndPeriodYearAndPeriodMonth(
+                        teacherId, (short) workDate.getYear(), (short) workDate.getMonthValue())
+                .map(p -> LOCKED_PAYROLL_STATUS.contains(p.getStatus()))
+                .orElse(false);
+    }
+
+    /** Chặn mọi thao tác ghi lên chấm công thuộc kỳ lương đã chốt. */
+    private void assertPeriodOpen(Integer teacherId, LocalDate workDate) {
+        if (isPeriodLocked(teacherId, workDate)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Bảng lương tháng " + workDate.getMonthValue() + "/" + workDate.getYear()
+                            + " đã chốt — không sửa được chấm công của kỳ này."
+                            + " Muốn điều chỉnh phải mở lại bảng lương trước.");
+        }
+    }
 
     /** Trạng thái check-in của các buổi dạy HÔM NAY của GV đang đăng nhập. */
     @Transactional(readOnly = true)
@@ -473,6 +559,7 @@ public class AttendanceService {
     @Transactional
     public AttendanceResponse create(AttendanceRequest req) {
         Teacher teacher = validate(req);
+        assertPeriodOpen(req.teacherId(), req.workDate());
         // UX_Attendance_Schedule: mỗi buổi dạy tối đa 1 dòng — tạo trùng thì sửa dòng cũ thay vì thêm.
         if (req.scheduleId() != null && attendanceRepo.existsByScheduleId(req.scheduleId())) {
             throw new ApiException(HttpStatus.CONFLICT, "Buổi dạy này đã có dòng chấm công — hãy sửa dòng hiện có");
@@ -492,6 +579,9 @@ public class AttendanceService {
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy dòng chấm công id=" + id));
         String oldStatus = a.getStatus();
         Teacher teacher = validate(req);
+        // Khóa cả kỳ CŨ lẫn kỳ MỚI: chuyển một dòng ra/vào tháng đã chốt cũng là làm lệch sổ.
+        assertPeriodOpen(a.getTeacherId(), a.getWorkDate());
+        assertPeriodOpen(req.teacherId(), req.workDate());
         // Không cho trỏ sang buổi đã có dòng chấm công khác (vỡ unique index).
         if (req.scheduleId() != null && !req.scheduleId().equals(a.getScheduleId())) {
             attendanceRepo.findFirstByScheduleIdOrderByIdAsc(req.scheduleId()).ifPresent(other -> {
@@ -500,6 +590,9 @@ public class AttendanceService {
             });
         }
         apply(a, req);
+        // Ghi lại AI sửa — trigger TR_Attendance_ChangeLog đọc hai cột này để vào nhật ký.
+        a.setUpdatedAt(java.time.Instant.now());
+        a.setUpdatedBy(SecurityUtils.currentUserId());
         attendanceRepo.save(a);
         // Chỉ báo khi TRẠNG THÁI đổi (tránh spam khi chỉ sửa ghi chú/giờ vặt).
         if (!java.util.Objects.equals(oldStatus, a.getStatus())) {
