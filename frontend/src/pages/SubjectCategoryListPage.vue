@@ -265,14 +265,18 @@ async function confirmDelete() {
   }
 }
 
-/* ── Validate: môn học (mirror SubjectRequest phía backend) ── */
+/* ── Validate: môn học (mirror SubjectRequest phía backend) ──
+ * FIX (2026-08-07): mã môn (code) giờ CHỈ bắt buộc khi SỬA — lúc TẠO MỚI,
+ * backend tự sinh mã tăng dần theo nhóm nên không còn validate code ở đây. */
 const SUBJECT_CODE_RE = /^[A-Z0-9_]{2,20}$/
-function validateSubjectForm(form) {
+function validateSubjectForm(form, isCreate) {
   const errors = {}
-  const code = form.code.trim()
   const name = form.name.trim()
-  if (!code) errors.code = 'Mã môn không được để trống'
-  else if (!SUBJECT_CODE_RE.test(code)) errors.code = 'Chỉ chữ hoa, số, dấu _ (2-20 ký tự)'
+  if (!isCreate) {
+    const code = (form.code || '').trim()
+    if (!code) errors.code = 'Mã môn không được để trống'
+    else if (!SUBJECT_CODE_RE.test(code)) errors.code = 'Chỉ chữ hoa, số, dấu _ (2-20 ký tự)'
+  }
   if (!name) errors.name = 'Tên môn học không được để trống'
   else if (name.length > 150) errors.name = 'Tên tối đa 150 ký tự'
   if (!form.categoryId) errors.categoryId = 'Vui lòng chọn nhóm môn'
@@ -323,12 +327,15 @@ function clearSubjectFieldError(field) {
 }
 
 async function saveSubjectModal() {
-  subjectModal.errors = validateSubjectForm(subjectModal.form)
+  const isCreate = subjectModal.mode === 'create'
+  subjectModal.errors = validateSubjectForm(subjectModal.form, isCreate)
   if (Object.keys(subjectModal.errors).length) return
 
   subjectModal.saving = true
   subjectModal.error = ''
   const body = { ...subjectModal.form, categoryId: Number(subjectModal.form.categoryId) }
+  // Tạo mới: không gửi code lên — backend tự sinh mã tăng dần theo nhóm môn.
+  if (isCreate) delete body.code
   try {
     if (subjectModal.mode === 'create') {
       await subjectApi.create(body)
@@ -673,7 +680,7 @@ async function confirmDeleteSubject() {
       <div class="modal">
         <h3>{{ subjectModal.mode === 'create' ? 'Thêm môn học' : 'Sửa môn học' }}</h3>
 
-        <div class="form-group">
+        <div class="form-group" v-if="subjectModal.mode === 'edit'">
           <label>Mã môn *</label>
           <input
             v-model="subjectModal.form.code"
@@ -685,6 +692,11 @@ async function confirmDeleteSubject() {
             subjectModal.errors.code
           }}</small>
           <small v-else>Chỉ chữ hoa, số, dấu _ (2-20 ký tự).</small>
+        </div>
+        <div class="form-group" v-else>
+          <label>Mã môn</label>
+          <input value="Tự động sinh khi lưu" disabled />
+          <small class="field-hint">Hệ thống tự đặt mã môn tăng dần theo nhóm môn đã chọn.</small>
         </div>
 
         <div class="form-group">
@@ -744,17 +756,19 @@ async function confirmDeleteSubject() {
     <!-- ================= MODAL: xác nhận xóa môn học ================= -->
     <div v-if="deleteSubjectTarget" class="overlay" @click.self="deleteSubjectTarget = null">
       <div class="modal">
-        <h3>Xác nhận xóa</h3>
+        <h3>Xác nhận xóa vĩnh viễn</h3>
 
         <p>
-          Bạn có chắc muốn xóa môn học <strong>{{ deleteSubjectTarget.name }}</strong
-          >?
+          Bạn có chắc muốn xóa <strong>vĩnh viễn</strong> môn học
+          <strong>{{ deleteSubjectTarget.name }}</strong
+          >? Hành động này <strong>không thể hoàn tác</strong>.
         </p>
 
         <p v-if="deleteSubjectTarget.lessonCount > 0" class="msg msg--warning">
           Môn học này đang tắt hoạt động và có
           <strong>{{ deleteSubjectTarget.lessonCount }}</strong>
-          bài giảng liên quan. Xóa môn học sẽ <strong>xóa luôn toàn bộ</strong> các bài giảng đó.
+          bài giảng liên quan. Xóa môn học sẽ <strong>xóa vĩnh viễn luôn</strong> các bài giảng đó
+          (không thể khôi phục).
         </p>
 
         <div class="modal__actions">

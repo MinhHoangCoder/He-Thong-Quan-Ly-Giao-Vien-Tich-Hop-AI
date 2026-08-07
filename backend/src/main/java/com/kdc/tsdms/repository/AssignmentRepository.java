@@ -9,19 +9,34 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-/** Repository bảng Assignment — thêm method truy vấn theo nhu cầu feature tại đây. */
+/**
+ * Repository bảng Assignment — thêm method truy vấn theo nhu cầu feature tại
+ * đây.
+ */
 public interface AssignmentRepository extends JpaRepository<Assignment, Integer> {
 
     /** Trường đã từng/đang phân công GV này chưa (dùng khi SCHOOL chấm điểm). */
     boolean existsByTeacherIdAndSchoolIdAndDeletedFalse(Integer teacherId, Integer schoolId);
 
     /**
-     * Như trên nhưng LOẠI phân công theo status (vd CANCELLED — GV từ chối, chưa từng dạy):
-     * SCHOOL chỉ được chấm điểm / xem summary GV có phân công còn hiệu lực tại trường mình.
+     * Đếm TOÀN BỘ phân công (mọi trạng thái, kể cả đã xóa mềm) từng gắn với 1
+     * môn học — dùng để CHẶN hard-delete Subject: Assignment là dữ liệu lịch sử
+     * phân công giảng dạy, không được cuốn theo khi xóa vĩnh viễn môn học.
+     */
+    long countBySubjectId(Integer subjectId);
+
+    /**
+     * Như trên nhưng LOẠI phân công theo status (vd CANCELLED — GV từ chối, chưa
+     * từng dạy):
+     * SCHOOL chỉ được chấm điểm / xem summary GV có phân công còn hiệu lực tại
+     * trường mình.
      */
     boolean existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(Integer teacherId, Integer schoolId, String status);
 
-    /** Danh sách TeacherId đã từng phân công tại 1 trường (dropdown đánh giá phía School). */
+    /**
+     * Danh sách TeacherId đã từng phân công tại 1 trường (dropdown đánh giá phía
+     * School).
+     */
     @Query("SELECT DISTINCT a.teacherId FROM Assignment a WHERE a.schoolId = :schoolId AND a.deleted = false")
     List<Integer> findDistinctTeacherIdsBySchoolId(@Param("schoolId") Integer schoolId);
 
@@ -50,6 +65,9 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
     /** Mọi phân công (kể cả xóa mềm) còn trỏ ClassId — chặn xóa vĩnh viễn lớp. */
     long countByClassId(Integer classId);
 
-    /** Phiếu đang chờ mà đã quá hạn trả lời — tác vụ nền quét để chuyển sang "Hết hạn". */
+    /**
+     * Phiếu đang chờ mà đã quá hạn trả lời — tác vụ nền quét để chuyển sang "Hết
+     * hạn".
+     */
     List<Assignment> findByStatusAndConfirmDeadlineBeforeAndDeletedFalse(String status, LocalDateTime deadline);
 }

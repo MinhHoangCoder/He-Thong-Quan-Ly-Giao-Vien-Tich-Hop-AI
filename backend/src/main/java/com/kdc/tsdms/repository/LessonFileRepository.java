@@ -18,4 +18,11 @@ public interface LessonFileRepository extends JpaRepository<LessonFile, Integer>
     List<LessonFile> findByLessonId(@Param("lessonId") Integer lessonId);
 
     Optional<LessonFile> findByIdAndDeletedFalse(Integer id);
+
+    /**
+     * Xóa vĩnh viễn mọi file đính kèm của các bài giảng truyền vào — dùng khi
+     * hard-delete môn học (cascade xóa hẳn bài giảng con), phải dọn LessonFile
+     * trước vì LessonFile.LessonId có khóa ngoại trỏ tới Lesson.
+     */
+    void deleteByLessonIdIn(List<Integer> lessonIds);
 }
