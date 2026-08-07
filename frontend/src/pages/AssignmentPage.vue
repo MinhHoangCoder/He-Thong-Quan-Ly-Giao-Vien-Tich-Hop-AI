@@ -14,6 +14,7 @@ import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import { assignmentApi } from '@/api/assignments'
 import { tietLabel, tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import DateField from '@/components/ui/DateField.vue'
 
 const DAYS = [
   { code: 'MON', label: 'Thứ 2' },
@@ -921,11 +922,11 @@ async function confirmPurge() {
           </div>
           <div class="form-group">
             <label>Ngày bắt đầu *</label>
-            <input type="date" v-model="modal.form.startDate" />
+            <DateField v-model="modal.form.startDate" />
           </div>
           <div class="form-group">
             <label>Ngày kết thúc</label>
-            <input type="date" v-model="modal.form.endDate" />
+            <DateField v-model="modal.form.endDate" />
             <small>Bỏ trống = sinh lịch 8 tuần từ ngày bắt đầu.</small>
           </div>
         </div>
