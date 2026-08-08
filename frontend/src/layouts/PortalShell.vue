@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useLogout } from '@/composables/useLogout'
 import { notificationApi } from '@/api/notifications'
+import AssignmentInviteModal from '@/components/AssignmentInviteModal.vue'
 import { roleHome } from '@/router/roleHome'
 import { ROLE_LABELS } from '@/utils/labels'
 
@@ -37,6 +38,9 @@ function onDocClick(e) {
   if (menuOpen.value && userMenuEl.value && !userMenuEl.value.contains(e.target)) {
     menuOpen.value = false
   }
+  // Bảng lịch dạy nằm NGOÀI khung chuông; bấm trong đó mà đóng chuông thì đóng bảng
+  // xong không còn chỗ để quay về.
+  if (inviteNotif.value) return
   if (notifOpen.value && notifWrap.value && !notifWrap.value.contains(e.target)) {
     notifOpen.value = false
   }
@@ -44,7 +48,8 @@ function onDocClick(e) {
 function onDocKeydown(e) {
   if (e.key === 'Escape') {
     menuOpen.value = false
-    notifOpen.value = false
+    // Esc khi đang mở bảng chỉ đóng bảng (chính component bảng xử lý), giữ lại chuông.
+    if (!inviteNotif.value) notifOpen.value = false
   }
 }
 onMounted(() => {
@@ -177,7 +182,59 @@ async function openNotification(n) {
       /* im lặng */
     }
   }
+  // Lời mời dạy CÒN CHỜ XÁC NHẬN: mở bảng thời khóa biểu ngay tại chỗ thay vì đá sang
+  // trang lịch — dòng thông báo chỉ nói quy mô, chi tiết thứ/tiết/lớp nằm trong bảng.
+  if (n.refEntity === 'Assignment' && n.requiresAction && n.actionStatus === 'PENDING') {
+    openInvite(n)
+    return
+  }
   const to = ENTITY_ROUTES.value[n.refEntity] || TYPE_ROUTES.value[n.type]
+  notifOpen.value = false
+  if (to) router.push(to)
+}
+
+/* ── Bảng lịch dạy chi tiết của lời mời (bật từ dòng thông báo) ── */
+const inviteNotif = ref(null) // thông báo đang mở bảng; null = đóng
+const inviteDetail = ref(null)
+const inviteLoading = ref(false)
+const inviteError = ref('')
+
+async function openInvite(n) {
+  inviteNotif.value = n
+  inviteDetail.value = null
+  inviteError.value = ''
+  inviteLoading.value = true
+  try {
+    const { data } = await notificationApi.assignmentDetail(n.id)
+    inviteDetail.value = data
+  } catch (e) {
+    inviteError.value = e?.response?.data?.message || 'Không tải được lịch dạy. Vui lòng thử lại.'
+  } finally {
+    inviteLoading.value = false
+  }
+}
+function closeInvite() {
+  inviteNotif.value = null
+  inviteDetail.value = null
+  inviteError.value = ''
+}
+// Xác nhận / từ chối ngay trong bảng — dùng lại đúng luồng của nút ở dòng thông báo.
+async function confirmInvite() {
+  const n = inviteNotif.value
+  if (!n) return
+  await confirmNotif(n)
+  if (n.actionStatus !== 'PENDING') closeInvite()
+}
+async function cancelInvite(reason) {
+  const n = inviteNotif.value
+  if (!n) return
+  cancelReason.value = reason
+  await submitCancel(n)
+  if (n.actionStatus !== 'PENDING') closeInvite()
+}
+function openInviteSchedule() {
+  const to = ENTITY_ROUTES.value.Assignment
+  closeInvite()
   notifOpen.value = false
   if (to) router.push(to)
 }
@@ -538,6 +595,20 @@ function switchTo(acc) {
         <slot />
       </main>
     </div>
+
+    <!-- Bảng lịch dạy chi tiết của lời mời — bật khi bấm vào dòng thông báo chờ xác nhận -->
+    <AssignmentInviteModal
+      v-if="inviteNotif"
+      :detail="inviteDetail"
+      :loading="inviteLoading"
+      :error="inviteError"
+      :actionable="inviteNotif.actionStatus === 'PENDING'"
+      :busy="actionBusy"
+      @close="closeInvite"
+      @confirm="confirmInvite"
+      @cancel="cancelInvite"
+      @open-schedule="openInviteSchedule"
+    />
   </div>
 </template>
 

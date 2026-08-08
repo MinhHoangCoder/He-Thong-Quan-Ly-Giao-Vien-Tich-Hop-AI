@@ -4,6 +4,7 @@ import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.dto.AssignmentConflict;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
+import com.kdc.tsdms.dto.AssignmentInviteDetail;
 import com.kdc.tsdms.dto.AssignmentResponse;
 import com.kdc.tsdms.dto.AssignmentSlotRequest;
 import com.kdc.tsdms.dto.AssignmentSlotResponse;
@@ -957,6 +958,56 @@ public class AssignmentService {
         return assignmentRepo
                 .findByIdAndDeletedFalse(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công id=" + id));
+    }
+
+    /**
+     * Bảng lịch dạy chi tiết của một lời mời — góc nhìn GIÁO VIÊN.
+     *
+     * <p><b>KHÔNG tự kiểm quyền.</b> Chỉ dùng cho luồng thông báo: {@code NotificationController}
+     * đã xác thực thông báo thuộc người gọi rồi mới lấy ra assignmentId, nên ở đây không cần
+     * (và không được) kiểm lại theo quyền quản trị — giáo viên vốn không có ASSIGNMENT_VIEW.
+     */
+    @Transactional(readOnly = true)
+    public AssignmentInviteDetail inviteDetail(Integer assignmentId) {
+        // Thông báo sống lâu hơn phiếu: phiếu bị hủy/xóa mà lời mời cũ vẫn nằm ở chuông. Nói
+        // thẳng bằng tiếng người thay vì ném "Không tìm thấy phân công id=473" ra màn giáo viên.
+        Assignment a = assignmentRepo
+                .findByIdAndDeletedFalse(assignmentId)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Phân công này đã bị hủy hoặc xóa — lời mời không còn hiệu lực."));
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
+        Map<Integer, String> classNameCache = new HashMap<>();
+        // Lớp hiển thị ở dòng tóm tắt: khử trùng, giữ thứ tự xuất hiện trong tuần.
+        Set<String> classNames = new LinkedHashSet<>();
+        List<AssignmentSlotResponse> slots = new ArrayList<>();
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
+            Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
+            String slotClassName = classId == null
+                    ? null
+                    : classNameCache.computeIfAbsent(classId, id -> classRepo
+                            .findById(id)
+                            .map(SchoolClass::getName)
+                            .orElse(null));
+            if (slotClassName != null) {
+                classNames.add(slotClassName);
+            }
+            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, sessionIndex.of(p)));
+        }
+        return new AssignmentInviteDetail(
+                a.getId(),
+                schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("(Trường #" + a.getSchoolId() + ")"),
+                subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("(Môn #" + a.getSubjectId() + ")"),
+                teacherRepo
+                        .findById(a.getTeacherId())
+                        .map(AssignmentService::fullName)
+                        .orElse("(GV #" + a.getTeacherId() + ")"),
+                a.getStartDate(),
+                a.getEndDate(),
+                effectiveStatus(a),
+                a.getConfirmDeadline(),
+                List.copyOf(classNames),
+                slots);
     }
 
     private AssignmentResponse toResponse(Assignment a) {

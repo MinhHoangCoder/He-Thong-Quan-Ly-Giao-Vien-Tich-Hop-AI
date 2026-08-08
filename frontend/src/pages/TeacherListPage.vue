@@ -5,6 +5,7 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
+import DateField from '@/components/ui/DateField.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
@@ -1428,13 +1429,10 @@ function formatDate(d) {
                     <div class="form-field">
                       <label class="form-label"
                         >Ngày sinh
-                        <input
+                        <DateField
                           v-model="createModal.profile.dateOfBirth"
-                          type="date"
-                          class="form-input"
-                          lang="vi"
-                          :class="{ 'form-input--error': createFieldErrors.dateOfBirth }"
-                          @change="validateCreateDates"
+                          :invalid="!!createFieldErrors.dateOfBirth"
+                          @update:model-value="validateCreateDates"
                         />
                       </label>
                       <span v-if="createFieldErrors.dateOfBirth" class="field-error">{{
@@ -1444,13 +1442,10 @@ function formatDate(d) {
                     <div class="form-field">
                       <label class="form-label"
                         >Ngày vào làm
-                        <input
+                        <DateField
                           v-model="createModal.profile.hireDate"
-                          type="date"
-                          class="form-input"
-                          lang="vi"
-                          :class="{ 'form-input--error': createFieldErrors.hireDate }"
-                          @change="validateCreateDates"
+                          :invalid="!!createFieldErrors.hireDate"
+                          @update:model-value="validateCreateDates"
                         />
                       </label>
                       <span v-if="createFieldErrors.hireDate" class="field-error">{{
@@ -1784,12 +1779,10 @@ function formatDate(d) {
                     <div class="form-field">
                       <label class="form-label"
                         >Ngày sinh
-                        <input
+                        <DateField
                           v-model="editModal.form.dateOfBirth"
-                          type="date"
-                          class="form-input"
-                          :class="{ 'form-input--error': editFieldErrors.dateOfBirth }"
-                          @change="validateEditDates"
+                          :invalid="!!editFieldErrors.dateOfBirth"
+                          @update:model-value="validateEditDates"
                         />
                       </label>
                       <span v-if="editFieldErrors.dateOfBirth" class="field-error">{{
@@ -1799,12 +1792,10 @@ function formatDate(d) {
                     <div class="form-field">
                       <label class="form-label"
                         >Ngày vào làm
-                        <input
+                        <DateField
                           v-model="editModal.form.hireDate"
-                          type="date"
-                          class="form-input"
-                          :class="{ 'form-input--error': editFieldErrors.hireDate }"
-                          @change="validateEditDates"
+                          :invalid="!!editFieldErrors.hireDate"
+                          @update:model-value="validateEditDates"
                         />
                       </label>
                       <span v-if="editFieldErrors.hireDate" class="field-error">{{
@@ -2900,6 +2891,21 @@ function formatDate(d) {
 .form-input:focus {
   border-color: var(--c-primary);
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+  background: var(--c-surface);
+}
+/* Ô chọn ngày dùng chung (DateField) kẻ theo .form-input để đứng cạnh các ô khác cho đều.
+   Component có style scoped riêng nên phải :deep() mới với tới được thẻ input bên trong. */
+:deep(.df__input) {
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  border-width: 1.5px;
+  border-color: var(--a-border);
+  border-radius: 9px;
+  background: var(--a-bg);
+  color: var(--a-text);
+  font-size: 0.88rem;
+}
+:deep(.df__input:focus) {
+  border-color: var(--c-primary);
   background: var(--c-surface);
 }
 .form-textarea {

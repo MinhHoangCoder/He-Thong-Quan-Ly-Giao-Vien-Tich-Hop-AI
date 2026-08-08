@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
 import com.kdc.tsdms.service.AttendanceService;
@@ -88,6 +89,31 @@ public class AttendanceController {
     }
 
     /** Sinh chấm công hàng loạt từ các buổi đã duyệt trong khoảng ngày. */
+    /**
+     * Hộp "Cần xử lý" của kế toán: dòng hệ thống chốt hộ giờ ra, dòng hệ thống ghi Vắng, và
+     * dòng còn treo chưa có giờ ra — gom một chỗ thay vì bắt dò cả bảng.
+     */
+    @GetMapping("/attention")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
+    public List<AttendanceResponse> attention(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.attention(from, to);
+    }
+
+    /**
+     * Nhật ký thay đổi của một dòng chấm công — ai sửa, sửa gì, lúc nào.
+     *
+     * <p>ATTENDANCE_MANAGE chứ không phải ATTENDANCE_VIEW: GIÁO VIÊN cũng có quyền VIEW (để
+     * xem bảng của chính mình, {@code list()} tự ép scope), nên gắn VIEW ở đây là mở toang
+     * dữ liệu của người khác. Hai endpoint này là công cụ của kế toán.
+     */
+    @GetMapping("/{id}/logs")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
+    public List<AttendanceChangeLogResponse> logs(@PathVariable Long id) {
+        return service.changeLog(id);
+    }
+
     @PostMapping("/generate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
     public Map<String, Object> generate(

@@ -159,6 +159,21 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public Integer actionableAssignmentId(Long notificationId) {
         Notification n = actionableOrThrow(notificationId);
+        return assignmentIdOrThrow(n);
+    }
+
+    /**
+     * Phân công mà một thông báo trỏ tới, CHỈ cần thông báo thuộc người gọi — dùng cho thao tác
+     * ĐỌC (mở bảng lịch dạy chi tiết). Không đòi trạng thái PENDING như {@code
+     * actionableAssignmentId}: nếu tab khác vừa xác nhận xong thì việc xem lại bảng vẫn phải mở
+     * được, không nên nổ 409.
+     */
+    @Transactional(readOnly = true)
+    public Integer ownedAssignmentId(Long notificationId) {
+        return assignmentIdOrThrow(ownedOrThrow(notificationId));
+    }
+
+    private static Integer assignmentIdOrThrow(Notification n) {
         if (!"Assignment".equals(n.getRefEntity()) || n.getRefId() == null) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Thông báo này không gắn với phân công nào");
         }
