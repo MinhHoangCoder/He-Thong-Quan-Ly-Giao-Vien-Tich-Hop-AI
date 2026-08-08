@@ -113,6 +113,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const PHONE_RE = /^(\+84|0)\d{9,10}$/
 const CCCD_RE = /^\d{9}(\d{3})?$/
 const MIN_WORKING_AGE = 18 // tuổi lao động tối thiểu — dùng để so ngày sinh với ngày vào làm
+const EXPERIENCE_MAX = 500 //
 
 /**
  * So sánh cặp Ngày sinh / Ngày vào làm — dùng chung cho cả 2 form (Tạo & Sửa).
@@ -1539,8 +1540,21 @@ function formatDate(d) {
                     v-model="createModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
+                    :maxlength="EXPERIENCE_MAX"
                     placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
                   />
+                  <small
+                    class="field__hint"
+                    :class="{
+                      'field__hint--warn':
+                        (createModal.teachingExperience || '').length >= EXPERIENCE_MAX - 30 &&
+                        (createModal.teachingExperience || '').length <= EXPERIENCE_MAX,
+                      'field__hint--over':
+                        (createModal.teachingExperience || '').length > EXPERIENCE_MAX,
+                    }"
+                  >
+                    {{ (createModal.teachingExperience || '').length }}/{{ EXPERIENCE_MAX }}
+                  </small>
                 </template>
 
                 <!-- Tab: Trạng thái -->
@@ -1904,8 +1918,21 @@ function formatDate(d) {
                     v-model="editModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
+                    :maxlength="EXPERIENCE_MAX"
                     placeholder="VD: 3 năm dạy ... tại ... từng phụ trách CLB ..."
                   />
+                  <small
+                    class="field__hint"
+                    :class="{
+                      'field__hint--warn':
+                        (editModal.teachingExperience || '').length >= EXPERIENCE_MAX - 30 &&
+                        (editModal.teachingExperience || '').length <= EXPERIENCE_MAX,
+                      'field__hint--over':
+                        (editModal.teachingExperience || '').length > EXPERIENCE_MAX,
+                    }"
+                  >
+                    {{ (editModal.teachingExperience || '').length }}/{{ EXPERIENCE_MAX }}
+                  </small>
                 </template>
 
                 <!-- Tab: Trạng thái -->
@@ -2617,7 +2644,22 @@ function formatDate(d) {
   color: var(--a-text-muted);
   margin: 0 0 0.9rem;
 }
-
+.field__hint {
+  display: block;
+  text-align: right;
+  margin-top: 0.4rem;
+  color: var(--a-text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.field__hint--warn {
+  color: var(--c-primary, #f97316);
+  font-weight: 600;
+}
+.field__hint--over {
+  color: #ef4444;
+  font-weight: 700;
+}
 /* Bằng cấp / Chứng chỉ: 1 dòng nhiều ô */
 .doc-row {
   display: grid;
