@@ -12,7 +12,6 @@ import com.kdc.tsdms.repository.ContractRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
-import jakarta.transaction.Transactional;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -29,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 @Service
@@ -60,6 +60,7 @@ public class TeacherService {
 
     // DANH SÁCH  ======================================
 
+    @Transactional(readOnly = true)
     public List<TeacherResponse.Response> getAllTeachers() {
         return teacherRepo.findByDeletedFalse().stream()
                 .map(t -> toResponse(t, false))
@@ -75,6 +76,7 @@ public class TeacherService {
      * (ADMIN/EMPLOYEE hoặc quyền TEACHER_VIEW) hoặc CHÍNH CHỦ mới được xem —
      * đúng mẫu chuẩn mô tả ở {@link SecurityUtils}.
      */
+    @Transactional(readOnly = true)
     public TeacherResponse.Response getTeacherById(Integer id) {
         Teacher t = findActiveOrThrow(id);
         boolean isStaff = SecurityUtils.hasRole("ADMIN")
@@ -161,6 +163,7 @@ public class TeacherService {
     }
 
     /** Đọc username/email hiện tại — dùng cho GET /teacher/{id}/account (nạp form Sửa). */
+    @Transactional(readOnly = true)
     public TeacherResponse.AccountInfo getAccount(Integer teacherId) {
         Teacher t = findActiveOrThrow(teacherId);
         boolean isStaff = SecurityUtils.hasRole("ADMIN")
@@ -257,6 +260,7 @@ public class TeacherService {
 
     // History
 
+    @Transactional(readOnly = true)
     public List<TeacherResponse.HistoryItem> getTrash() {
         return teacherRepo.findByDeletedTrueOrderByDeletedAtDesc().stream()
                 .map(this::toHistoryItem)
@@ -400,7 +404,7 @@ public class TeacherService {
     //   để trình duyệt MỞ THẲNG PDF ở tab mới thay vì ép tải về, đúng ý "bấm vào để xem".
     //   Cho phép cả staff (ADMIN/EMPLOYEE) lẫn CHÍNH giáo viên đó xem hồ sơ của mình.
 
-    @Transactional
+    @Transactional(readOnly = true)
     public ResponseEntity<?> openCertificateFile(Integer teacherId, Integer certId) {
         Teacher t = findActiveOrThrow(teacherId);
         boolean isStaff = SecurityUtils.hasRole("ADMIN")
