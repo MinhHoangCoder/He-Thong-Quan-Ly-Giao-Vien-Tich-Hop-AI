@@ -8,6 +8,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { schoolApi } from '@/api/schools'
 import { branchApi } from '@/api/branches'
+import DateField from '@/components/ui/DateField.vue'
 
 /* ── State: danh sách trường ── */
 const loading = ref(false)
@@ -486,16 +487,15 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
         <div class="form-row">
           <div class="form-group">
             <label>Ngày bắt đầu hợp đồng</label>
-            <input v-model="modal.form.contractStartDate" type="date" />
+            <DateField v-model="modal.form.contractStartDate" />
           </div>
 
           <div class="form-group">
             <label>Ngày hết hạn hợp đồng</label>
-            <input
+            <DateField
               v-model="modal.form.contractEndDate"
-              type="date"
-              :class="{ 'input-error': modal.errors.contractEndDate }"
-              @input="clearFieldError('contractEndDate')"
+              :invalid="!!modal.errors.contractEndDate"
+              @update:model-value="clearFieldError('contractEndDate')"
             />
             <small v-if="modal.errors.contractEndDate" class="field-error">{{
               modal.errors.contractEndDate

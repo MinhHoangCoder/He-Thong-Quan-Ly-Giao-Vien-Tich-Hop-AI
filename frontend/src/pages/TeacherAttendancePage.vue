@@ -8,6 +8,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { attendanceApi } from '@/api/attendance'
 import { tietLabel } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import DateField from '@/components/ui/DateField.vue'
 
 const STATUSES = [
   { code: 'PRESENT', label: 'Có mặt', cls: 'badge-green' },
@@ -126,9 +127,9 @@ const totalHours = computed(() =>
     <!-- Bộ lọc -->
     <div class="toolbar">
       <label>Từ</label>
-      <input type="date" v-model="filter.from" />
+      <DateField v-model="filter.from" class="df--inline" />
       <label>Đến</label>
-      <input type="date" v-model="filter.to" />
+      <DateField v-model="filter.to" class="df--inline" />
       <label>Trạng thái</label>
       <select v-model="filter.status">
         <option value="">Tất cả</option>
