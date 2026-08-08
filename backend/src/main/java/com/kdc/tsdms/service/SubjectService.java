@@ -6,12 +6,17 @@ import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.LessonFileRepository;
 import com.kdc.tsdms.repository.LessonRepository;
 import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
+import com.kdc.tsdms.repository.TeacherSubjectRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,12 +37,23 @@ public class SubjectService {
     private final SubjectRepository subjectRepo;
     private final SubjectCategoryRepository categoryRepo;
     private final LessonRepository lessonRepo;
+    private final LessonFileRepository lessonFileRepo;
+    private final TeacherSubjectRepository teacherSubjectRepo;
+    private final AssignmentRepository assignmentRepo;
 
     public SubjectService(
-            SubjectRepository subjectRepo, SubjectCategoryRepository categoryRepo, LessonRepository lessonRepo) {
+            SubjectRepository subjectRepo,
+            SubjectCategoryRepository categoryRepo,
+            LessonRepository lessonRepo,
+            LessonFileRepository lessonFileRepo,
+            TeacherSubjectRepository teacherSubjectRepo,
+            AssignmentRepository assignmentRepo) {
         this.subjectRepo = subjectRepo;
         this.categoryRepo = categoryRepo;
         this.lessonRepo = lessonRepo;
+        this.lessonFileRepo = lessonFileRepo;
+        this.teacherSubjectRepo = teacherSubjectRepo;
+        this.assignmentRepo = assignmentRepo;
     }
 
     /**
@@ -62,13 +78,13 @@ public class SubjectService {
 
     @Transactional
     public SubjectResponse create(SubjectRequest req) {
-        if (subjectRepo.existsByCodeAndDeletedFalse(req.code())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Mã môn '" + req.code() + "' đã tồn tại");
-        }
         SubjectCategory category = getCategoryOrThrow(req.categoryId());
+        // Mã môn LUÔN tự sinh khi tạo mới (tăng dần theo nhóm môn) — bỏ qua mã
+        // client gửi lên (nếu có), tránh trùng/sai định dạng do người dùng gõ tay.
+        String code = generateNextCode(category);
 
         Subject s = new Subject();
-        apply(s, req, category);
+        apply(s, req, category, code);
         s.setCreatedBy(SecurityUtils.currentUserId());
         return SubjectResponse.fromEntity(subjectRepo.save(s), 0);
     }
@@ -76,49 +92,64 @@ public class SubjectService {
     @Transactional
     public SubjectResponse update(Integer id, SubjectRequest req) {
         Subject s = getOrThrow(id);
-        if (subjectRepo.existsByCodeAndDeletedFalseAndIdNot(req.code(), id)) {
-            throw new ApiException(HttpStatus.CONFLICT, "Mã môn '" + req.code() + "' đã được dùng bởi môn khác");
+        // Khi SỬA, mã môn vẫn do người dùng nhập tay và bắt buộc (khác lúc TẠO
+        // MỚI đã tự sinh) — @NotBlank được bỏ khỏi SubjectRequest nên phải tự
+        // kiểm tra rỗng ở đây.
+        String code = req.code() == null ? null : req.code().trim();
+        if (code == null || code.isBlank()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Mã môn không được để trống");
+        }
+        if (subjectRepo.existsByCodeAndDeletedFalseAndIdNot(code, id)) {
+            throw new ApiException(HttpStatus.CONFLICT, "Mã môn '" + code + "' đã được dùng bởi môn khác");
         }
         SubjectCategory category = getCategoryOrThrow(req.categoryId());
 
-        apply(s, req, category);
+        apply(s, req, category, code);
         s.setUpdatedAt(Instant.now());
         s.setUpdatedBy(SecurityUtils.currentUserId());
         return SubjectResponse.fromEntity(subjectRepo.save(s), countLessons(id));
     }
 
+    /**
+     * FIX (2026-08-07): XÓA VĨNH VIỄN (hard delete) thay vì xóa mềm như trước —
+     * môn học đã xóa biến mất hẳn khỏi CSDL, không còn giữ lại bản ghi
+     * IsDeleted = 1. Quy tắc:
+     * <p>
+     * - status = ACTIVE -> LUÔN chặn xóa (như cũ), phải tắt hoạt động trước.
+     * - status = DISABLED -> cho phép xóa, với 2 bước an toàn:
+     * 1) CHẶN nếu môn từng có Assignment (phân công giảng dạy) — đây là dữ
+     * liệu LỊCH SỬ, không được xóa cùng môn học kẻo mất dấu vết ai từng dạy
+     * môn gì.
+     * 2) Nếu qua được bước 1: xóa vĩnh viễn toàn bộ bài giảng (Lesson +
+     * LessonFile) và liên kết GV-môn (TeacherSubject) thuộc môn này trước,
+     * để không vướng khóa ngoại SubjectId, rồi mới xóa hẳn dòng Subject.
+     */
     @Transactional
     public void delete(Integer id) {
         Subject s = getOrThrow(id);
-        // FIX (2026-07-30): quy tắc xóa môn học nay CHỈ dựa vào trạng thái
-        // (status), không còn dựa vào việc còn bài giảng tham chiếu hay không:
-        // - status = ACTIVE (đang hoạt động) -> LUÔN chặn xóa, kể cả khi chưa
-        // có bài giảng nào, để tránh xóa nhầm 1 môn đang được dùng trong giảng
-        // dạy.
-        // - status = DISABLED (đã tắt hoạt động) -> cho phép xóa, đồng thời xóa
-        // mềm (cascade) luôn TẤT CẢ bài giảng đang thuộc môn này — tránh để lại
-        // bài giảng "mồ côi" trỏ tới 1 môn học đã bị xóa.
         if (!"DISABLED".equals(s.getStatus())) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "Không thể xóa: môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
         }
-        long used = countLessons(id);
-        if (used > 0) {
-            Instant now = Instant.now();
-            Integer uid = SecurityUtils.currentUserId();
-            List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(id);
-            for (Lesson l : lessons) {
-                l.setDeleted(true);
-                l.setDeletedAt(now);
-                l.setDeletedBy(uid);
-            }
-            lessonRepo.saveAll(lessons);
+
+        long assigned = assignmentRepo.countBySubjectId(id);
+        if (assigned > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa vĩnh viễn: môn học đã từng có " + assigned
+                            + " phân công giảng dạy (Assignment) — đây là dữ liệu lịch sử nên không thể xóa cùng môn học.");
         }
-        s.setDeleted(true);
-        s.setDeletedAt(Instant.now());
-        s.setDeletedBy(SecurityUtils.currentUserId());
-        subjectRepo.save(s);
+
+        List<Lesson> lessons = lessonRepo.findBySubjectId(id);
+        if (!lessons.isEmpty()) {
+            List<Integer> lessonIds = lessons.stream().map(Lesson::getId).toList();
+            lessonFileRepo.deleteByLessonIdIn(lessonIds);
+            lessonRepo.deleteAll(lessons);
+        }
+        teacherSubjectRepo.deleteBySubjectId(id);
+
+        subjectRepo.delete(s);
     }
 
     /* ── PRIVATE ── */
@@ -136,8 +167,8 @@ public class SubjectService {
                         () -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy nhóm môn id=" + categoryId));
     }
 
-    private void apply(Subject s, SubjectRequest req, SubjectCategory category) {
-        s.setCode(req.code());
+    private void apply(Subject s, SubjectRequest req, SubjectCategory category, String code) {
+        s.setCode(code);
         s.setName(req.name());
         s.setCategory(category);
         s.setDescription(req.description());
@@ -146,5 +177,59 @@ public class SubjectService {
 
     private long countLessons(Integer subjectId) {
         return lessonRepo.countBySubjectIdAndDeletedFalse(subjectId);
+    }
+
+    /**
+     * Sinh mã môn TIẾP THEO cho 1 nhóm môn: {prefix}{số thứ tự 2 chữ số}, vd
+     * nhóm "STEM - AI" (code STEM_AI) -> SA01, SA02... Prefix lấy từ chữ cái
+     * đầu mỗi cụm trong SubjectCategory.Code (tách bởi "_").
+     * <p>
+     * QUÉT TOÀN BỘ Subject (không chỉ trong nhóm) vì UX_Subject_Code là ràng
+     * buộc UNIQUE toàn cục (V21), không phải duy nhất theo từng nhóm — 2 nhóm
+     * khác nhau vẫn có thể vô tình ra cùng prefix.
+     */
+    private String generateNextCode(SubjectCategory category) {
+        String prefix = buildCodePrefix(category);
+        Pattern p = Pattern.compile("^" + Pattern.quote(prefix) + "(\\d+)$");
+
+        int max = 0;
+        for (Subject existing : subjectRepo.findByDeletedFalseOrderByName()) {
+            if (existing.getCode() == null) continue;
+            Matcher m = p.matcher(existing.getCode());
+            if (m.matches()) {
+                max = Math.max(max, Integer.parseInt(m.group(1)));
+            }
+        }
+
+        int next = max + 1;
+        String code = prefix + String.format("%02d", next);
+        // An toàn tuyệt đối: nếu vì lý do gì đó mã vẫn trùng (dữ liệu cũ méo mó),
+        // tăng dần tới khi chắc chắn còn trống thay vì để lỗi 409 tới người dùng.
+        while (subjectRepo.existsByCodeAndDeletedFalse(code)) {
+            next++;
+            code = prefix + String.format("%02d", next);
+        }
+        return code;
+    }
+
+    /**
+     * Prefix mã môn suy ra từ SubjectCategory.Code, ví dụ TIN_HOC -> TH, STEM_AI ->
+     * SA.
+     */
+    private String buildCodePrefix(SubjectCategory category) {
+        String catCode = category.getCode() == null ? "" : category.getCode().toUpperCase();
+        StringBuilder initials = new StringBuilder();
+        for (String part : catCode.split("_+")) {
+            if (!part.isBlank()) {
+                initials.append(part.charAt(0));
+            }
+        }
+        String prefix = initials.toString().replaceAll("[^A-Z0-9]", "");
+        if (prefix.length() < 2) {
+            // Nhóm chỉ có 1 từ / mã lạ -> lùi về lấy tối đa 4 ký tự đầu của mã nhóm.
+            String compact = catCode.replaceAll("[^A-Z0-9]", "");
+            prefix = compact.isEmpty() ? "MH" : compact.substring(0, Math.min(4, compact.length()));
+        }
+        return prefix;
     }
 }
