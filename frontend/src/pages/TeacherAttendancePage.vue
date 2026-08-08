@@ -8,6 +8,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { attendanceApi } from '@/api/attendance'
 import { tietLabel } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import CheckinPanel from '@/components/CheckinPanel.vue'
 import DateField from '@/components/ui/DateField.vue'
 
 const STATUSES = [
@@ -123,6 +124,9 @@ const totalHours = computed(() =>
         <span class="stat-value">{{ totalHours }}h</span>
       </div>
     </div>
+
+    <!-- Chấm công hôm nay: bấm ngay tại trang Chấm công, không phải quay về Trang chủ -->
+    <CheckinPanel @changed="load" />
 
     <!-- Bộ lọc -->
     <div class="toolbar">

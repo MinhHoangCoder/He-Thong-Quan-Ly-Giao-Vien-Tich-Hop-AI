@@ -47,6 +47,9 @@ public class AttendanceResponse {
     /** MORNING | AFTERNOON */
     public String sessionType;
 
+    /** Giờ ra do HỆ THỐNG chốt vì giáo viên quên bấm — kế toán nên soát lại dòng này. */
+    public boolean autoCheckOut;
+
     public static AttendanceResponse fromEntity(Attendance a, String teacherName) {
         AttendanceResponse r = new AttendanceResponse();
         r.id = a.getId();
@@ -60,6 +63,7 @@ public class AttendanceResponse {
         r.status = a.getStatus();
         r.checkInMethod = a.getCheckInMethod();
         r.note = a.getNote();
+        r.autoCheckOut = a.isAutoCheckOut();
         return r;
     }
 

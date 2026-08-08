@@ -69,4 +69,18 @@ public class Attendance {
 
     @Column(name = "CreatedBy")
     private Integer createdBy;
+
+    /** Giờ ra do HỆ THỐNG chốt (giáo viên quên bấm) — kế toán soát lại được (V24). */
+    @Column(name = "AutoCheckOut", nullable = false)
+    private boolean autoCheckOut;
+
+    /**
+     * Ai sửa lần cuối — trigger TR_Attendance_ChangeLog đọc để ghi nhật ký. Job chạy nền
+     * để null (log hiểu là hệ thống tự làm).
+     */
+    @Column(name = "UpdatedAt")
+    private Instant updatedAt;
+
+    @Column(name = "UpdatedBy")
+    private Integer updatedBy;
 }
