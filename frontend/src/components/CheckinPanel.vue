@@ -13,7 +13,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { attendanceApi } from '@/api/attendance'
 
-const emit = defineEmits(['changed'])
+// 'changed' = vừa chấm xong, trang cha nạp lại bảng.
+// 'amend'   = buổi đã lỡ, trang cha mở form xin bổ sung cho buổi đó.
+const emit = defineEmits(['changed', 'amend'])
 
 const data = ref(null)
 const loading = ref(false)
@@ -116,14 +118,15 @@ async function act(session, mode) {
           >
             Check out
           </button>
+          <button
+            v-else-if="s.state === 'MISSED'"
+            class="ckp__btn ckp__btn--amend"
+            @click="emit('amend', s)"
+          >
+            Xin bổ sung
+          </button>
           <span v-else class="ckp__hint">
-            {{
-              s.state === 'NOT_YET'
-                ? 'Mở trước giờ dạy 30 phút'
-                : s.state === 'MISSED'
-                  ? 'Liên hệ kế toán'
-                  : '—'
-            }}
+            {{ s.state === 'NOT_YET' ? 'Mở trước giờ dạy 30 phút' : '—' }}
           </span>
         </div>
       </li>
@@ -238,6 +241,11 @@ async function act(session, mode) {
 }
 .ckp__btn--out {
   background: var(--c-accent);
+}
+.ckp__btn--amend {
+  background: transparent;
+  border: 1px solid var(--c-border);
+  color: var(--c-text-muted);
 }
 .ckp__btn:disabled {
   opacity: 0.6;

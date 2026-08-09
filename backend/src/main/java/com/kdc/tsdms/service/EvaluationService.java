@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
 import com.kdc.tsdms.entity.AppUser;
@@ -19,7 +20,6 @@ import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -54,12 +54,6 @@ import org.springframework.transaction.support.TransactionTemplate;
  */
 @Service
 public class EvaluationService {
-
-    /**
-     * Giờ nghiệp vụ Việt Nam — JVM bị ghim UTC (TsdmsApplication) nên mọi chỗ cần
-     * "hôm nay" để suy ra kỳ/năm học phải đi qua đây, không dùng LocalDate.now() trần.
-     */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final TeacherEvaluationRepository evaluationRepo;
     private final TeacherRepository teacherRepo;
@@ -103,14 +97,14 @@ public class EvaluationService {
      */
     @Transactional(readOnly = true)
     public List<String> periodPresets() {
-        String ay = academicYearLabel(LocalDate.now(BUSINESS_ZONE));
+        String ay = academicYearLabel(BusinessTime.today());
         return List.of("HK1 " + ay, "HK2 " + ay, "Tổng kết năm " + ay, "Tổng kết hợp đồng", "Đánh giá thử việc");
     }
 
     /** Preset + kỳ gợi ý theo tháng (HK1: 8–12, HK2: 1–5, 6–7: tổng kết năm). */
     @Transactional(readOnly = true)
     public EvaluationResponse.PeriodMeta periodMeta() {
-        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(LocalDate.now(BUSINESS_ZONE)));
+        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(BusinessTime.today()));
     }
 
     /**
@@ -770,7 +764,7 @@ public class EvaluationService {
 
     private String resolvePeriod(String periodNote) {
         String t = trimToNull(periodNote);
-        return t != null ? t : suggestedPeriod(LocalDate.now(BUSINESS_ZONE));
+        return t != null ? t : suggestedPeriod(BusinessTime.today());
     }
 
     /**

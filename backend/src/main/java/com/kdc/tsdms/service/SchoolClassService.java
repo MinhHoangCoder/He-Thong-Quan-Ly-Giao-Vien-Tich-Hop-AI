@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
@@ -13,7 +14,6 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -48,9 +48,6 @@ public class SchoolClassService {
     private static final Pattern CLASS_NAME_STRICT = Pattern.compile("^([1-9]|1[0-2])([A-Z])(20|[1-9]|1[0-9])$");
 
     private static final int YEAR_RANGE = 5;
-
-    /** JVM ghim UTC — "năm học hiện tại" phải suy từ ngày theo giờ Việt Nam. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     private final SchoolClassRepository classRepo;
     private final SchoolRepository schoolRepo;
@@ -380,7 +377,7 @@ public class SchoolClassService {
     }
 
     private static int currentSchoolYearStart() {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         return today.getMonthValue() >= 9 ? today.getYear() : today.getYear() - 1;
     }
 

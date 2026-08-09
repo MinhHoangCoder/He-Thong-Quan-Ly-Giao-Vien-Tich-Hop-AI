@@ -32,8 +32,8 @@ public class Attendance {
     @Column(name = "TeacherId", nullable = false)
     private Integer teacherId;
 
-    /** Buổi dạy tương ứng (nullable — có thể chấm công không gắn buổi). */
-    @Column(name = "ScheduleId")
+    /** Buổi dạy tương ứng — BẮT BUỘC từ V25 (bỏ khái niệm chấm công không gắn buổi). */
+    @Column(name = "ScheduleId", nullable = false)
     private Long scheduleId;
 
     @Column(name = "WorkDate", nullable = false)
@@ -83,4 +83,12 @@ public class Attendance {
 
     @Column(name = "UpdatedBy")
     private Integer updatedBy;
+
+    /**
+     * Vì sao dòng này bị người ngoài động vào (V25). Nguồn công chính thức là giáo viên tự
+     * chấm; admin sửa tay hoặc duyệt yêu cầu bổ sung đều phải để lại lời giải thích ở đây.
+     * Tách khỏi {@link #note} vì Note là ghi chú của chính giáo viên lúc check-in.
+     */
+    @Column(name = "AdjustReason")
+    private String adjustReason;
 }
