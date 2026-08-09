@@ -185,6 +185,8 @@ public class AttendanceService {
         if (s == null) {
             return;
         }
+        r.sessionStart = s.getStartTime();
+        r.sessionEnd = s.getEndTime();
         Assignment a = assignmentCache.computeIfAbsent(
                 s.getAssignmentId(), id -> assignmentRepo.findById(id).orElse(null));
         if (a != null) {
@@ -222,6 +224,27 @@ public class AttendanceService {
                 r.sessionType = p.getSessionType();
             }
         }
+    }
+
+    /**
+     * Lớp của MỘT BUỔI dạy: ô lịch gốc trước, lớp cấp phân công sau.
+     *
+     * <p>Từ V16 grain thật là "1 tiết = 1 lớp" ({@code AssignmentSlot.classId}); {@code
+     * Assignment.classId} chỉ còn là lớp mặc định cho dữ liệu cũ. Đọc thẳng cái sau là hiện
+     * sai lớp ở những phân công trải nhiều lớp.
+     */
+    private SchoolClass classOfSession(Schedule s, Assignment asg) {
+        if (asg == null) {
+            return null;
+        }
+        Integer classId = asg.getClassId();
+        if (s.getSourceSlotId() != null) {
+            AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+            if (slot != null && slot.getClassId() != null) {
+                classId = slot.getClassId();
+            }
+        }
+        return classId == null ? null : classRepo.findById(classId).orElse(null);
     }
 
     /** Hồ sơ giáo viên của người đang đăng nhập (báo lỗi nếu tài khoản không phải giáo viên). */
@@ -373,24 +396,33 @@ public class AttendanceService {
             School school = asg != null ? schoolRepo.findById(asg.getSchoolId()).orElse(null) : null;
             Subject subj =
                     asg != null ? subjectRepo.findById(asg.getSubjectId()).orElse(null) : null;
-            SchoolClass cls = asg != null && asg.getClassId() != null
-                    ? classRepo.findById(asg.getClassId()).orElse(null)
-                    : null;
+            // Lớp phải lấy từ Ô LỊCH GỐC của buổi (V16: mỗi tiết một lớp), fallback lớp cấp
+            // phân công. Trước đây chỉ đọc asg.getClassId() nên panel hiện "Lớp 1A5" cho mọi
+            // buổi, trong khi bảng chấm công ngay bên dưới hiện đúng 2A1/2A2 — cùng một buổi
+            // mà hai chỗ ghi hai lớp khác nhau.
+            SchoolClass cls = classOfSession(s, asg);
             Attendance att =
                     attendanceRepo.findFirstByScheduleIdOrderByIdAsc(s.getId()).orElse(null);
             // Chỉ tính là "đã chấm" khi chính GV check-in (SELF) — dòng staff sinh sẵn không tính.
             boolean selfIn = att != null && "SELF".equals(att.getCheckInMethod()) && att.getCheckIn() != null;
             boolean selfOut = selfIn && att.getCheckOut() != null;
-            boolean locked = att != null && ("ABSENT".equals(att.getStatus()) || "LEAVE".equals(att.getStatus()));
+            // LOCKED = NGƯỜI đã quyết (kế toán ghi Vắng/Nghỉ phép) → giáo viên đừng đụng vào.
+            // Dòng Vắng do JOB tự ghi thì KHÔNG khóa: nó chỉ là hệ quả của việc quên bấm, và
+            // xin bổ sung chính là đường sửa. Trước đây gộp chung nên nút "Xin bổ sung" chỉ
+            // sống được 30 phút giữa lúc buổi tan và lúc job chạy.
+            boolean decidedByHuman = att != null
+                    && !"SYSTEM".equals(att.getCheckInMethod())
+                    && ("ABSENT".equals(att.getStatus()) || "LEAVE".equals(att.getStatus()));
 
             // Trạng thái theo cửa sổ check-in (khớp luật chặn ở checkIn()):
             // DONE/CHECKED_IN → đã chấm; LOCKED → kế toán đã ghi Vắng/Nghỉ phép;
             // NOT_YET → chưa mở (sớm hơn EARLY_CHECKIN_MIN phút); MISSED → buổi đã
-            // kết thúc mà chưa chấm; OPEN → đang trong cửa sổ, bấm được.
+            // kết thúc mà chưa chấm (kể cả khi job đã ghi Vắng) → xin bổ sung được;
+            // OPEN → đang trong cửa sổ, bấm được.
             String state;
             if (selfOut) state = "DONE";
             else if (selfIn) state = "CHECKED_IN";
-            else if (locked) state = "LOCKED";
+            else if (decidedByHuman) state = "LOCKED";
             else if (now.isBefore(s.getStartTime().minusMinutes(EARLY_CHECKIN_MIN))) state = "NOT_YET";
             else if (now.isAfter(s.getEndTime())) state = "MISSED";
             else state = "OPEN";
@@ -679,6 +711,11 @@ public class AttendanceService {
                     fresh.setCreatedBy(SecurityUtils.currentUserId());
                     return fresh;
                 });
+        // Ghi chú "hết buổi không có check-in" do job để lại giờ đã sai — dòng vừa được xác
+        // nhận là CÓ dạy. Xóa đi, nếu không bảng hiện "Có mặt" kèm lời giải thích mâu thuẫn.
+        if ("SYSTEM".equals(a.getCheckInMethod())) {
+            a.setNote(null);
+        }
         a.setTeacherId(s.getTeacherId());
         a.setWorkDate(s.getStartTime().toLocalDate());
         a.setCheckIn(checkIn);

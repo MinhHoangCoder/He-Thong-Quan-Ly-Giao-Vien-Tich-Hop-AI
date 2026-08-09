@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 
@@ -46,6 +47,14 @@ public class AttendanceResponse {
 
     /** MORNING | AFTERNOON */
     public String sessionType;
+
+    /**
+     * Giờ bắt đầu/kết thúc buổi dạy. Giáo viên cần hai mốc này để form "Xin bổ sung" điền
+     * sẵn giờ theo khung tiết — nếu bắt gõ tay thì mỗi người khai một kiểu, admin duyệt mù.
+     */
+    public LocalDateTime sessionStart;
+
+    public LocalDateTime sessionEnd;
 
     /** Giờ ra do HỆ THỐNG chốt vì giáo viên quên bấm — kế toán nên soát lại dòng này. */
     public boolean autoCheckOut;

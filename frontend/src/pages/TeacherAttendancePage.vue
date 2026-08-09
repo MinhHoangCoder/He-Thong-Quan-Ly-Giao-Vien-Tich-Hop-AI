@@ -126,6 +126,33 @@ function openAmend(session) {
   amendModal.checkOut = String(session.endTime).slice(11, 16)
 }
 
+/* ── Xin bổ sung cho buổi các NGÀY TRƯỚC ──
+ * Panel phía trên chỉ liệt kê buổi hôm nay, nên buổi lỡ hôm kia không có lối vào nào —
+ * dù API vẫn cho xin trong 7 ngày. Nút ở đây là lối vào đó.
+ */
+const AMEND_WINDOW_DAYS = 7
+
+/** Dòng này còn xin bổ sung được không: đang Vắng, có buổi dạy, và chưa quá hạn. */
+function canAmend(r) {
+  if (r.status !== 'ABSENT' || !r.scheduleId || !r.sessionStart) return false
+  if (myAmends.value.some((a) => a.scheduleId === r.scheduleId && a.status === 'PENDING'))
+    return false
+  const days = (new Date(today.toDateString()) - new Date(r.workDate + 'T00:00:00')) / 86400000
+  return days >= 0 && days <= AMEND_WINDOW_DAYS
+}
+
+/** Dòng chấm công dùng chung form với buổi hôm nay — nắn về đúng hình dạng session. */
+function openAmendFromRow(r) {
+  openAmend({
+    scheduleId: r.scheduleId,
+    startTime: r.sessionStart,
+    endTime: r.sessionEnd,
+    schoolName: r.schoolName,
+    className: r.className,
+    subjectName: r.subjectName,
+  })
+}
+
 async function submitAmend() {
   if (!amendModal.reason.trim()) {
     amendModal.error = 'Vui lòng nhập lý do'
@@ -249,14 +276,15 @@ const totalHours = computed(() =>
             <th>Trạng thái</th>
             <th>Nguồn</th>
             <th>Ghi chú</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="12" class="text-center text-muted">Đang tải…</td>
+            <td colspan="13" class="text-center text-muted">Đang tải…</td>
           </tr>
           <tr v-else-if="!rows.length">
-            <td colspan="12" class="text-center text-muted">
+            <td colspan="13" class="text-center text-muted">
               Chưa có dữ liệu chấm công cho kỳ này.
             </td>
           </tr>
@@ -284,6 +312,15 @@ const totalHours = computed(() =>
               </span>
             </td>
             <td class="text-muted small">{{ r.note ?? '—' }}</td>
+            <td>
+              <button
+                v-if="canAmend(r)"
+                class="btn btn-sm btn-outline"
+                @click="openAmendFromRow(r)"
+              >
+                Xin bổ sung
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
