@@ -164,6 +164,16 @@ public class AssignmentApprovalService {
                     .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "Tiết của phân công không còn tồn tại"));
             conflictChecker.check(
                     a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), a.getId());
+            // Soát cả phía LỚP: trong lúc phiếu nằm chờ, lớp có thể đã được giao cho giáo
+            // viên khác ở đúng khung giờ này.
+            conflictChecker.checkClass(
+                    slot.getClassId(),
+                    a.getTeacherId(),
+                    slot.getDayOfWeek(),
+                    p,
+                    a.getStartDate(),
+                    a.getEndDate(),
+                    a.getId());
         }
         approve(a, SRC_ADMIN, note);
         closeOpenInvites(a.getId(), "CONFIRMED");
