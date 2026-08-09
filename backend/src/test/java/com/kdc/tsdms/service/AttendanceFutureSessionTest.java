@@ -115,6 +115,38 @@ class AttendanceFutureSessionTest {
         assertThatCode(() -> service.create(req())).doesNotThrowAnyException();
     }
 
+    /* ── Dòng chấm công phải KHỚP buổi dạy nó trỏ tới ──
+     * Lương suy đơn giá qua Attendance.scheduleId → Schedule → lớp → khối, nên một dòng mang
+     * tên GV này mà trỏ vào buổi của GV kia sẽ tính tiền theo cấp lớp của người khác.
+     */
+
+    @Test
+    void gvTrongDongPhaiTrungGvCuaBuoiDay() {
+        sessionStartingIn(-10); // buổi thuộc GV #7
+        AttendanceRequest khac = new AttendanceRequest(
+                99, 100L, LocalDate.now(VN), LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
+        assertThatThrownBy(() -> service.create(khac))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("thuộc về giáo viên khác");
+    }
+
+    @Test
+    void ngayLamViecPhaiTrungNgayBuoiDay() {
+        sessionStartingIn(-10);
+        AttendanceRequest lechNgay = new AttendanceRequest(
+                7,
+                100L,
+                LocalDate.now(VN).plusDays(1),
+                LocalTime.of(7, 0),
+                LocalTime.of(7, 45),
+                "PRESENT",
+                null,
+                "Sửa tay");
+        assertThatThrownBy(() -> service.create(lechNgay))
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("trùng ngày diễn ra buổi dạy");
+    }
+
     @Test
     void buoiKhongTonTaiThiBaoLoiRoRang() {
         when(scheduleRepo.findById(100L)).thenReturn(Optional.empty());

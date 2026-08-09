@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceTodayResponse;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
@@ -19,7 +20,6 @@ import com.kdc.tsdms.repository.TeacherRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,9 +44,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class AttendanceDailyService {
 
     private static final Logger log = LoggerFactory.getLogger(AttendanceDailyService.class);
-
-    /** Giờ buổi dạy là giờ TƯỜNG Việt Nam, còn JVM bị pin UTC — xem AttendanceService. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     /** Cửa sổ check-in mở sớm bao nhiêu phút — khớp AttendanceService để hai nơi cùng nhãn. */
     private static final int EARLY_CHECKIN_MIN = 30;
@@ -85,7 +82,7 @@ public class AttendanceDailyService {
     /** Toàn cảnh một ngày: mọi buổi đã duyệt + trạng thái chấm công của từng buổi. */
     @Transactional(readOnly = true)
     public AttendanceTodayResponse forDate(LocalDate date) {
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime now = BusinessTime.now();
         List<Schedule> sessions = scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
                 date.atStartOfDay(), date.atTime(LocalTime.MAX), "APPROVED");
 
@@ -159,7 +156,7 @@ public class AttendanceDailyService {
     @Scheduled(cron = "0 0 20 * * *", zone = "Asia/Ho_Chi_Minh")
     @Transactional
     public void sendDailySummary() {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         AttendanceTodayResponse.Summary sum = forDate(today).summary();
         if (sum.total() == 0) {
             return;

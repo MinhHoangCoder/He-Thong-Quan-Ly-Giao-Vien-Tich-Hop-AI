@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
@@ -8,7 +9,6 @@ import com.kdc.tsdms.service.AttendanceDailyService;
 import com.kdc.tsdms.service.AttendanceService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -25,9 +25,6 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/attendance")
 public class AttendanceController {
 
-    /** JVM ghim UTC — "tháng hiện tại" mặc định phải tính theo giờ Việt Nam. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
     private final AttendanceService service;
     private final AttendanceDailyService dailyService;
 
@@ -43,7 +40,7 @@ public class AttendanceController {
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.list(teacherId, f, t);
@@ -59,7 +56,7 @@ public class AttendanceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String status) {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.listMine(f, t, status);
@@ -101,7 +98,7 @@ public class AttendanceController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
     public AttendanceTodayResponse today(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        return dailyService.forDate(date != null ? date : LocalDate.now(BUSINESS_ZONE));
+        return dailyService.forDate(date != null ? date : BusinessTime.today());
     }
 
     /**

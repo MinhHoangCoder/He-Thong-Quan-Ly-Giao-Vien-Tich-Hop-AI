@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
@@ -252,13 +253,6 @@ public class AttendanceService {
      * Giờ vào/ra là GIỜ SERVER (client không gửi được); vào muộn >15' tự đánh LATE.
      */
 
-    /**
-     * Múi giờ nghiệp vụ: JVM bị pin UTC (TsdmsApplication) nhưng giờ buổi dạy
-     * (Schedule.StartTime từ Period "07:00"...) là GIỜ TƯỜNG Việt Nam — nếu dùng
-     * LocalDateTime.now() mặc định thì "hôm nay" và giờ vào/ra lệch 7 tiếng.
-     */
-    private static final java.time.ZoneId BUSINESS_ZONE = java.time.ZoneId.of("Asia/Ho_Chi_Minh");
-
     /** Vào muộn quá ngưỡng này (phút) → trạng thái LATE. */
     private static final int LATE_THRESHOLD_MIN = 15;
 
@@ -286,13 +280,42 @@ public class AttendanceService {
      */
     @Transactional(readOnly = true)
     public List<AttendanceResponse> attention(LocalDate from, LocalDate to) {
+        List<Attendance> rows = attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from, to);
+        // Giờ tan của mọi buổi liên quan, lấy bằng MỘT query thay vì tra từng dòng.
+        Map<Long, LocalDateTime> sessionEnds = scheduleRepo
+                .findAllById(rows.stream()
+                        .map(Attendance::getScheduleId)
+                        .filter(java.util.Objects::nonNull)
+                        .distinct()
+                        .toList())
+                .stream()
+                .collect(java.util.stream.Collectors.toMap(Schedule::getId, Schedule::getEndTime));
+
+        LocalDateTime now = BusinessTime.now();
         Map<Integer, String> nameCache = new HashMap<>();
-        return attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from, to).stream()
-                .filter(a -> a.isAutoCheckOut()
-                        || "SYSTEM".equals(a.getCheckInMethod())
-                        || (a.getCheckIn() != null && a.getCheckOut() == null))
+        return rows.stream()
+                .filter(a -> needsAttention(a, sessionEnds.get(a.getScheduleId()), now))
                 .map(a -> AttendanceResponse.fromEntity(a, teacherName(a.getTeacherId(), nameCache)))
                 .toList();
+    }
+
+    /**
+     * Dòng này có thật sự cần người soát không?
+     *
+     * <p>Điểm tinh: "đã vào lớp mà chưa có giờ ra" chỉ đáng báo khi BUỔI ĐÃ TAN. Giáo viên
+     * đang đứng lớp thì dĩ nhiên chưa check-out — trước đây lọc thiếu vế đó nên mở hộp giữa
+     * giờ dạy là thấy hàng loạt dòng hoàn toàn bình thường, đúng lúc kế toán cần tin cậy vào
+     * danh sách này nhất thì nó lại toàn nhiễu.
+     */
+    private static boolean needsAttention(Attendance a, LocalDateTime sessionEnd, LocalDateTime now) {
+        if (a.isAutoCheckOut() || "SYSTEM".equals(a.getCheckInMethod())) {
+            return true;
+        }
+        if (a.getCheckIn() == null || a.getCheckOut() != null) {
+            return false;
+        }
+        // Không tra được buổi (dữ liệu lệch) thì cứ báo — thà soát thừa còn hơn bỏ sót.
+        return sessionEnd == null || now.isAfter(sessionEnd);
     }
 
     /** Nhật ký thay đổi của một dòng chấm công (do trigger DB ghi, chỉ đọc). */
@@ -338,7 +361,7 @@ public class AttendanceService {
     @Transactional(readOnly = true)
     public AttendanceResponse.CheckinToday checkinToday() {
         Integer teacherId = currentTeacherId();
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime now = BusinessTime.now();
         LocalDate today = now.toLocalDate();
         List<Schedule> sessions =
                 scheduleRepo.findByTeacherIdAndStatusAndStartTimeBetweenAndDeletedFalseOrderByStartTime(
@@ -390,7 +413,7 @@ public class AttendanceService {
     @Transactional
     public AttendanceResponse checkIn(AttendanceRequest.Checkin req) {
         Integer teacherId = currentTeacherId();
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime now = BusinessTime.now();
         Schedule s = requireMySessionToday(teacherId, req.scheduleId(), now.toLocalDate());
 
         // Cửa sổ check-in: từ EARLY_CHECKIN_MIN phút trước giờ vào đến hết giờ buổi —
@@ -462,7 +485,7 @@ public class AttendanceService {
     @Transactional
     public AttendanceResponse checkOut(AttendanceRequest.Checkin req) {
         Integer teacherId = currentTeacherId();
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime now = BusinessTime.now();
         // Cho check-out cả buổi HÔM QUA còn treo (dạy tối quên bấm / buổi vắt qua 0h)
         // thay vì kẹt CHECKED_IN vĩnh viễn vì luật "chỉ hôm nay".
         Schedule s = requireMySessionForCheckout(teacherId, req.scheduleId(), now.toLocalDate());
@@ -554,7 +577,7 @@ public class AttendanceService {
                 .orElseThrow(
                         () -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy buổi dạy id=" + scheduleId));
         LocalDateTime open = s.getStartTime().minusMinutes(EARLY_CHECKIN_MIN);
-        if (LocalDateTime.now(BUSINESS_ZONE).isBefore(open)) {
+        if (BusinessTime.now().isBefore(open)) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
                     "Buổi dạy chưa diễn ra — không ghi được chấm công trước " + open.toLocalTime() + " ngày "
@@ -563,11 +586,32 @@ public class AttendanceService {
         return s;
     }
 
+    /**
+     * Dòng chấm công phải KHỚP với buổi dạy nó trỏ tới.
+     *
+     * <p>Trước đây {@code update} cho sửa {@code teacherId}/{@code workDate} tùy ý mà không so
+     * lại với Schedule. Hệ quả không thấy ngay nhưng ra tiền: {@code PayrollService} suy đơn
+     * giá qua {@code Attendance.scheduleId → Schedule → Assignment → lớp → khối}, nên một dòng
+     * mang tên giáo viên A mà trỏ vào buổi của giáo viên B sẽ tính lương A theo cấp lớp của B.
+     */
+    private static void assertMatchesSession(Schedule s, AttendanceRequest req) {
+        if (!s.getTeacherId().equals(req.teacherId())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Buổi dạy này thuộc về giáo viên khác — không gán chấm công cho giáo viên đang chọn được");
+        }
+        LocalDate sessionDate = s.getStartTime().toLocalDate();
+        if (!sessionDate.equals(req.workDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Ngày làm việc phải trùng ngày diễn ra buổi dạy (" + sessionDate + ")");
+        }
+    }
+
     @Transactional
     public AttendanceResponse create(AttendanceRequest req) {
         Teacher teacher = validate(req);
         assertPeriodOpen(req.teacherId(), req.workDate());
-        assertSessionStarted(req.scheduleId());
+        assertMatchesSession(assertSessionStarted(req.scheduleId()), req);
         // UX_Attendance_Schedule: mỗi buổi dạy tối đa 1 dòng — tạo trùng thì sửa dòng cũ thay vì thêm.
         if (attendanceRepo.existsByScheduleId(req.scheduleId())) {
             throw new ApiException(HttpStatus.CONFLICT, "Buổi dạy này đã có dòng chấm công — hãy sửa dòng hiện có");
@@ -590,7 +634,7 @@ public class AttendanceService {
         // Khóa cả kỳ CŨ lẫn kỳ MỚI: chuyển một dòng ra/vào tháng đã chốt cũng là làm lệch sổ.
         assertPeriodOpen(a.getTeacherId(), a.getWorkDate());
         assertPeriodOpen(req.teacherId(), req.workDate());
-        assertSessionStarted(req.scheduleId());
+        assertMatchesSession(assertSessionStarted(req.scheduleId()), req);
         // Không cho trỏ sang buổi đã có dòng chấm công khác (vỡ unique index).
         if (!req.scheduleId().equals(a.getScheduleId())) {
             attendanceRepo.findFirstByScheduleIdOrderByIdAsc(req.scheduleId()).ifPresent(other -> {

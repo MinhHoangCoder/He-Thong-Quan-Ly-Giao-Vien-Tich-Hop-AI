@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceAmendCreateRequest;
 import com.kdc.tsdms.dto.AttendanceAmendResponse;
 import com.kdc.tsdms.dto.AttendanceAmendReviewRequest;
@@ -26,8 +27,6 @@ import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -54,9 +53,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class AttendanceAmendService {
-
-    /** Giờ buổi dạy là giờ TƯỜNG Việt Nam, còn JVM bị pin UTC — xem AttendanceService. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     /** Hạn gửi yêu cầu, tính từ ngày buổi dạy diễn ra. */
     private static final int MAX_AMEND_DAYS = 7;
@@ -121,7 +117,7 @@ public class AttendanceAmendService {
         }
 
         LocalDate workDate = s.getStartTime().toLocalDate();
-        if (LocalDate.now(BUSINESS_ZONE).isAfter(workDate.plusDays(MAX_AMEND_DAYS))) {
+        if (BusinessTime.today().isAfter(workDate.plusDays(MAX_AMEND_DAYS))) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
                     "Đã quá hạn xin bổ sung (" + MAX_AMEND_DAYS + " ngày kể từ ngày dạy " + workDate + ")");
@@ -260,7 +256,7 @@ public class AttendanceAmendService {
         if (!"APPROVED".equals(s.getStatus())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Buổi dạy chưa được duyệt");
         }
-        if (LocalDateTime.now(BUSINESS_ZONE).isBefore(s.getEndTime())) {
+        if (BusinessTime.now().isBefore(s.getEndTime())) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST, "Buổi dạy chưa kết thúc — hãy dùng nút Check in/out như bình thường");
         }
