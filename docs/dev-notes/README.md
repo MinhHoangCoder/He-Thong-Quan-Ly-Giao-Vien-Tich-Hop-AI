@@ -54,6 +54,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-07-28 | backend | Chống dội mail ở luồng Quên mật khẩu (throttle theo tài khoản) | [2026-07-28-backend-chong-doi-mail-quen-mat-khau.md](2026-07-28-backend-chong-doi-mail-quen-mat-khau.md) |
 
 | 2026-08-02 | database | Teacher: đổi EmploymentType sang Cơ hữu/Thỉnh giảng + thêm Kinh nghiệm giảng dạy (V20) | [2026-08-02-database-teacher-emptype-experience.md](2026-08-02-database-teacher-emptype-experience.md) |
+| 2026-08-09 | backend | ⭐ Bỏ neo TÊN ROLE ở tầng service — `SecurityUtils.isCentreStaff()` | [2026-08-09-be-bo-neo-ten-role-tang-service.md](2026-08-09-be-bo-neo-ten-role-tang-service.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.

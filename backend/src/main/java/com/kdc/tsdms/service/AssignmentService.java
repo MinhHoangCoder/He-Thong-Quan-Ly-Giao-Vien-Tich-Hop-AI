@@ -194,12 +194,7 @@ public class AssignmentService {
     }
 
     private static boolean isStaff() {
-        return SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasRole("ACCOUNTANT")
-                || SecurityUtils.hasRole("HR")
-                || SecurityUtils.hasRole("ACADEMIC")
-                || SecurityUtils.hasRole("SALES");
+        return SecurityUtils.isCentreStaff();
     }
 
     /** Danh sách GV / môn / trường cho form tạo phân công. */

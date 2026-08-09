@@ -178,12 +178,11 @@ public class LessonController {
     /* ── Helper ──────────────────────────────────────────────────────── */
 
     /**
-     * TEACHER chỉ được xem bài PUBLISHED; staff (ADMIN/EMPLOYEE/ACADEMIC) xem tất
-     * cả.
+     * Bản NHÁP chỉ dành cho người quản lý kho bài giảng (ADMIN hoặc quyền
+     * {@code LESSON_MANAGE}); ai chỉ có {@code LESSON_VIEW} — điển hình là giáo viên —
+     * thì chỉ thấy bài đã PUBLISHED.
      */
     private boolean isTeacherOnly() {
-        return !SecurityUtils.hasRole("ADMIN")
-                && !SecurityUtils.hasRole("EMPLOYEE")
-                && !SecurityUtils.hasRole("ACADEMIC");
+        return !SecurityUtils.hasRole("ADMIN") && !SecurityUtils.hasAuthority("LESSON_MANAGE");
     }
 }

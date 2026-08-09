@@ -73,15 +73,13 @@ public class TeacherService {
      * Xem đầy đủ thông tin 1 GV, kèm danh sách chứng chỉ + hợp đồng hiện tại.
      *
      * <p>Chống IDOR: hồ sơ chứa CCCD + lương hợp đồng nên chỉ staff
-     * (ADMIN/EMPLOYEE hoặc quyền TEACHER_VIEW) hoặc CHÍNH CHỦ mới được xem —
+     * (ADMIN hoặc quyền TEACHER_VIEW) hoặc CHÍNH CHỦ mới được xem —
      * đúng mẫu chuẩn mô tả ở {@link SecurityUtils}.
      */
     @Transactional(readOnly = true)
     public TeacherResponse.Response getTeacherById(Integer id) {
         Teacher t = findActiveOrThrow(id);
-        boolean isStaff = SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isStaff = canViewAnyTeacher();
         boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
         if (!isStaff && !isOwner) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem hồ sơ này");
@@ -166,9 +164,7 @@ public class TeacherService {
     @Transactional(readOnly = true)
     public TeacherResponse.AccountInfo getAccount(Integer teacherId) {
         Teacher t = findActiveOrThrow(teacherId);
-        boolean isStaff = SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isStaff = canViewAnyTeacher();
         boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
         if (!isStaff && !isOwner) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem tài khoản này");
@@ -402,14 +398,12 @@ public class TeacherService {
 
     //   Mở/tải file PDF của 1 bằng cấp/chứng chỉ — trả "inline" (không phải "attachment")
     //   để trình duyệt MỞ THẲNG PDF ở tab mới thay vì ép tải về, đúng ý "bấm vào để xem".
-    //   Cho phép cả staff (ADMIN/EMPLOYEE) lẫn CHÍNH giáo viên đó xem hồ sơ của mình.
+    //   Cho phép cả staff (ADMIN / quyền TEACHER_VIEW) lẫn CHÍNH giáo viên đó xem hồ sơ của mình.
 
     @Transactional(readOnly = true)
     public ResponseEntity<?> openCertificateFile(Integer teacherId, Integer certId) {
         Teacher t = findActiveOrThrow(teacherId);
-        boolean isStaff = SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasAuthority("TEACHER_VIEW");
+        boolean isStaff = canViewAnyTeacher();
         boolean isOwner = t.getAppUserId() != null && t.getAppUserId().equals(SecurityUtils.currentUserId());
         if (!isStaff && !isOwner) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem file này");
@@ -474,6 +468,17 @@ public class TeacherService {
 
     // PRIVATE HELPERS — KHÔNG phải API, chỉ là hàm dùng nội bộ trong class
     // ════════════════════════════════════════════════════════════════
+
+    /**
+     * Ai được xem hồ sơ của NGƯỜI KHÁC: ADMIN (đi tắt theo quy ước RBAC của dự án) hoặc
+     * người có quyền {@code TEACHER_VIEW}. Hồ sơ chứa CCCD, ngày sinh, địa chỉ và lương hợp
+     * đồng nên chỉ chức danh được cấp quyền mới mở được — trước đây chỉ cần MANG tên role
+     * {@code EMPLOYEE} là qua, mà role đó trong ma trận RolePermission không được cấp quyền
+     * nào cả, nên nhân viên tạo thiếu UserRole vẫn đọc được sạch hồ sơ.
+     */
+    private static boolean canViewAnyTeacher() {
+        return SecurityUtils.hasRole("ADMIN") || SecurityUtils.hasAuthority("TEACHER_VIEW");
+    }
 
     private Teacher findActiveOrThrow(Integer id) {
         return teacherRepo
