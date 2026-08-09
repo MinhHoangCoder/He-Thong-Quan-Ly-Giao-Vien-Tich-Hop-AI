@@ -1,11 +1,15 @@
 <script setup>
 /**
- * Trang "Bảng chấm công" của GIÁO VIÊN (tự phục vụ, READ-ONLY).
- * Chỉ xem chấm công của CHÍNH mình — dữ liệu do admin/kế toán sinh từ lịch dạy đã duyệt.
- * Mỗi dòng = 1 buổi/tiết, ghép sẵn trường/lớp/môn/tiết. Không sửa, không tự chấm.
+ * Trang "Bảng chấm công" của GIÁO VIÊN.
+ *
+ * <p>Dữ liệu sinh ra từ chính việc giáo viên bấm Check in/out ở panel phía trên — bảng
+ * bên dưới là bản ghi lại, KHÔNG sửa được.
+ *
+ * <p>Buổi đã lỡ (cửa sổ chấm đã đóng) thì bấm "Xin bổ sung" để gửi yêu cầu cho admin
+ * duyệt; đó là đường duy nhất để buổi đó được ghi công.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
-import { attendanceApi } from '@/api/attendance'
+import { attendanceApi, attendanceAmendApi } from '@/api/attendance'
 import { tietLabel } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
 import CheckinPanel from '@/components/CheckinPanel.vue'
@@ -23,9 +27,10 @@ const statusMeta = (code) =>
 /** Nguồn ghi nhận: buổi GV tự bấm Check in (SELF) khác buổi hệ thống/kế toán ghi hộ. */
 const METHOD_LABELS = {
   SELF: 'Tự chấm',
-  EMPLOYEE: 'Hệ thống',
+  EMPLOYEE: 'Admin ghi',
   SCHOOL: 'Trường',
   DEVICE: 'Thiết bị',
+  SYSTEM: 'Hệ thống',
 }
 const methodLabel = (m) => METHOD_LABELS[m] || '—'
 
@@ -53,6 +58,8 @@ const pagedRows = computed(() => {
 })
 
 /* ── Nhãn thứ trong tuần (CN, Th 2..Th 7) từ ngày làm việc ── */
+const hhmm = (t) => (t ? String(t).slice(0, 5) : '—')
+
 const WEEKDAYS = ['CN', 'Th 2', 'Th 3', 'Th 4', 'Th 5', 'Th 6', 'Th 7']
 function weekdayLabel(iso) {
   if (!iso) return ''
@@ -79,7 +86,74 @@ async function load() {
   }
 }
 
-onMounted(load)
+/* ══════════ Xin bổ sung chấm công ══════════ */
+
+const AMEND_STATUSES = {
+  PENDING: { label: 'Chờ duyệt', cls: 'badge-amber' },
+  APPROVED: { label: 'Đã duyệt', cls: 'badge-green' },
+  REJECTED: { label: 'Từ chối', cls: 'badge-red' },
+}
+const amendMeta = (s) => AMEND_STATUSES[s] ?? { label: s, cls: 'badge-gray' }
+
+const myAmends = ref([])
+const amendModal = reactive({
+  open: false,
+  saving: false,
+  error: '',
+  session: null,
+  reason: '',
+  checkIn: '',
+  checkOut: '',
+})
+
+async function loadMyAmends() {
+  try {
+    const { data } = await attendanceAmendApi.mine()
+    myAmends.value = data
+  } catch {
+    myAmends.value = []
+  }
+}
+
+/** Mở form từ một buổi đã lỡ — điền sẵn giờ tiết để GV chỉ phải sửa nếu khác thực tế. */
+function openAmend(session) {
+  amendModal.open = true
+  amendModal.saving = false
+  amendModal.error = ''
+  amendModal.session = session
+  amendModal.reason = ''
+  amendModal.checkIn = String(session.startTime).slice(11, 16)
+  amendModal.checkOut = String(session.endTime).slice(11, 16)
+}
+
+async function submitAmend() {
+  if (!amendModal.reason.trim()) {
+    amendModal.error = 'Vui lòng nhập lý do'
+    return
+  }
+  amendModal.saving = true
+  amendModal.error = ''
+  try {
+    await attendanceAmendApi.create({
+      scheduleId: amendModal.session.scheduleId,
+      reason: amendModal.reason.trim(),
+      proposedCheckIn: amendModal.checkIn,
+      proposedCheckOut: amendModal.checkOut,
+    })
+    amendModal.open = false
+    info.value = 'Đã gửi yêu cầu bổ sung — chờ admin duyệt.'
+    loadMyAmends()
+  } catch (e) {
+    amendModal.error = e.response?.data?.message ?? 'Gửi yêu cầu thất bại'
+  } finally {
+    amendModal.saving = false
+  }
+}
+
+onMounted(() => {
+  load()
+  loadMyAmends()
+})
 
 /* ── Thẻ thống kê (tính trên toàn bộ kết quả đang lọc) ── */
 const totalRows = computed(() => rows.value.length)
@@ -126,7 +200,23 @@ const totalHours = computed(() =>
     </div>
 
     <!-- Chấm công hôm nay: bấm ngay tại trang Chấm công, không phải quay về Trang chủ -->
-    <CheckinPanel @changed="load" />
+    <CheckinPanel @changed="load" @amend="openAmend" />
+
+    <!-- Yêu cầu bổ sung đã gửi: GV phải theo dõi được admin đã xử lý tới đâu -->
+    <section v-if="myAmends.length" class="card amend">
+      <h3 class="amend__title">Yêu cầu bổ sung của tôi</h3>
+      <ul class="amend__list">
+        <li v-for="a in myAmends" :key="a.id">
+          <span class="mono">{{ a.workDate ?? '—' }}</span>
+          <span class="mono">{{ hhmm(a.proposedCheckIn) }}–{{ hhmm(a.proposedCheckOut) }}</span>
+          <span class="amend__reason">{{ a.reason }}</span>
+          <span class="badge" :class="amendMeta(a.status).cls">{{
+            amendMeta(a.status).label
+          }}</span>
+          <span v-if="a.reviewNote" class="amend__note">{{ a.reviewNote }}</span>
+        </li>
+      </ul>
+    </section>
 
     <!-- Bộ lọc -->
     <div class="toolbar">
@@ -200,10 +290,90 @@ const totalHours = computed(() =>
     </div>
 
     <Pagination v-model="page" :total-pages="totalPages" />
+
+    <!-- Form xin bổ sung: giờ điền sẵn theo khung tiết, GV sửa lại nếu dạy khác giờ -->
+    <div v-if="amendModal.open" class="modal-overlay" @click.self="amendModal.open = false">
+      <div class="modal-box">
+        <h3>Xin bổ sung chấm công</h3>
+        <p class="text-muted small">
+          {{ amendModal.session?.schoolName }}
+          <template v-if="amendModal.session?.className">
+            · Lớp {{ amendModal.session.className }}</template
+          >
+          <template v-if="amendModal.session?.subjectName">
+            · {{ amendModal.session.subjectName }}</template
+          >
+        </p>
+        <div class="grid2">
+          <div class="form-group">
+            <label>Giờ vào</label>
+            <input v-model="amendModal.checkIn" type="time" />
+          </div>
+          <div class="form-group">
+            <label>Giờ ra</label>
+            <input v-model="amendModal.checkOut" type="time" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Lý do <span class="req">*</span></label>
+          <textarea
+            v-model="amendModal.reason"
+            rows="3"
+            placeholder="Vì sao bạn không bấm được đúng lúc? Admin đọc nội dung này để duyệt."
+          />
+        </div>
+        <p v-if="amendModal.error" class="error-msg">{{ amendModal.error }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="amendModal.open = false">Hủy</button>
+          <button class="btn btn-primary" :disabled="amendModal.saving" @click="submitAmend">
+            {{ amendModal.saving ? 'Đang gửi…' : 'Gửi yêu cầu' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* ── Yêu cầu bổ sung của tôi ── */
+.amend {
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+}
+.amend__title {
+  margin: 0 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.amend__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.amend__list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.84rem;
+}
+.amend__reason {
+  flex: 1;
+  min-width: 10rem;
+  color: var(--c-text-muted);
+}
+.amend__note {
+  width: 100%;
+  color: var(--c-text-muted);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+.req {
+  color: var(--c-danger);
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

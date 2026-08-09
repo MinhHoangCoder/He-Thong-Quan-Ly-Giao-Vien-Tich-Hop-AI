@@ -50,6 +50,9 @@ public class AttendanceResponse {
     /** Giờ ra do HỆ THỐNG chốt vì giáo viên quên bấm — kế toán nên soát lại dòng này. */
     public boolean autoCheckOut;
 
+    /** Lý do dòng này bị can thiệp tay (admin sửa / duyệt yêu cầu bổ sung); null = giáo viên tự chấm. */
+    public String adjustReason;
+
     public static AttendanceResponse fromEntity(Attendance a, String teacherName) {
         AttendanceResponse r = new AttendanceResponse();
         r.id = a.getId();
@@ -64,6 +67,7 @@ public class AttendanceResponse {
         r.checkInMethod = a.getCheckInMethod();
         r.note = a.getNote();
         r.autoCheckOut = a.isAutoCheckOut();
+        r.adjustReason = a.getAdjustReason();
         return r;
     }
 

@@ -20,7 +20,14 @@ export const attendanceApi = {
     })
   },
 
-  /** Trạng thái check-in các buổi dạy HÔM NAY của chính GV (nút Check in/out). */
+  /**
+   * Tab "Hôm nay" của admin — MỌI buổi dạy trong ngày kèm trạng thái chấm.
+   * Dựng từ lịch dạy nên thấy được cả buổi chưa ai chấm (bảng chấm công không có dòng nào).
+   */
+  today(date) {
+    return http.get('/attendance/today', { params: { date: date || undefined } })
+  },
+
   /** Các dòng cần kế toán soát lại (hệ thống chốt hộ / ghi Vắng / còn treo). */
   attention(params) {
     return http.get('/attendance/attention', { params })
@@ -45,16 +52,43 @@ export const attendanceApi = {
     return http.post('/attendance/checkout', body)
   },
 
-  /** Sinh chấm công hàng loạt từ lịch dạy đã duyệt trong khoảng ngày. */
-  generate(from, to) {
-    return http.post('/attendance/generate', null, { params: { from, to } })
-  },
-
   create(body) {
     return http.post('/attendance', body)
   },
 
+  /** Sửa một dòng — body BẮT BUỘC có adjustReason (lý do can thiệp tay). */
   update(id, body) {
     return http.put(`/attendance/${id}`, body)
+  },
+}
+
+/**
+ * Yêu cầu bổ sung chấm công — đường duy nhất để buổi đã lỡ được ghi công.
+ * Base: /api/v1/attendance/amend-requests
+ */
+export const attendanceAmendApi = {
+  /** GV gửi: { scheduleId, reason, proposedCheckIn, proposedCheckOut }. */
+  create(body) {
+    return http.post('/attendance/amend-requests', body)
+  },
+
+  /** Yêu cầu của CHÍNH GV đang đăng nhập (backend tự lấy từ token). */
+  mine() {
+    return http.get('/attendance/amend-requests/mine')
+  },
+
+  /** Hộp yêu cầu của admin — status bỏ trống là lấy tất. */
+  list(status) {
+    return http.get('/attendance/amend-requests', { params: { status: status || undefined } })
+  },
+
+  /** Duyệt: body { status?, reviewNote? } — status bỏ trống thì backend suy từ giờ GV khai. */
+  approve(id, body) {
+    return http.post(`/attendance/amend-requests/${id}/approve`, body ?? {})
+  },
+
+  /** Từ chối: body { reviewNote } — lý do BẮT BUỘC. */
+  reject(id, body) {
+    return http.post(`/attendance/amend-requests/${id}/reject`, body)
   },
 }

@@ -116,7 +116,7 @@ const checkinButton = computed(() => {
       label: 'Check in',
       mode: null,
       disabled: true,
-      hint: 'Đã quá giờ chấm công buổi hôm nay.',
+      hint: 'Đã quá giờ chấm công buổi hôm nay — vào Chấm công để xin bổ sung.',
     }
   }
   if (list.some((x) => x.state === 'LOCKED')) {

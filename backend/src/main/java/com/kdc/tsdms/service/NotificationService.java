@@ -7,9 +7,12 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.NotificationRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
+import com.kdc.tsdms.repository.UserRoleRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,10 +42,13 @@ public class NotificationService {
 
     private final NotificationRepository repo;
     private final TeacherRepository teacherRepo;
+    private final UserRoleRepository userRoleRepo;
 
-    public NotificationService(NotificationRepository repo, TeacherRepository teacherRepo) {
+    public NotificationService(
+            NotificationRepository repo, TeacherRepository teacherRepo, UserRoleRepository userRoleRepo) {
         this.repo = repo;
         this.teacherRepo = teacherRepo;
+        this.userRoleRepo = userRoleRepo;
     }
 
     /* ═══════════════════════ ĐỌC (chuông topbar) ═══════════════════════ */
@@ -147,6 +153,26 @@ public class NotificationService {
         Integer appUserId =
                 teacherRepo.findById(teacherId).map(Teacher::getAppUserId).orElse(null);
         publish(appUserId, title, content, type, refEntity, refId, requiresAction);
+    }
+
+    /**
+     * Gửi thông báo tới MỌI NGƯỜI PHỤ TRÁCH một mảng việc, xác định qua QUYỀN (vd
+     * {@code ATTENDANCE_MANAGE}) thay vì liệt kê tên role — đổi phân quyền thì danh sách
+     * người nhận tự đổi theo, không phải sửa code.
+     *
+     * <p>Gộp thêm role ADMIN vì V3 cố tình không seed RolePermission cho ADMIN (nó đi tắt
+     * ở {@code @PreAuthorize}); tra theo quyền thôi là admin không bao giờ nhận được gì.
+     *
+     * <p>Người vừa thao tác bị {@link #publish} loại ra — admin tự duyệt yêu cầu của mình
+     * thì không cần tin nhắn báo lại chính việc mình vừa làm.
+     */
+    public void publishToPermission(
+            String permissionCode, String title, String content, String type, String refEntity, Long refId) {
+        Set<Integer> recipients = new LinkedHashSet<>(userRoleRepo.findAppUserIdsByPermissionCode(permissionCode));
+        recipients.addAll(userRoleRepo.findAppUserIdsByRoleName("ADMIN"));
+        for (Integer userId : recipients) {
+            publish(userId, title, content, type, refEntity, refId, false);
+        }
     }
 
     /* ═══════════════════════ HÀNH ĐỘNG của giáo viên (Xác nhận / Hủy) ═══════════════════════ */
