@@ -960,17 +960,20 @@ public class EvaluationService {
         return "Tổng kết năm " + ay;
     }
 
+    /**
+     * Người của trung tâm CÓ phần việc trong module đánh giá — hai điều kiện phải cùng đúng:
+     * là nhân sự trung tâm (không phải cổng GV/trường) VÀ được cấp quyền đánh giá.
+     *
+     * <p>Vế thứ hai giữ lại để phòng thủ nhiều lớp: nếu sau này có endpoint quên gắn
+     * {@code @PreAuthorize} thì kế toán/tuyển sinh vẫn không đọc được nhận xét về giáo viên.
+     */
     private boolean isStaffOrAdmin() {
-        if (SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasRole("ACADEMIC")
-                || SecurityUtils.hasRole("HR")) {
-            return true;
+        if (!SecurityUtils.isCentreStaff()) {
+            return false;
         }
-        // Có quyền manage nhưng không thuộc portal SCHOOL/TEACHER thuần.
-        return SecurityUtils.hasAuthority("EVALUATION_MANAGE")
-                && !SecurityUtils.hasRole("SCHOOL")
-                && !SecurityUtils.hasRole("TEACHER");
+        return SecurityUtils.hasRole("ADMIN")
+                || SecurityUtils.hasAuthority("EVALUATION_VIEW")
+                || SecurityUtils.hasAuthority("EVALUATION_MANAGE");
     }
 
     /** pure TEACHER (không kiêm staff/admin). */

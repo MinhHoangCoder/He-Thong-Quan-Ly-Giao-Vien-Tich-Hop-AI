@@ -257,13 +257,7 @@ public class AttendanceService {
 
     /** Staff xem tất (teacherId lọc tùy chọn); GV thường luôn bị ép về chính mình. */
     private Integer scopedTeacherId(Integer requested) {
-        boolean isStaff = SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasRole("ACCOUNTANT")
-                || SecurityUtils.hasRole("HR")
-                || SecurityUtils.hasRole("ACADEMIC")
-                || SecurityUtils.hasRole("SALES");
-        if (isStaff) {
+        if (SecurityUtils.isCentreStaff()) {
             return requested;
         }
         return currentTeacherId();

@@ -263,13 +263,7 @@ public class ScheduleService {
 
     /** Staff → teacherId tùy chọn (null = tất cả); GV thường → ép về chính mình. */
     private Integer scopedTeacherId(Integer requested) {
-        boolean isStaff = SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasRole("ACCOUNTANT")
-                || SecurityUtils.hasRole("HR")
-                || SecurityUtils.hasRole("ACADEMIC")
-                || SecurityUtils.hasRole("SALES");
-        if (isStaff) {
+        if (SecurityUtils.isCentreStaff()) {
             return requested;
         }
         return currentTeacherId();

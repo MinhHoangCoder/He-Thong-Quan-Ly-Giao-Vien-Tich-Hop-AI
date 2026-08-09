@@ -38,8 +38,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * đồng và username/email. Ai lỡ xóa đoạn if thì mọi tài khoản đã đăng nhập đều đọc được của
  * tất cả giáo viên, và trước bộ test này thì không có gì kêu lên cả.
  *
- * <p>Luật: staff (ADMIN / EMPLOYEE / có quyền TEACHER_VIEW) xem được mọi hồ sơ;
- * giáo viên thường CHỈ xem được hồ sơ gắn với tài khoản của chính mình; còn lại 403.
+ * <p>Luật: ADMIN hoặc người có quyền TEACHER_VIEW xem được mọi hồ sơ; giáo viên thường CHỈ
+ * xem được hồ sơ gắn với tài khoản của chính mình; còn lại 403. Cửa mở theo QUYỀN chứ không
+ * theo tên role — mang tên role không kèm quyền thì vẫn bị chặn.
  */
 @ExtendWith(MockitoExtension.class)
 class TeacherServiceIdorTest {
@@ -135,6 +136,19 @@ class TeacherServiceIdorTest {
         // Đây chính là kịch bản IDOR: đăng nhập bằng tài khoản GV khác rồi đổi id trên URL.
         givenTeacherExists();
         loginAs(OTHER_USER_ID);
+
+        assertThatThrownBy(() -> service.getTeacherById(TEACHER_ID))
+                .satisfies(e -> assertStatus(e, HttpStatus.FORBIDDEN));
+    }
+
+    @Test
+    void employeeRoleWithoutPermission_cannotViewProfile_throws403() {
+        // Role EMPLOYEE không được cấp permission nào trong ma trận RolePermission (V3), nên
+        // MANG tên role đó không nói lên được người này có phần việc với hồ sơ giáo viên hay
+        // không. Nhân viên tạo thiếu UserRole từng đọc được cả CCCD lẫn lương hợp đồng chỉ vì
+        // service hỏi tên role thay vì hỏi quyền.
+        givenTeacherExists();
+        loginAs(OTHER_USER_ID, "ROLE_EMPLOYEE");
 
         assertThatThrownBy(() -> service.getTeacherById(TEACHER_ID))
                 .satisfies(e -> assertStatus(e, HttpStatus.FORBIDDEN));
