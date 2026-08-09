@@ -403,9 +403,12 @@ public class AttendanceService {
             SchoolClass cls = classOfSession(s, asg);
             Attendance att =
                     attendanceRepo.findFirstByScheduleIdOrderByIdAsc(s.getId()).orElse(null);
-            // Chỉ tính là "đã chấm" khi chính GV check-in (SELF) — dòng staff sinh sẵn không tính.
             boolean selfIn = att != null && "SELF".equals(att.getCheckInMethod()) && att.getCheckIn() != null;
-            boolean selfOut = selfIn && att.getCheckOut() != null;
+            // ĐÃ CÓ CÔNG: bất kể ai ghi. Trước đây chỉ tính nguồn SELF — di sản từ thời dòng
+            // EMPLOYEE là bản sinh hàng loạt "cho có". Nút sinh đã bỏ (V25) nên dòng EMPLOYEE
+            // giờ nghĩa là có người thật xác nhận (admin sửa tay / duyệt yêu cầu bổ sung);
+            // vẫn hiện "Đã lỡ" kèm nút Xin bổ sung là mời giáo viên bấm vào để nhận 409.
+            boolean credited = att != null && ("PRESENT".equals(att.getStatus()) || "LATE".equals(att.getStatus()));
             // LOCKED = NGƯỜI đã quyết (kế toán ghi Vắng/Nghỉ phép) → giáo viên đừng đụng vào.
             // Dòng Vắng do JOB tự ghi thì KHÔNG khóa: nó chỉ là hệ quả của việc quên bấm, và
             // xin bổ sung chính là đường sửa. Trước đây gộp chung nên nút "Xin bổ sung" chỉ
@@ -420,8 +423,8 @@ public class AttendanceService {
             // kết thúc mà chưa chấm (kể cả khi job đã ghi Vắng) → xin bổ sung được;
             // OPEN → đang trong cửa sổ, bấm được.
             String state;
-            if (selfOut) state = "DONE";
-            else if (selfIn) state = "CHECKED_IN";
+            if (selfIn && att.getCheckOut() == null) state = "CHECKED_IN";
+            else if (credited) state = "DONE";
             else if (decidedByHuman) state = "LOCKED";
             else if (now.isBefore(s.getStartTime().minusMinutes(EARLY_CHECKIN_MIN))) state = "NOT_YET";
             else if (now.isAfter(s.getEndTime())) state = "MISSED";
@@ -435,8 +438,8 @@ public class AttendanceService {
                     s.getStartTime(),
                     s.getEndTime(),
                     state,
-                    selfIn ? att.getCheckIn() : null,
-                    selfOut ? att.getCheckOut() : null));
+                    att != null ? att.getCheckIn() : null,
+                    att != null ? att.getCheckOut() : null));
         }
         return new AttendanceResponse.CheckinToday(today, list);
     }
