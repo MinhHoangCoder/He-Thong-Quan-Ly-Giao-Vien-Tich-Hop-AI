@@ -1592,8 +1592,12 @@ function formatDate(d) {
                     v-model="createModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
+                    maxlength="500"
                     placeholder="VD: 3 năm dạy Scratch tại trung tâm ABC, từng phụ trách CLB Robotics..."
                   />
+                  <p class="char-counter">
+                    {{ (createModal.teachingExperience || '').length }}/500
+                  </p>
                 </template>
 
                 <!-- Tab: Trạng thái -->
@@ -1975,8 +1979,10 @@ function formatDate(d) {
                     v-model="editModal.teachingExperience"
                     class="form-input form-textarea"
                     rows="8"
+                    maxlength="500"
                     placeholder="VD: 3 năm dạy ... tại ... từng phụ trách CLB ..."
                   />
+                  <p class="char-counter">{{ (editModal.teachingExperience || '').length }}/500</p>
                 </template>
 
                 <!-- Tab: Trạng thái -->
@@ -2687,6 +2693,14 @@ function formatDate(d) {
   font-size: 0.8rem;
   color: var(--a-text-muted);
   margin: 0 0 0.9rem;
+}
+/* Ô Kinh nghiệm dừng nhận chữ đúng ở 500 ký tự (bằng NVARCHAR(500) dưới DB).
+   Không có số đếm thì người dùng gõ tới hạn sẽ tưởng bàn phím hỏng. */
+.char-counter {
+  font-size: 0.78rem;
+  color: var(--a-text-muted);
+  text-align: right;
+  margin: 0.35rem 0 0;
 }
 
 /* Bằng cấp / Chứng chỉ: 1 dòng nhiều ô */
