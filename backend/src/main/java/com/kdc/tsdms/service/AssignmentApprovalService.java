@@ -103,8 +103,8 @@ public class AssignmentApprovalService {
         if (a.isExpiredPending()) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Phiếu phân công đã quá hạn xác nhận (" + fmt(a.getConfirmDeadline())
-                            + "). Vui lòng liên hệ trung tâm để được gửi lại.");
+                    "Phân công này đã quá hạn xác nhận (" + fmt(a.getConfirmDeadline())
+                            + "). Vui lòng liên hệ trung tâm để được gửi lại phân công.");
         }
         approve(a, SRC_TEACHER, null);
         closeOpenInvites(a.getId(), "CONFIRMED");
@@ -120,7 +120,7 @@ public class AssignmentApprovalService {
     public Assignment rejectByTeacher(Integer assignmentId, String reason) {
         String trimmed = reason == null ? "" : reason.trim();
         if (trimmed.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do từ chối");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do từ chối.");
         }
         Assignment a = pendingOrThrow(assignmentId);
         Integer userId = SecurityUtils.currentUserId();
@@ -151,17 +151,18 @@ public class AssignmentApprovalService {
         if (AssignmentStatus.REJECTED.equals(a.getStatus())) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Giáo viên đã từ chối phiếu này — hãy sửa rồi gửi lại (có thể đổi sang giáo viên khác)");
+                    "Giáo viên đã từ chối phân công này. Vui lòng chỉnh sửa và gửi lại, hoặc chuyển sang giáo viên khác.");
         }
         if (!AssignmentStatus.PENDING.equals(a.getStatus()) && !AssignmentStatus.EXPIRED.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Chỉ ép duyệt được phiếu đang chờ xác nhận hoặc đã hết hạn");
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Chỉ duyệt thay được phân công đang chờ xác nhận hoặc đã hết hạn.");
         }
         // Phiếu HẾT HẠN đã nhả chỗ, nên trong lúc nó nằm chờ khung giờ có thể đã bị phiếu khác
         // chiếm. Không soát lại ở đây thì ép duyệt sẽ tự tay tạo ra một ca trùng giờ thật.
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
             Period p = periodRepo
                     .findById(slot.getPeriodId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "Tiết của phân công không còn tồn tại"));
+                    .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "Tiết của phân công không còn tồn tại."));
             conflictChecker.check(
                     a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), a.getId());
             // Soát cả phía LỚP: trong lúc phiếu nằm chờ, lớp có thể đã được giao cho giáo
@@ -195,7 +196,7 @@ public class AssignmentApprovalService {
     public Assignment remind(Integer assignmentId) {
         Assignment a = liveOrThrow(assignmentId);
         if (!AssignmentStatus.PENDING.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Chỉ nhắc được phiếu đang chờ xác nhận");
+            throw new ApiException(HttpStatus.CONFLICT, "Chỉ nhắc được phân công đang chờ xác nhận.");
         }
         // Đóng lời mời cũ trước rồi phát lời mời mới: tránh chuông có 2 nút Xác nhận cho cùng
         // một phiếu, bấm cái nào cũng được nhưng nhìn rất khó hiểu.
@@ -393,23 +394,24 @@ public class AssignmentApprovalService {
         Integer myTeacherId = teacherRepo
                 .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
                 .map(Teacher::getId)
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.FORBIDDEN, "Tài khoản này chưa được liên kết với hồ sơ giáo viên."));
         if (!myTeacherId.equals(a.getTeacherId())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Phân công này không phải của bạn");
+            throw new ApiException(HttpStatus.FORBIDDEN, "Phân công này không thuộc về thầy/cô.");
         }
         if (!AssignmentStatus.PENDING.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Phiếu phân công này đã được xử lý");
+            throw new ApiException(HttpStatus.CONFLICT, "Phân công này đã được xử lý.");
         }
         return a;
     }
 
     private Assignment liveOrThrow(Integer assignmentId) {
         if (assignmentId == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu mã phân công");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu thông tin phân công.");
         }
         return assignmentRepo
                 .findByIdAndDeletedFalse(assignmentId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công #" + assignmentId));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công."));
     }
 
     private void notifyAdmin(Assignment a, String title, String content) {

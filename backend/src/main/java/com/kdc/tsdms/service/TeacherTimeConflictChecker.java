@@ -145,33 +145,35 @@ public class TeacherTimeConflictChecker {
             Period otherPeriod,
             AssignmentSlot existing,
             Assignment other) {
-        String className = classRepo.findById(classId).map(SchoolClass::getName).orElse("#" + classId);
+        String className = classRepo.findById(classId).map(SchoolClass::getName).orElse("đã chọn");
         String teacherName = teacherRepo
                 .findById(existing.getTeacherId())
                 .map(t -> (t.getLastName() + " " + t.getFirstName()).trim())
-                .orElse("GV #" + existing.getTeacherId());
-        String state = AssignmentStatus.PENDING.equals(other.getStatus()) ? " (đang chờ xác nhận)" : "";
-        return "Lớp " + className + " đã có giáo viên dạy khung giờ này: " + dayLabelVi(dayOfWeek) + " "
-                + timeRange(otherPeriod) + " (tiết " + otherPeriod.getPeriodNumber() + ") — "
-                + teacherName + ", phân công #" + other.getId() + state
-                + ". Một lớp trong một tiết chỉ có một giáo viên.";
+                .orElse("một giáo viên khác");
+        return "Không thể tạo phân công — lớp " + className + " đã được bố trí cho " + teacherName
+                + " trong khung giờ " + dayLabelVi(dayOfWeek) + ", " + timeRange(otherPeriod)
+                + " (tiết " + otherPeriod.getPeriodNumber() + ")" + pendingNote(other) + ".";
+    }
+
+    /** Phiếu chưa được xác nhận vẫn giữ chỗ — nói rõ để người xếp lịch biết vì sao bị chặn. */
+    private static String pendingNote(Assignment other) {
+        return AssignmentStatus.PENDING.equals(other.getStatus()) ? ", theo lịch đang chờ giáo viên xác nhận" : "";
     }
 
     private String message(
             String dayOfWeek, Period period, Period otherPeriod, AssignmentSlot existing, Assignment other) {
         String schoolName =
-                schoolRepo.findById(other.getSchoolId()).map(School::getName).orElse("trường #" + other.getSchoolId());
+                schoolRepo.findById(other.getSchoolId()).map(School::getName).orElse("một trường khác");
         String className = existing.getClassId() == null
                 ? null
                 : classRepo
                         .findById(existing.getClassId())
                         .map(SchoolClass::getName)
                         .orElse(null);
-        String state = AssignmentStatus.PENDING.equals(other.getStatus()) ? " (đang chờ xác nhận)" : "";
-        return "Trùng giờ: " + dayLabelVi(dayOfWeek) + " " + timeRange(period) + " (tiết "
-                + period.getPeriodNumber() + ") đè lên tiết " + otherPeriod.getPeriodNumber() + " ("
-                + timeRange(otherPeriod) + ") tại " + schoolName
-                + (className != null ? " lớp " + className : "") + " — phân công #" + other.getId() + state;
+        return "Không thể tạo phân công — giáo viên đã có lịch dạy trùng khung giờ "
+                + dayLabelVi(dayOfWeek) + ", " + timeRange(period) + " (tiết " + period.getPeriodNumber()
+                + "): tiết " + otherPeriod.getPeriodNumber() + " (" + timeRange(otherPeriod) + ") tại "
+                + schoolName + (className != null ? ", lớp " + className : "") + pendingNote(other) + ".";
     }
 
     /** Hai khung tiết có giao nhau về thời gian không (null = không xác định được → bỏ qua). */

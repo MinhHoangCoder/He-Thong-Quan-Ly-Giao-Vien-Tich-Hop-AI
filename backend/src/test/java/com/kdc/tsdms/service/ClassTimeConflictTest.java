@@ -130,7 +130,7 @@ class ClassTimeConflictTest {
         assertThatThrownBy(this::kiemTra)
                 .isInstanceOf(ApiException.class)
                 .satisfies(e -> assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.CONFLICT))
-                .hasMessageContaining("Lớp 1A1")
+                .hasMessageContaining("lớp 1A1")
                 .hasMessageContaining("Nguyễn Văn An");
     }
 
@@ -145,7 +145,9 @@ class ClassTimeConflictTest {
     @Test
     void phieuChoXacNhanVanGiuCho() {
         datChoSan(GV_CU, tiet(1, "07:00", "07:35"), "PENDING", LocalDate.of(2026, 8, 10), null);
-        assertThatThrownBy(this::kiemTra).isInstanceOf(ApiException.class).hasMessageContaining("đang chờ xác nhận");
+        assertThatThrownBy(this::kiemTra)
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("chờ giáo viên xác nhận");
     }
 
     /** Chính giáo viên đó dạy liền tiết cho cùng lớp là bình thường. */
