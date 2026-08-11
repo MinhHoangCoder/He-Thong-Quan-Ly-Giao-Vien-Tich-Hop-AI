@@ -29,4 +29,7 @@ public record AssignmentUpdateRequest(
         LocalDate endDate,
 
         /** Các tiết Thứ+Tiết+Lớp — thay THẾ toàn bộ danh sách cũ. */
-        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 63, message = "Số tiết dạy trong một phân công vượt mức cho phép") @Valid List<AssignmentSlotRequest> slots) {}
+        @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 63, message = "Số tiết dạy trong một phân công vượt mức cho phép") @Valid List<AssignmentSlotRequest> slots,
+
+        /** Đã bấm "Vẫn lưu" ở hộp cảnh báo di chuyển — xem AssignmentCreateRequest. */
+        Boolean acceptTravelWarning) {}

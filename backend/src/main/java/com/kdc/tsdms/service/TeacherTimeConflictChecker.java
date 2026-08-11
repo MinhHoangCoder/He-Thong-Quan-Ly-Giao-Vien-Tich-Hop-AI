@@ -14,6 +14,7 @@ import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import java.time.LocalDate;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -136,6 +137,90 @@ public class TeacherTimeConflictChecker {
             throw new ApiException(
                     HttpStatus.CONFLICT, classMessage(classId, dayOfWeek, period, otherPeriod, existing, other));
         }
+    }
+
+    /** Mã cho frontend nhận ra đây là CẢNH BÁO có thể bỏ qua, không phải lỗi cứng. */
+    public static final String TRAVEL_GAP_CODE = "TRAVEL_GAP";
+
+    /** Dưới ngần này phút giữa hai buổi ở HAI TRƯỜNG khác nhau thì cảnh báo. */
+    public static final int MIN_TRAVEL_GAP_MIN = 30;
+
+    /**
+     * CẢNH BÁO (không chặn) khi giáo viên phải chạy giữa hai trường trong thời gian quá ngắn.
+     *
+     * <p>Khác {@link #check} và {@link #checkClass} ở bản chất: hai luật kia là điều bất khả thi
+     * về logic (một người không ở hai nơi cùng lúc; một lớp không học hai môn cùng lúc) nên cấm
+     * tuyệt đối. Còn "kịp hay không kịp di chuyển" phụ thuộc khoảng cách thật giữa hai trường —
+     * dữ liệu hệ thống không có. Nên trả về cảnh báo để người xếp lịch quyết, thay vì đoán hộ.
+     *
+     * <p>Đo bằng SỐ PHÚT giữa giờ tan và giờ vào, KHÔNG dùng "số tiết liền nhau": mỗi trường có
+     * khung tiết riêng (tiểu học 35 phút, THCS 45 phút, giờ vào khác nhau) nên "tiết 2" của
+     * trường này không so được với "tiết 1" của trường kia. Đo bằng phút còn bắt được cả ca
+     * không liền tiết mà vẫn gấp.
+     *
+     * <p>CHỈ áp khi khác trường: trong cùng một trường, các tiết liền nhau vốn cách nhau 0 phút.
+     *
+     * @return mô tả cảnh báo, hoặc {@link Optional#empty()} nếu không có gì đáng ngại
+     */
+    public Optional<String> travelWarning(
+            Integer teacherId,
+            Integer schoolId,
+            String dayOfWeek,
+            Period period,
+            LocalDate startDate,
+            LocalDate endDate,
+            Integer ignoreAssignmentId) {
+        if (teacherId == null || schoolId == null || period == null) {
+            return Optional.empty();
+        }
+        for (AssignmentSlot existing : slotRepo.findByTeacherIdAndDayOfWeekAndDeletedFalse(teacherId, dayOfWeek)) {
+            if (ignoreAssignmentId != null && ignoreAssignmentId.equals(existing.getAssignmentId())) {
+                continue;
+            }
+            Assignment other = assignmentRepo
+                    .findByIdAndDeletedFalse(existing.getAssignmentId())
+                    .orElse(null);
+            if (other == null || !other.holdsTimeSlot() || schoolId.equals(other.getSchoolId())) {
+                continue;
+            }
+            if (!datesOverlap(startDate, endDate, other.getStartDate(), other.getEndDate())) {
+                continue;
+            }
+            Period otherPeriod = periodRepo.findById(existing.getPeriodId()).orElse(null);
+            if (otherPeriod == null || otherPeriod.getStartTime() == null) {
+                continue;
+            }
+            // Giờ đè hẳn lên nhau đã bị check() chặn cứng — ở đây chỉ lo khoảng nghỉ quá ngắn.
+            long gap = gapMinutes(period, otherPeriod);
+            if (gap < 0 || gap >= MIN_TRAVEL_GAP_MIN) {
+                continue;
+            }
+            String otherSchool = schoolRepo
+                    .findById(other.getSchoolId())
+                    .map(School::getName)
+                    .orElse("một trường khác");
+            String thisSchool =
+                    schoolRepo.findById(schoolId).map(School::getName).orElse("trường đã chọn");
+            boolean otherFirst = !otherPeriod.getEndTime().isAfter(period.getStartTime());
+            String truoc = otherFirst ? otherSchool : thisSchool;
+            String sau = otherFirst ? thisSchool : otherSchool;
+            String gioTan = (otherFirst ? otherPeriod.getEndTime() : period.getEndTime()).toString();
+            String gioVao = (otherFirst ? period.getStartTime() : otherPeriod.getStartTime()).toString();
+            return Optional.of(dayLabelVi(dayOfWeek) + ": " + truoc + " tan lúc " + gioTan + ", " + sau + " vào lúc "
+                    + gioVao + " — chỉ cách nhau " + gap + " phút");
+        }
+        return Optional.empty();
+    }
+
+    /** Khoảng nghỉ giữa hai tiết, tính theo chiều tiết nào diễn ra trước; âm nếu chúng đè nhau. */
+    private static long gapMinutes(Period a, Period b) {
+        if (!a.getStartTime().isBefore(b.getEndTime())) {
+            return java.time.Duration.between(b.getEndTime(), a.getStartTime()).toMinutes();
+        }
+        if (!b.getStartTime().isBefore(a.getEndTime())) {
+            return java.time.Duration.between(a.getEndTime(), b.getStartTime()).toMinutes();
+        }
+        return -1; // đè giờ — việc của check(), không phải của cảnh báo này
     }
 
     private String classMessage(

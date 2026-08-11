@@ -263,6 +263,7 @@ public class AssignmentApprovalService {
             a.setUpdatedAt(Instant.now());
             assignmentRepo.save(a);
             closeOpenInvites(a.getId(), "CANCELLED");
+            cancelPendingSchedules(a);
             if (a.getCreatedBy() != null) {
                 notificationService.publishSystem(
                         a.getCreatedBy(),
@@ -272,6 +273,29 @@ public class AssignmentApprovalService {
                                 + " hoặc xếp giáo viên khác.",
                         "Assignment",
                         a.getId().longValue());
+            }
+        }
+    }
+
+    /**
+     * Phiếu hết hạn thì các buổi đã sinh cũng phải tắt theo.
+     *
+     * <p>Trước đây {@code sweepExpired} chỉ đổi trạng thái PHIẾU, để nguyên {@code Schedule}.
+     * Buổi ở PENDING không có hiệu lực (không lên lịch dạy, không sinh chấm công) nên không gây
+     * sai số, nhưng nằm lại vĩnh viễn: đối chiếu dữ liệu thấy buổi "chưa duyệt" của một phiếu đã
+     * chết, không ai biết nên xử lý thế nào. {@code cancel()} vốn dọn đúng cách — làm cho hai
+     * đường giống nhau.
+     *
+     * <p>Chỉ đụng buổi CHƯA diễn ra: phiếu hết hạn nghĩa là giáo viên không bao giờ xác nhận,
+     * nên không có buổi nào đã dạy thật để phải giữ lại cho chấm công.
+     */
+    private void cancelPendingSchedules(Assignment a) {
+        LocalDateTime now = LocalDateTime.now();
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            if (!"CANCELLED".equals(s.getStatus()) && s.getStartTime().isAfter(now)) {
+                s.setStatus("CANCELLED");
+                s.setUpdatedAt(Instant.now());
+                scheduleRepo.save(s);
             }
         }
     }

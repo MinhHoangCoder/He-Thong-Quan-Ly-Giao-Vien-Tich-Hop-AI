@@ -443,8 +443,17 @@ public class AssignmentService {
         }
 
         Map<Integer, Period> periodById = new HashMap<>();
-        List<Integer> slotClassIds = validateSlots(
-                req.slots(), school, req.classId(), teacher.getId(), req.startDate(), req.endDate(), null, periodById);
+        SlotValidation validated = validateSlots(
+                req.slots(),
+                school,
+                req.classId(),
+                teacher.getId(),
+                req.startDate(),
+                req.endDate(),
+                null,
+                Boolean.TRUE.equals(req.acceptTravelWarning()),
+                periodById);
+        List<Integer> slotClassIds = validated.classIds();
 
         Integer userId = SecurityUtils.currentUserId();
 
@@ -460,6 +469,7 @@ public class AssignmentService {
         // CHỜ XÁC NHẬN: lịch chưa có hiệu lực cho tới khi giáo viên đồng ý (hoặc admin ép duyệt).
         a.setStatus(AssignmentStatus.PENDING);
         a.setCreatedBy(userId);
+        a.setApprovalNote(travelNote(validated));
         assignmentRepo.save(a);
 
         LocalDate end = req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
@@ -495,9 +505,11 @@ public class AssignmentService {
      * @param defaultClassId lớp mặc định cấp phiếu, dùng cho slot bỏ trống lớp (client cũ)
      * @param ignoreAssignmentId bỏ qua chính phiếu này khi dò trùng (lúc sửa), null khi tạo mới
      * @param periodByIdOut nhận các Period đã nạp để bên gọi tái sử dụng, khỏi truy vấn lại
-     * @return classId đã chốt cho từng slot, cùng thứ tự với {@code slots}
+     * @param acceptTravelWarning người xếp lịch đã bấm "Vẫn tạo" ở hộp cảnh báo di chuyển
+     * @return classId đã chốt cho từng slot (cùng thứ tự với {@code slots}) và các cảnh báo
+     *     di chuyển đã được chấp nhận, để bên gọi ghi vết
      */
-    private List<Integer> validateSlots(
+    private SlotValidation validateSlots(
             List<AssignmentSlotRequest> slots,
             School school,
             Integer defaultClassId,
@@ -505,6 +517,7 @@ public class AssignmentService {
             LocalDate startDate,
             LocalDate endDate,
             Integer ignoreAssignmentId,
+            boolean acceptTravelWarning,
             Map<Integer, Period> periodByIdOut) {
         // Chặn slot TRÙNG NHAU ngay trong request (cùng Thứ + Tiết) — nếu lọt sẽ sinh
         // đúp Schedule cho cùng một khung giờ.
@@ -552,6 +565,7 @@ public class AssignmentService {
         // DÒ TRÙNG LỊCH GV THEO GIỜ THẬT: quét mọi ô lịch của GV trong cùng Thứ ở MỌI
         // trường, so khoảng giờ của tiết. KHÔNG so periodId — Period thuộc về từng trường
         // nên "tiết 1" của hai trường là hai id khác nhau mà giờ vẫn đè nhau.
+        List<String> travelWarnings = new ArrayList<>();
         for (int i = 0; i < slots.size(); i++) {
             AssignmentSlotRequest slot = slots.get(i);
             Period p = periodByIdOut.get(slot.periodId());
@@ -561,8 +575,41 @@ public class AssignmentService {
             // một tiết, và cả ba đều sinh buổi dạy rồi đều được tính công.
             conflictChecker.checkClass(
                     slotClassIds.get(i), teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
+            // CẢNH BÁO (không chặn) chạy giữa hai trường quá gấp — xem travelWarning().
+            conflictChecker
+                    .travelWarning(
+                            teacherId, school.getId(), slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId)
+                    .ifPresent(travelWarnings::add);
         }
-        return slotClassIds;
+
+        // Chưa ai xác nhận thì dừng lại hỏi; xác nhận rồi thì đi tiếp và để bên gọi ghi vết.
+        if (!travelWarnings.isEmpty() && !acceptTravelWarning) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Cảnh báo di chuyển — " + String.join("; ", travelWarnings) + ".",
+                    TeacherTimeConflictChecker.TRAVEL_GAP_CODE);
+        }
+        return new SlotValidation(slotClassIds, travelWarnings);
+    }
+
+    /**
+     * Kết quả validate các ô lịch: lớp đã chốt cho từng ô, và các cảnh báo di chuyển mà người
+     * xếp lịch đã bấm chấp nhận (rỗng nếu không có) — bên gọi ghi chúng vào phiếu làm dấu vết.
+     */
+    private record SlotValidation(List<Integer> classIds, List<String> travelWarnings) {}
+
+    /**
+     * Dấu vết cho phiếu được tạo/sửa dù đã có cảnh báo di chuyển. Không có cảnh báo thì trả
+     * {@code null} để không ghi rác vào ghi chú.
+     *
+     * <p>Phải lưu lại: sau này nhìn phiếu là biết nó từng bị cảnh báo và đã có người chấp nhận,
+     * thay vì tưởng hệ thống bỏ sót.
+     */
+    private static String travelNote(SlotValidation validated) {
+        if (validated.travelWarnings().isEmpty()) {
+            return null;
+        }
+        return "Đã chấp nhận cảnh báo di chuyển: " + String.join("; ", validated.travelWarnings()) + ".";
     }
 
     /**
@@ -694,8 +741,17 @@ public class AssignmentService {
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Trường của phân công không còn tồn tại."));
 
         Map<Integer, Period> periodById = new HashMap<>();
-        List<Integer> slotClassIds = validateSlots(
-                req.slots(), school, null, teacher.getId(), req.startDate(), req.endDate(), id, periodById);
+        SlotValidation validated = validateSlots(
+                req.slots(),
+                school,
+                null,
+                teacher.getId(),
+                req.startDate(),
+                req.endDate(),
+                id,
+                Boolean.TRUE.equals(req.acceptTravelWarning()),
+                periodById);
+        List<Integer> slotClassIds = validated.classIds();
 
         Integer userId = SecurityUtils.currentUserId();
 
@@ -710,7 +766,7 @@ public class AssignmentService {
         a.setEndDate(req.endDate());
         a.setStatus(AssignmentStatus.PENDING);
         a.setRejectionReason(null);
-        a.setApprovalNote(null);
+        a.setApprovalNote(travelNote(validated));
         a.setConfirmedAt(null);
         a.setConfirmedByUserId(null);
         a.setConfirmSource(null);

@@ -401,7 +401,38 @@ const canSubmit = computed(
     modal.form.slots.length > 0,
 )
 
-async function submit() {
+/* ── Cảnh báo di chuyển giữa hai trường ──
+ * Backend trả 409 kèm code TRAVEL_GAP khi hai buổi khác trường cách nhau dưới 30 phút.
+ * Đây là CẢNH BÁO chứ không phải lỗi: mở hộp xác nhận, người xếp lịch chọn vẫn lưu thì
+ * gửi lại đúng request đó kèm acceptTravelWarning, và backend ghi vết vào ghi chú phiếu.
+ */
+const travelModal = reactive({ open: false, message: '' })
+
+/** Gửi phiếu lên server. `accept` = đã bấm "Vẫn lưu" ở hộp cảnh báo. */
+async function sendAssignment(accept) {
+  if (modal.editId) {
+    // Sửa xong phiếu quay về Chờ xác nhận và giáo viên nhận lại lời mời từ đầu.
+    return assignmentApi.update(modal.editId, {
+      teacherId: Number(modal.form.teacherId),
+      startDate: modal.form.startDate,
+      endDate: modal.form.endDate || null,
+      slots: modal.form.slots,
+      acceptTravelWarning: accept,
+    })
+  }
+  return assignmentApi.create({
+    teacherId: Number(modal.form.teacherId),
+    subjectId: Number(modal.form.subjectId),
+    schoolId: Number(modal.form.schoolId),
+    classId: null, // lớp nằm ở từng tiết (slots[].classId), không còn ở cấp phân công
+    startDate: modal.form.startDate,
+    endDate: modal.form.endDate || null,
+    slots: modal.form.slots,
+    acceptTravelWarning: accept,
+  })
+}
+
+async function submit(acceptTravelWarning = false) {
   if (!canSubmit.value) {
     modal.error = 'Vui lòng điền đủ GV, môn, trường, ngày bắt đầu và ít nhất 1 tiết (kèm lớp).'
     return
@@ -409,31 +440,20 @@ async function submit() {
   modal.saving = true
   modal.error = ''
   try {
-    if (modal.editId) {
-      // Sửa xong phiếu quay về Chờ xác nhận và giáo viên nhận lại lời mời từ đầu.
-      await assignmentApi.update(modal.editId, {
-        teacherId: Number(modal.form.teacherId),
-        startDate: modal.form.startDate,
-        endDate: modal.form.endDate || null,
-        slots: modal.form.slots,
-      })
-    } else {
-      await assignmentApi.create({
-        teacherId: Number(modal.form.teacherId),
-        subjectId: Number(modal.form.subjectId),
-        schoolId: Number(modal.form.schoolId),
-        classId: null, // lớp nằm ở từng tiết (slots[].classId), không còn ở cấp phân công
-        startDate: modal.form.startDate,
-        endDate: modal.form.endDate || null,
-        slots: modal.form.slots,
-      })
-    }
+    await sendAssignment(acceptTravelWarning)
+    travelModal.open = false
     modal.open = false
     load()
   } catch (e) {
-    modal.error =
-      e.response?.data?.message ??
-      (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
+    const data = e.response?.data
+    if (data?.code === 'TRAVEL_GAP') {
+      // Không phải lỗi — hỏi lại rồi gửi tiếp nếu người dùng đồng ý.
+      travelModal.message = data.message
+      travelModal.open = true
+    } else {
+      modal.error =
+        data?.message ?? (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
+    }
   } finally {
     modal.saving = false
   }
@@ -897,10 +917,29 @@ async function confirmPurge() {
 
         <div class="modal-actions">
           <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
-          <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit">
+          <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit()">
             {{
               modal.saving ? 'Đang lưu…' : modal.editId ? 'Lưu & gửi lại lời mời' : 'Tạo phân công'
             }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Cảnh báo di chuyển: khác các lỗi khác ở chỗ VẪN LƯU ĐƯỢC nếu người xếp lịch chấp nhận -->
+    <div v-if="travelModal.open" class="modal-overlay" @click.self="travelModal.open = false">
+      <div class="modal-box">
+        <h3>Cảnh báo di chuyển giữa hai trường</h3>
+        <p class="travel__msg">{{ travelModal.message }}</p>
+        <p class="text-muted small">
+          Hệ thống không biết hai trường cách nhau bao xa, nên đây chỉ là nhắc nhở. Nếu giáo viên
+          vẫn kịp di chuyển thì chọn “Vẫn lưu” — nội dung cảnh báo sẽ được ghi vào ghi chú của phân
+          công.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="travelModal.open = false">Quay lại sửa</button>
+          <button class="btn btn-primary" :disabled="modal.saving" @click="submit(true)">
+            {{ modal.saving ? 'Đang lưu…' : 'Vẫn lưu' }}
           </button>
         </div>
       </div>
@@ -966,6 +1005,18 @@ async function confirmPurge() {
 </template>
 
 <style scoped>
+/* Cảnh báo di chuyển — tông vàng, KHÔNG đỏ: đây là nhắc nhở có thể bỏ qua, không phải lỗi. */
+.travel__msg {
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid var(--c-amber);
+  border-radius: 0;
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--c-text);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
 .head-actions {
   display: flex;
   gap: 0.5rem;
