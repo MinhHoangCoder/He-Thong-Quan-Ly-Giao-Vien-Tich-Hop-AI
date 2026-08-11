@@ -26,7 +26,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleApi(ApiException ex) {
         HttpStatus status = ex.getStatus();
         return ResponseEntity.status(status)
-                .body(new ErrorResponse(status.value(), status.getReasonPhrase(), ex.getMessage(), ex.getCode()));
+                .body(new ErrorResponse(status.value(), status.getReasonPhrase(), ex.getMessage()));
     }
 
     /** Lỗi validate @Valid -> gom các message field thành 1 chuỗi. */

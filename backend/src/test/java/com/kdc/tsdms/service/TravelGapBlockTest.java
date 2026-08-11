@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -9,6 +10,7 @@ import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.School;
+import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
@@ -29,16 +31,15 @@ import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
 
 /**
- * CẢNH BÁO chạy giữa hai trường quá gấp.
+ * Chặn cứng việc chạy giữa hai trường quá gấp.
  *
- * <p>Khác hai luật chặn cứng bên cạnh: đây là điều CÓ THỂ xảy ra thật, chỉ là rủi ro — hai
- * trường có thể cách nhau 200m hoặc 15km, dữ liệu hệ thống không biết. Nên luật này chỉ nêu
- * số liệu để người xếp lịch quyết, và tuyệt đối không được đụng tới lịch trong CÙNG một
- * trường (nơi các tiết liền nhau vốn cách nhau 0 phút).
+ * <p>{@code check()} chỉ bắt được giờ đè hẳn lên nhau; tan trường này rồi vào ngay trường kia
+ * thì lịch nhìn vẫn "hợp lệ" mà thực tế không ai làm được. Luật này lấp đúng khe đó, và tuyệt
+ * đối không được đụng tới lịch trong CÙNG một trường (nơi các tiết liền nhau vốn cách nhau 0 phút).
  */
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
-class TravelGapWarningTest {
+class TravelGapBlockTest {
 
     private static final int GV = 11;
     private static final int TRUONG_A = 4;
@@ -110,65 +111,63 @@ class TravelGapWarningTest {
     }
 
     /** Tiết mới đang xét: 07:35–08:10 tại TRƯỜNG B. */
-    private Optional<String> canhBao() {
-        return checker.travelWarning(
-                GV, TRUONG_B, "MON", tiet(2, "07:35", "08:10"), LocalDate.of(2026, 8, 10), null, null);
+    private void soat() {
+        checker.checkTravelGap(GV, TRUONG_B, "MON", tiet(2, "07:35", "08:10"), LocalDate.of(2026, 8, 10), null, null);
     }
 
-    /** Cảnh báo nêu ĐIỀU GIÁO VIÊN ĐANG VƯỚNG: tiết mấy, trường nào, thứ mấy. */
+    /** Lời từ chối nêu điều giáo viên đang vướng (tiết mấy, trường nào, thứ mấy) rồi mới tới luật. */
     @Test
-    void chayNgaySangTruongKhacThiCanhBao() {
+    void chayNgaySangTruongKhacThiChan() {
         daCoBuoi(TRUONG_A, tiet(1, "07:00", "07:35")); // tan 07:35, vao 07:35 → 0 phut
-        assertThat(canhBao())
-                .isPresent()
-                .get(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-                .contains("tiết 1")
-                .contains("TH Dư Hàng")
-                .contains("thứ 2");
+        assertThatThrownBy(this::soat)
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("tiết 1")
+                .hasMessageContaining("TH Dư Hàng")
+                .hasMessageContaining("thứ 2")
+                .hasMessageContaining("60 phút");
     }
 
-    /** Ranh giới: đúng 30 phút là đủ, không cảnh báo. */
+    /** Ranh giới: đúng 60 phút là đủ, cho qua. */
     @Test
-    void dungBaMuoiPhutThiKhongCanhBao() {
-        daCoBuoi(TRUONG_A, tiet(1, "06:30", "07:05")); // tan 07:05 → vao 07:35 = 30 phut
-        assertThat(canhBao()).isEmpty();
+    void dungSauMuoiPhutThiChoQua() {
+        daCoBuoi(TRUONG_A, tiet(1, "06:00", "06:35")); // tan 06:35 → vao 07:35 = 60 phut
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
     @Test
-    void haiMuoiChinPhutThiVanCanhBao() {
-        daCoBuoi(TRUONG_A, tiet(1, "06:31", "07:06")); // 29 phut
-        assertThat(canhBao()).isPresent();
+    void namMuoiChinPhutThiVanChan() {
+        daCoBuoi(TRUONG_A, tiet(1, "06:01", "06:36")); // 59 phut
+        assertThatThrownBy(this::soat).isInstanceOf(ApiException.class);
     }
 
-    /** CÙNG trường thì dạy liền tiết là bình thường — không được cảnh báo. */
+    /** CÙNG trường thì dạy liền tiết là bình thường — không được chặn. */
     @Test
-    void cungTruongThiKhongCanhBao() {
+    void cungTruongThiChoQua() {
         daCoBuoi(TRUONG_B, tiet(1, "07:00", "07:35"));
-        assertThat(canhBao()).isEmpty();
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
-    /** Giờ đè hẳn lên nhau là việc của check() chặn cứng, không phải của cảnh báo này. */
+    /** Giờ đè hẳn lên nhau là việc của check(), không phải của luật này. */
     @Test
-    void gioDeNhauThiKhongPhaiViecCuaCanhBao() {
+    void gioDeNhauThiKhongPhaiViecCuaLuatNay() {
         daCoBuoi(TRUONG_A, tiet(1, "07:20", "07:55"));
-        assertThat(canhBao()).isEmpty();
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
     @Test
-    void cachXaThiKhongCanhBao() {
+    void cachXaThiChoQua() {
         daCoBuoi(TRUONG_A, tiet(1, "05:00", "05:35")); // cach 120 phut
-        assertThat(canhBao()).isEmpty();
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
-    /** Cảnh báo cả chiều ngược: buổi đã có diễn ra SAU buổi đang xét. */
+    /** Chặn cả chiều ngược: buổi đã có diễn ra SAU buổi đang xét. */
     @Test
-    void buoiDaCoNamSauThiVanCanhBao() {
+    void buoiDaCoNamSauThiVanChan() {
         daCoBuoi(TRUONG_A, tiet(3, "08:20", "08:55")); // buoi moi tan 08:10 → cach 10 phut
-        assertThat(canhBao())
-                .isPresent()
-                .get(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-                .contains("tiết 3")
-                .contains("TH Dư Hàng");
+        assertThatThrownBy(this::soat)
+                .isInstanceOf(ApiException.class)
+                .hasMessageContaining("tiết 3")
+                .hasMessageContaining("TH Dư Hàng");
     }
 
     @Test
@@ -182,7 +181,7 @@ class TravelGapWarningTest {
             a.setStartDate(LocalDate.of(2026, 8, 10));
             return Optional.of(a);
         });
-        assertThat(canhBao()).isEmpty();
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
     @Test
@@ -203,14 +202,14 @@ class TravelGapWarningTest {
         when(assignmentRepo.findByIdAndDeletedFalse(480)).thenReturn(Optional.of(a));
         when(periodRepo.findById(1)).thenReturn(Optional.of(tiet(1, "07:00", "07:35")));
 
-        assertThat(canhBao()).isEmpty();
+        assertThatCode(this::soat).doesNotThrowAnyException();
     }
 
     @Test
     void boQuaChinhPhieuDangSua() {
         daCoBuoi(TRUONG_A, tiet(1, "07:00", "07:35"));
-        assertThat(checker.travelWarning(
+        assertThatCode(() -> checker.checkTravelGap(
                         GV, TRUONG_B, "MON", tiet(2, "07:35", "08:10"), LocalDate.of(2026, 8, 10), null, 480))
-                .isEmpty();
+                .doesNotThrowAnyException();
     }
 }

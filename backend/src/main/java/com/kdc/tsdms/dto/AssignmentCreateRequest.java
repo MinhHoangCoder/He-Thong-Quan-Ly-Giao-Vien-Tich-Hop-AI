@@ -65,13 +65,4 @@ public record AssignmentCreateRequest(
          * Mỗi slot phải là 1 tổ hợp DayOfWeek+PeriodId không trùng nhau.
          */
         @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 63, message = "Số tiết dạy trong một phân công vượt mức cho phép") @Valid // kích hoạt validate đệ quy bên trong AssignmentSlotRequest
-        List<AssignmentSlotRequest> slots,
-
-        /**
-         * Người xếp lịch đã đọc cảnh báo di chuyển giữa hai trường và bấm "Vẫn tạo".
-         *
-         * <p>Lần gửi đầu để trống: nếu có cảnh báo, Service trả 409 kèm mã {@code TRAVEL_GAP}
-         * để giao diện mở hộp xác nhận. Bấm đồng ý thì gửi lại chính request đó với cờ này
-         * bằng {@code true}, và Service ghi nội dung cảnh báo vào ghi chú của phiếu làm dấu vết.
-         */
-        Boolean acceptTravelWarning) {}
+        List<AssignmentSlotRequest> slots) {}

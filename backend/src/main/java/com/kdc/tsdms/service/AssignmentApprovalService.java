@@ -175,6 +175,16 @@ public class AssignmentApprovalService {
                     a.getStartDate(),
                     a.getEndDate(),
                     a.getId());
+            // Và cả khoảng nghỉ để chạy sang trường khác: cùng lý do — chỗ trống lúc tạo phiếu
+            // có thể đã bị một phiếu ở trường khác lấp vào khung giờ liền kề.
+            conflictChecker.checkTravelGap(
+                    a.getTeacherId(),
+                    a.getSchoolId(),
+                    slot.getDayOfWeek(),
+                    p,
+                    a.getStartDate(),
+                    a.getEndDate(),
+                    a.getId());
         }
         approve(a, SRC_ADMIN, note);
         closeOpenInvites(a.getId(), "CONFIRMED");
