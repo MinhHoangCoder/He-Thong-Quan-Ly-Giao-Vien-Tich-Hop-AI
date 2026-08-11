@@ -55,17 +55,15 @@ const isoToday = () => {
 const loading = ref(false)
 const items = ref([])
 const trashItems = ref([])
-const conflicts = ref([])
 const statusCounts = ref({})
 
 /* Tab trạng thái đang xem ('' = tất cả) + các phiếu đang tích chọn để thao tác hàng loạt. */
 const statusFilter = ref('')
 const selectedIds = ref([])
 
-/* Chế độ xem: 'list' = danh sách | 'trash' = thùng rác | 'conflicts' = quét trùng giờ. */
+/* Chế độ xem: 'list' = danh sách | 'trash' = thùng rác. */
 const view = ref('list')
 const inTrash = computed(() => view.value === 'trash')
-const inConflicts = computed(() => view.value === 'conflicts')
 
 /* ── Tìm kiếm (chỉ ở danh sách đang hoạt động) — lọc phía server ──
    "Lọc ngay khi gõ" nhưng debounce 300ms để không gọi API dồn dập theo từng phím. */
@@ -91,9 +89,7 @@ function clearSearch() {
 /* ── Phân trang phía client (áp cho danh sách đang xem) ── */
 const PAGE_SIZE = 10
 const page = ref(0)
-const currentList = computed(() =>
-  inTrash.value ? trashItems.value : inConflicts.value ? conflicts.value : items.value,
-)
+const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
 const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
 const pagedItems = computed(() => {
   const start = page.value * PAGE_SIZE
@@ -174,28 +170,9 @@ async function loadTrash() {
   }
 }
 
-/* Quét trùng giờ trên toàn hệ thống (gồm cả trùng CHÉO TRƯỜNG mà luật cũ để lọt). */
-async function loadConflicts() {
-  loading.value = true
-  page.value = 0
-  try {
-    const { data } = await assignmentApi.conflicts()
-    conflicts.value = data
-  } catch {
-    conflicts.value = []
-  } finally {
-    loading.value = false
-  }
-}
-
 function showTrash() {
   view.value = 'trash'
   loadTrash()
-}
-
-function showConflicts() {
-  view.value = 'conflicts'
-  loadConflicts()
 }
 
 function showList() {
@@ -203,14 +180,7 @@ function showList() {
   load()
 }
 
-onMounted(() => {
-  load()
-  // Nạp sẵn để hiện số trên nút cảnh báo — người xếp lịch cần biết ngay có trùng hay không.
-  assignmentApi
-    .conflicts()
-    .then(({ data }) => (conflicts.value = data))
-    .catch(() => {})
-})
+onMounted(load)
 onBeforeUnmount(() => clearTimeout(searchTimer))
 
 async function openCreate() {
@@ -563,20 +533,6 @@ async function confirmForceApprove() {
   }
 }
 
-/* ── Hiển thị kết quả quét trùng giờ ── */
-
-/** "07:00:00" → "07:00" (bảng trùng giờ chỉ cần giờ:phút). */
-function hhmm(t) {
-  return t ? String(t).slice(0, 5) : '—'
-}
-
-/** Một phía của cặp trùng: "TH Dư Hàng · 1A3 · Tiết 1 (07:00–07:35) · #461". */
-function sideLabel(s) {
-  if (!s) return '—'
-  const where = [s.schoolName, s.className, s.subjectName].filter(Boolean).join(' · ')
-  return `${where} · ${tietShort(s.periodNumber, s.sessionType, s.indexInSession)} (${hhmm(s.startTime)}–${hhmm(s.endTime)}) · #${s.assignmentId}`
-}
-
 /* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
 async function confirmCancel() {
   if (!cancelTarget.value) return
@@ -619,25 +575,11 @@ async function confirmPurge() {
     <div class="page-head">
       <div>
         <h2 class="title">
-          {{
-            inTrash
-              ? 'Thùng rác — Phân công đã xóa'
-              : inConflicts
-                ? 'Trùng giờ giáo viên'
-                : 'Phân công giảng dạy'
-          }}
+          {{ inTrash ? 'Thùng rác — Phân công đã xóa' : 'Phân công giảng dạy' }}
         </h2>
-        <p v-if="inConflicts" class="subtitle">
-          Các cặp tiết của cùng một giáo viên bị đè giờ lên nhau — tính cả trường hợp ở
-          <strong>hai trường khác nhau</strong>. Hãy hủy bớt một trong hai phân công.
-        </p>
       </div>
       <div class="head-actions">
         <template v-if="view === 'list'">
-          <button class="btn btn-outline" @click="showConflicts">
-            Trùng giờ
-            <span v-if="conflicts.length" class="count-pill">{{ conflicts.length }}</span>
-          </button>
           <button class="btn btn-outline" @click="showTrash">Thùng rác</button>
           <button class="btn btn-primary" @click="openCreate">+ Tạo phân công</button>
         </template>
@@ -708,43 +650,7 @@ async function confirmPurge() {
       <button class="btn btn-sm btn-outline" @click="selectedIds = []">Bỏ chọn</button>
     </div>
 
-    <!-- Kết quả quét trùng giờ -->
-    <div v-if="inConflicts" class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Giáo viên</th>
-            <th>Thứ</th>
-            <th>Giờ đè nhau</th>
-            <th>Ô lịch 1</th>
-            <th>Ô lịch 2</th>
-            <th>Giai đoạn chồng</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="6" class="text-center text-muted">Đang quét…</td>
-          </tr>
-          <tr v-else-if="!conflicts.length">
-            <td colspan="6" class="text-center text-muted">Không có tiết nào bị trùng giờ. 👍</td>
-          </tr>
-          <tr v-for="(c, i) in pagedItems" :key="i">
-            <td class="font-medium">{{ c.teacherName }}</td>
-            <td>{{ c.dayOfWeekLabel }}</td>
-            <td>
-              <span class="badge badge-red">{{ hhmm(c.overlapFrom) }}–{{ hhmm(c.overlapTo) }}</span>
-            </td>
-            <td class="small">{{ sideLabel(c.first) }}</td>
-            <td class="small">{{ sideLabel(c.second) }}</td>
-            <td class="text-muted small">
-              {{ c.overlapStart }} → {{ c.overlapEnd ?? 'không giới hạn' }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div v-else class="table-wrap">
+    <div class="table-wrap">
       <table class="table">
         <thead>
           <tr>
@@ -1297,26 +1203,6 @@ async function confirmPurge() {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--c-text);
-}
-/* Số vụ trùng giờ ngay trên nút — người xếp lịch thấy ngay mà không cần bấm vào xem. */
-.count-pill {
-  display: inline-block;
-  min-width: 18px;
-  margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 9999px;
-  background: #dc2626;
-  color: #fff;
-  font-size: 0.72rem;
-  font-weight: 700;
-  line-height: 18px;
-  text-align: center;
-}
-.subtitle {
-  margin: 4px 0 0;
-  font-size: 0.84rem;
-  color: var(--c-text-muted);
-  max-width: 68ch;
 }
 /* Chữ đậm chìm trên nền tối → dùng tông sáng hơn */
 :root[data-theme='dark'] .chip {

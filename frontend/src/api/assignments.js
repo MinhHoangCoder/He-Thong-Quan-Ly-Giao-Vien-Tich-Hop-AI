@@ -71,11 +71,6 @@ export const assignmentApi = {
     })
   },
 
-  /** Các cặp ô lịch đang trùng giờ của cùng một GV (gồm cả trùng chéo trường). */
-  conflicts() {
-    return http.get('/assignments/conflicts')
-  },
-
   create(body) {
     return http.post('/assignments', body)
   },

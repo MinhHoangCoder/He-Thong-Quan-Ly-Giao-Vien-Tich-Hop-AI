@@ -548,14 +548,15 @@ public class AssignmentService {
         // DÒ TRÙNG LỊCH GV THEO GIỜ THẬT: quét mọi ô lịch của GV trong cùng Thứ ở MỌI
         // trường, so khoảng giờ của tiết. KHÔNG so periodId — Period thuộc về từng trường
         // nên "tiết 1" của hai trường là hai id khác nhau mà giờ vẫn đè nhau.
-        for (AssignmentSlotRequest slot : slots) {
-            checkTeacherTimeConflict(
-                    teacherId,
-                    slot.dayOfWeek(),
-                    periodByIdOut.get(slot.periodId()),
-                    startDate,
-                    endDate,
-                    ignoreAssignmentId);
+        for (int i = 0; i < slots.size(); i++) {
+            AssignmentSlotRequest slot = slots.get(i);
+            Period p = periodByIdOut.get(slot.periodId());
+            checkTeacherTimeConflict(teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
+            // DÒ TRÙNG PHÍA LỚP: luật trên chỉ hỏi "giáo viên có bận không", không ai hỏi
+            // "lớp này đã có ai dạy chưa" — nên xếp được ba giáo viên vào cùng một lớp cùng
+            // một tiết, và cả ba đều sinh buổi dạy rồi đều được tính công.
+            conflictChecker.checkClass(
+                    slotClassIds.get(i), teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
         }
         return slotClassIds;
     }
