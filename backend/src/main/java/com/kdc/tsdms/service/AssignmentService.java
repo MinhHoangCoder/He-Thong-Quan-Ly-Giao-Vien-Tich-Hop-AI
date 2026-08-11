@@ -584,9 +584,11 @@ public class AssignmentService {
 
         // Chưa ai xác nhận thì dừng lại hỏi; xác nhận rồi thì đi tiếp và để bên gọi ghi vết.
         if (!travelWarnings.isEmpty() && !acceptTravelWarning) {
+            // Không lặp lại chữ "Cảnh báo di chuyển" — tiêu đề khung cảnh báo trên giao diện đã
+            // nói rồi; mã TRAVEL_GAP là thứ cho client biết đây là loại nào.
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Cảnh báo di chuyển — " + String.join("; ", travelWarnings) + ".",
+                    String.join("; ", travelWarnings) + ".",
                     TeacherTimeConflictChecker.TRAVEL_GAP_CODE);
         }
         return new SlotValidation(slotClassIds, travelWarnings);

@@ -115,15 +115,16 @@ class TravelGapWarningTest {
                 GV, TRUONG_B, "MON", tiet(2, "07:35", "08:10"), LocalDate.of(2026, 8, 10), null, null);
     }
 
+    /** Cảnh báo nêu ĐIỀU GIÁO VIÊN ĐANG VƯỚNG: tiết mấy, trường nào, thứ mấy. */
     @Test
     void chayNgaySangTruongKhacThiCanhBao() {
         daCoBuoi(TRUONG_A, tiet(1, "07:00", "07:35")); // tan 07:35, vao 07:35 → 0 phut
         assertThat(canhBao())
                 .isPresent()
                 .get(org.assertj.core.api.InstanceOfAssertFactories.STRING)
+                .contains("tiết 1")
                 .contains("TH Dư Hàng")
-                .contains("TH Lê Văn Tám")
-                .contains("0 phút");
+                .contains("thứ 2");
     }
 
     /** Ranh giới: đúng 30 phút là đủ, không cảnh báo. */
@@ -166,7 +167,8 @@ class TravelGapWarningTest {
         assertThat(canhBao())
                 .isPresent()
                 .get(org.assertj.core.api.InstanceOfAssertFactories.STRING)
-                .contains("10 phút");
+                .contains("tiết 3")
+                .contains("TH Dư Hàng");
     }
 
     @Test

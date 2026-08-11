@@ -195,19 +195,15 @@ public class TeacherTimeConflictChecker {
             if (gap < 0 || gap >= MIN_TRAVEL_GAP_MIN) {
                 continue;
             }
+            // Chỉ nêu ĐIỀU GIÁO VIÊN ĐANG VƯỚNG: tiết mấy, trường nào, thứ mấy. Người xếp lịch
+            // biết hai trường đó ở đâu nên tự đánh giá được có kịp không — bày ra giờ tan, giờ
+            // vào và số phút chênh chỉ bắt họ đọc thêm để suy ra đúng điều đó.
             String otherSchool = schoolRepo
                     .findById(other.getSchoolId())
                     .map(School::getName)
                     .orElse("một trường khác");
-            String thisSchool =
-                    schoolRepo.findById(schoolId).map(School::getName).orElse("trường đã chọn");
-            boolean otherFirst = !otherPeriod.getEndTime().isAfter(period.getStartTime());
-            String truoc = otherFirst ? otherSchool : thisSchool;
-            String sau = otherFirst ? thisSchool : otherSchool;
-            String gioTan = (otherFirst ? otherPeriod.getEndTime() : period.getEndTime()).toString();
-            String gioVao = (otherFirst ? period.getStartTime() : otherPeriod.getStartTime()).toString();
-            return Optional.of(dayLabelVi(dayOfWeek) + ": " + truoc + " tan lúc " + gioTan + ", " + sau + " vào lúc "
-                    + gioVao + " — chỉ cách nhau " + gap + " phút");
+            return Optional.of("Giáo viên đang dạy tiết " + otherPeriod.getPeriodNumber() + " tại " + otherSchool
+                    + " vào " + dayLabelVi(dayOfWeek).toLowerCase());
         }
         return Optional.empty();
     }
