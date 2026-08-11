@@ -195,6 +195,7 @@ async function openCreate() {
   modal.slotDraft = { dayOfWeek: 'MON', periodId: '', classId: '' }
   modal.editId = null
   modal.error = ''
+  travelWarn.value = '' // cảnh báo của phiếu trước không được dính sang phiếu mới
   modal.open = true
   scoped.classes = []
   scoped.periods = []
@@ -223,6 +224,7 @@ async function openEdit(a) {
   modal.slotDraft = { dayOfWeek: 'MON', periodId: '', classId: '' }
   modal.editId = a.id
   modal.error = ''
+  travelWarn.value = '' // cảnh báo của phiếu trước không được dính sang phiếu mới
   modal.open = true
   await loadFormOptions()
   try {
@@ -374,12 +376,15 @@ function addSlot() {
   // Chặn tiết GV đã bận / đã thêm (khớp luật 409 backend).
   if (period && periodConflict(period, dayOfWeek)) return
   modal.form.slots.push({ dayOfWeek, periodId: Number(periodId), classId: Number(classId) })
+  // Đổi lịch rồi thì cảnh báo cũ không còn đúng nữa — bỏ đi, để lần lưu sau tính lại.
+  travelWarn.value = ''
   pickFirstFreePeriod() // tự chuyển sang tiết trống kế tiếp
   pickNextClass()
 }
 
 function removeSlot(i) {
   modal.form.slots.splice(i, 1)
+  travelWarn.value = ''
 }
 
 function slotLabel(s) {
@@ -406,7 +411,7 @@ const canSubmit = computed(
  * Đây là CẢNH BÁO chứ không phải lỗi: mở hộp xác nhận, người xếp lịch chọn vẫn lưu thì
  * gửi lại đúng request đó kèm acceptTravelWarning, và backend ghi vết vào ghi chú phiếu.
  */
-const travelModal = reactive({ open: false, message: '' })
+const travelWarn = ref('')
 
 /** Gửi phiếu lên server. `accept` = đã bấm "Vẫn lưu" ở hộp cảnh báo. */
 async function sendAssignment(accept) {
@@ -441,15 +446,14 @@ async function submit(acceptTravelWarning = false) {
   modal.error = ''
   try {
     await sendAssignment(acceptTravelWarning)
-    travelModal.open = false
+    travelWarn.value = ''
     modal.open = false
     load()
   } catch (e) {
     const data = e.response?.data
     if (data?.code === 'TRAVEL_GAP') {
-      // Không phải lỗi — hỏi lại rồi gửi tiếp nếu người dùng đồng ý.
-      travelModal.message = data.message
-      travelModal.open = true
+      // Không phải lỗi — đổi cụm nút thành "Quay lại sửa / Vẫn lưu" ngay trong form.
+      travelWarn.value = data.message
     } else {
       modal.error =
         data?.message ?? (modal.editId ? 'Lưu thay đổi thất bại' : 'Tạo phân công thất bại')
@@ -915,32 +919,39 @@ async function confirmPurge() {
 
         <p v-if="modal.error" class="error-msg">{{ modal.error }}</p>
 
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
-          <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit()">
-            {{
-              modal.saving ? 'Đang lưu…' : modal.editId ? 'Lưu & gửi lại lời mời' : 'Tạo phân công'
-            }}
-          </button>
+        <!-- Cảnh báo di chuyển — nằm NGAY TRONG form, không mở hộp thứ hai: người xếp lịch
+             vẫn thấy phiếu mình đang sửa để quyết, thay vì bị che mất. -->
+        <div v-if="travelWarn" class="travel" role="alert">
+          <span class="travel__icon" aria-hidden="true">!</span>
+          <div>
+            <strong class="travel__title">Cảnh báo di chuyển giữa hai trường</strong>
+            <p class="travel__msg">{{ travelWarn }}</p>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Cảnh báo di chuyển: khác các lỗi khác ở chỗ VẪN LƯU ĐƯỢC nếu người xếp lịch chấp nhận -->
-    <div v-if="travelModal.open" class="modal-overlay" @click.self="travelModal.open = false">
-      <div class="modal-box">
-        <h3>Cảnh báo di chuyển giữa hai trường</h3>
-        <p class="travel__msg">{{ travelModal.message }}</p>
-        <p class="text-muted small">
-          Hệ thống không biết hai trường cách nhau bao xa, nên đây chỉ là nhắc nhở. Nếu giáo viên
-          vẫn kịp di chuyển thì chọn “Vẫn lưu” — nội dung cảnh báo sẽ được ghi vào ghi chú của phân
-          công.
-        </p>
         <div class="modal-actions">
-          <button class="btn btn-outline" @click="travelModal.open = false">Quay lại sửa</button>
-          <button class="btn btn-primary" :disabled="modal.saving" @click="submit(true)">
-            {{ modal.saving ? 'Đang lưu…' : 'Vẫn lưu' }}
-          </button>
+          <template v-if="travelWarn">
+            <button class="btn btn-outline" @click="travelWarn = ''">Quay lại sửa</button>
+            <button class="btn btn-warn" :disabled="modal.saving" @click="submit(true)">
+              {{ modal.saving ? 'Đang lưu…' : 'Vẫn lưu' }}
+            </button>
+          </template>
+          <template v-else>
+            <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
+            <button
+              class="btn btn-primary"
+              :disabled="modal.saving || !canSubmit"
+              @click="submit()"
+            >
+              {{
+                modal.saving
+                  ? 'Đang lưu…'
+                  : modal.editId
+                    ? 'Lưu & gửi lại lời mời'
+                    : 'Tạo phân công'
+              }}
+            </button>
+          </template>
         </div>
       </div>
     </div>
@@ -1005,16 +1016,55 @@ async function confirmPurge() {
 </template>
 
 <style scoped>
-/* Cảnh báo di chuyển — tông vàng, KHÔNG đỏ: đây là nhắc nhở có thể bỏ qua, không phải lỗi. */
-.travel__msg {
-  margin: 0 0 0.6rem;
-  padding: 0.6rem 0.8rem;
-  border-left: 3px solid var(--c-amber);
-  border-radius: 0;
-  background: rgba(245, 158, 11, 0.12);
+/* ── Cảnh báo di chuyển ──
+   Tông VÀNG chứ không đỏ: đây là nhắc nhở có thể bỏ qua, không phải lỗi chặn.
+   Nằm ngay trong form (không phải modal riêng) nên phải tự tách khỏi nội dung
+   phía trên bằng nền + viền, thay vì dựa vào khung hộp. */
+.travel {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  margin: 0.2rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.1);
+}
+/* Dấu chấm than tròn — mỏ neo thị giác để mắt bắt ngay đây là cảnh báo. */
+.travel__icon {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--c-amber);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 22px;
+  text-align: center;
+}
+.travel__title {
+  display: block;
+  margin-bottom: 0.15rem;
+  font-size: 0.9rem;
+  font-weight: 700;
   color: var(--c-text);
-  font-size: 0.88rem;
-  line-height: 1.5;
+}
+.travel__msg {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--c-text-muted);
+}
+/* Nút "Vẫn lưu": tông cảnh báo, KHÔNG dùng primary cam — để người bấm thấy rõ
+   mình đang chấp nhận rủi ro chứ không phải làm một thao tác bình thường. */
+.btn-warn {
+  background: var(--c-amber);
+  color: #fff;
+  border: 0;
+}
+.btn-warn:hover:not(:disabled) {
+  background: #d97706;
 }
 
 .head-actions {
