@@ -821,6 +821,12 @@ public class AssignmentService {
             // Cùng luật trùng giờ với lúc tạo mới (so giờ thật, mọi trường), nhưng bỏ qua
             // chính phân công đang khôi phục.
             checkTeacherTimeConflict(a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), id);
+            // Và soát cả phía LỚP. Lúc phiếu nằm trong thùng rác, ô lịch của nó bị xóa mềm nên
+            // khung giờ được nhả ra — lớp hoàn toàn có thể đã được giao cho giáo viên khác.
+            // Chỉ hỏi "giáo viên này có bận không" thì khôi phục xong lớp có hai giáo viên
+            // cùng một tiết, cả hai đều sinh buổi dạy và đều được tính công.
+            conflictChecker.checkClass(
+                    slot.getClassId(), a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), id);
         }
         Integer userId = SecurityUtils.currentUserId();
         boolean wasConfirmed = a.getConfirmedAt() != null;
