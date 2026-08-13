@@ -25,6 +25,11 @@ export const notificationApi = {
     return http.post('/notifications/read-all')
   },
 
+  /** Bảng lịch dạy chi tiết của lời mời trong thông báo (thứ + tiết + lớp). */
+  assignmentDetail(id) {
+    return http.get(`/notifications/${id}/assignment`)
+  },
+
   /** Giáo viên XÁC NHẬN nhận lịch dạy được phân công. */
   confirm(id) {
     return http.post(`/notifications/${id}/confirm`)

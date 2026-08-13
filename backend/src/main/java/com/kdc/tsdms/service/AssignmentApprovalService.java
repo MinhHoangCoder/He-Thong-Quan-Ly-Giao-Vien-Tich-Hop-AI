@@ -16,7 +16,6 @@ import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.NotificationRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
-import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -26,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -61,7 +61,6 @@ public class AssignmentApprovalService {
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
     private final SubjectRepository subjectRepo;
-    private final SchoolClassRepository classRepo;
     private final PeriodRepository periodRepo;
     private final NotificationService notificationService;
     private final TeacherTimeConflictChecker conflictChecker;
@@ -75,7 +74,6 @@ public class AssignmentApprovalService {
             TeacherRepository teacherRepo,
             SchoolRepository schoolRepo,
             SubjectRepository subjectRepo,
-            SchoolClassRepository classRepo,
             PeriodRepository periodRepo,
             NotificationService notificationService,
             TeacherTimeConflictChecker conflictChecker,
@@ -87,7 +85,6 @@ public class AssignmentApprovalService {
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
         this.subjectRepo = subjectRepo;
-        this.classRepo = classRepo;
         this.periodRepo = periodRepo;
         this.notificationService = notificationService;
         this.conflictChecker = conflictChecker;
@@ -280,32 +277,35 @@ public class AssignmentApprovalService {
         notificationService.publishToTeacher(
                 a.getTeacherId(),
                 title,
-                describe(a) + " · Lịch: " + scheduleSummary(a)
+                describe(a) + " · " + slotSummary(a)
                         + " · Từ " + fmtDate(a.getStartDate()) + " đến " + fmtDate(lastLessonDate(a))
                         + " · HẠN XÁC NHẬN: " + fmt(a.getConfirmDeadline())
-                        + ". Quá hạn phiếu sẽ tự hết hiệu lực.",
+                        + ". Quá hạn phiếu tự hết hiệu lực — bấm để xem lịch chi tiết.",
                 "ASSIGNMENT",
                 "Assignment",
                 a.getId().longValue(),
                 true);
     }
 
-    /** "Thứ 2 Tiết 1 lớp 1A1, Thứ 2 Tiết 2 lớp 1A2…" — giáo viên cần biết tiết nào vào lớp nào. */
-    private String scheduleSummary(Assignment a) {
-        StringBuilder sb = new StringBuilder();
-        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
-            if (sb.length() > 0) {
-                sb.append(", ");
-            }
-            sb.append(dayLabelVi(slot.getDayOfWeek()));
-            periodRepo.findById(slot.getPeriodId()).ifPresent(p -> sb.append(" Tiết ")
-                    .append(p.getPeriodNumber()));
-            Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
-            if (classId != null) {
-                classRepo.findById(classId).ifPresent(c -> sb.append(" lớp ").append(c.getName()));
-            }
+    /**
+     * "8 tiết/tuần · 4 lớp" — dòng thông báo chỉ nói QUY MÔ.
+     *
+     * <p>Trước đây chỗ này liệt kê từng tiết ("Thứ 3 Tiết 6 lớp 1A1, Thứ 3 Tiết 7 lớp 1A2…").
+     * Phiếu vài chục tiết là dòng thông báo dài không đọc nổi, mà nội dung còn bị cắt ở
+     * 1000 ký tự (NotificationService) nên phiếu lớn hiện ra CỤT giữa chừng.
+     * Chi tiết thứ/tiết/lớp nay nằm ở bảng thời khóa biểu khi giáo viên bấm vào thông báo.
+     */
+    private String slotSummary(Assignment a) {
+        List<AssignmentSlot> slots = slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
+        if (slots.isEmpty()) {
+            return "(chưa có tiết)";
         }
-        return sb.length() == 0 ? "(chưa có tiết)" : sb.toString();
+        long classes = slots.stream()
+                .map(s -> s.getClassId() != null ? s.getClassId() : a.getClassId())
+                .filter(Objects::nonNull)
+                .distinct()
+                .count();
+        return slots.size() + " tiết/tuần" + (classes > 0 ? " · " + classes + " lớp" : "");
     }
 
     /** Ngày của buổi CUỐI đã sinh — phiếu không có ngày kết thúc thì vẫn nói được "đến ngày nào". */
@@ -317,19 +317,6 @@ public class AssignmentApprovalService {
                 .map(s -> s.getStartTime().toLocalDate())
                 .max(LocalDate::compareTo)
                 .orElse(a.getStartDate());
-    }
-
-    private static String dayLabelVi(String code) {
-        return switch (code) {
-            case "MON" -> "Thứ 2";
-            case "TUE" -> "Thứ 3";
-            case "WED" -> "Thứ 4";
-            case "THU" -> "Thứ 5";
-            case "FRI" -> "Thứ 6";
-            case "SAT" -> "Thứ 7";
-            case "SUN" -> "Chủ nhật";
-            default -> code;
-        };
     }
 
     /**

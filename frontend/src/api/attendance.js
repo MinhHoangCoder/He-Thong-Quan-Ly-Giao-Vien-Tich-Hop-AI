@@ -21,6 +21,16 @@ export const attendanceApi = {
   },
 
   /** Trạng thái check-in các buổi dạy HÔM NAY của chính GV (nút Check in/out). */
+  /** Các dòng cần kế toán soát lại (hệ thống chốt hộ / ghi Vắng / còn treo). */
+  attention(params) {
+    return http.get('/attendance/attention', { params })
+  },
+
+  /** Nhật ký thay đổi của một dòng chấm công. */
+  logs(id) {
+    return http.get(`/attendance/${id}/logs`)
+  },
+
   checkinToday() {
     return http.get('/attendance/checkin/today')
   },
