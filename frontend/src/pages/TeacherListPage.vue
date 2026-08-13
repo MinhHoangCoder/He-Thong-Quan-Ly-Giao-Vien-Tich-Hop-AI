@@ -9,6 +9,7 @@ import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
 /* ══════════════════════════════════════════════════════════
    PHÂN QUYỀN THEO VAI TRÒ
    ADMIN / EMPLOYEE: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
@@ -238,7 +239,7 @@ const createModal = reactive({
   saving: false,
   error: '',
   activeTab: 'profile',
-  account: { username: '', email: '' },
+  account: { username: '', email: '', password: '' },
   profile: {
     branchId: '',
     lastName: '',
@@ -254,10 +255,14 @@ const createModal = reactive({
   degrees: [emptyDegree()],
 })
 
+// Hiện/ẩn mật khẩu ở form Thêm mới — CHỈ dùng cho Create, form Sửa không có mật khẩu.
+const showCreatePassword = ref(false)
+
 // Validate inline cho form thêm mới
 const createFieldErrors = reactive({
   username: '',
   email: '',
+  password: '',
   lastName: '',
   firstName: '',
   phone: '',
@@ -295,6 +300,21 @@ function validateEmail() {
     return false
   }
   createFieldErrors.email = ''
+  return true
+}
+
+/** Mật khẩu tài khoản GV — CHỈ áp dụng cho form TẠO MỚI (không có ở form Sửa). */
+function validatePassword() {
+  const v = createModal.account.password
+  if (!v) {
+    createFieldErrors.password = 'Không được để trống'
+    return false
+  }
+  if (!isStrongPassword(v)) {
+    createFieldErrors.password = `Chưa đủ mạnh (${PASSWORD_HINT})`
+    return false
+  }
+  createFieldErrors.password = ''
   return true
 }
 
@@ -370,6 +390,7 @@ function validateAllCreateFields() {
   const results = [
     validateUsername(),
     validateEmail(),
+    validatePassword(),
     validateLastName(),
     validateFirstName(),
     validatePhone(),
@@ -394,7 +415,8 @@ function openCreate() {
   createModal.error = ''
   createModal.saving = false
   Object.keys(createFieldErrors).forEach((k) => (createFieldErrors[k] = ''))
-  createModal.account = { username: '', email: '' }
+  showCreatePassword.value = false
+  createModal.account = { username: '', email: '', password: '' }
   createModal.profile = {
     branchId: branches.value[0]?.id || '',
     lastName: '',
@@ -427,6 +449,7 @@ async function submitCreate() {
       role: 'TEACHER',
       username: a.username,
       email: a.email,
+      password: a.password,
       firstName: p.firstName,
       lastName: p.lastName,
       phone: p.phone,
@@ -477,6 +500,7 @@ async function submitCreate() {
     }
 
     createModal.open = false
+    createModal.account.password = '' // không giữ mật khẩu trong bộ nhớ FE sau khi đã dùng
     showToast('Đã thêm giáo viên mới thành công')
     await loadTeachers()
   } catch (e) {
@@ -1338,6 +1362,37 @@ function formatDate(d) {
                       <span v-if="createFieldErrors.email" class="field-error">{{
                         createFieldErrors.email
                       }}</span>
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <div class="form-field">
+                      <label class="form-label"
+                        >Mật khẩu <span class="req">*</span>
+                        <div class="pwd-wrap">
+                          <input
+                            v-model="createModal.account.password"
+                            :type="showCreatePassword ? 'text' : 'password'"
+                            class="form-input"
+                            :class="{ 'form-input--error': createFieldErrors.password }"
+                            autocomplete="new-password"
+                            placeholder="Đặt mật khẩu đăng nhập cho GV"
+                            @blur="validatePassword"
+                          />
+                          <button
+                            type="button"
+                            class="pwd-toggle"
+                            :title="showCreatePassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                            :aria-label="showCreatePassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                            @click="showCreatePassword = !showCreatePassword"
+                          >
+                            <SvgIcon :name="showCreatePassword ? 'eye-off' : 'eye'" :size="16" />
+                          </button>
+                        </div>
+                      </label>
+                      <span v-if="createFieldErrors.password" class="field-error">{{
+                        createFieldErrors.password
+                      }}</span>
+                      <span v-else class="field-hint">{{ PASSWORD_HINT }}</span>
                     </div>
                   </div>
                   <h4 class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
@@ -2929,6 +2984,36 @@ function formatDate(d) {
   font-size: 0.78rem;
   color: #dc2626;
   margin-top: 0.25rem;
+}
+.field-hint {
+  font-size: 0.78rem;
+  color: var(--a-text-muted);
+  margin-top: 0.25rem;
+}
+.pwd-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.pwd-wrap .form-input {
+  padding-right: 2.4rem;
+}
+.pwd-toggle {
+  position: absolute;
+  right: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--a-text-muted);
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 6px;
+}
+.pwd-toggle:hover {
+  color: var(--a-text);
+  background: var(--a-bg);
 }
 
 /* ── Toast ── */

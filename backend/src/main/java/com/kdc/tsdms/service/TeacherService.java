@@ -9,6 +9,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.transaction.Transactional;
@@ -26,6 +27,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -35,6 +37,8 @@ public class TeacherService {
     private final CertificateRepository ceRepo;
     private final ContractRepository contractRepo;
     private final AppUserRepository appUserRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final RefreshTokenRepository refreshTokenRepo;
     private static final Path UPLOAD_ROOT =
             Paths.get("uploads/teachers").toAbsolutePath().normalize();
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
@@ -43,11 +47,15 @@ public class TeacherService {
             TeacherRepository teacherRepo,
             CertificateRepository ceRepo,
             ContractRepository contractRepo,
-            AppUserRepository appUserRepository) {
+            AppUserRepository appUserRepository,
+            PasswordEncoder passwordEncoder,
+            RefreshTokenRepository refreshTokenRepo) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
         this.appUserRepository = appUserRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.refreshTokenRepo = refreshTokenRepo;
     }
 
     // DANH SÁCH  ======================================
@@ -174,23 +182,39 @@ public class TeacherService {
     }
 
     /**
-     * Đổi RIÊNG username/email của tài khoản đăng nhập gắn với 1 GV — dùng cho
+     * Đổi RIÊNG username/email/mật khẩu của tài khoản đăng nhập gắn với 1 GV — dùng cho
      * PUT /teacher/{id}/account, tách khỏi form Sửa hồ sơ chính (updateTeacher ở trên
-     * vẫn nhận username/email luôn nếu FE gộp chung 1 request, 2 API dùng chung 1 hàm
-     * đồng bộ syncAppUserAccount() nên không lặp logic).
+     * KHÔNG nhận password, xem UpdateRequest). 2 API dùng chung syncAppUserAccount()
+     * cho username/email nên không lặp logic; mật khẩu chỉ xử lý riêng ở đây.
      */
     @Transactional
     public TeacherResponse.Response updateAccount(Integer teacherId, TeacherResponse.AccountUpdateRequest req) {
         Teacher t = findActiveOrThrow(teacherId);
-        syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail());
+        AppUser au = syncAppUserAccount(t.getAppUserId(), req.getUsername(), req.getEmail());
+        applyPasswordChange(au, req.getPassword());
         return toResponse(t, true);
+    }
+
+    /**
+     * Đặt lại mật khẩu hộ GV từ tab Tài khoản — password rỗng/null nghĩa là GIỮ NGUYÊN,
+     * KHÔNG được băm chuỗi rỗng rồi ghi đè (sẽ vô tình khoá tài khoản của giáo viên).
+     * Khi có đổi mật khẩu thật: băm bằng PasswordEncoder rồi lưu, đồng thời thu hồi
+     * TOÀN BỘ refresh token đang hiệu lực của user — phiên đăng nhập cũ trên mọi thiết bị
+     * phải chết ngay, vì lý do đổi mật khẩu hộ thường là nghi tài khoản đã bị lộ.
+     */
+    private void applyPasswordChange(AppUser au, String newPassword) {
+        if (newPassword == null || newPassword.isBlank()) {
+            return;
+        }
+        au.setPasswordHash(passwordEncoder.encode(newPassword.trim()));
+        appUserRepository.save(au);
+        refreshTokenRepo.revokeAllActiveByAppUserId(au.getId(), Instant.now());
     }
 
     //   Đồng bộ username/email sang bảng AppUser — dùng CHUNG cho updateTeacher() và
     //  updateAccount() để không viết trùng logic check-trùng 2 nơi.
     //  newUsername/newEmail để trống (null hoặc "") nghĩa là GIỮ NGUYÊN, không đổi.
-    //  Mật khẩu KHÔNG thuộc phạm vi của Teacher module — việc tạo/đổi mật khẩu do
-    //  module Auth (RegistrationService, PasswordResetService, ChangePasswordRequest) lo.
+    //  Mật khẩu KHÔNG xử lý ở hàm này — xem applyPasswordChange() (chỉ updateAccount() gọi).
 
     private AppUser syncAppUserAccount(Integer appUserId, String newUsername, String newEmail) {
         AppUser au = appUserRepository

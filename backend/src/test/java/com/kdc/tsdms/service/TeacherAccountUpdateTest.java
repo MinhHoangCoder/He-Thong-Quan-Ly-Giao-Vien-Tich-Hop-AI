@@ -88,6 +88,7 @@ class TeacherAccountUpdateTest {
         TeacherResponse.AccountUpdateRequest req = new TeacherResponse.AccountUpdateRequest();
         req.setUsername(username);
         req.setEmail(email);
+        req.setPassword(password);
         return req;
     }
 

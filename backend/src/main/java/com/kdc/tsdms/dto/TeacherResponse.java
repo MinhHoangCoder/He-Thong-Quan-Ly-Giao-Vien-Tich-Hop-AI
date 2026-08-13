@@ -92,16 +92,25 @@ public class TeacherResponse {
         @NotBlank(message = "Email không được để trống") @Email(message = "Email không hợp lệ") private String email;
     }
 
-    // ACCOUNT UPDATE REQUEST — dùng riêng cho PUT /teacher/{id}/account (đổi
-    // username/email tách khỏi form Sửa hồ sơ chính). KHÔNG có password: đổi mật khẩu
-    // phải qua luồng đặt lại mật khẩu riêng.
+    // ACCOUNT UPDATE REQUEST — dùng riêng cho PUT /teacher/{id}/account
+    // username/email tách khỏi form Sửa)
     @Getter
     @Setter
     public static class AccountUpdateRequest {
         @Pattern(regexp = "^$|^.{3,50}$", message = "Tên đăng nhập phải từ 3-50 ký tự") private String username;
 
         @NotBlank(message = "Email không được để trống") @Email(message = "Email không hợp lệ") private String email;
+
+        // Để trống = GIỮ NGUYÊN mật khẩu cũ. Độ dài PHẢI khớp 3 nơi còn lại của dự án
+        // (RegisterRequest, ResetPasswordRequest, ChangePasswordRequest) và FE utils/password.js:
+        // 8–72 ký tự, có ít nhất 1 hoa + 1 thường + 1 số. Trước đây chỗ này để {5,72} nên
+        // backend — chốt chặn CUỐI — lại dễ dãi hơn cả cảnh báo hiện trên màn hình.
+        @Pattern(
+                regexp = "^$|^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d).{8,72}$",
+                message = "Mật khẩu 8–72 ký tự, phải có chữ hoa, chữ thường và chữ số")
+        private String password;
     }
+
     // Response cho GET /teacher/{id}/account — chỉ username/email, KHÔNG bao giờ có passwordHash.
     @Getter
     @Setter
