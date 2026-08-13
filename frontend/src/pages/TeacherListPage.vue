@@ -1376,7 +1376,7 @@ function formatDate(d) {
                             class="form-input"
                             :class="{ 'form-input--error': createFieldErrors.password }"
                             autocomplete="new-password"
-                            placeholder="Đặt mật khẩu đăng nhập cho GV"
+                            placeholder="Đặt mật khẩu đăng nhập"
                             @blur="validatePassword"
                           />
                           <button
