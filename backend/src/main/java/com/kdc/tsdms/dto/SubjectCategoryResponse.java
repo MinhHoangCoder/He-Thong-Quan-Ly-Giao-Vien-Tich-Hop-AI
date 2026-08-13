@@ -11,7 +11,10 @@ public record SubjectCategoryResponse(
         String status,
         Instant createdAt,
         Instant updatedAt,
-        /** Số môn học đang dùng nhóm này (ACTIVE, chưa xóa mềm). */
+        /**
+         * Số môn học đang dùng nhóm này (chưa xóa mềm) — đếm CẢ môn ACTIVE lẫn
+         * DISABLED, không lọc theo status (xem SubjectCategoryService#countSubjects).
+         */
         long subjectCount) {
     public static SubjectCategoryResponse fromEntity(SubjectCategory sc, long subjectCount) {
         return new SubjectCategoryResponse(
