@@ -10,6 +10,7 @@ import com.kdc.tsdms.entity.PasswordResetToken;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.PasswordResetTokenRepository;
 import com.kdc.tsdms.security.JwtService;
+import jakarta.servlet.Filter;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.junit.jupiter.api.MethodOrderer;
@@ -20,8 +21,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 
@@ -60,12 +61,31 @@ class PasswordResetFlowIT extends AbstractSqlServerIT {
     @Autowired
     private JwtService jwtService;
 
-    /** Bộ lọc giới hạn tần suất đếm theo IP; MockMvc gọi liên tiếp từ cùng một IP nên tắt đi. */
-    @MockitoBean
-    private com.kdc.tsdms.security.RateLimitingFilter rateLimitingFilter;
+    /**
+     * Chuỗi filter bảo mật THẬT. Bắt buộc phải gắn vào: {@code webAppContextSetup} trần chỉ dựng
+     * tầng MVC, request đi vòng qua Spring Security nên test sẽ xanh kể cả khi endpoint KHÔNG
+     * còn {@code permitAll} — đúng cái nó cần chứng minh thì lại không kiểm được. (Đã đo bằng
+     * cách gỡ permitAll ra: bản test cũ vẫn xanh.)
+     */
+    @Autowired
+    private Filter springSecurityFilterChain;
 
     private MockMvc mvc() {
-        return MockMvcBuilders.webAppContextSetup(context).build();
+        return MockMvcBuilders.webAppContextSetup(context)
+                .addFilters(springSecurityFilterChain)
+                .build();
+    }
+
+    /**
+     * Mỗi lượt gọi giả một IP riêng: {@code RateLimitingFilter} nằm TRONG chuỗi filter trên và
+     * chặn 5 lượt/phút/IP cho mỗi đường dẫn, mà cả lớp test này gọi vừa đúng 5 lượt vào
+     * {@code /reset-password} — để chung IP là lượt cuối ăn 429 và test đỏ vô cớ.
+     */
+    private static RequestPostProcessor fromIp(String ip) {
+        return req -> {
+            req.setRemoteAddr(ip);
+            return req;
+        };
     }
 
     /** Tài khoản thật trong DB + một phiếu đặt lại còn sống, đúng như sau khi bấm "Quên mật khẩu?". */
@@ -97,7 +117,8 @@ class PasswordResetFlowIT extends AbstractSqlServerIT {
 
         mvc().perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(rawToken, NEW_PASSWORD)))
+                        .content(body(rawToken, NEW_PASSWORD))
+                        .with(fromIp("10.0.0.1")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại."));
 
@@ -123,12 +144,14 @@ class PasswordResetFlowIT extends AbstractSqlServerIT {
         String rawToken = givenUserWithLiveToken("gv-reset-lai");
         mvc().perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(rawToken, NEW_PASSWORD)))
+                        .content(body(rawToken, NEW_PASSWORD))
+                        .with(fromIp("10.0.0.2")))
                 .andExpect(status().isOk());
 
         mvc().perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(rawToken, "KhacNua789")))
+                        .content(body(rawToken, "KhacNua789"))
+                        .with(fromIp("10.0.0.3")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("đã được dùng")));
     }
@@ -140,7 +163,8 @@ class PasswordResetFlowIT extends AbstractSqlServerIT {
 
         mvc().perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body(rawToken, "abc")))
+                        .content(body(rawToken, "abc"))
+                        .with(fromIp("10.0.0.4")))
                 .andExpect(status().isBadRequest());
 
         // Chặn xong thì phiếu vẫn phải còn nguyên — người dùng gõ hụt một lần không được mất link.
@@ -157,7 +181,8 @@ class PasswordResetFlowIT extends AbstractSqlServerIT {
     void tokenBia_thiBaoKhongHopLe() throws Exception {
         mvc().perform(post("/api/v1/auth/reset-password")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(body("token-khong-co-that", NEW_PASSWORD)))
+                        .content(body("token-khong-co-that", NEW_PASSWORD))
+                        .with(fromIp("10.0.0.5")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Token không hợp lệ"));
     }
