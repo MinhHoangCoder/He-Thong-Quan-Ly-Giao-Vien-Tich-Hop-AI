@@ -399,7 +399,10 @@ CREATE TABLE School (
     Phone             VARCHAR(20)   NULL,
     Email             VARCHAR(100)  NULL,
     ContactPerson     NVARCHAR(150) NULL,            -- người liên hệ phía trường
-    AppUserId         INT           NULL UNIQUE,     -- → AppUser (tài khoản trường, nếu có)
+    -- KHÔNG khai UNIQUE tại đây: SQL Server coi NULL là một giá trị nên UNIQUE cột
+    -- nullable chỉ cho phép ĐÚNG MỘT trường chưa có tài khoản. Ràng buộc 1-1 tùy chọn
+    -- nằm ở filtered index UX_School_AppUser bên dưới (xem V26).
+    AppUserId         INT           NULL,            -- → AppUser (tài khoản trường, nếu có)
     ContractStartDate DATE          NULL,            -- ngày bắt đầu hợp đồng dịch vụ
     ContractEndDate   DATE          NULL,            -- ngày hết hạn (dùng để cảnh báo/khóa)
     Status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / INACTIVE / EXPIRED
@@ -416,6 +419,9 @@ CREATE TABLE School (
 );
 CREATE INDEX IX_School_Branch ON School(BranchId);
 CREATE INDEX IX_School_Name   ON School(Name);
+-- 1-1 TÙY CHỌN với AppUser: mỗi tài khoản chỉ gắn 1 trường, nhưng nhiều trường
+-- được phép chưa có tài khoản (NULL không bị tính vào ràng buộc duy nhất).
+CREATE UNIQUE INDEX UX_School_AppUser ON School(AppUserId) WHERE AppUserId IS NOT NULL;
 
 /* ========== Bảng 15: Room — PHÒNG HỌC (thuộc trường) ==========
    Ý nghĩa : Phòng để xếp lịch dạy. Chỉ phòng AVAILABLE mới được đặt.
