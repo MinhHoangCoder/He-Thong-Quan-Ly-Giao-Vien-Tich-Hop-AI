@@ -73,6 +73,25 @@ const form = reactive({
   status: 'DRAFT',
 })
 
+/**
+ * Lỗi validate theo TỪNG label — thay cho việc chỉ hiện 1 dòng errorMsg
+ * chung chung ở cuối form. Mỗi field tự hiển thị lỗi ngay dưới label của nó,
+ * và validate hoàn toàn bằng JS (không dùng thuộc tính HTML `required` —
+ * HTML validation không tùy biến được message tiếng Việt, không đồng bộ
+ * được với rule thật của backend, và bị trình duyệt chặn trước khi Vue kịp
+ * xử lý nên không thể gộp chung với các lỗi khác cùng lúc).
+ */
+const errors = reactive({
+  category: '',
+  subjectId: '',
+  branchId: '',
+  title: '',
+})
+
+function clearFieldError(field) {
+  errors[field] = ''
+}
+
 const loadingPage = ref(false)
 const saving = ref(false)
 const errorMsg = ref('')
@@ -141,6 +160,38 @@ async function loadLesson() {
   }
 }
 
+/**
+ * Validate toàn bộ form theo TỪNG label, mirror đúng rule backend
+ * (LessonRequest.java): subjectId/branchId NotNull, title NotBlank + tối đa
+ * 300 ký tự, mô tả tối đa 200 từ. `category` không phải field gửi lên
+ * backend (chỉ là bước lọc UI) nhưng vẫn bắt buộc chọn vì Môn học phụ thuộc
+ * vào nó. `gradeLevel`/`status` KHÔNG bắt buộc phía backend (status luôn có
+ * giá trị mặc định DRAFT) nên không validate ở đây.
+ * Trả về true nếu hợp lệ, false nếu có ít nhất 1 lỗi (đã gán vào `errors`).
+ */
+function validateForm() {
+  errors.category = ''
+  errors.subjectId = ''
+  errors.branchId = ''
+  errors.title = ''
+
+  if (!form.branchId) errors.branchId = 'Vui lòng chọn chi nhánh.'
+  if (!selectedCategory.value) errors.category = 'Vui lòng chọn danh mục.'
+  if (!form.subjectId) errors.subjectId = 'Vui lòng chọn môn học.'
+
+  const title = form.title.trim()
+  if (!title) errors.title = 'Tiêu đề không được để trống.'
+  else if (title.length > 300) errors.title = 'Tiêu đề tối đa 300 ký tự.'
+
+  return (
+    !errors.branchId &&
+    !errors.category &&
+    !errors.subjectId &&
+    !errors.title &&
+    !descriptionTooLong.value
+  )
+}
+
 async function onSubmit() {
   // Chặn double-submit: click 2 lần liên tiếp/double-click trước khi Vue kịp
   // re-render nút :disabled="saving" có thể khiến onSubmit() chạy 2 lần, gửi
@@ -151,20 +202,8 @@ async function onSubmit() {
   errorMsg.value = ''
   successMsg.value = ''
 
-  if (!form.branchId) {
-    errorMsg.value = 'Vui lòng chọn chi nhánh.'
-    return
-  }
-  if (!form.subjectId) {
-    errorMsg.value = 'Vui lòng chọn môn học.'
-    return
-  }
-  if (!form.title.trim()) {
-    errorMsg.value = 'Tiêu đề không được để trống.'
-    return
-  }
-  if (descriptionTooLong.value) {
-    errorMsg.value = `Mô tả tối đa ${MAX_DESCRIPTION_WORDS} từ (hiện tại: ${descriptionWordCount.value} từ).`
+  if (!validateForm()) {
+    errorMsg.value = 'Vui lòng kiểm tra lại các trường được đánh dấu đỏ bên dưới.'
     return
   }
 
@@ -296,10 +335,15 @@ onMounted(async () => {
           <div class="grid-1">
             <label class="field">
               <span>Chi nhánh <span class="req">*</span></span>
-              <select v-model="form.branchId" required>
+              <select
+                v-model="form.branchId"
+                :class="{ 'input-error': errors.branchId }"
+                @change="clearFieldError('branchId')"
+              >
                 <option :value="null">-- Chọn chi nhánh --</option>
                 <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
               </select>
+              <small v-if="errors.branchId" class="field-error">{{ errors.branchId }}</small>
             </label>
           </div>
 
@@ -307,31 +351,42 @@ onMounted(async () => {
           <div class="grid-2">
             <label class="field">
               <span>Danh mục <span class="req">*</span></span>
-              <select v-model="selectedCategory" required>
+              <select
+                v-model="selectedCategory"
+                :class="{ 'input-error': errors.category }"
+                @change="clearFieldError('category')"
+              >
                 <option value="">-- Chọn danh mục --</option>
                 <option v-for="cat in categories" :key="cat.id" :value="cat.name">
                   {{ cat.name }}
                 </option>
               </select>
+              <small v-if="errors.category" class="field-error">{{ errors.category }}</small>
             </label>
 
             <label class="field">
               <span>Môn học <span class="req">*</span></span>
-              <select v-model="form.subjectId" :disabled="!selectedCategory" required>
+              <select
+                v-model="form.subjectId"
+                :disabled="!selectedCategory"
+                :class="{ 'input-error': errors.subjectId }"
+                @change="clearFieldError('subjectId')"
+              >
                 <option :value="null">-- Chọn môn học --</option>
                 <option v-for="s in filteredSubjects" :key="s.id" :value="s.id">
                   {{ s.name }}
                 </option>
               </select>
-              <span v-if="!selectedCategory" class="field-hint">Chọn danh mục trước</span>
+              <small v-if="errors.subjectId" class="field-error">{{ errors.subjectId }}</small>
+              <span v-else-if="!selectedCategory" class="field-hint">Chọn danh mục trước</span>
             </label>
           </div>
 
-          <!-- Hàng 1b: Khối lớp -->
+          <!-- Hàng 1b: Khối lớp (KHÔNG bắt buộc — backend không yêu cầu, xem LessonRequest.gradeLevel) -->
           <div class="grid-1">
             <label class="field">
               <span>Khối lớp</span>
-              <select v-model="form.gradeLevel" required>
+              <select v-model="form.gradeLevel">
                 <option value="">— Chọn khối —</option>
                 <option v-for="g in gradeLevels" :key="g" :value="g">{{ g }}</option>
               </select>
@@ -341,7 +396,14 @@ onMounted(async () => {
           <!-- Hàng 2: Tiêu đề -->
           <label class="field field--req field--full">
             <span>Tiêu đề bài giảng</span>
-            <input v-model="form.title" type="text" placeholder="Nhập tiêu đề..." required />
+            <input
+              v-model="form.title"
+              type="text"
+              placeholder="Nhập tiêu đề..."
+              :class="{ 'input-error': errors.title }"
+              @input="clearFieldError('title')"
+            />
+            <small v-if="errors.title" class="field-error">{{ errors.title }}</small>
           </label>
 
           <!-- Hàng 3: Mô tả -->
@@ -362,7 +424,7 @@ onMounted(async () => {
           <div class="grid-1">
             <label class="field field--req">
               <span>Trạng thái</span>
-              <select v-model="form.status" required>
+              <select v-model="form.status">
                 <option v-for="s in STATUS_OPTIONS" :key="s.value" :value="s.value">
                   {{ s.label }}
                 </option>
