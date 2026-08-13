@@ -267,7 +267,10 @@ async function confirmDelete() {
 
 /* ── Validate: môn học (mirror SubjectRequest phía backend) ──
  * FIX (2026-08-07): mã môn (code) giờ CHỈ bắt buộc khi SỬA — lúc TẠO MỚI,
- * backend tự sinh mã tăng dần theo nhóm nên không còn validate code ở đây. */
+ * backend tự sinh mã tăng dần theo nhóm nên không còn validate code ở đây.
+ * FIX (2026-08-13): mô tả đổi từ giới hạn "200 ký tự" sang "200 từ", đồng bộ
+ * với validateCategoryForm ở trên (trước đó 2 form dùng 2 kiểu đếm khác
+ * nhau dù cùng nằm trên 1 trang). */
 const SUBJECT_CODE_RE = /^[A-Z0-9_]{2,20}$/
 function validateSubjectForm(form, isCreate) {
   const errors = {}
@@ -280,8 +283,8 @@ function validateSubjectForm(form, isCreate) {
   if (!name) errors.name = 'Tên môn học không được để trống'
   else if (name.length > 150) errors.name = 'Tên tối đa 150 ký tự'
   if (!form.categoryId) errors.categoryId = 'Vui lòng chọn nhóm môn'
-  if (form.description && form.description.length > 200)
-    errors.description = 'Mô tả tối đa 200 ký tự'
+  if (form.description && countWords(form.description) > 200)
+    errors.description = 'Mô tả tối đa 200 từ (hiện tại: ' + countWords(form.description) + ' từ)'
   return errors
 }
 
@@ -732,6 +735,9 @@ async function confirmDeleteSubject() {
           <small v-if="subjectModal.errors.description" class="field-error">{{
             subjectModal.errors.description
           }}</small>
+          <small v-else class="field-hint"
+            >{{ countWords(subjectModal.form.description) }}/200 từ</small
+          >
         </div>
 
         <div class="form-group">

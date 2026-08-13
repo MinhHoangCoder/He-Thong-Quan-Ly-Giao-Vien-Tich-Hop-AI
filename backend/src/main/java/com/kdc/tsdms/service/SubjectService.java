@@ -34,6 +34,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class SubjectService {
 
+    private static final int MAX_DESCRIPTION_WORDS = 200;
+
     private final SubjectRepository subjectRepo;
     private final SubjectCategoryRepository categoryRepo;
     private final LessonRepository lessonRepo;
@@ -79,6 +81,7 @@ public class SubjectService {
     @Transactional
     public SubjectResponse create(SubjectRequest req) {
         SubjectCategory category = getCategoryOrThrow(req.categoryId());
+        validateDescriptionWordLimit(req.description());
         // Mã môn LUÔN tự sinh khi tạo mới (tăng dần theo nhóm môn) — bỏ qua mã
         // client gửi lên (nếu có), tránh trùng/sai định dạng do người dùng gõ tay.
         String code = generateNextCode(category);
@@ -103,6 +106,7 @@ public class SubjectService {
             throw new ApiException(HttpStatus.CONFLICT, "Mã môn '" + code + "' đã được dùng bởi môn khác");
         }
         SubjectCategory category = getCategoryOrThrow(req.categoryId());
+        validateDescriptionWordLimit(req.description());
 
         apply(s, req, category, code);
         s.setUpdatedAt(Instant.now());
@@ -177,6 +181,21 @@ public class SubjectService {
 
     private long countLessons(Integer subjectId) {
         return lessonRepo.countBySubjectIdAndDeletedFalse(subjectId);
+    }
+
+    /**
+     * FIX (2026-08-13): giới hạn mô tả 200 TỪ, đồng bộ với
+     * SubjectCategoryService/LessonService (trước đó Subject là module DUY NHẤT
+     * giới hạn theo ký tự thay vì từ). Mô tả rỗng/null luôn hợp lệ.
+     */
+    private void validateDescriptionWordLimit(String description) {
+        if (description == null || description.isBlank()) return;
+        int wordCount = description.trim().split("\\s+").length;
+        if (wordCount > MAX_DESCRIPTION_WORDS) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Mô tả tối đa " + MAX_DESCRIPTION_WORDS + " từ (hiện tại: " + wordCount + " từ)");
+        }
     }
 
     /**

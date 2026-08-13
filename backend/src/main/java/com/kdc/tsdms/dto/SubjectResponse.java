@@ -13,7 +13,12 @@ public record SubjectResponse(
         String status,
         Instant createdAt,
         Instant updatedAt,
-        /** Số bài giảng (chưa xóa mềm) đang dùng môn này — chặn xóa nếu > 0. */
+        /**
+         * Số bài giảng (chưa xóa mềm) đang dùng môn này — chỉ để FE hiển thị cảnh báo
+         * trước khi xóa. KHÔNG chặn xóa: từ bản vá 07/08, xóa môn học là xóa CỨNG và
+         * cascade xóa luôn các bài giảng này (xem SubjectService#delete). Điều kiện
+         * thực sự chặn xóa là status = ACTIVE hoặc môn từng có Assignment.
+         */
         long lessonCount) {
     public static SubjectResponse fromEntity(Subject s, long lessonCount) {
         return new SubjectResponse(
