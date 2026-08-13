@@ -401,6 +401,27 @@ const canSubmit = computed(
     modal.form.slots.length > 0,
 )
 
+function sendAssignment() {
+  if (modal.editId) {
+    // Sửa xong phiếu quay về Chờ xác nhận và giáo viên nhận lại lời mời từ đầu.
+    return assignmentApi.update(modal.editId, {
+      teacherId: Number(modal.form.teacherId),
+      startDate: modal.form.startDate,
+      endDate: modal.form.endDate || null,
+      slots: modal.form.slots,
+    })
+  }
+  return assignmentApi.create({
+    teacherId: Number(modal.form.teacherId),
+    subjectId: Number(modal.form.subjectId),
+    schoolId: Number(modal.form.schoolId),
+    classId: null, // lớp nằm ở từng tiết (slots[].classId), không còn ở cấp phân công
+    startDate: modal.form.startDate,
+    endDate: modal.form.endDate || null,
+    slots: modal.form.slots,
+  })
+}
+
 async function submit() {
   if (!canSubmit.value) {
     modal.error = 'Vui lòng điền đủ GV, môn, trường, ngày bắt đầu và ít nhất 1 tiết (kèm lớp).'
@@ -409,25 +430,7 @@ async function submit() {
   modal.saving = true
   modal.error = ''
   try {
-    if (modal.editId) {
-      // Sửa xong phiếu quay về Chờ xác nhận và giáo viên nhận lại lời mời từ đầu.
-      await assignmentApi.update(modal.editId, {
-        teacherId: Number(modal.form.teacherId),
-        startDate: modal.form.startDate,
-        endDate: modal.form.endDate || null,
-        slots: modal.form.slots,
-      })
-    } else {
-      await assignmentApi.create({
-        teacherId: Number(modal.form.teacherId),
-        subjectId: Number(modal.form.subjectId),
-        schoolId: Number(modal.form.schoolId),
-        classId: null, // lớp nằm ở từng tiết (slots[].classId), không còn ở cấp phân công
-        startDate: modal.form.startDate,
-        endDate: modal.form.endDate || null,
-        slots: modal.form.slots,
-      })
-    }
+    await sendAssignment()
     modal.open = false
     load()
   } catch (e) {
@@ -897,7 +900,7 @@ async function confirmPurge() {
 
         <div class="modal-actions">
           <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
-          <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit">
+          <button class="btn btn-primary" :disabled="modal.saving || !canSubmit" @click="submit()">
             {{
               modal.saving ? 'Đang lưu…' : modal.editId ? 'Lưu & gửi lại lời mời' : 'Tạo phân công'
             }}

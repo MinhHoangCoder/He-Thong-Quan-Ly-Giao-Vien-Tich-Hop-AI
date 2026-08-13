@@ -173,7 +173,7 @@ public class AssignmentService {
         Assignment a = getOrThrow(id);
         Integer scoped = scopedTeacherId(null);
         if (scoped != null && !scoped.equals(a.getTeacherId())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem phân công này");
+            throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền xem phân công này.");
         }
         return toResponse(a);
     }
@@ -189,7 +189,8 @@ public class AssignmentService {
         }
         Teacher own = teacherRepo
                 .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.FORBIDDEN, "Tài khoản này chưa được liên kết với hồ sơ giáo viên."));
         return own.getId();
     }
 
@@ -429,16 +430,16 @@ public class AssignmentService {
     public AssignmentResponse create(AssignmentCreateRequest req) {
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(req.teacherId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên"));
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên đã chọn."));
         School school = schoolRepo
                 .findById(req.schoolId())
                 .filter(s -> !s.isDeleted())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường"));
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường đã chọn."));
         Subject subject = subjectRepo
                 .findByIdAndDeletedFalse(req.subjectId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy môn học"));
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy môn học đã chọn."));
         if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
         }
 
         Map<Integer, Period> periodById = new HashMap<>();
@@ -494,7 +495,7 @@ public class AssignmentService {
      * @param defaultClassId lớp mặc định cấp phiếu, dùng cho slot bỏ trống lớp (client cũ)
      * @param ignoreAssignmentId bỏ qua chính phiếu này khi dò trùng (lúc sửa), null khi tạo mới
      * @param periodByIdOut nhận các Period đã nạp để bên gọi tái sử dụng, khỏi truy vấn lại
-     * @return classId đã chốt cho từng slot, cùng thứ tự với {@code slots}
+     * @return classId đã chốt cho từng slot (cùng thứ tự với {@code slots})
      */
     private List<Integer> validateSlots(
             List<AssignmentSlotRequest> slots,
@@ -510,7 +511,9 @@ public class AssignmentService {
         Set<String> seenSlots = new HashSet<>();
         for (AssignmentSlotRequest slot : slots) {
             if (!seenSlots.add(slot.dayOfWeek() + "#" + slot.periodId())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Các tiết dạy bị trùng nhau (" + slot.dayOfWeek() + ")");
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST,
+                        "Không thể tạo phân công — " + dayLabelVi(slot.dayOfWeek()) + " có hai tiết dạy trùng nhau.");
             }
         }
 
@@ -523,21 +526,22 @@ public class AssignmentService {
                     .findById(slot.periodId())
                     .filter(x -> !x.isDeleted() && x.getSchoolId().equals(school.getId()))
                     .orElseThrow(() -> new ApiException(
-                            HttpStatus.BAD_REQUEST, "Tiết id=" + slot.periodId() + " không thuộc trường đã chọn"));
+                            HttpStatus.BAD_REQUEST, "Tiết đã chọn không thuộc khung tiết của trường này."));
             periodByIdOut.put(p.getId(), p);
 
             Integer classId = slot.classId() != null ? slot.classId() : defaultClassId;
             if (classId == null) {
                 throw new ApiException(
                         HttpStatus.BAD_REQUEST,
-                        "Vui lòng chọn lớp cho " + dayLabelVi(slot.dayOfWeek()) + " tiết " + p.getPeriodNumber());
+                        "Vui lòng chọn lớp cho " + dayLabelVi(slot.dayOfWeek()) + ", tiết " + p.getPeriodNumber()
+                                + ".");
             }
             SchoolClass c = classById.computeIfAbsent(classId, id -> classRepo
                     .findById(id)
                     .filter(x -> !x.isDeleted())
-                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy lớp học id=" + id)));
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy lớp học đã chọn.")));
             if (!c.getSchoolId().equals(school.getId())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Lớp " + c.getName() + " không thuộc trường đã chọn");
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Lớp " + c.getName() + " không thuộc trường đã chọn.");
             }
             slotClassIds.add(classId);
         }
@@ -557,6 +561,10 @@ public class AssignmentService {
             // một tiết, và cả ba đều sinh buổi dạy rồi đều được tính công.
             conflictChecker.checkClass(
                     slotClassIds.get(i), teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
+            // Tan trường này rồi vào ngay trường kia cũng là việc không làm được, dù giờ
+            // không đè nhau — xem checkTravelGap().
+            conflictChecker.checkTravelGap(
+                    teacherId, school.getId(), slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
         }
         return slotClassIds;
     }
@@ -593,9 +601,10 @@ public class AssignmentService {
                 if (timeOverlaps(p1, p2)) {
                     throw new ApiException(
                             HttpStatus.BAD_REQUEST,
-                            dayLabelVi(slots.get(i).dayOfWeek()) + ": tiết " + p1.getPeriodNumber() + " ("
-                                    + timeRange(p1) + ") và tiết " + p2.getPeriodNumber() + " (" + timeRange(p2)
-                                    + ") bị đè giờ lên nhau");
+                            "Không thể tạo phân công — "
+                                    + dayLabelVi(slots.get(i).dayOfWeek()) + ", tiết "
+                                    + p1.getPeriodNumber() + " (" + timeRange(p1) + ") và tiết "
+                                    + p2.getPeriodNumber() + " (" + timeRange(p2) + ") bị trùng giờ.");
                 }
             }
         }
@@ -674,19 +683,19 @@ public class AssignmentService {
         if (!AssignmentStatus.isEditable(a.getStatus())) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Chỉ sửa được phiếu đang chờ xác nhận, bị từ chối hoặc đã hết hạn. "
-                            + "Phiếu đã có hiệu lực thì hãy hủy rồi tạo phiếu mới.");
+                    "Chỉ sửa được phân công đang chờ xác nhận, bị từ chối hoặc đã hết hạn. "
+                            + "Phân công đã có hiệu lực cần được hủy và tạo lại.");
         }
         if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
         }
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(req.teacherId())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên"));
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên đã chọn."));
         School school = schoolRepo
                 .findById(a.getSchoolId())
                 .filter(s -> !s.isDeleted())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Trường của phân công không còn tồn tại"));
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Trường của phân công không còn tồn tại."));
 
         Map<Integer, Period> periodById = new HashMap<>();
         List<Integer> slotClassIds = validateSlots(
@@ -811,13 +820,13 @@ public class AssignmentService {
     public AssignmentResponse reactivate(Integer id) {
         Assignment a = getOrThrow(id);
         if (!AssignmentStatus.CANCELLED.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy.");
         }
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
             Period p = periodRepo
                     .findById(slot.getPeriodId())
                     .orElseThrow(() -> new ApiException(
-                            HttpStatus.CONFLICT, "Không khôi phục được: tiết của phân công không còn tồn tại"));
+                            HttpStatus.CONFLICT, "Không thể khôi phục — tiết của phân công không còn tồn tại."));
             // Cùng luật trùng giờ với lúc tạo mới (so giờ thật, mọi trường), nhưng bỏ qua
             // chính phân công đang khôi phục.
             checkTeacherTimeConflict(a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), id);
@@ -904,8 +913,7 @@ public class AssignmentService {
     public AssignmentResponse restore(Integer id) {
         Assignment a = assignmentRepo
                 .findByIdAndDeletedTrue(id)
-                .orElseThrow(() ->
-                        new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác id=" + id));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác."));
         Integer userId = SecurityUtils.currentUserId();
         a.setDeleted(false);
         a.setDeletedAt(null);
@@ -945,8 +953,7 @@ public class AssignmentService {
     public void purge(Integer id) {
         Assignment a = assignmentRepo
                 .findByIdAndDeletedTrue(id)
-                .orElseThrow(() ->
-                        new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác id=" + id));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác."));
         scheduleRepo.deleteStatusLogsByAssignmentId(id);
         scheduleRepo.deleteAttendanceByAssignmentId(id);
         scheduleRepo.deleteByAssignmentId(id);
@@ -959,7 +966,7 @@ public class AssignmentService {
     private Assignment getOrThrow(Integer id) {
         return assignmentRepo
                 .findByIdAndDeletedFalse(id)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công id=" + id));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công."));
     }
 
     /**
@@ -1079,7 +1086,7 @@ public class AssignmentService {
             case "FRI" -> DayOfWeek.FRIDAY;
             case "SAT" -> DayOfWeek.SATURDAY;
             case "SUN" -> DayOfWeek.SUNDAY;
-            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Thứ không hợp lệ: " + code);
+            default -> throw new ApiException(HttpStatus.BAD_REQUEST, "Thứ trong tuần không hợp lệ.");
         };
     }
 }
