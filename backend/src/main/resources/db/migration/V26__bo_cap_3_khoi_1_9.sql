@@ -73,7 +73,8 @@ GO
    KHÔNG xóa trường này: nó gắn với tài khoản đăng nhập demo 'school'
    (cổng Trường khách hàng) và với 3 hợp đồng dịch vụ seed ở V4. Xóa đi là
    mất luôn phần demo cổng trường. Đổi tên là đủ để cấp 3 biến mất khỏi
-   mọi màn hình. */
+   mọi màn hình.
+
    Chỉ cần sửa School.Name: AppUser KHÔNG còn cột FullName (V6 đã bỏ, tên
    hiển thị nay lấy từ bảng tác nhân qua DisplayNameResolver). */
 UPDATE School
