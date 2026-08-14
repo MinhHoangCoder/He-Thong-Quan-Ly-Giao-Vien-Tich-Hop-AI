@@ -91,9 +91,17 @@ class AttendanceAmendServiceTest {
         endedDaysAgo(1);
     }
 
-    /** Buổi dạy kết thúc cách đây {@code days} ngày (âm = còn ở tương lai). */
+    /**
+     * Buổi dạy kết thúc cách đây {@code days} ngày (âm = còn ở tương lai).
+     *
+     * <p>Ghim vào 10:00 chứ KHÔNG lấy giờ hiện tại: hạn xin bổ sung đếm theo NGÀY
+     * ({@code startTime.toLocalDate()}), mà {@code now().minusDays(7)} chạy lúc 00:12 cho ra
+     * 00:12 của 7 ngày trước, trừ tiếp 45 phút là giờ bắt đầu rơi sang 23:27 của ngày thứ 8 —
+     * "đúng 7 ngày" bỗng thành "8 ngày, quá hạn" và test đỏ. 10:00 thì trừ 45 phút vẫn cùng
+     * ngày ở mọi thời điểm chạy.
+     */
     private Schedule endedDaysAgo(int days) {
-        LocalDateTime end = LocalDateTime.now(VN).minusDays(days);
+        LocalDateTime end = LocalDate.now(VN).minusDays(days).atTime(10, 0);
         Schedule s = new Schedule();
         s.setId(BUOI);
         s.setTeacherId(GV);

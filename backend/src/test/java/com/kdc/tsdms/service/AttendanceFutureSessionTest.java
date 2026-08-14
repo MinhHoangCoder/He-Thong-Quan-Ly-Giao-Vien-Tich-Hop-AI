@@ -70,9 +70,20 @@ class AttendanceFutureSessionTest {
         when(attendanceRepo.existsByScheduleId(anyLong())).thenReturn(false);
     }
 
+    /**
+     * NGÀY của buổi dạy vừa dựng — KHÔNG phải "hôm nay".
+     *
+     * <p>Hai thứ này khác nhau ở gần nửa đêm, và đó từng làm cả build đỏ: buổi dạy dựng bằng
+     * {@code now().plusMinutes(20)} lúc 23:50 rơi sang NGÀY MAI, trong khi dòng chấm công vẫn
+     * mang ngày HÔM NAY — service chặn đúng luật "ngày làm việc phải trùng ngày buổi dạy", còn
+     * test thì tưởng luật cửa sổ thời gian hỏng.
+     */
+    private LocalDate sessionDate = LocalDate.now(VN);
+
     /** Buổi dạy bắt đầu sau {@code minutes} phút kể từ bây giờ (âm = đã bắt đầu). */
     private void sessionStartingIn(int minutes) {
         LocalDateTime start = LocalDateTime.now(VN).plusMinutes(minutes);
+        sessionDate = start.toLocalDate();
         Schedule s = new Schedule();
         s.setId(100L);
         s.setTeacherId(7);
@@ -82,9 +93,9 @@ class AttendanceFutureSessionTest {
         when(scheduleRepo.findById(100L)).thenReturn(Optional.of(s));
     }
 
-    private static AttendanceRequest req() {
+    private AttendanceRequest req() {
         return new AttendanceRequest(
-                7, 100L, LocalDate.now(VN), LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
+                7, 100L, sessionDate, LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
     }
 
     @Test
@@ -124,7 +135,7 @@ class AttendanceFutureSessionTest {
     void gvTrongDongPhaiTrungGvCuaBuoiDay() {
         sessionStartingIn(-10); // buổi thuộc GV #7
         AttendanceRequest khac = new AttendanceRequest(
-                99, 100L, LocalDate.now(VN), LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
+                99, 100L, sessionDate, LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
         assertThatThrownBy(() -> service.create(khac))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("thuộc về giáo viên khác");
@@ -134,17 +145,28 @@ class AttendanceFutureSessionTest {
     void ngayLamViecPhaiTrungNgayBuoiDay() {
         sessionStartingIn(-10);
         AttendanceRequest lechNgay = new AttendanceRequest(
-                7,
-                100L,
-                LocalDate.now(VN).plusDays(1),
-                LocalTime.of(7, 0),
-                LocalTime.of(7, 45),
-                "PRESENT",
-                null,
-                "Sửa tay");
+                7, 100L, sessionDate.plusDays(1), LocalTime.of(7, 0), LocalTime.of(7, 45), "PRESENT", null, "Sửa tay");
         assertThatThrownBy(() -> service.create(lechNgay))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("trùng ngày diễn ra buổi dạy");
+    }
+
+    /**
+     * Bất biến chống lỗi "đỏ lúc nửa đêm": dòng chấm công phải mang ĐÚNG ngày của buổi dạy nó
+     * trỏ tới, bất kể chạy vào giờ nào.
+     *
+     * <p>Trước đây các test ở trên dựng buổi bằng {@code now().plusMinutes(n)} nhưng lại gửi
+     * {@code LocalDate.now()}. Hai giá trị đó chỉ khác nhau trong khoảng 23:30–24:00 — mỗi đêm
+     * CI đỏ một lần rồi sáng ra tự xanh, kiểu lỗi tốn thời gian nhất để truy. Test này kiểm
+     * thẳng bất biến nên đúng ở mọi thời điểm, không phải chờ tới nửa đêm mới biết.
+     */
+    @Test
+    void ngayCuaDongChamCong_luonBamTheoBuoiDay() {
+        sessionStartingIn(20);
+        LocalDate ngayBuoiDay =
+                scheduleRepo.findById(100L).orElseThrow().getStartTime().toLocalDate();
+
+        assertThat(req().workDate()).isEqualTo(ngayBuoiDay);
     }
 
     @Test
