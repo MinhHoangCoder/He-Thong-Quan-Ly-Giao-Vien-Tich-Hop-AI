@@ -48,7 +48,7 @@ public class Lesson extends SoftDeletableEntity {
     @Column(name = "Content")
     private String content;
 
-    /** Khối lớp áp dụng, vd: Lớp 6, Lớp 10. */
+    /** Khối lớp áp dụng, vd: Lớp 6. Chỉ khối 1-9 — trung tâm không dạy cấp 3. */
     @Column(name = "GradeLevel")
     private String gradeLevel;
 
