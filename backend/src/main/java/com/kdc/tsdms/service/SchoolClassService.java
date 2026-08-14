@@ -34,18 +34,17 @@ public class SchoolClassService {
 
     /**
      * Chuẩn lưu GradeLevel trong DB: luôn dạng {@code Khối 7} (không chỉ {@code 7}, không {@code Lớp
-     * 7}). Seed cũ có thể còn "Lớp 10" — khi sửa sẽ được chuẩn hóa.
+     * 7}). Chỉ nhận khối 1-9 — cấp 3 đã bị bỏ khỏi hệ thống (V26).
      */
-    private static final Set<String> VALID_GRADES =
-            Set.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12");
+    private static final Set<String> VALID_GRADES = Set.of("1", "2", "3", "4", "5", "6", "7", "8", "9");
 
     private static final Pattern YEAR_PATTERN = Pattern.compile("^(\\d{4})-(\\d{4})$");
     private static final Pattern GRADE_NUM_IN_TEXT = Pattern.compile("(\\d{1,2})");
     /**
-     * Tên lớp: {khối 1–12}{đúng 1 chữ}{số 1–20 bắt buộc}. VD: 7A1, 6B20. Không 7A, không 7AB, không
+     * Tên lớp: {khối 1–9}{đúng 1 chữ}{số 1–20 bắt buộc}. VD: 7A1, 6B20. Không 7A, không 7AB, không
      * 7A21.
      */
-    private static final Pattern CLASS_NAME_STRICT = Pattern.compile("^([1-9]|1[0-2])([A-Z])(20|[1-9]|1[0-9])$");
+    private static final Pattern CLASS_NAME_STRICT = Pattern.compile("^([1-9])([A-Z])(20|[1-9]|1[0-9])$");
 
     private static final int YEAR_RANGE = 5;
 
@@ -74,7 +73,7 @@ public class SchoolClassService {
 
     @Transactional(readOnly = true)
     public List<String> listExistingGradeLevels() {
-        // Sắp theo SỐ khối — ORDER BY chuỗi cho "Khối 1, Khối 10, Khối 11, Khối 2…"
+        // Sắp theo SỐ khối, không theo chuỗi: dữ liệu cũ còn dạng chữ "Khối 7" lẫn số "7"
         return classRepo.findDistinctGradeLevels().stream()
                 .sorted(Comparator.comparingInt(SchoolClassService::gradeSortKey)
                         .thenComparing(Comparator.naturalOrder()))
@@ -311,7 +310,7 @@ public class SchoolClassService {
 
         String grade = normalizeGradeLevel(req.gradeLevel());
         if (grade == null || !VALID_GRADES.contains(grade)) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Khối không hợp lệ — chọn khối 1 … 12");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Khối không hợp lệ — chọn khối 1 … 9");
         }
         // Số khối "7" phải khớp số đầu tên lớp "7A1"
         if (!grade.equals(gradeNumFromName)) {
@@ -354,6 +353,10 @@ public class SchoolClassService {
 
     /**
      * Chuẩn hóa mọi dạng client/seed → {@code N}: "7", "Lớp 7", "Khối 7" → "7".
+     *
+     * <p>Trung tâm chỉ dạy khối 1–9. Dữ liệu cũ còn "Lớp 10"/"11"/"12" (từ thời có trường cấp 3)
+     * được trả nguyên văn, KHÔNG chuẩn hóa thành số — để {@link #VALID_GRADES} chặn lại ở bước
+     * sau kèm thông báo rõ, thay vì lặng lẽ nhận rồi tính sai đơn giá lương.
      */
     private static String normalizeGradeLevel(String raw) {
         if (raw == null) {
@@ -369,7 +372,7 @@ public class SchoolClassService {
         Matcher m = GRADE_NUM_IN_TEXT.matcher(t);
         if (m.find()) {
             int n = Integer.parseInt(m.group(1));
-            if (n >= 1 && n <= 12) {
+            if (n >= 1 && n <= 9) {
                 return String.valueOf(n);
             }
         }

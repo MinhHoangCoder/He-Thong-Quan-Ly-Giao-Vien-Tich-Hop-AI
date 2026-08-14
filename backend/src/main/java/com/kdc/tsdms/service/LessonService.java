@@ -49,7 +49,7 @@ import org.springframework.web.multipart.MultipartFile;
  * KHÔNG thêm/sửa DB, chỉ dùng đúng cột SubjectId đã tồn tại trong bảng Lesson
  * (V2).
  *
- * GradeLevel là text tự do (vd "Lớp 4", "Lớp 10"), không liên kết bảng
+ * GradeLevel là text tự do (vd "Lớp 4", "Lớp 9"), không liên kết bảng
  * SchoolClass.
  */
 @Service

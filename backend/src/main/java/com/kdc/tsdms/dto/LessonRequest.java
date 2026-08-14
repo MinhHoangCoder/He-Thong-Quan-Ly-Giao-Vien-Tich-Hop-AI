@@ -21,7 +21,7 @@ public record LessonRequest(
 
         String content,
 
-        /** Khối lớp — text tự do, vd: "Lớp 4", "Lớp 6", "Lớp 10". */
+        /** Khối lớp — text tự do, vd: "Lớp 4", "Lớp 6". Trung tâm chỉ dạy khối 1-9. */
         @Size(max = 50, message = "Khối lớp tối đa 50 ký tự") String gradeLevel,
 
         @Positive(message = "Thời lượng phải lớn hơn 0") @Max(value = 600, message = "Thời lượng tối đa 600 phút") Integer duration,

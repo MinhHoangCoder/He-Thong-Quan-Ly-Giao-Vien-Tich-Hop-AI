@@ -3,7 +3,7 @@
 /**
  * Trang "Lớp học" (khu admin): CRUD SchoolClass.
  *
- *  1) Cấp trường: TH / THCS (không còn THPT)
+ *  1) Cấp trường: TH / THCS — trung tâm KHÔNG dạy cấp 3
  *  2) Khối theo cấp (TH: 1–5, THCS: 6–9)
  *  3) Tên lớp = {khối}{1 chữ}{số 1–20 bắt buộc} → 7A1, 7A20 (không 7A)
  *  4) GradeLevel lưu DB dạng "Khối 7" (không chỉ số 7)
@@ -75,16 +75,13 @@ const purgeTarget = ref(null)
    Helpers: cấp / năm / gộp tên
 ========================= */
 
-/** Suy cấp trường từ tên (THPT/THCS trước TH để tránh khớp nhầm). */
+/**
+ * Suy cấp trường từ tên. Chỉ còn TH và THCS — trung tâm không dạy cấp 3.
+ * Vẫn phải xét THCS TRƯỚC TH, nếu không thì "THCS Chu Văn An" khớp nhầm nhánh
+ * tiểu học chỉ vì chứa hai chữ "TH".
+ */
 function detectSchoolLevel(name) {
   const n = (name || '').toUpperCase().normalize('NFC')
-  if (
-    n.includes('THPT') ||
-    n.includes('TRUNG HOC PHO THONG') ||
-    n.includes('TRUNG HỌC PHỔ THÔNG')
-  ) {
-    return 'THPT'
-  }
   if (n.includes('THCS') || n.includes('TRUNG HOC CO SO') || n.includes('TRUNG HỌC CƠ SỞ')) {
     return 'THCS'
   }
@@ -127,7 +124,7 @@ function gradeLabel(num) {
 /** Hiển thị khối: tự động lọc bỏ chữ "Khối " nếu là dữ liệu cũ. */
 function displayGrade(val) {
   if (!val) return ''
-  const m = String(val).match(/(?:Khối|Lớp)?\s*(\d{1,2})/i)
+  const m = String(val).match(/(?:Khối|Lớp)?\s*([1-9])/i)
   return m ? m[1] : String(val)
 }
 
@@ -143,7 +140,7 @@ const composedClassName = computed(() =>
   composeClassName(modal.form.gradeNum, modal.form.classSuffix),
 )
 
-/** Trường theo cấp đã chọn — chỉ hiện trường khớp cấp (không fallback THPT). */
+/** Trường theo cấp đã chọn — chỉ hiện trường khớp cấp. */
 const schoolsByLevel = computed(() => {
   const level = modal.form.schoolLevel
   if (!level) return []
@@ -393,17 +390,17 @@ watch(
 function parseClassName(name, gradeLevel) {
   const n = (name || '').trim().toUpperCase()
   let gradeNum = null
-  const fromKhối = (gradeLevel || '').match(/(?:Khối|Lớp)\s*(1[0-2]|[1-9])$/i)
+  const fromKhối = (gradeLevel || '').match(/(?:Khối|Lớp)\s*([1-9])$/i)
   if (fromKhối) gradeNum = fromKhối[1]
   else {
-    const onlyNum = (gradeLevel || '').match(/^(1[0-2]|[1-9])$/)
+    const onlyNum = (gradeLevel || '').match(/^([1-9])$/)
     if (onlyNum) gradeNum = onlyNum[1]
   }
 
   if (gradeNum && n.startsWith(gradeNum)) {
     return { gradeNum, classSuffix: n.slice(gradeNum.length) || '' }
   }
-  const m = n.match(/^(1[0-2]|[1-9])([A-Z].*)$/)
+  const m = n.match(/^([1-9])([A-Z].*)$/)
   if (m) return { gradeNum: m[1], classSuffix: m[2] }
   return { gradeNum: gradeNum || '', classSuffix: n }
 }
@@ -523,18 +520,12 @@ function openCreate() {
 
 function openEdit(item) {
   const school = schools.value.find((s) => s.id === item.schoolId)
-  let level = detectSchoolLevel(school?.name) || detectSchoolLevel(item.schoolName) || ''
-  // Không còn hỗ trợ THPT trên form — bắt chọn lại TH/THCS nếu dữ liệu cũ
-  if (level === 'THPT') level = ''
+  const level = detectSchoolLevel(school?.name) || detectSchoolLevel(item.schoolName) || ''
   const parsed = parseClassName(item.name, item.gradeLevel)
   let gradeNum = parsed.gradeNum
   if (!gradeNum && item.gradeLevel) {
-    const m = String(item.gradeLevel).match(/(\d{1,2})/)
+    const m = String(item.gradeLevel).match(/([1-9])/)
     if (m) gradeNum = m[1]
-  }
-  // Khối 10–12 thuộc THPT cũ: để trống để user chọn lại cấp TH/THCS
-  if (gradeNum && Number(gradeNum) >= 10) {
-    gradeNum = ''
   }
 
   schoolQuery.value = school?.name || item.schoolName || ''

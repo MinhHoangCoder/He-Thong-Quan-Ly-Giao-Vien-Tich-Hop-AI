@@ -205,13 +205,13 @@ INSERT INTO Contract (TeacherId, ContractNo, StartDate, EndDate, BaseSalary, All
  (@TeaHa,   'HD-2024-007', '2024-02-01', NULL,         11500000,  900000, 'ACTIVE');
 
 /* =====================================================================
-   11) School — 4 trường mới (tổng 5 cùng 'Trường THPT Demo')
+   11) School — 4 trường mới (tổng 5 cùng 'Trường THCS Demo')
    ===================================================================== */
 INSERT INTO School (BranchId, Name, Address, Phone, Email, ContactPerson, AppUserId, ContractStartDate, ContractEndDate) VALUES
  (@BrCG,  N'Trường Tiểu học Ban Mai',  N'Cầu Giấy, Hà Nội',   '0903000001', 'banmai@school.local',   N'Cô Nguyễn Thu Hằng', @USch2, '2025-09-01', '2026-08-31'),
  (@BrHD,  N'Trường THCS Nguyễn Trãi',  N'Hà Đông, Hà Nội',    '0903000002', 'ntrai@school.local',    N'Thầy Đỗ Văn Kiên',   @USch3, '2025-09-01', '2026-08-31'),
  (@BrDN,  N'Trường Tiểu học Hòa Bình', N'Hải Châu, Đà Nẵng',  '0903000003', 'hoabinh@school.local',  N'Cô Trần Mỹ Linh',    @USch4, '2026-01-01', '2026-12-31'),
- (@BrHCM, N'Trường THPT Lê Quý Đôn',   N'Quận 3, TP.HCM',     '0903000004', 'lequydon@school.local', N'Thầy Lê Hoàng Nam',  @USch5, '2025-08-01', '2027-07-31');
+ (@BrHCM, N'Trường THCS Lê Quý Đôn',   N'Quận 3, TP.HCM',     '0903000004', 'lequydon@school.local', N'Thầy Lê Hoàng Nam',  @USch5, '2025-08-01', '2027-07-31');
 
 DECLARE @SchDemo INT = (SELECT Id FROM School WHERE AppUserId = @USch1);
 DECLARE @SchBM   INT = (SELECT Id FROM School WHERE AppUserId = @USch2);
@@ -223,16 +223,16 @@ DECLARE @SchLQD  INT = (SELECT Id FROM School WHERE AppUserId = @USch5);
    11b) Period — KHUNG TIẾT theo TỪNG TRƯỜNG (mỗi trường giờ giấc riêng)
         QUY ƯỚC (chốt ở V22): mỗi buổi RA CHƠI ĐÚNG 1 LẦN, ngay sau tiết 2;
         các tiết còn lại nối liền nhau, KHÔNG có thời gian chuyển tiết. Cấp
-        THCS/THPT tiết 45' + ra chơi 10' (9 tiết/ngày); tiểu học tiết 35' +
+        THCS tiết 45' + ra chơi 10' (9 tiết/ngày); tiểu học tiết 35' +
         ra chơi 15' (10 tiết/ngày, có "Chiều · Tiết 5"). Vào học 07:00 và
         14:00, TAN muộn nhất 17:15.
 
-        Hai trường dưới đây vẫn KHÁC khung nhau (THPT Demo 45'/9 tiết vs Ban
+        Hai trường dưới đây vẫn KHÁC khung nhau (THCS Demo 45'/9 tiết vs Ban
         Mai 35'/10 tiết) — Period là dữ liệu của TỪNG trường. Sửa giờ/thêm-bớt
         tiết về sau = UPDATE/INSERT các dòng này theo SchoolId (qua admin),
         KHÔNG đụng migration.
    ===================================================================== */
--- Trường THPT Demo (cấp 3): 9 tiết, mỗi tiết 45', ra chơi 10' sau tiết 2 → tan chiều 17:10
+-- Trường THCS Demo: 9 tiết, mỗi tiết 45', ra chơi 10' sau tiết 2 → tan chiều 17:10
 INSERT INTO Period (SchoolId, PeriodNumber, SessionType, StartTime, EndTime) VALUES
  (@SchDemo, 1, 'MORNING',   '07:00', '07:45'),
  (@SchDemo, 2, 'MORNING',   '07:45', '08:30'),   -- ra chơi 10'
@@ -256,7 +256,7 @@ INSERT INTO Period (SchoolId, PeriodNumber, SessionType, StartTime, EndTime) VAL
  (@SchBM,  8, 'AFTERNOON', '15:25', '16:00'),
  (@SchBM,  9, 'AFTERNOON', '16:00', '16:35'),
  (@SchBM, 10, 'AFTERNOON', '16:35', '17:10');   -- "Chiều · Tiết 5" của tiểu học
--- (Các trường THCS/THPT khác dùng khung tương tự THPT Demo — thêm khi cần seed lịch dạy.)
+-- (Các trường THCS khác dùng khung tương tự THCS Demo — thêm khi cần seed lịch dạy.)
 
 /* =====================================================================
    12) Room — 10 phòng học rải trên 5 trường
