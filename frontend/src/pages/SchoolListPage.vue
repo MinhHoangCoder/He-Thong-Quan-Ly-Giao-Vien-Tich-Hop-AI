@@ -511,32 +511,31 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           }}</small>
         </div>
 
-        <div class="form-row">
-          <div class="form-group">
-            <label>Ngày bắt đầu hợp đồng *</label>
-            <input
-              v-model="modal.form.contractStartDate"
-              type="date"
-              :class="{ 'input-error': modal.errors.contractStartDate }"
-              @input="clearFieldError('contractStartDate')"
-            />
-            <small v-if="modal.errors.contractStartDate" class="field-error">{{
-              modal.errors.contractStartDate
-            }}</small>
-          </div>
+      <div class="form-row">
+  <div class="form-group">
+    <label>Ngày bắt đầu hợp đồng *</label>
+    <DateField
+      v-model="modal.form.contractStartDate"
+      :invalid="!!modal.errors.contractStartDate"
+      @update:modelValue="clearFieldError('contractStartDate')"
+    />
+    <small v-if="modal.errors.contractStartDate" class="field-error">{{
+      modal.errors.contractStartDate
+    }}</small>
+  </div>
 
-          <div class="form-group">
-            <label>Ngày hết hạn hợp đồng *</label>
-            <input
-              v-model="modal.form.contractEndDate"
-              :invalid="!!modal.errors.contractEndDate"
-              @update:model-value="clearFieldError('contractEndDate')"
-            />
-            <small v-if="modal.errors.contractEndDate" class="field-error">{{
-              modal.errors.contractEndDate
-            }}</small>
-          </div>
-        </div>
+  <div class="form-group">
+    <label>Ngày hết hạn hợp đồng *</label>
+    <DateField
+      v-model="modal.form.contractEndDate"
+      :invalid="!!modal.errors.contractEndDate"
+      @update:modelValue="clearFieldError('contractEndDate')"
+    />
+    <small v-if="modal.errors.contractEndDate" class="field-error">{{
+      modal.errors.contractEndDate
+    }}</small>
+  </div>
+</div>
 
         <div class="form-group">
           <label>Trạng thái</label>
