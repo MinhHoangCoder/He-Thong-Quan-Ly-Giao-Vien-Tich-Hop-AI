@@ -452,6 +452,10 @@ class DeleteRestrictTest {
             service.deleteTrueTeacher(7);
 
             verify(teacherRepo).delete(any());
+            // Kể cả trên đường đi trót lọt cũng không được tự tay dọn hồ sơ pháp lý — bản cũ xóa
+            // chứng chỉ/hợp đồng TRƯỚC khi thử DELETE nên rào chắn đặt sau không đỡ được gì.
+            verify(ceRepo, never()).deleteAll(any());
+            verify(contractRepo, never()).deleteAll(any());
         }
 
         @Test
