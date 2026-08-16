@@ -1,15 +1,20 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.TeacherResponse;
 import com.kdc.tsdms.entity.AppUser;
+import com.kdc.tsdms.entity.AssignmentStatus;
 import com.kdc.tsdms.entity.Certificate;
 import com.kdc.tsdms.entity.Contract;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
+import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
+import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.io.IOException;
@@ -39,6 +44,14 @@ public class TeacherService {
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenRepository refreshTokenRepo;
+    private final AssignmentRepository assignmentRepo;
+    private final ScheduleRepository scheduleRepo;
+
+    /** Trạng thái phân công / buổi dạy còn hiệu lực — vẫn sinh công và vẫn vào lương. */
+    private static final List<String> PHAN_CONG_CON_HIEU_LUC =
+            List.of(AssignmentStatus.ACTIVE, AssignmentStatus.PENDING);
+
+    private static final List<String> BUOI_CON_HIEU_LUC = List.of("PENDING", "APPROVED");
     private static final Path UPLOAD_ROOT =
             Paths.get("uploads/teachers").toAbsolutePath().normalize();
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
@@ -49,13 +62,17 @@ public class TeacherService {
             ContractRepository contractRepo,
             AppUserRepository appUserRepository,
             PasswordEncoder passwordEncoder,
-            RefreshTokenRepository refreshTokenRepo) {
+            RefreshTokenRepository refreshTokenRepo,
+            AssignmentRepository assignmentRepo,
+            ScheduleRepository scheduleRepo) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
         this.appUserRepository = appUserRepository;
         this.passwordEncoder = passwordEncoder;
         this.refreshTokenRepo = refreshTokenRepo;
+        this.assignmentRepo = assignmentRepo;
+        this.scheduleRepo = scheduleRepo;
     }
 
     // DANH SÁCH  ======================================
@@ -245,6 +262,15 @@ public class TeacherService {
     @Transactional
     public void deleteTeacher(Integer id) {
         Teacher t = findActiveOrThrow(id);
+        DeleteGuard.of("giáo viên " + fullName(t.getLastName(), t.getFirstName()))
+                .blockIf(
+                        assignmentRepo.countByTeacherIdAndStatusInAndDeletedFalse(id, PHAN_CONG_CON_HIEU_LUC),
+                        "phân công đang chạy")
+                .blockIf(
+                        scheduleRepo.countByTeacherIdAndStartTimeAfterAndStatusInAndDeletedFalse(
+                                id, BusinessTime.now(), BUOI_CON_HIEU_LUC),
+                        "buổi dạy sắp tới")
+                .check();
         t.setDeleted(true);
         t.setDeletedAt(Instant.now());
         t.setDeletedBy(SecurityUtils.currentUserId());

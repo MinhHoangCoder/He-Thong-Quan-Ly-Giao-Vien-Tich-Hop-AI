@@ -212,12 +212,34 @@ public class LessonService {
      * ================================================================
      */
 
+    /**
+     * Xóa mềm bài giảng, CASCADE mềm xuống các file đính kèm.
+     *
+     * <p>Khác {@code School}/{@code Teacher} (chặn hẳn): {@code LessonFile} không có đời sống
+     * riêng — nó chỉ tồn tại vì bài giảng, không nơi nào tham chiếu tới nó ngoài bài giảng, nên
+     * xóa theo là đúng chứ không phải là mất dữ liệu ngoài ý muốn. Trước đây chỉ đánh dấu mỗi
+     * bài giảng, file con vẫn {@code deleted = false} nên vẫn lọt vào các truy vấn đếm/liệt kê
+     * file (không truy vấn nào lọc theo cờ xóa của bài giảng cha).
+     *
+     * <p>KHÔNG đụng tới file vật lý trên đĩa: xóa mềm phải khôi phục được.
+     */
     @Transactional
     public void delete(Integer id) {
         Lesson lesson = getOrThrow(id);
+        Instant now = Instant.now();
+        Integer uid = SecurityUtils.currentUserId();
+
+        List<LessonFile> files = lessonFileRepo.findByLessonIdAndDeletedFalse(id);
+        for (LessonFile f : files) {
+            f.setDeleted(true);
+            f.setDeletedAt(now);
+            f.setDeletedBy(uid);
+        }
+        lessonFileRepo.saveAll(files);
+
         lesson.setDeleted(true);
-        lesson.setDeletedAt(Instant.now());
-        lesson.setDeletedBy(SecurityUtils.currentUserId());
+        lesson.setDeletedAt(now);
+        lesson.setDeletedBy(uid);
         lessonRepo.save(lesson);
     }
 

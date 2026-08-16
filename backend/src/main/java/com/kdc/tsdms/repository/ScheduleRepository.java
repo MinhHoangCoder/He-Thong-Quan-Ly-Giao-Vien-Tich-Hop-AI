@@ -59,6 +59,13 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
      */
     List<Schedule> findByTeacherIdAndStatusAndDeletedFalse(Integer teacherId, String status);
 
+    /**
+     * Buổi dạy SẮP TỚI của một giáo viên (chưa bị hủy). Chặn xóa giáo viên còn lịch chưa dạy:
+     * xóa mềm không đụng tới Schedule nên buổi vẫn nằm đó, vẫn được chấm công và vẫn vào lương.
+     */
+    long countByTeacherIdAndStartTimeAfterAndStatusInAndDeletedFalse(
+            Integer teacherId, LocalDateTime from, java.util.Collection<String> statuses);
+
     /** Đếm buổi của phân công (thống kê). */
     long countByAssignmentIdAndDeletedFalse(Integer assignmentId);
 

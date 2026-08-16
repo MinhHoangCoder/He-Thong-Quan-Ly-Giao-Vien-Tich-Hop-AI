@@ -60,4 +60,7 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
             ORDER BY sc.gradeLevel
             """)
     List<String> findDistinctGradeLevels();
+
+    /** Lớp còn sống của một trường — chặn xóa trường khi còn lớp. */
+    long countBySchoolIdAndDeletedFalse(Integer schoolId);
 }
