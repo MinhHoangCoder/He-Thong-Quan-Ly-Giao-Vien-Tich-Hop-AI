@@ -62,6 +62,16 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
     /** Số phân công (chưa xóa mềm) gắn lớp — chặn xóa lớp đang được phân công. */
     long countByClassIdAndDeletedFalse(Integer classId);
 
+    /**
+     * Phân công CÒN HIỆU LỰC của một trường. Chỉ đếm ACTIVE + PENDING: hai trạng thái này
+     * vẫn giữ chỗ khung giờ và vẫn sinh buổi dạy, nên xóa trường lúc đó là bỏ lại lịch chạy
+     * cho một nơi không còn tồn tại. REJECTED/EXPIRED/CANCELLED là dữ liệu lịch sử, không chặn.
+     */
+    long countBySchoolIdAndStatusInAndDeletedFalse(Integer schoolId, java.util.Collection<String> statuses);
+
+    /** Phân công CÒN HIỆU LỰC của một giáo viên — cùng lý do như trên, phía giáo viên. */
+    long countByTeacherIdAndStatusInAndDeletedFalse(Integer teacherId, java.util.Collection<String> statuses);
+
     /** Mọi phân công (kể cả xóa mềm) còn trỏ ClassId — chặn xóa vĩnh viễn lớp. */
     long countByClassId(Integer classId);
 

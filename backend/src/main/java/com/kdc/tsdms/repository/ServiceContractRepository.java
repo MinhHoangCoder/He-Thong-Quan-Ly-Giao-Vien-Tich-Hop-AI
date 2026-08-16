@@ -17,4 +17,7 @@ public interface ServiceContractRepository extends JpaRepository<ServiceContract
     @Query("SELECT COALESCE(SUM(s.contractValue), 0) FROM ServiceContract s "
             + "WHERE s.startDate >= :from AND s.startDate < :to AND s.deleted = false")
     BigDecimal sumRevenueByPeriod(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /** Hợp đồng dịch vụ còn sống của một trường — chặn xóa trường khi còn hợp đồng. */
+    long countBySchoolIdAndDeletedFalse(Integer schoolId);
 }

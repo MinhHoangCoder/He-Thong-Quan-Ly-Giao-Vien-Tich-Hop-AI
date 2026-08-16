@@ -19,6 +19,9 @@ public interface LessonFileRepository extends JpaRepository<LessonFile, Integer>
 
     Optional<LessonFile> findByIdAndDeletedFalse(Integer id);
 
+    /** File còn sống của một bài giảng — dùng để cascade xóa mềm theo bài giảng. */
+    List<LessonFile> findByLessonIdAndDeletedFalse(Integer lessonId);
+
     /**
      * Xóa vĩnh viễn mọi file đính kèm của các bài giảng truyền vào — dùng khi
      * hard-delete môn học (cascade xóa hẳn bài giảng con), phải dọn LessonFile
