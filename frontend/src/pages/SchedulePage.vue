@@ -108,11 +108,14 @@ const monthCells = computed(() => {
   return cells
 })
 
-/* ── Lưới tuần ── */
+/* ── Lưới tuần ──
+   CHỈ 6 cột T2→T7: trung tâm không xếp lịch Chủ nhật, vẽ thêm một cột luôn trống chỉ làm
+   lưới hẹp lại. Lịch THÁNG bên dưới vẫn đủ 7 cột — đó là lịch thật, không phải TKB. */
+const WEEK_DAY_COUNT = 6
 const weekDays = computed(() => {
   const s = startOfWeek(anchor.value)
   const arr = []
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < WEEK_DAY_COUNT; i++) {
     const d = addDays(s, i)
     arr.push({
       iso: iso(d),

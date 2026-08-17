@@ -190,19 +190,17 @@ public class AttendanceService {
         Assignment a = assignmentCache.computeIfAbsent(
                 s.getAssignmentId(), id -> assignmentRepo.findById(id).orElse(null));
         if (a != null) {
-            r.schoolId = a.getSchoolId();
+            // Ô lịch gốc mang cả TRƯỜNG (V27) lẫn LỚP (V16) của buổi này — đọc thẳng từ phiếu
+            // là dán nhầm nhãn khi phân công trải nhiều trường/lớp. Nạp MỘT lần, dùng cho cả hai.
+            AssignmentSlot slot = s.getSourceSlotId() == null
+                    ? null
+                    : slotRepo.findById(s.getSourceSlotId()).orElse(null);
+            Integer schoolId = slot != null && slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+            r.schoolId = schoolId;
             School school = schoolCache.computeIfAbsent(
-                    a.getSchoolId(), id -> schoolRepo.findById(id).orElse(null));
-            r.schoolName = school != null ? school.getName() : "(Trường #" + a.getSchoolId() + ")";
-            // Lớp lấy từ ô lịch gốc của buổi (V16 — mỗi tiết một lớp), fallback lớp cấp
-            // phân công cho dữ liệu cũ.
-            Integer classId = a.getClassId();
-            if (s.getSourceSlotId() != null) {
-                AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
-                if (slot != null && slot.getClassId() != null) {
-                    classId = slot.getClassId();
-                }
-            }
+                    schoolId, id -> schoolRepo.findById(id).orElse(null));
+            r.schoolName = school != null ? school.getName() : "(Trường #" + schoolId + ")";
+            Integer classId = slot != null && slot.getClassId() != null ? slot.getClassId() : a.getClassId();
             r.classId = classId;
             if (classId != null) {
                 SchoolClass c = classCache.computeIfAbsent(
@@ -245,6 +243,26 @@ public class AttendanceService {
             }
         }
         return classId == null ? null : classRepo.findById(classId).orElse(null);
+    }
+
+    /**
+     * Trường của MỘT BUỔI dạy: ô lịch gốc trước, trường cấp phân công sau — song sinh với
+     * {@link #classOfSession}.
+     *
+     * <p>Từ V27 grain thật là "1 tiết = 1 trường" ({@code AssignmentSlot.schoolId}) vì trung tâm
+     * điều phối theo người: một phiếu có thể trải nhiều trường trong cùng một ngày.
+     */
+    private Integer schoolIdOfSession(Schedule s, Assignment asg) {
+        if (asg == null) {
+            return null;
+        }
+        if (s.getSourceSlotId() != null) {
+            AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+            if (slot != null && slot.getSchoolId() != null) {
+                return slot.getSchoolId();
+            }
+        }
+        return asg.getSchoolId();
     }
 
     /** Hồ sơ giáo viên của người đang đăng nhập (báo lỗi nếu tài khoản không phải giáo viên). */
@@ -387,7 +405,12 @@ public class AttendanceService {
         List<AttendanceResponse.CheckinSession> list = new ArrayList<>();
         for (Schedule s : sessions) {
             Assignment asg = assignmentRepo.findById(s.getAssignmentId()).orElse(null);
-            School school = asg != null ? schoolRepo.findById(asg.getSchoolId()).orElse(null) : null;
+            // Trường cũng phải lấy từ ô lịch gốc (V27) — cùng lý do với lớp ở dưới: một phiếu
+            // nay trải nhiều trường nên đọc asg.getSchoolId() là báo sai nơi giáo viên phải tới.
+            Integer sessionSchoolId = asg == null ? null : schoolIdOfSession(s, asg);
+            School school = sessionSchoolId == null
+                    ? null
+                    : schoolRepo.findById(sessionSchoolId).orElse(null);
             Subject subj =
                     asg != null ? subjectRepo.findById(asg.getSubjectId()).orElse(null) : null;
             // Lớp phải lấy từ Ô LỊCH GỐC của buổi (V16: mỗi tiết một lớp), fallback lớp cấp
@@ -425,7 +448,7 @@ public class AttendanceService {
             else state = "OPEN";
             list.add(new AttendanceResponse.CheckinSession(
                     s.getId(),
-                    asg != null ? asg.getSchoolId() : null,
+                    sessionSchoolId,
                     school != null ? school.getName() : null,
                     subj != null ? subj.getName() : null,
                     cls != null ? cls.getName() : null,

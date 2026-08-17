@@ -35,7 +35,12 @@ public record AssignmentCreateRequest(
         /** Giáo viên được phân công (→ Teacher). */
         @NotNull(message = "Vui lòng chọn giáo viên") Integer teacherId,
 
-        /** Trường sẽ dạy (→ School). */
+        /**
+         * Trường CHÍNH của phiếu (→ School) — từ V27 trường thật nằm ở từng tiết
+         * ({@link AssignmentSlotRequest#schoolId()}); trường này chỉ còn là giá trị mặc định cho
+         * slot không ghi trường (client cũ) và là nhãn đại diện lưu ở {@code Assignment.SchoolId}.
+         * Service ghi đè bằng trường của TIẾT ĐẦU TIÊN.
+         */
         @NotNull(message = "Vui lòng chọn trường") Integer schoolId,
 
         /** Môn học (→ Subject). */
@@ -53,8 +58,10 @@ public record AssignmentCreateRequest(
         @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,
 
         /**
-         * Ngày kết thúc giai đoạn — nullable (phân công vô thời hạn).
-         * Nếu null, Service sinh Schedule tối đa đến cuối năm học hiện tại.
+         * Ngày kết thúc giai đoạn — nullable trên REQUEST, nhưng KHÔNG bao giờ được lưu null:
+         * bỏ trống thì Service chốt luôn thành {@code startDate + 8 tuần} (đúng bằng khoảng đã
+         * sinh Schedule) rồi mới ghi xuống. Lưu null sẽ khiến luật chống trùng coi giai đoạn là
+         * vô hạn và giữ khung giờ của giáo viên mãi mãi dù không còn buổi dạy nào.
          */
         LocalDate endDate,
 

@@ -315,8 +315,8 @@ const quickStats = computed(() => [
   { icon: 'attendance', label: 'Buổi đã dạy tháng này', value: taughtThisMonth.value },
 ])
 
-/* ── Lưới lịch tuần: 7 cột T2..CN dựng từ /schedules/mine ── */
-const DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN']
+/* ── Lưới lịch tuần: 6 cột T2..T7 dựng từ /schedules/mine (không xếp lịch Chủ nhật) ── */
+const DOW = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 const weekSchedule = computed(() => {
   const cols = DOW.map((day, i) => ({ day, iso: iso(addDays(wkStart, i)), sessions: [] }))
   const byIso = Object.fromEntries(cols.map((c) => [c.iso, c]))

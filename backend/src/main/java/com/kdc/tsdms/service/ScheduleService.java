@@ -92,6 +92,22 @@ public class ScheduleService {
         return a.getClassId();
     }
 
+    /**
+     * Trường THẬT của một buổi dạy — cùng lý lẽ với {@link #classIdOf}: từ V27 mỗi tiết mang
+     * trường riêng, nên đọc {@code Assignment.SchoolId} sẽ dán nhầm tên trường lên những buổi
+     * mà giáo viên chạy sang trường khác. Fallback về trường cấp phân công cho dữ liệu cũ.
+     */
+    private Integer schoolIdOf(Schedule s, Assignment a, Map<Integer, AssignmentSlot> slotCache) {
+        if (s.getSourceSlotId() != null) {
+            AssignmentSlot slot = slotCache.computeIfAbsent(
+                    s.getSourceSlotId(), id -> slotRepo.findById(id).orElse(null));
+            if (slot != null && slot.getSchoolId() != null) {
+                return slot.getSchoolId();
+            }
+        }
+        return a.getSchoolId();
+    }
+
     @Transactional(readOnly = true)
     public List<ScheduleEventResponse> list(
             LocalDate from, LocalDate to, Integer teacherId, Integer schoolId, Integer classId) {
@@ -137,7 +153,10 @@ public class ScheduleService {
             if (a == null) {
                 continue;
             }
-            if (schoolId != null && !schoolId.equals(a.getSchoolId())) {
+            // Lọc theo trường phải hỏi TRƯỜNG CỦA BUỔI, không phải trường của phiếu: một phiếu
+            // nay trải nhiều trường nên so với phiếu sẽ kéo theo cả buổi ở trường khác.
+            Integer eventSchoolId = schoolIdOf(s, a, slotCache);
+            if (schoolId != null && !schoolId.equals(eventSchoolId)) {
                 continue;
             }
             Integer eventClassId = classIdOf(s, a, slotCache);
@@ -156,10 +175,10 @@ public class ScheduleService {
                     .findById(id)
                     .map(ScheduleService::fullName)
                     .orElse("(GV #" + id + ")"));
-            e.schoolId = a.getSchoolId();
+            e.schoolId = eventSchoolId;
             School school = schoolCache.computeIfAbsent(
-                    a.getSchoolId(), id -> schoolRepo.findById(id).orElse(null));
-            e.schoolName = school != null ? school.getName() : "(Trường #" + a.getSchoolId() + ")";
+                    eventSchoolId, id -> schoolRepo.findById(id).orElse(null));
+            e.schoolName = school != null ? school.getName() : "(Trường #" + eventSchoolId + ")";
             e.classId = eventClassId;
             if (eventClassId != null) {
                 SchoolClass c = classCache.computeIfAbsent(
@@ -228,15 +247,18 @@ public class ScheduleService {
             if (a == null) {
                 continue;
             }
+            // Theo TRƯỜNG CỦA BUỔI: giáo viên dạy nhiều trường trong cùng một phiếu thì bộ lọc
+            // phải liệt kê đủ, và lớp phải gắn đúng trường của nó (FE lọc lớp theo schoolId).
+            Integer eventSchoolId = schoolIdOf(s, a, slotCache);
             schools.computeIfAbsent(
-                    a.getSchoolId(),
+                    eventSchoolId,
                     id -> schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")"));
             Integer eventClassId = classIdOf(s, a, slotCache);
             if (eventClassId != null) {
                 classes.computeIfAbsent(eventClassId, id -> {
                     String name =
                             classRepo.findById(id).map(SchoolClass::getName).orElse("(Lớp #" + id + ")");
-                    return new MyScheduleFilters.ClassOption(id, name, a.getSchoolId());
+                    return new MyScheduleFilters.ClassOption(id, name, eventSchoolId);
                 });
             }
         }

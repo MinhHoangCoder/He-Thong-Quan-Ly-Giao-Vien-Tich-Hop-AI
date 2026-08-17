@@ -18,6 +18,7 @@ import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.entity.TeacherEvaluation;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
@@ -34,6 +35,7 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -66,6 +68,7 @@ public class DashboardService {
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final ScheduleRepository scheduleRepo;
     private final SubjectRepository subjectRepo;
     private final AttendanceRepository attendanceRepo;
@@ -76,6 +79,7 @@ public class DashboardService {
             TeacherRepository teacherRepo,
             SchoolRepository schoolRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             ScheduleRepository scheduleRepo,
             SubjectRepository subjectRepo,
             AttendanceRepository attendanceRepo,
@@ -84,6 +88,7 @@ public class DashboardService {
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.scheduleRepo = scheduleRepo;
         this.subjectRepo = subjectRepo;
         this.attendanceRepo = attendanceRepo;
@@ -357,13 +362,48 @@ public class DashboardService {
                     return new AssignmentRow(
                             a.getId(),
                             teacherName(teacherById.get(a.getTeacherId())),
-                            name(schoolById.get(a.getSchoolId()), School::getName, "Trường"),
+                            schoolLabelOf(a, schoolById),
                             name(subjectById.get(a.getSubjectId()), Subject::getName, "Môn"),
                             a.getStartDate() == null ? "" : a.getStartDate().format(DAY_MONTH),
                             status[1],
                             status[0]);
                 })
                 .toList();
+    }
+
+    /**
+     * Nhãn trường của một phiếu: từ V27 một phiếu trải được nhiều trường, nên nối các trường
+     * KHÁC NHAU của các tiết. Quá hai trường thì rút gọn "TH Dư Hàng +2" — dòng tóm tắt trên
+     * bảng điều khiển chỉ rộng chừng đó, liệt kê đủ sẽ tràn ô.
+     */
+    private String schoolLabelOf(Assignment a, Map<Integer, School> schoolById) {
+        LinkedHashSet<Integer> ids = new LinkedHashSet<>();
+        for (var slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            if (slot.getSchoolId() != null) {
+                ids.add(slot.getSchoolId());
+            }
+        }
+        if (ids.isEmpty()) {
+            ids.add(a.getSchoolId()); // dữ liệu cũ chưa gắn trường ở tiết
+        }
+        List<String> names = ids.stream()
+                .map(id -> name(schoolById.get(id), School::getName, "Trường"))
+                .toList();
+        if (names.size() <= 2) {
+            return String.join(", ", names);
+        }
+        return names.get(0) + " +" + (names.size() - 1);
+    }
+
+    /** Trường của MỘT BUỔI: ô lịch gốc trước (V27), trường cấp phân công sau. */
+    private Integer schoolIdOfSchedule(Schedule s, Assignment a) {
+        if (s.getSourceSlotId() != null) {
+            var slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+            if (slot != null && slot.getSchoolId() != null) {
+                return slot.getSchoolId();
+            }
+        }
+        return a.getSchoolId();
     }
 
     /* ─────────────────────────── TODAY SCHEDULE ─────────────────────────── */
@@ -385,7 +425,10 @@ public class DashboardService {
                 .map(s -> {
                     Assignment a = assignmentById.get(s.getAssignmentId());
                     Subject subject = a == null ? null : subjectById.get(a.getSubjectId());
-                    School school = a == null ? null : schoolById.get(a.getSchoolId());
+                    // Trường của BUỔI (V27), không phải trường chính của phiếu — lịch hôm nay mà
+                    // ghi sai trường thì giáo viên tới nhầm nơi.
+                    Integer schoolId = a == null ? null : schoolIdOfSchedule(s, a);
+                    School school = schoolId == null ? null : schoolById.get(schoolId);
                     return new ScheduleRow(
                             s.getId(),
                             s.getStartTime().format(HOUR_MIN),

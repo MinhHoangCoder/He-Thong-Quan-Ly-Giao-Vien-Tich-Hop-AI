@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.context.ApplicationContext;
@@ -175,16 +177,6 @@ public class AssignmentApprovalService {
                     a.getStartDate(),
                     a.getEndDate(),
                     a.getId());
-            // Và cả khoảng nghỉ để chạy sang trường khác: cùng lý do — chỗ trống lúc tạo phiếu
-            // có thể đã bị một phiếu ở trường khác lấp vào khung giờ liền kề.
-            conflictChecker.checkTravelGap(
-                    a.getTeacherId(),
-                    a.getSchoolId(),
-                    slot.getDayOfWeek(),
-                    p,
-                    a.getStartDate(),
-                    a.getEndDate(),
-                    a.getId());
         }
         approve(a, SRC_ADMIN, note);
         closeOpenInvites(a.getId(), "CONFIRMED");
@@ -267,7 +259,7 @@ public class AssignmentApprovalService {
     @Transactional
     public void sweepExpired() {
         List<Assignment> overdue = assignmentRepo.findByStatusAndConfirmDeadlineBeforeAndDeletedFalse(
-                AssignmentStatus.PENDING, LocalDateTime.now());
+                AssignmentStatus.PENDING, BusinessTime.now());
         for (Assignment a : overdue) {
             a.setStatus(AssignmentStatus.EXPIRED);
             a.setUpdatedAt(Instant.now());
@@ -300,7 +292,7 @@ public class AssignmentApprovalService {
      * nên không có buổi nào đã dạy thật để phải giữ lại cho chấm công.
      */
     private void cancelPendingSchedules(Assignment a) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = BusinessTime.now();
         for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
             if (!"CANCELLED".equals(s.getStatus()) && s.getStartTime().isAfter(now)) {
                 s.setStatus("CANCELLED");
@@ -385,7 +377,7 @@ public class AssignmentApprovalService {
     private void approve(Assignment a, String source, String note) {
         Integer userId = SecurityUtils.currentUserId();
         a.setStatus(AssignmentStatus.ACTIVE);
-        a.setConfirmedAt(LocalDateTime.now());
+        a.setConfirmedAt(BusinessTime.now());
         a.setConfirmedByUserId(userId);
         a.setConfirmSource(source);
         a.setRejectionReason(null);
@@ -460,10 +452,26 @@ public class AssignmentApprovalService {
         }
     }
 
-    /** Mô tả ngắn một phiếu để nhét vào nội dung thông báo. */
+    /**
+     * Mô tả ngắn một phiếu để nhét vào nội dung thông báo.
+     *
+     * <p>Kể ĐỦ các trường của phiếu (V27): giáo viên đọc thông báo trên chuông cần thấy ngay hôm
+     * đó phải tới mấy nơi. Quá hai trường thì rút gọn cho vừa một dòng thông báo.
+     */
     private String describe(Assignment a) {
-        String school =
-                schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("trường #" + a.getSchoolId());
+        LinkedHashSet<String> schools = new LinkedHashSet<>();
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            Integer id = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+            if (id != null) {
+                schools.add(schoolRepo.findById(id).map(School::getName).orElse("trường #" + id));
+            }
+        }
+        if (schools.isEmpty()) {
+            schools.add(
+                    schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("trường #" + a.getSchoolId()));
+        }
+        List<String> names = List.copyOf(schools);
+        String school = names.size() <= 2 ? String.join(", ", names) : names.get(0) + " +" + (names.size() - 1);
         String subject =
                 subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("môn #" + a.getSubjectId());
         return "phân công #" + a.getId() + " · " + school + " · " + subject;

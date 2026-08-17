@@ -39,6 +39,13 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     /** Toàn bộ ô lịch còn hiệu lực — quét trùng giờ trên cả hệ thống. */
     List<AssignmentSlot> findByDeletedFalse();
 
+    /**
+     * Mọi ô lịch còn hiệu lực của một TRƯỜNG (V27) — nguồn cho lưới xếp lịch khóa sẵn những ô
+     * đã có giáo viên khác dạy. Hỏi theo trường chứ không theo từng lớp vì lưới hiện cả trường
+     * một lúc: hỏi lẻ từng lớp là 20+ lượt gọi cho một lần mở form.
+     */
+    List<AssignmentSlot> findBySchoolIdAndDeletedFalse(Integer schoolId);
+
     /** Xóa CỨNG mọi slot của phân công — dùng khi xóa vĩnh viễn. */
     @Modifying
     @Query("DELETE FROM AssignmentSlot s WHERE s.assignmentId = :assignmentId")
