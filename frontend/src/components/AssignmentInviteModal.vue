@@ -43,22 +43,43 @@ const days = computed(() => {
   const present = new Set(slots.value.map((s) => s.dayOfWeek))
   return DAY_ORDER.filter((d) => present.has(d)).map((d) => ({ code: d, label: DAY_LABEL[d] ?? d }))
 })
+/**
+ * Dòng của lưới, khóa theo TIẾT + GIỜ BẮT ĐẦU chứ không chỉ theo số tiết.
+ *
+ * <p>Từ khi một phiếu trải được nhiều trường (V27), "tiết 1" của tiểu học (07:00–07:35) và
+ * "tiết 1" của THCS (07:00–07:45) là HAI khung khác nhau nhưng cùng periodNumber = 1. Khóa
+ * theo mỗi số tiết thì hai cái gộp làm một dòng và một buổi dạy BIẾN MẤT khỏi lời mời —
+ * giáo viên xác nhận mà không hề biết mình vừa nhận thêm một buổi.
+ */
 const rows = computed(() => {
-  const byNumber = new Map()
+  const byKey = new Map()
   for (const s of slots.value) {
-    if (byNumber.has(s.periodNumber)) continue
-    byNumber.set(s.periodNumber, {
+    const key = `${s.periodNumber}|${s.startTime}`
+    if (byKey.has(key)) continue
+    byKey.set(key, {
+      key,
       periodNumber: s.periodNumber,
+      startTime: s.startTime,
       label: tietLabel(s.periodNumber, s.sessionType, s.indexInSession),
       time: `${hhmm(s.startTime)}–${hhmm(s.endTime)}`,
       afternoon: s.sessionType === 'AFTERNOON',
     })
   }
-  return [...byNumber.values()].sort((a, b) => a.periodNumber - b.periodNumber)
+  return [...byKey.values()].sort(
+    (a, b) => String(a.startTime).localeCompare(String(b.startTime)) || a.periodNumber - b.periodNumber,
+  )
 })
-function cellOf(dayCode, periodNumber) {
-  return slots.value.find((s) => s.dayOfWeek === dayCode && s.periodNumber === periodNumber) ?? null
+
+function cellOf(dayCode, row) {
+  return (
+    slots.value.find(
+      (s) => s.dayOfWeek === dayCode && s.periodNumber === row.periodNumber && s.startTime === row.startTime,
+    ) ?? null
+  )
 }
+
+/** Phiếu có trải nhiều trường không — chỉ khi đó mới cần ghi tên trường lên từng ô. */
+const multiSchool = computed(() => new Set(slots.value.map((s) => s.schoolId).filter(Boolean)).size > 1)
 
 const hhmm = (t) => (t ? String(t).slice(0, 5) : '')
 const fmtDate = (iso) => {
@@ -187,18 +208,23 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="r in rows" :key="r.periodNumber">
+                <tr v-for="r in rows" :key="r.key">
                   <th class="inv__period" :class="r.afternoon ? 'pm' : 'am'">
                     <span>{{ r.label }}</span>
                     <small>{{ r.time }}</small>
                   </th>
                   <td v-for="d in days" :key="d.code">
                     <span
-                      v-if="cellOf(d.code, r.periodNumber)"
+                      v-if="cellOf(d.code, r)"
                       class="inv__cell"
                       :class="r.afternoon ? 'pm' : 'am'"
                     >
-                      {{ cellOf(d.code, r.periodNumber).className || 'Chưa gán lớp' }}
+                      {{ cellOf(d.code, r).className || 'Chưa gán lớp' }}
+                      <!-- Nhiều trường thì PHẢI ghi rõ trường: thiếu nó giáo viên không biết
+                           buổi đó phải tới đâu, mà lời mời chính là chỗ họ quyết định nhận. -->
+                      <small v-if="multiSchool && cellOf(d.code, r).schoolName" class="inv__cellschool">
+                        {{ cellOf(d.code, r).schoolName }}
+                      </small>
                     </span>
                   </td>
                 </tr>
@@ -416,6 +442,12 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
   padding: 0.16rem 0.5rem;
   border-radius: 6px;
   font-weight: 600;
+}
+.inv__cellschool {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.75;
 }
 .inv__cell.am {
   background: rgba(245, 158, 11, 0.15);

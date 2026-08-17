@@ -5,6 +5,7 @@ import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
@@ -12,6 +13,7 @@ import com.kdc.tsdms.entity.TeacherEvaluation;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherEvaluationRepository;
@@ -61,6 +63,7 @@ public class EvaluationService {
     private final BranchRepository branchRepo;
     private final AppUserRepository userRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final DisplayNameResolver displayNameResolver;
     private final NotificationService notificationService;
     private final TransactionTemplate notifyTx;
@@ -72,6 +75,7 @@ public class EvaluationService {
             BranchRepository branchRepo,
             AppUserRepository userRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             DisplayNameResolver displayNameResolver,
             NotificationService notificationService,
             PlatformTransactionManager txManager) {
@@ -81,6 +85,7 @@ public class EvaluationService {
         this.branchRepo = branchRepo;
         this.userRepo = userRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.displayNameResolver = displayNameResolver;
         this.notificationService = notificationService;
         // afterCommit chạy khi transaction gốc đã đóng — ghi Notification lúc đó phải mở
@@ -837,21 +842,30 @@ public class EvaluationService {
         Map<Integer, List<TeacherEvaluation>> byTeacher =
                 evals.stream().collect(Collectors.groupingBy(TeacherEvaluation::getTeacherId));
 
-        // Trường đang/đã dạy (Assignment)
+        // Trường đang/đã dạy (Assignment). Từ V27 một phiếu trải được NHIỀU trường, nên phải gom
+        // theo từng TIẾT: đọc mỗi Assignment.SchoolId sẽ bỏ sót những trường phụ mà giáo viên
+        // vẫn đang dạy, và màn đánh giá dùng danh sách này để biết ai được chấm ở trường nào.
         List<Assignment> assigns = assignmentRepo.findByTeacherIdInAndDeletedFalse(ids);
-        Set<Integer> schoolIds = assigns.stream()
-                .map(Assignment::getSchoolId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Map<Integer, LinkedHashSet<Integer>> teacherSchools = new HashMap<>();
+        for (Assignment a : assigns) {
+            LinkedHashSet<Integer> mine = teacherSchools.computeIfAbsent(a.getTeacherId(), k -> new LinkedHashSet<>());
+            List<AssignmentSlot> slots = slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
+            boolean fromSlots = false;
+            for (AssignmentSlot slot : slots) {
+                if (slot.getSchoolId() != null) {
+                    mine.add(slot.getSchoolId());
+                    fromSlots = true;
+                }
+            }
+            if (!fromSlots && a.getSchoolId() != null) {
+                mine.add(a.getSchoolId()); // dữ liệu cũ chưa gắn trường ở tiết
+            }
+        }
+        Set<Integer> schoolIds =
+                teacherSchools.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
         Map<Integer, String> schoolNames = new HashMap<>();
         if (!schoolIds.isEmpty()) {
             schoolRepo.findAllById(schoolIds).forEach(s -> schoolNames.put(s.getId(), s.getName()));
-        }
-        Map<Integer, LinkedHashSet<Integer>> teacherSchools = new HashMap<>();
-        for (Assignment a : assigns) {
-            teacherSchools
-                    .computeIfAbsent(a.getTeacherId(), k -> new LinkedHashSet<>())
-                    .add(a.getSchoolId());
         }
 
         Set<Integer> branchIds = teachers.stream()

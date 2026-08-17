@@ -1,5 +1,6 @@
 package com.kdc.tsdms.entity;
 
+import com.kdc.tsdms.common.BusinessTime;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -89,7 +90,7 @@ public class Assignment extends SoftDeletableEntity {
     public boolean isExpiredPending() {
         return AssignmentStatus.PENDING.equals(status)
                 && confirmDeadline != null
-                && confirmDeadline.isBefore(LocalDateTime.now());
+                && confirmDeadline.isBefore(BusinessTime.now());
     }
 
     /**

@@ -123,7 +123,7 @@ public class AttendanceDailyService {
                     s.getId(),
                     s.getTeacherId(),
                     teacherNames.computeIfAbsent(s.getTeacherId(), this::teacherName),
-                    asg == null ? null : schoolNames.computeIfAbsent(asg.getSchoolId(), this::schoolName),
+                    schoolNameOf(s, asg, schoolNames),
                     className(s, asg, classNames),
                     asg == null ? null : subjectNames.computeIfAbsent(asg.getSubjectId(), this::subjectName),
                     s.getStartTime(),
@@ -225,6 +225,25 @@ public class AttendanceDailyService {
             }
         }
         return classId == null ? null : cache.computeIfAbsent(classId, this::classNameById);
+    }
+
+    /**
+     * Trường của buổi — lấy từ ô lịch gốc (V27), fallback trường cấp phân công. Song sinh với
+     * {@link #className}: một phiếu nay trải nhiều trường nên bảng "Hôm nay" đọc thẳng
+     * {@code asg.getSchoolId()} sẽ ghi sai nơi giáo viên đang dạy.
+     */
+    private String schoolNameOf(Schedule s, Assignment asg, Map<Integer, String> cache) {
+        if (asg == null) {
+            return null;
+        }
+        Integer schoolId = asg.getSchoolId();
+        if (s.getSourceSlotId() != null) {
+            AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
+            if (slot != null && slot.getSchoolId() != null) {
+                schoolId = slot.getSchoolId();
+            }
+        }
+        return schoolId == null ? null : cache.computeIfAbsent(schoolId, this::schoolName);
     }
 
     private String teacherName(Integer id) {

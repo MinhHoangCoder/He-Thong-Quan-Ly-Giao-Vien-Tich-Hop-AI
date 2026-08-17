@@ -329,17 +329,23 @@ public class AttendanceAmendService {
         if (asg == null) {
             return d;
         }
-        d.schoolName =
-                schoolRepo.findById(asg.getSchoolId()).map(School::getName).orElse(null);
         d.subjectName =
                 subjectRepo.findById(asg.getSubjectId()).map(Subject::getName).orElse(null);
-        // Lớp lấy từ ô lịch gốc của buổi (V16 — mỗi tiết một lớp), fallback lớp cấp phân công.
+        // Trường (V27) và lớp (V16) đều lấy từ Ô LỊCH GỐC của buổi, fallback về cấp phân công:
+        // một phiếu nay trải nhiều trường/lớp nên đọc thẳng ở phiếu là ghi sai buổi nào ở đâu.
         Integer classId = asg.getClassId();
+        Integer schoolId = asg.getSchoolId();
         if (s.getSourceSlotId() != null) {
             AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
             if (slot != null && slot.getClassId() != null) {
                 classId = slot.getClassId();
             }
+            if (slot != null && slot.getSchoolId() != null) {
+                schoolId = slot.getSchoolId();
+            }
+        }
+        if (schoolId != null) {
+            d.schoolName = schoolRepo.findById(schoolId).map(School::getName).orElse(null);
         }
         if (classId != null) {
             d.className = classRepo.findById(classId).map(SchoolClass::getName).orElse(null);
