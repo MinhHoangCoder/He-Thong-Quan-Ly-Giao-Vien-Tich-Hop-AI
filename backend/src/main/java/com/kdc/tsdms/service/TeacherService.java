@@ -24,10 +24,10 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +52,25 @@ public class TeacherService {
             List.of(AssignmentStatus.ACTIVE, AssignmentStatus.PENDING);
 
     private static final List<String> BUOI_CON_HIEU_LUC = List.of("PENDING", "APPROVED");
+
+    /**
+     * Nhãn tiếng Việt cho từng bảng con trỏ vào Teacher — khớp mã loại do
+     * {@code TeacherRepository.countChildRowsByTeacherId} trả về. Thêm bảng con mới thì thêm
+     * cả ở đây lẫn ở câu SQL bên repository.
+     */
+    private static final Map<String, String> NHAN_BANG_CON = Map.ofEntries(
+            Map.entry("certificate", "chứng chỉ"),
+            Map.entry("contract", "hợp đồng"),
+            Map.entry("subject", "môn được phân dạy"),
+            Map.entry("assignment", "phân công"),
+            Map.entry("slot", "ô lịch tuần"),
+            Map.entry("schedule", "buổi dạy"),
+            Map.entry("attendance", "bản ghi chấm công"),
+            Map.entry("amend", "yêu cầu bổ sung công"),
+            Map.entry("payroll", "phiếu lương"),
+            Map.entry("evaluation", "phiếu đánh giá"),
+            Map.entry("lesson", "bài giảng"));
+
     private static final Path UPLOAD_ROOT =
             Paths.get("uploads/teachers").toAbsolutePath().normalize();
     private static final long MAX_UPLOAD_FILE_SIZE_BYTES = 20L * 1024 * 1024; // 20MB
@@ -308,6 +327,26 @@ public class TeacherService {
     /**
      * Xóa VĨNH VIỄN khỏi DB — CHỈ áp dụng cho GV đang nằm trong thùng rác (deleted=true).
      * Không thể hoàn tác.
+     *
+     * <p>Trước đây hàm này XÓA CỨNG toàn bộ chứng chỉ + hợp đồng để dọn đường cho câu
+     * {@code DELETE Teacher}, rồi bọc tất cả trong một {@code catch DataIntegrityViolationException}
+     * trả về đúng một câu "Không thể xóa vĩnh viễn: giáo viên id=7". Hai cái sai chồng nhau:
+     *
+     * <ul>
+     *   <li><b>Sai về nghiệp vụ:</b> hợp đồng lao động và bằng cấp là hồ sơ pháp lý — chúng bị
+     *       hủy như hiệu ứng phụ của một thao tác dọn dẹp, và vì là xóa cứng nên không có
+     *       thùng rác nào giữ lại.
+     *   <li><b>Sai về thông tin:</b> khi khóa ngoại chặn thật (còn phân công, chấm công, phiếu
+     *       lương...) thì người dùng chỉ nhận được một câu không nói gì — không biết vướng ở
+     *       đâu, không biết phải làm gì, và đằng sau lưng thì chứng chỉ + hợp đồng ĐÃ bị xóa
+     *       mất rồi vì transaction cũng rollback nhưng bản thân người dùng không hề hay biết
+     *       thao tác đã đi xa tới đâu.
+     * </ul>
+     *
+     * <p>Nay: hỏi thẳng DB xem còn dòng con nào ở cả 11 bảng, kể tên đầy đủ, và KHÔNG xóa hộ
+     * thứ gì cả. Hệ quả cố ý là giáo viên đã từng làm việc thật thì gần như không bao giờ xóa
+     * cứng được — họ nằm lại trong thùng rác, khôi phục được. Chỉ hồ sơ tạo nhầm (chưa gắn dữ
+     * liệu nào) mới xóa hẳn, đúng thứ tính năng này thực sự cần phục vụ.
      */
     @Transactional
     public void deleteTrueTeacher(Integer id) {
@@ -315,14 +354,29 @@ public class TeacherService {
                 .findByIdAndDeletedTrue(id)
                 .orElseThrow(() -> new ApiException(
                         HttpStatus.NOT_FOUND, "Giáo viên id=" + id + " không có trong thùng rác => không thể xóa "));
-        try {
-            ceRepo.deleteAll(ceRepo.findByTeacherId(id));
-            contractRepo.deleteAll(contractRepo.findByTeacherId(id));
-            teacherRepo.delete(t);
-            teacherRepo.flush();
-        } catch (DataIntegrityViolationException e) {
-            throw new ApiException(HttpStatus.CONFLICT, "Không thể xóa vĩnh viễn: giáo viên id=" + id);
-        }
+        DeleteGuard.of("vĩnh viễn giáo viên " + fullName(t.getLastName(), t.getFirstName()))
+                .blockAll(moTaDuLieuCon(teacherRepo.countChildRowsByTeacherId(id)))
+                .huongDan("Hợp đồng và bằng cấp là hồ sơ pháp lý, chấm công và phiếu lương là chứng từ tiền "
+                        + "lương — không xóa được để dọn đường. Giáo viên vẫn nằm trong thùng rác và khôi "
+                        + "phục lại được bất cứ lúc nào.")
+                .check();
+        teacherRepo.delete(t);
+        teacherRepo.flush();
+    }
+
+    /**
+     * Đổi kết quả thô của {@code countChildRowsByTeacherId} thành các cụm chữ kiểu
+     * {@code "3 chứng chỉ"}. Mã loại lạ (bảng mới thêm mà quên khai nhãn) vẫn được kể ra bằng
+     * chính mã đó — thà xấu còn hơn im lặng bỏ sót một rào chắn.
+     */
+    private static List<String> moTaDuLieuCon(List<Object[]> rows) {
+        return rows.stream()
+                .map(r -> {
+                    String loai = String.valueOf(r[0]);
+                    long soLuong = ((Number) r[1]).longValue();
+                    return soLuong + " " + NHAN_BANG_CON.getOrDefault(loai, loai);
+                })
+                .toList();
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -338,23 +392,28 @@ public class TeacherService {
     }
 
     /**
-     * XÓA HẲN khỏi DB — khác với Teacher (có thùng rác/khôi phục), Certificate không
-     * có khái niệm lưu trữ tạm, xóa mềm chỉ tổ dồn rác vô ích. Dọn luôn file PDF vật
-     * lý trên đĩa để tránh rác kép (vừa rác DB vừa rác file không ai trỏ tới).
+     * XÓA MỀM — bằng cấp/chứng chỉ là HỒ SƠ PHÁP LÝ, không phải rác tạm.
+     *
+     * <p>Bản cũ xóa hẳn dòng DB và {@code Files.deleteIfExists} luôn file PDF trên đĩa, với lý
+     * do "xóa mềm chỉ tổ dồn rác". Nhưng thứ bị dọn ở đây là bản scan bằng đại học của một con
+     * người: bấm nhầm một cái là mất vĩnh viễn, không có thùng rác, không khôi phục được, và
+     * cũng không còn dấu vết ai đã bấm. Đổi lại, xóa mềm giữ đủ {@code DeletedAt/DeletedBy} —
+     * vừa rút chứng chỉ khỏi hồ sơ hiển thị, vừa trả lời được câu "ai gỡ, gỡ lúc nào".
+     *
+     * <p>File PDF vì thế cũng phải GIỮ NGUYÊN trên đĩa: dòng DB vẫn trỏ vào nó, xóa file đi là
+     * biến bản ghi còn sống thành cái vỏ rỗng, khôi phục cũng chẳng mở ra được gì.
      */
     @Transactional
     public void deleteCertificate(Integer teacherId, Integer certId) {
         Certificate c = ceRepo.findByIdAndTeacherIdAndDeletedFalse(certId, teacherId)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy chứng chỉ id=" + certId));
-        if (c.getFileUrl() != null && !c.getFileUrl().isBlank()) {
-            try {
-                Path path = UPLOAD_ROOT.resolve(c.getFileUrl()).normalize();
-                if (path.startsWith(UPLOAD_ROOT)) Files.deleteIfExists(path);
-            } catch (IOException ignored) {
-                // Không chặn việc xóa record chỉ vì lỗi xóa file vật lý (vd file đã mất sẵn)
-            }
-        }
-        ceRepo.delete(c);
+        Integer nguoiXoa = SecurityUtils.currentUserId();
+        c.setDeleted(true);
+        c.setDeletedAt(Instant.now());
+        c.setDeletedBy(nguoiXoa);
+        c.setUpdatedAt(Instant.now());
+        c.setUpdatedBy(nguoiXoa);
+        ceRepo.save(c);
     }
 
     //   Upload file PDF THẬT cho 1 bằng cấp/chứng chỉ đã tồn tại — TRƯỚC ĐÂY addCertificate()
