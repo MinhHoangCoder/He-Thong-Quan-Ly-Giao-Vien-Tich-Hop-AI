@@ -29,8 +29,22 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     /** Mọi ô lịch còn hiệu lực của một GV — dựng bảng "giờ bận" cho form phân công. */
     List<AssignmentSlot> findByTeacherIdAndDeletedFalse(Integer teacherId);
 
+    /**
+     * Chiều NGƯỢC lại của dò trùng: mọi ô lịch của một LỚP trong một Thứ. Luật cũ chỉ hỏi
+     * "giáo viên này có bận không" nên xếp được ba giáo viên vào cùng một lớp cùng một tiết —
+     * lớp chỉ có một, mà cả ba đều được tính công.
+     */
+    List<AssignmentSlot> findByClassIdAndDayOfWeekAndDeletedFalse(Integer classId, String dayOfWeek);
+
     /** Toàn bộ ô lịch còn hiệu lực — quét trùng giờ trên cả hệ thống. */
     List<AssignmentSlot> findByDeletedFalse();
+
+    /**
+     * Mọi ô lịch còn hiệu lực của một TRƯỜNG (V27) — nguồn cho lưới xếp lịch khóa sẵn những ô
+     * đã có giáo viên khác dạy. Hỏi theo trường chứ không theo từng lớp vì lưới hiện cả trường
+     * một lúc: hỏi lẻ từng lớp là 20+ lượt gọi cho một lần mở form.
+     */
+    List<AssignmentSlot> findBySchoolIdAndDeletedFalse(Integer schoolId);
 
     /** Xóa CỨNG mọi slot của phân công — dùng khi xóa vĩnh viễn. */
     @Modifying

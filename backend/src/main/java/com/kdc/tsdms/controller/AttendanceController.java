@@ -1,14 +1,15 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
+import com.kdc.tsdms.dto.AttendanceTodayResponse;
+import com.kdc.tsdms.service.AttendanceDailyService;
 import com.kdc.tsdms.service.AttendanceService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
-import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,13 +25,12 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/attendance")
 public class AttendanceController {
 
-    /** JVM ghim UTC — "tháng hiện tại" mặc định phải tính theo giờ Việt Nam. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
     private final AttendanceService service;
+    private final AttendanceDailyService dailyService;
 
-    public AttendanceController(AttendanceService service) {
+    public AttendanceController(AttendanceService service, AttendanceDailyService dailyService) {
         this.service = service;
+        this.dailyService = dailyService;
     }
 
     /** Bảng chấm công theo khoảng ngày (mặc định tháng hiện tại), lọc theo GV nếu có. */
@@ -40,7 +40,7 @@ public class AttendanceController {
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.list(teacherId, f, t);
@@ -56,7 +56,7 @@ public class AttendanceController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String status) {
-        LocalDate today = LocalDate.now(BUSINESS_ZONE);
+        LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.listMine(f, t, status);
@@ -88,7 +88,19 @@ public class AttendanceController {
         return service.checkOut(req);
     }
 
-    /** Sinh chấm công hàng loạt từ các buổi đã duyệt trong khoảng ngày. */
+    /**
+     * Tab "Hôm nay" của admin — mọi buổi dạy trong ngày kèm buổi nào đã chấm, buổi nào chưa.
+     *
+     * <p>Dựng từ LỊCH DẠY: buổi giáo viên chưa bấm gì thì chưa có dòng chấm công nào, nhìn
+     * bảng chấm công sẽ không thấy nó — mà đó đúng là buổi cần để mắt.
+     */
+    @GetMapping("/today")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
+    public AttendanceTodayResponse today(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return dailyService.forDate(date != null ? date : BusinessTime.today());
+    }
+
     /**
      * Hộp "Cần xử lý" của kế toán: dòng hệ thống chốt hộ giờ ra, dòng hệ thống ghi Vắng, và
      * dòng còn treo chưa có giờ ra — gom một chỗ thay vì bắt dò cả bảng.
@@ -112,15 +124,6 @@ public class AttendanceController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
     public List<AttendanceChangeLogResponse> logs(@PathVariable Long id) {
         return service.changeLog(id);
-    }
-
-    @PostMapping("/generate")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_MANAGE')")
-    public Map<String, Object> generate(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        int created = service.generateFromSchedules(from, to);
-        return Map.of("created", created, "message", "Đã sinh " + created + " dòng chấm công");
     }
 
     @PostMapping

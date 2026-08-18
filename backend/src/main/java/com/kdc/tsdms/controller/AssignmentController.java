@@ -2,11 +2,11 @@ package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.dto.AssignmentBulkRequest;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
-import com.kdc.tsdms.dto.AssignmentConflict;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
 import com.kdc.tsdms.dto.AssignmentResponse;
 import com.kdc.tsdms.dto.AssignmentUpdateRequest;
+import com.kdc.tsdms.dto.ClassBusySlot;
 import com.kdc.tsdms.dto.SchoolScopedOptions;
 import com.kdc.tsdms.dto.TeacherBusySlot;
 import com.kdc.tsdms.service.AssignmentApprovalService;
@@ -88,11 +88,20 @@ public class AssignmentController {
         return service.teacherBusy(teacherId, startDate, endDate);
     }
 
-    /** Quét các cặp ô lịch đang trùng giờ của cùng một GV (gồm cả trùng chéo trường). */
-    @GetMapping("/conflicts")
+    /**
+     * Các ô lịch ĐÃ BỊ CHIẾM của một trường trong giai đoạn đang xếp — lưới thời khóa biểu dùng
+     * để tô xám sẵn ô "lớp này đã có giáo viên khác dạy".
+     *
+     * <p>Hỏi theo TRƯỜNG chứ không theo từng lớp: lưới hiện cả trường một lúc nên hỏi lẻ từng
+     * lớp là 20+ lượt gọi cho một lần mở form.
+     */
+    @GetMapping("/class-busy")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
-    public List<AssignmentConflict> conflicts() {
-        return service.scanConflicts();
+    public List<ClassBusySlot> classBusy(
+            @RequestParam Integer schoolId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        return service.classBusy(schoolId, startDate, endDate);
     }
 
     @GetMapping("/{id}")

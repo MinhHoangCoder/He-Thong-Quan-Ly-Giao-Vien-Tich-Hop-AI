@@ -38,7 +38,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Trung tâm trả lương theo tiết: mỗi buổi chấm công (PRESENT/LATE) = 1 tiết. Đơn giá
  * phụ thuộc CẤP của lớp buổi đó: Tiểu học (khối 1–5) {@value #TH_RATE_STR}đ/tiết, THCS
- * (khối 6–9) {@value #THCS_RATE_STR}đ/tiết. Cấp suy ra từ buổi → phân công → lớp → khối
+ * (khối 6–9) {@value #THCS_RATE_STR}đ/tiết. Trung tâm CHỈ dạy khối 1–9 — không có cấp 3.
+ * Cấp suy ra từ buổi → phân công → lớp → khối
  * ({@code Attendance.scheduleId → Schedule → Assignment → SchoolClass.gradeLevel}).
  *
  * <p>Vì mỗi GV chỉ dạy 1 cấp (quy ước dữ liệu) nên toàn bộ tiết của một GV cùng một đơn
@@ -48,6 +49,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class PayrollService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PayrollService.class);
 
     static final String TH_RATE_STR = "115000";
     static final String THCS_RATE_STR = "125000";
@@ -285,13 +288,38 @@ public class PayrollService {
             if (classId != null) {
                 SchoolClass c = classRepo.findById(classId).orElse(null);
                 Integer grade = c != null ? parseGrade(c.getGradeLevel(), c.getName()) : null;
-                if (grade != null) {
-                    rate = grade <= 5 ? TH_RATE : THCS_RATE;
+                BigDecimal byGrade = rateForGrade(grade);
+                if (byGrade != null) {
+                    rate = byGrade;
+                } else if (grade != null) {
+                    log.warn(
+                            "Lớp id={} có khối {} ngoài phạm vi 1-9 — tạm tính đơn giá TH. Dữ liệu này cần sửa lại.",
+                            classId,
+                            grade);
                 }
             }
         }
         cache.put(key, rate);
         return rate;
+    }
+
+    /**
+     * Đơn giá 1 tiết theo số khối, hoặc {@code null} nếu khối không thuộc 1–9.
+     *
+     * <p>Tách hẳn ra thành hàm riêng vì trước đây đây là một biểu thức ba ngôi
+     * {@code grade <= 5 ? TH_RATE : THCS_RATE} nằm lọt giữa thân hàm: đọc lướt thì thấy "1–5
+     * tiểu học, còn lại THCS" rất hợp lý, nhưng nó nuốt gọn cả khối 10–12 vào đơn giá THCS.
+     * Hồi hệ thống còn trường cấp 3 thì đó là tính SAI TIỀN LƯƠNG mà không ai biết, vì không
+     * có nhánh nào báo lên.
+     *
+     * <p>Nay trung tâm chỉ dạy khối 1–9 nên khối ngoài phạm vi là dữ liệu hỏng — trả
+     * {@code null} để bên gọi rơi về đơn giá thấp nhất KÈM cảnh báo, thay vì đoán bừa.
+     */
+    static BigDecimal rateForGrade(Integer grade) {
+        if (grade == null || grade < 1 || grade > 9) {
+            return null;
+        }
+        return grade <= 5 ? TH_RATE : THCS_RATE;
     }
 
     /** Lấy số khối từ "Khối 6" / tên lớp "6A"… (1–9). */

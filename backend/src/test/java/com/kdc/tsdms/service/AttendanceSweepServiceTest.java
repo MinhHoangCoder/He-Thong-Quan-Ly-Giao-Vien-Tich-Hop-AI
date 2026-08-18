@@ -53,13 +53,25 @@ class AttendanceSweepServiceTest {
     @InjectMocks
     private AttendanceSweepService sweep;
 
-    /** Buổi dạy kết thúc cách đây {@code minutesAgo} phút. */
+    /**
+     * Buổi dạy kết thúc cách đây {@code minutesAgo} phút, và LUÔN nằm gọn trong một ngày.
+     *
+     * <p>Buổi dạy thật không vắt qua nửa đêm. Nếu để nó vắt qua — chạy test lúc 00:12 thì
+     * "kết thúc 5 phút trước" cho ra buổi 23:32 hôm qua → 00:07 hôm nay — thì giờ vào (23:32)
+     * LỚN HƠN giờ tan (00:07) khi so kiểu {@code LocalTime}, rơi đúng vào nhánh dự phòng "vào
+     * muộn hơn cả giờ tan" của {@code closeCheckOut} và test đỏ. Kẹp giờ bắt đầu về đầu ngày
+     * giữ nguyên ý đồ "kết thúc N phút trước" mà không tạo ra buổi dạy không có thật.
+     */
     private Schedule endedMinutesAgo(int minutesAgo) {
         LocalDateTime end = LocalDateTime.now(VN).minusMinutes(minutesAgo);
+        LocalDateTime start = end.minusMinutes(35);
+        if (!start.toLocalDate().equals(end.toLocalDate())) {
+            start = end.toLocalDate().atStartOfDay();
+        }
         Schedule s = new Schedule();
         s.setId(100L);
         s.setTeacherId(7);
-        s.setStartTime(end.minusMinutes(35));
+        s.setStartTime(start);
         s.setEndTime(end);
         s.setStatus("APPROVED");
         return s;

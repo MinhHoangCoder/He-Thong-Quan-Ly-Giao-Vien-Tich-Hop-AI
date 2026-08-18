@@ -123,20 +123,6 @@ public class TeacherResponse {
         private String email;
     }
 
-    //   Response cho POST /teacher/{id}/account/reset-password (Admin đặt lại mật khẩu hộ).
-    //  tempPassword CHỈ xuất hiện DUY NHẤT trong response này — không được lưu ở đâu khác,
-    //  không log ra console/audit log. Admin đọc/gửi cho GV rồi màn hình đóng lại là mất.
-
-    @Getter
-    @Setter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class AdminResetPasswordResponse {
-        private String username;
-        private String tempPassword;
-    }
-
     // CERTIFICATE — 1 GV có NHIỀU chứng chỉ=========================================
 
     @Getter

@@ -153,8 +153,21 @@ public class PasswordResetService {
                 .findByTokenHash(jwtService.sha256(rawToken))
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Token không hợp lệ"));
 
+        // Tách hẳn "đã dùng" khỏi "hết hạn". Gộp một câu thì người dùng không phân biệt nổi
+        // "mình đổi xong rồi, cứ đăng nhập đi" với "link này bị link mới hơn thay thế, xin lại
+        // cái khác" — hai tình huống cần hai hành động khác nhau. Nói rõ không lộ gì thêm:
+        // người đang cầm token thì đã biết token đó có thật.
+        if (prt.getUsedAt() != null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Liên kết này đã được dùng để đổi mật khẩu. Hãy đăng nhập bằng mật khẩu MỚI; "
+                            + "nếu quên, xin lại liên kết ở mục Quên mật khẩu.");
+        }
         if (!prt.isUsable()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Token đã được dùng hoặc đã hết hạn");
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Liên kết đã hết hạn hoặc đã bị thay bằng liên kết mới hơn. "
+                            + "Hãy xin lại liên kết ở mục Quên mật khẩu và dùng email mới nhất.");
         }
         // Lọc deleted: tài khoản bị xóa mềm SAU khi phát link thì link cũng phải chết theo,
         // nếu không thì cái link 30 phút đó vẫn hồi sinh được mật khẩu của tài khoản đã gỡ.

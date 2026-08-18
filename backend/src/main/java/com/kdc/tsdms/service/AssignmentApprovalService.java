@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.context.ApplicationContext;
@@ -103,8 +105,8 @@ public class AssignmentApprovalService {
         if (a.isExpiredPending()) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Phiếu phân công đã quá hạn xác nhận (" + fmt(a.getConfirmDeadline())
-                            + "). Vui lòng liên hệ trung tâm để được gửi lại.");
+                    "Phân công này đã quá hạn xác nhận (" + fmt(a.getConfirmDeadline())
+                            + "). Vui lòng liên hệ trung tâm để được gửi lại phân công.");
         }
         approve(a, SRC_TEACHER, null);
         closeOpenInvites(a.getId(), "CONFIRMED");
@@ -120,7 +122,7 @@ public class AssignmentApprovalService {
     public Assignment rejectByTeacher(Integer assignmentId, String reason) {
         String trimmed = reason == null ? "" : reason.trim();
         if (trimmed.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do từ chối");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do từ chối.");
         }
         Assignment a = pendingOrThrow(assignmentId);
         Integer userId = SecurityUtils.currentUserId();
@@ -151,19 +153,30 @@ public class AssignmentApprovalService {
         if (AssignmentStatus.REJECTED.equals(a.getStatus())) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
-                    "Giáo viên đã từ chối phiếu này — hãy sửa rồi gửi lại (có thể đổi sang giáo viên khác)");
+                    "Giáo viên đã từ chối phân công này. Vui lòng chỉnh sửa và gửi lại, hoặc chuyển sang giáo viên khác.");
         }
         if (!AssignmentStatus.PENDING.equals(a.getStatus()) && !AssignmentStatus.EXPIRED.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Chỉ ép duyệt được phiếu đang chờ xác nhận hoặc đã hết hạn");
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Chỉ duyệt thay được phân công đang chờ xác nhận hoặc đã hết hạn.");
         }
         // Phiếu HẾT HẠN đã nhả chỗ, nên trong lúc nó nằm chờ khung giờ có thể đã bị phiếu khác
         // chiếm. Không soát lại ở đây thì ép duyệt sẽ tự tay tạo ra một ca trùng giờ thật.
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
             Period p = periodRepo
                     .findById(slot.getPeriodId())
-                    .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "Tiết của phân công không còn tồn tại"));
+                    .orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "Tiết của phân công không còn tồn tại."));
             conflictChecker.check(
                     a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), a.getId());
+            // Soát cả phía LỚP: trong lúc phiếu nằm chờ, lớp có thể đã được giao cho giáo
+            // viên khác ở đúng khung giờ này.
+            conflictChecker.checkClass(
+                    slot.getClassId(),
+                    a.getTeacherId(),
+                    slot.getDayOfWeek(),
+                    p,
+                    a.getStartDate(),
+                    a.getEndDate(),
+                    a.getId());
         }
         approve(a, SRC_ADMIN, note);
         closeOpenInvites(a.getId(), "CONFIRMED");
@@ -185,7 +198,7 @@ public class AssignmentApprovalService {
     public Assignment remind(Integer assignmentId) {
         Assignment a = liveOrThrow(assignmentId);
         if (!AssignmentStatus.PENDING.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Chỉ nhắc được phiếu đang chờ xác nhận");
+            throw new ApiException(HttpStatus.CONFLICT, "Chỉ nhắc được phân công đang chờ xác nhận.");
         }
         // Đóng lời mời cũ trước rồi phát lời mời mới: tránh chuông có 2 nút Xác nhận cho cùng
         // một phiếu, bấm cái nào cũng được nhưng nhìn rất khó hiểu.
@@ -246,12 +259,13 @@ public class AssignmentApprovalService {
     @Transactional
     public void sweepExpired() {
         List<Assignment> overdue = assignmentRepo.findByStatusAndConfirmDeadlineBeforeAndDeletedFalse(
-                AssignmentStatus.PENDING, LocalDateTime.now());
+                AssignmentStatus.PENDING, BusinessTime.now());
         for (Assignment a : overdue) {
             a.setStatus(AssignmentStatus.EXPIRED);
             a.setUpdatedAt(Instant.now());
             assignmentRepo.save(a);
             closeOpenInvites(a.getId(), "CANCELLED");
+            cancelPendingSchedules(a);
             if (a.getCreatedBy() != null) {
                 notificationService.publishSystem(
                         a.getCreatedBy(),
@@ -261,6 +275,29 @@ public class AssignmentApprovalService {
                                 + " hoặc xếp giáo viên khác.",
                         "Assignment",
                         a.getId().longValue());
+            }
+        }
+    }
+
+    /**
+     * Phiếu hết hạn thì các buổi đã sinh cũng phải tắt theo.
+     *
+     * <p>Trước đây {@code sweepExpired} chỉ đổi trạng thái PHIẾU, để nguyên {@code Schedule}.
+     * Buổi ở PENDING không có hiệu lực (không lên lịch dạy, không sinh chấm công) nên không gây
+     * sai số, nhưng nằm lại vĩnh viễn: đối chiếu dữ liệu thấy buổi "chưa duyệt" của một phiếu đã
+     * chết, không ai biết nên xử lý thế nào. {@code cancel()} vốn dọn đúng cách — làm cho hai
+     * đường giống nhau.
+     *
+     * <p>Chỉ đụng buổi CHƯA diễn ra: phiếu hết hạn nghĩa là giáo viên không bao giờ xác nhận,
+     * nên không có buổi nào đã dạy thật để phải giữ lại cho chấm công.
+     */
+    private void cancelPendingSchedules(Assignment a) {
+        LocalDateTime now = BusinessTime.now();
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            if (!"CANCELLED".equals(s.getStatus()) && s.getStartTime().isAfter(now)) {
+                s.setStatus("CANCELLED");
+                s.setUpdatedAt(Instant.now());
+                scheduleRepo.save(s);
             }
         }
     }
@@ -340,7 +377,7 @@ public class AssignmentApprovalService {
     private void approve(Assignment a, String source, String note) {
         Integer userId = SecurityUtils.currentUserId();
         a.setStatus(AssignmentStatus.ACTIVE);
-        a.setConfirmedAt(LocalDateTime.now());
+        a.setConfirmedAt(BusinessTime.now());
         a.setConfirmedByUserId(userId);
         a.setConfirmSource(source);
         a.setRejectionReason(null);
@@ -383,23 +420,24 @@ public class AssignmentApprovalService {
         Integer myTeacherId = teacherRepo
                 .findByAppUserIdAndDeletedFalse(SecurityUtils.currentUserId())
                 .map(Teacher::getId)
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản không có hồ sơ giáo viên"));
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.FORBIDDEN, "Tài khoản này chưa được liên kết với hồ sơ giáo viên."));
         if (!myTeacherId.equals(a.getTeacherId())) {
-            throw new ApiException(HttpStatus.FORBIDDEN, "Phân công này không phải của bạn");
+            throw new ApiException(HttpStatus.FORBIDDEN, "Phân công này không thuộc về thầy/cô.");
         }
         if (!AssignmentStatus.PENDING.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.CONFLICT, "Phiếu phân công này đã được xử lý");
+            throw new ApiException(HttpStatus.CONFLICT, "Phân công này đã được xử lý.");
         }
         return a;
     }
 
     private Assignment liveOrThrow(Integer assignmentId) {
         if (assignmentId == null) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu mã phân công");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Thiếu thông tin phân công.");
         }
         return assignmentRepo
                 .findByIdAndDeletedFalse(assignmentId)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công #" + assignmentId));
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công."));
     }
 
     private void notifyAdmin(Assignment a, String title, String content) {
@@ -414,10 +452,26 @@ public class AssignmentApprovalService {
         }
     }
 
-    /** Mô tả ngắn một phiếu để nhét vào nội dung thông báo. */
+    /**
+     * Mô tả ngắn một phiếu để nhét vào nội dung thông báo.
+     *
+     * <p>Kể ĐỦ các trường của phiếu (V27): giáo viên đọc thông báo trên chuông cần thấy ngay hôm
+     * đó phải tới mấy nơi. Quá hai trường thì rút gọn cho vừa một dòng thông báo.
+     */
     private String describe(Assignment a) {
-        String school =
-                schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("trường #" + a.getSchoolId());
+        LinkedHashSet<String> schools = new LinkedHashSet<>();
+        for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
+            Integer id = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+            if (id != null) {
+                schools.add(schoolRepo.findById(id).map(School::getName).orElse("trường #" + id));
+            }
+        }
+        if (schools.isEmpty()) {
+            schools.add(
+                    schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("trường #" + a.getSchoolId()));
+        }
+        List<String> names = List.copyOf(schools);
+        String school = names.size() <= 2 ? String.join(", ", names) : names.get(0) + " +" + (names.size() - 1);
         String subject =
                 subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("môn #" + a.getSubjectId());
         return "phân công #" + a.getId() + " · " + school + " · " + subject;

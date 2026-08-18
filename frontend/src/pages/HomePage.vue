@@ -83,11 +83,12 @@ const selected = ref(0)
 const current = computed(() => features[selected.value])
 
 // Khung xem trước trên hero: thời khóa biểu tuần của GV — dữ liệu ĐÚNG seed demo
-// (môn Scratch, lớp 10A1, Trường THPT Demo) để khớp với những gì demo thật sẽ chiếu.
+// (môn Scratch, lớp 9A1, Trường THCS Demo) để khớp với những gì demo thật sẽ chiếu.
+// Trung tâm chỉ dạy khối 1-9 nên đừng đổi lại thành lớp cấp 3.
 const previewRows = [
-  { day: 'Thứ 2', period: 'Tiết 1–2', label: 'Scratch · Lớp 10A1', status: 'Đã duyệt', ok: true },
-  { day: 'Thứ 4', period: 'Tiết 3–4', label: 'Scratch · Lớp 10A1', status: 'Đã duyệt', ok: true },
-  { day: 'Thứ 6', period: 'Tiết 7–8', label: 'Scratch · Lớp 10A1', status: 'Chờ duyệt', ok: false },
+  { day: 'Thứ 2', period: 'Tiết 1–2', label: 'Scratch · Lớp 9A1', status: 'Đã duyệt', ok: true },
+  { day: 'Thứ 4', period: 'Tiết 3–4', label: 'Scratch · Lớp 9A1', status: 'Đã duyệt', ok: true },
+  { day: 'Thứ 6', period: 'Tiết 7–8', label: 'Scratch · Lớp 9A1', status: 'Chờ duyệt', ok: false },
 ]
 
 // Dải số liệu: SỰ THẬT của hệ thống (đếm được trong code/DB), không phải con số quảng cáo.
@@ -166,7 +167,7 @@ const portals = [
           </div>
           <div class="win__body">
             <div class="win__meta">
-              <span class="win__school"><SvgIcon name="school" :size="14" /> Trường THPT Demo</span>
+              <span class="win__school"><SvgIcon name="school" :size="14" /> Trường THCS Demo</span>
               <span class="win__week">Tuần này</span>
             </div>
             <ul class="win__rows">

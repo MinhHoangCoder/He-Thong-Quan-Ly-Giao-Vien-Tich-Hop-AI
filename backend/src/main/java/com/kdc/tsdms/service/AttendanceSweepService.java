@@ -1,11 +1,11 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.entity.Attendance;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,9 +40,6 @@ public class AttendanceSweepService {
 
     private static final Logger log = LoggerFactory.getLogger(AttendanceSweepService.class);
 
-    /** Giờ buổi dạy là giờ TƯỜNG Việt Nam, còn JVM bị pin UTC — xem AttendanceService. */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
     /** Hết buổi bao nhiêu phút thì mới ghi Vắng (chừa cho giáo viên dạy xong mới nhớ bấm). */
     private static final int ABSENT_GRACE_MIN = 30;
 
@@ -71,7 +68,7 @@ public class AttendanceSweepService {
     @Scheduled(fixedDelay = SWEEP_INTERVAL_MS, initialDelay = 120_000)
     @Transactional
     public void sweep() {
-        LocalDateTime now = LocalDateTime.now(BUSINESS_ZONE);
+        LocalDateTime now = BusinessTime.now();
         List<Schedule> ended = scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
                 now.minusDays(LOOKBACK_DAYS).toLocalDate().atStartOfDay(), now, "APPROVED");
 

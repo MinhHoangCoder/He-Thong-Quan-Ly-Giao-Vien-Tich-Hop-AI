@@ -1,11 +1,19 @@
 <script setup>
 /**
- * Trang Chấm công: xem/ghi chấm công theo khoảng ngày. Có thể sinh hàng loạt từ lịch
- * dạy đã duyệt, rồi chỉnh từng dòng (giờ vào/ra, trạng thái). Số giờ dạy tự tính —
- * là đầu vào cho Bảng lương.
+ * Trang Chấm công của admin/kế toán — BA TAB:
+ *
+ *   Bảng chấm công · xem theo khoảng ngày, sửa từng dòng (bắt buộc ghi lý do)
+ *   Hôm nay        · mọi buổi dạy trong ngày + buổi nào đã chấm, buổi nào chưa
+ *   Yêu cầu bổ sung· giáo viên lỡ buổi xin ghi công, duyệt hoặc từ chối tại đây
+ *
+ * KHÔNG còn nút "Sinh từ lịch dạy": công chỉ sinh ra từ việc giáo viên tự chấm, sinh
+ * hàng loạt là tạo công cho buổi chưa diễn ra.
+ *
+ * Tab "Hôm nay" đọc từ LỊCH DẠY chứ không từ bảng chấm công — buổi chưa ai chấm thì
+ * chưa có dòng nào, nhìn bảng chấm công sẽ không thấy nó tồn tại.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
-import { attendanceApi } from '@/api/attendance'
+import { attendanceApi, attendanceAmendApi } from '@/api/attendance'
 import { assignmentApi } from '@/api/assignments'
 import Pagination from '@/components/ui/Pagination.vue'
 import DateField from '@/components/ui/DateField.vue'
@@ -122,23 +130,18 @@ async function openLogs(r) {
   }
 }
 const hhmm = (t) => (t ? String(t).slice(0, 5) : '—')
+/** Giờ từ chuỗi LocalDateTime "2026-08-09T07:00:00" — cắt tại chỗ, KHÔNG qua new Date()
+ *  vì backend gửi giờ tường Việt Nam không kèm múi giờ, parse ra là lệch. */
+const hhmmOf = (dt) => (dt ? String(dt).slice(11, 16) : '—')
 const fmtAt = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN') : '')
 
 onMounted(() => {
   loadTeachers()
   load()
+  // Đếm yêu cầu chờ duyệt ngay từ đầu: nhãn tab phải báo có việc kể cả khi admin
+  // không bao giờ bấm sang tab đó.
+  refreshPendingCount()
 })
-
-async function generate() {
-  info.value = ''
-  try {
-    const { data } = await attendanceApi.generate(filter.from, filter.to)
-    info.value = data.message ?? `Đã sinh ${data.created} dòng`
-    load()
-  } catch (e) {
-    info.value = e.response?.data?.message ?? 'Sinh chấm công thất bại'
-  }
-}
 
 function openEdit(r) {
   editModal.open = true
@@ -153,10 +156,17 @@ function openEdit(r) {
     checkOut: r.checkOut ? r.checkOut.slice(0, 5) : '',
     status: r.status,
     note: r.note ?? '',
+    // Cố tình KHÔNG nạp lại lý do cũ: mỗi lần sửa là một lần giải trình mới.
+    adjustReason: '',
   }
 }
 
 async function saveEdit() {
+  // Chặn ngay ở client cho phản hồi tức thì; backend vẫn tự kiểm lại (@NotBlank).
+  if (!editModal.form.adjustReason.trim()) {
+    editModal.error = 'Vui lòng nhập lý do điều chỉnh'
+    return
+  }
   editModal.saving = true
   editModal.error = ''
   try {
@@ -168,6 +178,7 @@ async function saveEdit() {
       checkOut: editModal.form.checkOut || null,
       status: editModal.form.status,
       note: editModal.form.note || null,
+      adjustReason: editModal.form.adjustReason.trim(),
     })
     editModal.open = false
     load()
@@ -176,6 +187,131 @@ async function saveEdit() {
   } finally {
     editModal.saving = false
   }
+}
+
+/* ══════════ Tab "Hôm nay" ══════════ */
+
+const TAB_STATES = {
+  NOT_YET: { label: 'Chưa tới giờ', cls: 'badge-gray' },
+  OPEN: { label: 'Đang mở', cls: 'badge-amber' },
+  CHECKED_IN: { label: 'Đang dạy', cls: 'badge-amber' },
+  DONE: { label: 'Đã chấm', cls: 'badge-green' },
+  MISSED: { label: 'Chưa ai chấm', cls: 'badge-red' },
+  ABSENT: { label: 'Vắng / nghỉ', cls: 'badge-red' },
+}
+const stateMeta = (s) => TAB_STATES[s] ?? { label: s, cls: 'badge-gray' }
+
+const todayDate = ref(isoLocal(today))
+const todayData = ref(null)
+const todayLoading = ref(false)
+
+async function loadToday() {
+  todayLoading.value = true
+  try {
+    const { data } = await attendanceApi.today(todayDate.value)
+    todayData.value = data
+  } catch {
+    todayData.value = null
+  } finally {
+    todayLoading.value = false
+  }
+}
+
+/* ══════════ Tab "Yêu cầu bổ sung" ══════════ */
+
+const AMEND_STATUSES = {
+  PENDING: { label: 'Chờ duyệt', cls: 'badge-amber' },
+  APPROVED: { label: 'Đã duyệt', cls: 'badge-green' },
+  REJECTED: { label: 'Từ chối', cls: 'badge-red' },
+}
+const amendMeta = (s) => AMEND_STATUSES[s] ?? { label: s, cls: 'badge-gray' }
+
+const amendFilter = ref('PENDING')
+const amendRows = ref([])
+const amendLoading = ref(false)
+const amendBusyId = ref(null)
+const amendInfo = ref('')
+
+/** Số yêu cầu đang chờ — hiện lên nhãn tab để admin biết có việc mà không phải mở ra xem. */
+const pendingCount = ref(0)
+
+async function loadAmend() {
+  amendLoading.value = true
+  amendInfo.value = ''
+  try {
+    const { data } = await attendanceAmendApi.list(amendFilter.value)
+    amendRows.value = data
+  } catch (e) {
+    amendRows.value = []
+    amendInfo.value = e.response?.data?.message ?? 'Không tải được danh sách yêu cầu'
+  } finally {
+    amendLoading.value = false
+  }
+  refreshPendingCount()
+}
+
+async function refreshPendingCount() {
+  try {
+    const { data } = await attendanceAmendApi.list('PENDING')
+    pendingCount.value = data.length
+  } catch {
+    pendingCount.value = 0
+  }
+}
+
+async function approveAmend(r) {
+  if (amendBusyId.value) return
+  amendBusyId.value = r.id
+  amendInfo.value = ''
+  try {
+    await attendanceAmendApi.approve(r.id, {})
+    amendInfo.value = `Đã duyệt yêu cầu của ${r.teacherName}`
+    await loadAmend()
+    load()
+  } catch (e) {
+    amendInfo.value = e.response?.data?.message ?? 'Duyệt thất bại'
+  } finally {
+    amendBusyId.value = null
+  }
+}
+
+const rejectModal = reactive({ open: false, saving: false, error: '', row: null, note: '' })
+
+function openReject(r) {
+  rejectModal.open = true
+  rejectModal.saving = false
+  rejectModal.error = ''
+  rejectModal.row = r
+  rejectModal.note = ''
+}
+
+async function confirmReject() {
+  if (!rejectModal.note.trim()) {
+    rejectModal.error = 'Vui lòng nhập lý do từ chối'
+    return
+  }
+  rejectModal.saving = true
+  rejectModal.error = ''
+  try {
+    await attendanceAmendApi.reject(rejectModal.row.id, { reviewNote: rejectModal.note.trim() })
+    rejectModal.open = false
+    amendInfo.value = `Đã từ chối yêu cầu của ${rejectModal.row.teacherName}`
+    loadAmend()
+  } catch (e) {
+    rejectModal.error = e.response?.data?.message ?? 'Từ chối thất bại'
+  } finally {
+    rejectModal.saving = false
+  }
+}
+
+/* ══════════ Điều hướng tab ══════════ */
+
+const tab = ref('table')
+
+function switchTab(name) {
+  tab.value = name
+  if (name === 'today' && !todayData.value) loadToday()
+  if (name === 'amend' && !amendRows.value.length) loadAmend()
 }
 
 const totalHours = computed(() =>
@@ -192,110 +328,271 @@ const presentCount = computed(
       <div>
         <h2 class="title">Chấm công</h2>
       </div>
-      <button class="btn btn-primary" @click="generate">⟳ Sinh từ lịch dạy</button>
     </div>
 
-    <!-- Thẻ tổng quan -->
-    <div class="stats">
-      <div class="stat card">
-        <span class="stat-label">Tổng dòng</span>
-        <span class="stat-value">{{ rows.length }}</span>
-      </div>
-      <div class="stat card">
-        <span class="stat-label">Buổi có công</span>
-        <span class="stat-value">{{ presentCount }}</span>
-      </div>
-      <div class="stat card">
-        <span class="stat-label">Tổng giờ dạy</span>
-        <span class="stat-value">{{ totalHours }}h</span>
-      </div>
-    </div>
-
-    <!-- Bộ lọc -->
-    <div class="toolbar">
-      <label>Từ</label>
-      <DateField v-model="filter.from" class="df--inline" />
-      <label>Đến</label>
-      <DateField v-model="filter.to" class="df--inline" />
-      <label>Giáo viên</label>
-      <select v-model="filter.teacherId">
-        <option value="">Tất cả</option>
-        <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.name }}</option>
-      </select>
-      <button class="btn btn-outline btn-sm" @click="load">Lọc</button>
-      <span v-if="info" class="info-text">{{ info }}</span>
-    </div>
-
-    <!-- Cần xử lý: gom sẵn dòng bất thường thay vì bắt kế toán dò cả bảng bằng mắt -->
-    <section v-if="attention.length" class="attn card">
-      <button class="attn__head" @click="attnOpen = !attnOpen">
-        <strong>Cần xử lý</strong>
-        <span class="attn__count">{{ attention.length }}</span>
-        <span class="attn__toggle">{{ attnOpen ? 'Thu gọn' : 'Xem' }}</span>
+    <nav class="tabs">
+      <button class="tab" :class="{ 'is-on': tab === 'table' }" @click="switchTab('table')">
+        Bảng chấm công
       </button>
-      <ul v-if="attnOpen" class="attn__list">
-        <li v-for="r in attention" :key="r.id">
-          <span class="mono">{{ r.workDate }}</span>
-          <span class="font-medium">{{ r.teacherName }}</span>
-          <span class="attn__why">{{ attentionReason(r) }}</span>
-          <button class="attn__link" @click="openLogs(r)">Nhật ký</button>
-        </li>
-      </ul>
-    </section>
+      <button class="tab" :class="{ 'is-on': tab === 'today' }" @click="switchTab('today')">
+        Hôm nay
+      </button>
+      <button class="tab" :class="{ 'is-on': tab === 'amend' }" @click="switchTab('amend')">
+        Yêu cầu bổ sung
+        <span v-if="pendingCount" class="tab__badge">{{ pendingCount }}</span>
+      </button>
+    </nav>
 
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Ngày</th>
-            <th>Giáo viên</th>
-            <th>Vào</th>
-            <th>Ra</th>
-            <th>Giờ</th>
-            <th>Trạng thái</th>
-            <th>Nguồn</th>
-            <th>Ghi chú</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="9" class="text-center text-muted">Đang tải…</td>
-          </tr>
-          <tr v-else-if="!rows.length">
-            <td colspan="9" class="text-center text-muted">
-              Chưa có dữ liệu — bấm “Sinh từ lịch dạy” để tạo từ các buổi đã duyệt.
-            </td>
-          </tr>
-          <tr v-for="r in pagedRows" :key="r.id">
-            <td class="mono">{{ r.workDate }}</td>
-            <td class="font-medium">{{ r.teacherName }}</td>
-            <td class="mono">{{ r.checkIn ? r.checkIn.slice(0, 5) : '—' }}</td>
-            <td class="mono">{{ r.checkOut ? r.checkOut.slice(0, 5) : '—' }}</td>
-            <td class="mono">{{ Number(r.hours).toFixed(2) }}</td>
-            <td>
-              <span class="badge" :class="statusMeta(r.status).cls">{{
-                statusMeta(r.status).label
-              }}</span>
-            </td>
-            <td>
-              <span
-                class="badge"
-                :class="r.checkInMethod === 'SELF' ? 'badge-green' : 'badge-gray'"
-              >
-                {{ methodLabel(r.checkInMethod) }}
-              </span>
-            </td>
-            <td class="text-muted small">{{ r.note ?? '—' }}</td>
-            <td class="actions">
-              <button class="btn btn-sm btn-outline" @click="openEdit(r)">Sửa</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <template v-if="tab === 'table'">
+      <!-- Thẻ tổng quan -->
+      <div class="stats">
+        <div class="stat card">
+          <span class="stat-label">Tổng dòng</span>
+          <span class="stat-value">{{ rows.length }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat-label">Buổi có công</span>
+          <span class="stat-value">{{ presentCount }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat-label">Tổng giờ dạy</span>
+          <span class="stat-value">{{ totalHours }}h</span>
+        </div>
+      </div>
 
-    <Pagination v-model="page" :total-pages="totalPages" />
+      <!-- Bộ lọc -->
+      <div class="toolbar">
+        <label>Từ</label>
+        <DateField v-model="filter.from" class="df--inline" />
+        <label>Đến</label>
+        <DateField v-model="filter.to" class="df--inline" />
+        <label>Giáo viên</label>
+        <select v-model="filter.teacherId">
+          <option value="">Tất cả</option>
+          <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.name }}</option>
+        </select>
+        <button class="btn btn-outline btn-sm" @click="load">Lọc</button>
+        <span v-if="info" class="info-text">{{ info }}</span>
+      </div>
+
+      <!-- Cần xử lý: gom sẵn dòng bất thường thay vì bắt kế toán dò cả bảng bằng mắt -->
+      <section v-if="attention.length" class="attn card">
+        <button class="attn__head" @click="attnOpen = !attnOpen">
+          <strong>Cần xử lý</strong>
+          <span class="attn__count">{{ attention.length }}</span>
+          <span class="attn__toggle">{{ attnOpen ? 'Thu gọn' : 'Xem' }}</span>
+        </button>
+        <ul v-if="attnOpen" class="attn__list">
+          <li v-for="r in attention" :key="r.id">
+            <span class="mono">{{ r.workDate }}</span>
+            <span class="font-medium">{{ r.teacherName }}</span>
+            <span class="attn__why">{{ attentionReason(r) }}</span>
+            <button class="attn__link" @click="openLogs(r)">Nhật ký</button>
+          </li>
+        </ul>
+      </section>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Giáo viên</th>
+              <th>Vào</th>
+              <th>Ra</th>
+              <th>Giờ</th>
+              <th>Trạng thái</th>
+              <th>Nguồn</th>
+              <th>Ghi chú</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading">
+              <td colspan="9" class="text-center text-muted">Đang tải…</td>
+            </tr>
+            <tr v-else-if="!rows.length">
+              <td colspan="9" class="text-center text-muted">
+                Chưa có dòng nào trong khoảng ngày này — dòng chấm công chỉ xuất hiện khi giáo viên
+                tự check-in.
+              </td>
+            </tr>
+            <tr v-for="r in pagedRows" :key="r.id">
+              <td class="mono">{{ r.workDate }}</td>
+              <td class="font-medium">{{ r.teacherName }}</td>
+              <td class="mono">{{ r.checkIn ? r.checkIn.slice(0, 5) : '—' }}</td>
+              <td class="mono">{{ r.checkOut ? r.checkOut.slice(0, 5) : '—' }}</td>
+              <td class="mono">{{ Number(r.hours).toFixed(2) }}</td>
+              <td>
+                <span class="badge" :class="statusMeta(r.status).cls">{{
+                  statusMeta(r.status).label
+                }}</span>
+              </td>
+              <td>
+                <span
+                  class="badge"
+                  :class="r.checkInMethod === 'SELF' ? 'badge-green' : 'badge-gray'"
+                >
+                  {{ methodLabel(r.checkInMethod) }}
+                </span>
+              </td>
+              <td class="text-muted small">{{ r.note ?? '—' }}</td>
+              <td class="actions">
+                <button class="btn btn-sm btn-outline" @click="openEdit(r)">Sửa</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination v-model="page" :total-pages="totalPages" />
+    </template>
+
+    <!-- Tab Hôm nay: đi từ LỊCH DẠY nên thấy được cả buổi chưa ai chấm -->
+    <template v-else-if="tab === 'today'">
+      <div class="toolbar">
+        <label>Ngày</label>
+        <DateField v-model="todayDate" class="df--inline" />
+        <button class="btn btn-outline btn-sm" @click="loadToday">Xem</button>
+      </div>
+
+      <div v-if="todayData" class="stats">
+        <div class="stat card">
+          <span class="stat-label">Buổi trong ngày</span>
+          <span class="stat-value">{{ todayData.summary.total }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat-label">Đã chấm</span>
+          <span class="stat-value">{{ todayData.summary.marked }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat-label">Đi muộn</span>
+          <span class="stat-value">{{ todayData.summary.late }}</span>
+        </div>
+        <div class="stat card">
+          <span class="stat-label">Chưa ai chấm</span>
+          <span class="stat-value">{{ todayData.summary.missing }}</span>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Giờ</th>
+              <th>Giáo viên</th>
+              <th>Trường · Lớp · Môn</th>
+              <th>Vào</th>
+              <th>Ra</th>
+              <th>Trạng thái</th>
+              <th>Nguồn</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="todayLoading">
+              <td colspan="7" class="text-center text-muted">Đang tải…</td>
+            </tr>
+            <tr v-else-if="!todayData || !todayData.sessions.length">
+              <td colspan="7" class="text-center text-muted">Ngày này không có buổi dạy nào.</td>
+            </tr>
+            <tr v-for="s in todayData?.sessions ?? []" :key="s.scheduleId">
+              <td class="mono">{{ hhmmOf(s.startTime) }}–{{ hhmmOf(s.endTime) }}</td>
+              <td class="font-medium">{{ s.teacherName }}</td>
+              <td class="text-muted small">
+                {{ s.schoolName ?? '—'
+                }}<template v-if="s.className"> · Lớp {{ s.className }}</template
+                ><template v-if="s.subjectName"> · {{ s.subjectName }}</template>
+              </td>
+              <td class="mono">{{ hhmm(s.checkIn) }}</td>
+              <td class="mono">{{ hhmm(s.checkOut) }}</td>
+              <td>
+                <span class="badge" :class="stateMeta(s.state).cls">{{
+                  stateMeta(s.state).label
+                }}</span>
+              </td>
+              <td class="text-muted small">{{ methodLabel(s.checkInMethod) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <!-- Tab Yêu cầu bổ sung -->
+    <template v-else>
+      <div class="toolbar">
+        <label>Trạng thái</label>
+        <select v-model="amendFilter" @change="loadAmend">
+          <option value="PENDING">Chờ duyệt</option>
+          <option value="APPROVED">Đã duyệt</option>
+          <option value="REJECTED">Từ chối</option>
+          <option value="">Tất cả</option>
+        </select>
+        <button class="btn btn-outline btn-sm" @click="loadAmend">Làm mới</button>
+        <span v-if="amendInfo" class="info-text">{{ amendInfo }}</span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Ngày dạy</th>
+              <th>Giáo viên</th>
+              <th>Buổi</th>
+              <th>Giờ đề xuất</th>
+              <th>Lý do</th>
+              <th>Trạng thái</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="amendLoading">
+              <td colspan="7" class="text-center text-muted">Đang tải…</td>
+            </tr>
+            <tr v-else-if="!amendRows.length">
+              <td colspan="7" class="text-center text-muted">Không có yêu cầu nào.</td>
+            </tr>
+            <tr v-for="r in amendRows" :key="r.id">
+              <td class="mono">{{ r.workDate ?? '—' }}</td>
+              <td class="font-medium">{{ r.teacherName }}</td>
+              <td class="text-muted small">
+                {{ hhmmOf(r.sessionStart) }}–{{ hhmmOf(r.sessionEnd) }}
+                <template v-if="r.schoolName"> · {{ r.schoolName }}</template>
+                <template v-if="r.className"> · Lớp {{ r.className }}</template>
+              </td>
+              <td class="mono">{{ hhmm(r.proposedCheckIn) }}–{{ hhmm(r.proposedCheckOut) }}</td>
+              <td class="text-muted small">
+                {{ r.reason }}
+                <div v-if="r.reviewNote" class="amend__note">Ghi chú: {{ r.reviewNote }}</div>
+              </td>
+              <td>
+                <span class="badge" :class="amendMeta(r.status).cls">{{
+                  amendMeta(r.status).label
+                }}</span>
+              </td>
+              <td class="actions">
+                <template v-if="r.status === 'PENDING'">
+                  <button
+                    class="btn btn-sm btn-primary"
+                    :disabled="amendBusyId === r.id"
+                    @click="approveAmend(r)"
+                  >
+                    Duyệt
+                  </button>
+                  <button
+                    class="btn btn-sm btn-outline"
+                    :disabled="amendBusyId === r.id"
+                    @click="openReject(r)"
+                  >
+                    Từ chối
+                  </button>
+                </template>
+                <span v-else class="text-muted small">{{ r.reviewedByName ?? '—' }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
 
     <!-- Modal sửa -->
     <div v-if="editModal.open" class="modal-overlay" @click.self="editModal.open = false">
@@ -321,11 +618,45 @@ const presentCount = computed(
           <label>Ghi chú</label>
           <textarea v-model="editModal.form.note" rows="2" />
         </div>
+        <div class="form-group">
+          <label>Lý do điều chỉnh <span class="req">*</span></label>
+          <textarea
+            v-model="editModal.form.adjustReason"
+            rows="2"
+            placeholder="Vì sao phải sửa dòng này? Nội dung được lưu vào nhật ký."
+          />
+        </div>
         <p v-if="editModal.error" class="error-msg">{{ editModal.error }}</p>
         <div class="modal-actions">
           <button class="btn btn-outline" @click="editModal.open = false">Hủy</button>
           <button class="btn btn-primary" :disabled="editModal.saving" @click="saveEdit">
             {{ editModal.saving ? 'Đang lưu…' : 'Lưu' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Từ chối yêu cầu bổ sung: bắt buộc nói vì sao, giáo viên còn biết đường gửi lại -->
+    <div v-if="rejectModal.open" class="modal-overlay" @click.self="rejectModal.open = false">
+      <div class="modal-box">
+        <h3>Từ chối yêu cầu — {{ rejectModal.row?.teacherName }}</h3>
+        <p class="text-muted small">
+          Buổi ngày {{ rejectModal.row?.workDate }}, giáo viên khai
+          {{ hhmm(rejectModal.row?.proposedCheckIn) }}–{{ hhmm(rejectModal.row?.proposedCheckOut) }}
+        </p>
+        <div class="form-group">
+          <label>Lý do từ chối <span class="req">*</span></label>
+          <textarea
+            v-model="rejectModal.note"
+            rows="3"
+            placeholder="Giáo viên sẽ nhận được nội dung này trong thông báo."
+          />
+        </div>
+        <p v-if="rejectModal.error" class="error-msg">{{ rejectModal.error }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="rejectModal.open = false">Hủy</button>
+          <button class="btn btn-primary" :disabled="rejectModal.saving" @click="confirmReject">
+            {{ rejectModal.saving ? 'Đang gửi…' : 'Từ chối' }}
           </button>
         </div>
       </div>
@@ -365,6 +696,47 @@ const presentCount = computed(
 </template>
 
 <style scoped>
+/* ── Tab ── */
+.tabs {
+  display: flex;
+  gap: 0.35rem;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 1rem;
+}
+.tab {
+  position: relative;
+  padding: 0.55rem 0.95rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--c-text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab.is-on {
+  color: var(--c-primary);
+  border-bottom-color: var(--c-primary);
+}
+.tab__badge {
+  display: inline-block;
+  min-width: 1.15rem;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  background: var(--c-danger);
+  color: #fff;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.req {
+  color: var(--c-danger);
+}
+.amend__note {
+  margin-top: 0.2rem;
+  font-style: italic;
+}
+
 /* ── Cần xử lý ── */
 .attn {
   margin-bottom: 1rem;

@@ -24,6 +24,11 @@ const props = defineProps({
   disabled: { type: Boolean, default: false },
   /** Tô viền đỏ khi trang báo lỗi trường này. */
   invalid: { type: Boolean, default: false },
+  /**
+   * Ngày sớm nhất được chọn, dạng ISO "yyyy-MM-dd" ('' = không giới hạn).
+   * Chỉ khóa trong LỊCH; gõ tay vẫn nhận để trang gọi tự quyết cách báo lỗi.
+   */
+  min: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -88,10 +93,13 @@ const cells = computed(() => {
   const out = []
   for (let i = 0; i < 42; i++) {
     const d = new Date(viewYear.value, viewMonth.value, 1 - offset + i)
+    const iso = toIso(d)
     out.push({
-      iso: toIso(d),
+      iso,
       day: d.getDate(),
       outside: d.getMonth() !== viewMonth.value,
+      // So chuỗi ISO trực tiếp được vì cùng định dạng yyyy-MM-dd.
+      blocked: !!props.min && iso < props.min,
     })
   }
   return out
@@ -253,7 +261,9 @@ function clear() {
               'is-outside': c.outside,
               'is-today': c.iso === TODAY_ISO,
               'is-active': c.iso === modelValue,
+              'is-blocked': c.blocked,
             }"
+            :disabled="c.blocked"
             @click="pick(c.iso)"
           >
             {{ c.day }}
@@ -406,6 +416,14 @@ function clear() {
   background: var(--c-primary);
   color: #fff;
   font-weight: 700;
+}
+.dfpop__day.is-blocked {
+  opacity: 0.3;
+  cursor: not-allowed;
+  text-decoration: line-through;
+}
+.dfpop__day.is-blocked:hover {
+  background: none;
 }
 .dfpop__foot {
   display: flex;

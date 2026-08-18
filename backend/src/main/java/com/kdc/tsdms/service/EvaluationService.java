@@ -1,9 +1,11 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
@@ -11,6 +13,7 @@ import com.kdc.tsdms.entity.TeacherEvaluation;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherEvaluationRepository;
@@ -19,7 +22,6 @@ import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.persistence.criteria.Predicate;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -55,18 +57,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class EvaluationService {
 
-    /**
-     * Giờ nghiệp vụ Việt Nam — JVM bị ghim UTC (TsdmsApplication) nên mọi chỗ cần
-     * "hôm nay" để suy ra kỳ/năm học phải đi qua đây, không dùng LocalDate.now() trần.
-     */
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-
     private final TeacherEvaluationRepository evaluationRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
     private final BranchRepository branchRepo;
     private final AppUserRepository userRepo;
     private final AssignmentRepository assignmentRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final DisplayNameResolver displayNameResolver;
     private final NotificationService notificationService;
     private final TransactionTemplate notifyTx;
@@ -78,6 +75,7 @@ public class EvaluationService {
             BranchRepository branchRepo,
             AppUserRepository userRepo,
             AssignmentRepository assignmentRepo,
+            AssignmentSlotRepository slotRepo,
             DisplayNameResolver displayNameResolver,
             NotificationService notificationService,
             PlatformTransactionManager txManager) {
@@ -87,6 +85,7 @@ public class EvaluationService {
         this.branchRepo = branchRepo;
         this.userRepo = userRepo;
         this.assignmentRepo = assignmentRepo;
+        this.slotRepo = slotRepo;
         this.displayNameResolver = displayNameResolver;
         this.notificationService = notificationService;
         // afterCommit chạy khi transaction gốc đã đóng — ghi Notification lúc đó phải mở
@@ -103,14 +102,14 @@ public class EvaluationService {
      */
     @Transactional(readOnly = true)
     public List<String> periodPresets() {
-        String ay = academicYearLabel(LocalDate.now(BUSINESS_ZONE));
+        String ay = academicYearLabel(BusinessTime.today());
         return List.of("HK1 " + ay, "HK2 " + ay, "Tổng kết năm " + ay, "Tổng kết hợp đồng", "Đánh giá thử việc");
     }
 
     /** Preset + kỳ gợi ý theo tháng (HK1: 8–12, HK2: 1–5, 6–7: tổng kết năm). */
     @Transactional(readOnly = true)
     public EvaluationResponse.PeriodMeta periodMeta() {
-        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(LocalDate.now(BUSINESS_ZONE)));
+        return new EvaluationResponse.PeriodMeta(periodPresets(), suggestedPeriod(BusinessTime.today()));
     }
 
     /**
@@ -770,7 +769,7 @@ public class EvaluationService {
 
     private String resolvePeriod(String periodNote) {
         String t = trimToNull(periodNote);
-        return t != null ? t : suggestedPeriod(LocalDate.now(BUSINESS_ZONE));
+        return t != null ? t : suggestedPeriod(BusinessTime.today());
     }
 
     /**
@@ -843,21 +842,30 @@ public class EvaluationService {
         Map<Integer, List<TeacherEvaluation>> byTeacher =
                 evals.stream().collect(Collectors.groupingBy(TeacherEvaluation::getTeacherId));
 
-        // Trường đang/đã dạy (Assignment)
+        // Trường đang/đã dạy (Assignment). Từ V27 một phiếu trải được NHIỀU trường, nên phải gom
+        // theo từng TIẾT: đọc mỗi Assignment.SchoolId sẽ bỏ sót những trường phụ mà giáo viên
+        // vẫn đang dạy, và màn đánh giá dùng danh sách này để biết ai được chấm ở trường nào.
         List<Assignment> assigns = assignmentRepo.findByTeacherIdInAndDeletedFalse(ids);
-        Set<Integer> schoolIds = assigns.stream()
-                .map(Assignment::getSchoolId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        Map<Integer, LinkedHashSet<Integer>> teacherSchools = new HashMap<>();
+        for (Assignment a : assigns) {
+            LinkedHashSet<Integer> mine = teacherSchools.computeIfAbsent(a.getTeacherId(), k -> new LinkedHashSet<>());
+            List<AssignmentSlot> slots = slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
+            boolean fromSlots = false;
+            for (AssignmentSlot slot : slots) {
+                if (slot.getSchoolId() != null) {
+                    mine.add(slot.getSchoolId());
+                    fromSlots = true;
+                }
+            }
+            if (!fromSlots && a.getSchoolId() != null) {
+                mine.add(a.getSchoolId()); // dữ liệu cũ chưa gắn trường ở tiết
+            }
+        }
+        Set<Integer> schoolIds =
+                teacherSchools.values().stream().flatMap(Set::stream).collect(Collectors.toSet());
         Map<Integer, String> schoolNames = new HashMap<>();
         if (!schoolIds.isEmpty()) {
             schoolRepo.findAllById(schoolIds).forEach(s -> schoolNames.put(s.getId(), s.getName()));
-        }
-        Map<Integer, LinkedHashSet<Integer>> teacherSchools = new HashMap<>();
-        for (Assignment a : assigns) {
-            teacherSchools
-                    .computeIfAbsent(a.getTeacherId(), k -> new LinkedHashSet<>())
-                    .add(a.getSchoolId());
         }
 
         Set<Integer> branchIds = teachers.stream()
@@ -966,17 +974,20 @@ public class EvaluationService {
         return "Tổng kết năm " + ay;
     }
 
+    /**
+     * Người của trung tâm CÓ phần việc trong module đánh giá — hai điều kiện phải cùng đúng:
+     * là nhân sự trung tâm (không phải cổng GV/trường) VÀ được cấp quyền đánh giá.
+     *
+     * <p>Vế thứ hai giữ lại để phòng thủ nhiều lớp: nếu sau này có endpoint quên gắn
+     * {@code @PreAuthorize} thì kế toán/tuyển sinh vẫn không đọc được nhận xét về giáo viên.
+     */
     private boolean isStaffOrAdmin() {
-        if (SecurityUtils.hasRole("ADMIN")
-                || SecurityUtils.hasRole("EMPLOYEE")
-                || SecurityUtils.hasRole("ACADEMIC")
-                || SecurityUtils.hasRole("HR")) {
-            return true;
+        if (!SecurityUtils.isCentreStaff()) {
+            return false;
         }
-        // Có quyền manage nhưng không thuộc portal SCHOOL/TEACHER thuần.
-        return SecurityUtils.hasAuthority("EVALUATION_MANAGE")
-                && !SecurityUtils.hasRole("SCHOOL")
-                && !SecurityUtils.hasRole("TEACHER");
+        return SecurityUtils.hasRole("ADMIN")
+                || SecurityUtils.hasAuthority("EVALUATION_VIEW")
+                || SecurityUtils.hasAuthority("EVALUATION_MANAGE");
     }
 
     /** pure TEACHER (không kiêm staff/admin). */

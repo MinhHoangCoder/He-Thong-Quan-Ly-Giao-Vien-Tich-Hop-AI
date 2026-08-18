@@ -2,7 +2,7 @@
 // Trang đặt lại mật khẩu. Người dùng tới đây từ link trong email:
 //   http://localhost:5173/reset-password?token=XXXX
 // Lấy token trên URL -> gửi kèm mật khẩu mới cho backend.
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRoute, RouterLink } from 'vue-router'
 import { authApi } from '@/api/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
@@ -18,10 +18,10 @@ const loading = ref(false)
 const error = ref('')
 const done = ref(false)
 
-const canSubmit = computed(
-  () => isStrongPassword(newPassword.value) && newPassword.value === confirm.value,
-)
-
+// KHÔNG khóa nút theo độ mạnh mật khẩu. Trước đây nút bị disable khi mật khẩu chưa đạt
+// chuẩn, nên bấm vào là KHÔNG có gì xảy ra: không request, và cũng không hiện nổi thông
+// báo — vì chính hai dòng kiểm tra dưới đây chỉ chạy khi nút bấm được. Người dùng nhìn
+// thấy một cái nút xám câm lặng và tưởng chức năng hỏng.
 async function onSubmit() {
   error.value = ''
   if (!isStrongPassword(newPassword.value)) {
@@ -99,7 +99,7 @@ async function onSubmit() {
 
       <p v-if="error" class="msg msg--error">{{ error }}</p>
 
-      <button class="btn" type="submit" :disabled="loading || !canSubmit">
+      <button class="btn" type="submit" :disabled="loading">
         {{ loading ? 'Đang lưu…' : 'Đặt lại mật khẩu' }}
       </button>
       <RouterLink class="link" :to="{ name: 'login' }">← Về đăng nhập</RouterLink>

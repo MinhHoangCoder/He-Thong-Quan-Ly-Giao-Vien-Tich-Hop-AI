@@ -71,9 +71,16 @@ export const assignmentApi = {
     })
   },
 
-  /** Các cặp ô lịch đang trùng giờ của cùng một GV (gồm cả trùng chéo trường). */
-  conflicts() {
-    return http.get('/assignments/conflicts')
+  /**
+   * Các ô lịch ĐÃ BỊ CHIẾM của một trường — lưới xếp tiết dùng để tô xám sẵn ô "lớp này đã
+   * có giáo viên khác dạy". Chiều ngược của teacherBusy: cái kia hỏi giáo viên có rảnh không,
+   * cái này hỏi lớp có trống không. Khớp luật 409 checkClass ở backend.
+   * @param {Object} params - { schoolId, startDate, endDate }
+   */
+  classBusy({ schoolId, startDate, endDate }) {
+    return http.get('/assignments/class-busy', {
+      params: { schoolId, startDate: startDate || undefined, endDate: endDate || undefined },
+    })
   },
 
   create(body) {

@@ -17,6 +17,13 @@ import jakarta.validation.constraints.Size;
  * SubjectService#generateNextCode. Khi SỬA, code vẫn bắt buộc và được service
  * tự kiểm tra (không dùng @NotBlank ở đây vì cùng record dùng chung cho cả
  * 2 luồng tạo/sửa).
+ *
+ * <p>
+ * FIX (2026-08-13): description giờ giới hạn 200 TỪ (kiểm ở
+ * SubjectService#validateDescriptionWordLimit), đồng bộ với Lesson và
+ * SubjectCategory — trước đó giới hạn 200 KÝ TỰ, khác biệt không có lý do rõ
+ * ràng. @Size ở đây chỉ còn là chặn an toàn payload quá khổ (2000 ký tự),
+ * không phải giới hạn UX thật.
  */
 public record SubjectRequest(
         @Pattern(regexp = "^$|^[A-Z0-9_]{2,20}$", message = "Mã môn chỉ gồm chữ hoa, số, dấu gạch dưới (2-20 ký tự)")
@@ -26,7 +33,7 @@ public record SubjectRequest(
 
         @NotNull(message = "Vui lòng chọn nhóm môn") Integer categoryId,
 
-        @Size(max = 200, message = "Mô tả tối đa 200 ký tự") String description,
+        @Size(max = 2000, message = "Mô tả tối đa 2000 ký tự") String description,
 
         @Pattern(regexp = "^(ACTIVE|DISABLED)$", message = "Status phải là ACTIVE hoặc DISABLED")
         String status) {}

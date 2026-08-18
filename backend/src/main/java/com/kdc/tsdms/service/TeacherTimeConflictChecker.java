@@ -12,6 +12,7 @@ import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
+import com.kdc.tsdms.repository.TeacherRepository;
 import java.time.LocalDate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -26,6 +27,13 @@ import org.springframework.stereotype.Component;
  * ({@link AssignmentService}) và lúc admin ép duyệt một phiếu đã hết hạn
  * ({@link AssignmentApprovalService}) — phiếu hết hạn đã nhả chỗ nên trong lúc nó nằm chờ,
  * khung giờ có thể đã bị người khác chiếm.
+ *
+ * <p><b>CỐ Ý KHÔNG có luật "khoảng nghỉ tối thiểu giữa hai trường".</b> Từng có
+ * {@code checkTravelGap()} bắt hai buổi khác trường phải cách nhau 60 phút; đã gỡ bỏ theo
+ * quyết định nghiệp vụ: dạy tiết 1 ở trường A rồi tiết 2 ở trường B là việc BÌNH THƯỜNG của
+ * trung tâm (các trường ở gần nhau), luật kia chặn oan phần lớn lịch có thật. Chỉ còn chặn
+ * đúng thứ vật lý không thể xảy ra: giờ ĐÈ HẲN lên nhau ({@link #check}) và một lớp có hai
+ * giáo viên cùng lúc ({@link #checkClass}). Đừng thêm lại.
  */
 @Component
 public class TeacherTimeConflictChecker {
@@ -35,18 +43,21 @@ public class TeacherTimeConflictChecker {
     private final PeriodRepository periodRepo;
     private final SchoolRepository schoolRepo;
     private final SchoolClassRepository classRepo;
+    private final TeacherRepository teacherRepo;
 
     public TeacherTimeConflictChecker(
             AssignmentRepository assignmentRepo,
             AssignmentSlotRepository slotRepo,
             PeriodRepository periodRepo,
             SchoolRepository schoolRepo,
-            SchoolClassRepository classRepo) {
+            SchoolClassRepository classRepo,
+            TeacherRepository teacherRepo) {
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
         this.periodRepo = periodRepo;
         this.schoolRepo = schoolRepo;
         this.classRepo = classRepo;
+        this.teacherRepo = teacherRepo;
     }
 
     /**
@@ -84,21 +95,92 @@ public class TeacherTimeConflictChecker {
         }
     }
 
+    /**
+     * Ném 409 nếu LỚP đã có giáo viên KHÁC dạy đè giờ với {@code period} vào {@code dayOfWeek}.
+     *
+     * <p>Chiều ngược của {@link #check}: luật kia hỏi "giáo viên này có bận không", luật này hỏi
+     * "lớp này có ai đang dạy chưa". Thiếu nó thì xếp ba giáo viên vào cùng một lớp, cùng một
+     * tiết là hợp lệ — mà lớp chỉ có một, trong khi cả ba đều sinh buổi dạy và đều được tính
+     * công. Cùng một tiết học trả tiền ba lần.
+     *
+     * <p>Chỉ so giữa các giáo viên KHÁC nhau: một giáo viên có nhiều ô lịch cho cùng lớp trong
+     * một thứ là chuyện bình thường (dạy liền tiết), và trường hợp chính họ tự đè giờ đã có
+     * {@link #check} lo.
+     *
+     * @param classId lớp của ô lịch; {@code null} (dữ liệu cũ chưa gắn lớp) thì bỏ qua
+     */
+    public void checkClass(
+            Integer classId,
+            Integer teacherId,
+            String dayOfWeek,
+            Period period,
+            LocalDate startDate,
+            LocalDate endDate,
+            Integer ignoreAssignmentId) {
+        if (classId == null) {
+            return;
+        }
+        for (AssignmentSlot existing : slotRepo.findByClassIdAndDayOfWeekAndDeletedFalse(classId, dayOfWeek)) {
+            if (ignoreAssignmentId != null && ignoreAssignmentId.equals(existing.getAssignmentId())) {
+                continue;
+            }
+            if (teacherId != null && teacherId.equals(existing.getTeacherId())) {
+                continue;
+            }
+            Assignment other = assignmentRepo
+                    .findByIdAndDeletedFalse(existing.getAssignmentId())
+                    .orElse(null);
+            if (other == null || !other.holdsTimeSlot()) {
+                continue;
+            }
+            if (!datesOverlap(startDate, endDate, other.getStartDate(), other.getEndDate())) {
+                continue;
+            }
+            Period otherPeriod = periodRepo.findById(existing.getPeriodId()).orElse(null);
+            if (!timeOverlaps(period, otherPeriod)) {
+                continue;
+            }
+            throw new ApiException(
+                    HttpStatus.CONFLICT, classMessage(classId, dayOfWeek, period, otherPeriod, existing, other));
+        }
+    }
+
+    private String classMessage(
+            Integer classId,
+            String dayOfWeek,
+            Period period,
+            Period otherPeriod,
+            AssignmentSlot existing,
+            Assignment other) {
+        String className = classRepo.findById(classId).map(SchoolClass::getName).orElse("đã chọn");
+        String teacherName = teacherRepo
+                .findById(existing.getTeacherId())
+                .map(t -> (t.getLastName() + " " + t.getFirstName()).trim())
+                .orElse("một giáo viên khác");
+        return "Không thể tạo phân công — lớp " + className + " đã được bố trí cho " + teacherName
+                + " trong khung giờ " + dayLabelVi(dayOfWeek) + ", " + timeRange(otherPeriod)
+                + " (tiết " + otherPeriod.getPeriodNumber() + ")" + pendingNote(other) + ".";
+    }
+
+    /** Phiếu chưa được xác nhận vẫn giữ chỗ — nói rõ để người xếp lịch biết vì sao bị chặn. */
+    private static String pendingNote(Assignment other) {
+        return AssignmentStatus.PENDING.equals(other.getStatus()) ? ", theo lịch đang chờ giáo viên xác nhận" : "";
+    }
+
     private String message(
             String dayOfWeek, Period period, Period otherPeriod, AssignmentSlot existing, Assignment other) {
         String schoolName =
-                schoolRepo.findById(other.getSchoolId()).map(School::getName).orElse("trường #" + other.getSchoolId());
+                schoolRepo.findById(other.getSchoolId()).map(School::getName).orElse("một trường khác");
         String className = existing.getClassId() == null
                 ? null
                 : classRepo
                         .findById(existing.getClassId())
                         .map(SchoolClass::getName)
                         .orElse(null);
-        String state = AssignmentStatus.PENDING.equals(other.getStatus()) ? " (đang chờ xác nhận)" : "";
-        return "Trùng giờ: " + dayLabelVi(dayOfWeek) + " " + timeRange(period) + " (tiết "
-                + period.getPeriodNumber() + ") đè lên tiết " + otherPeriod.getPeriodNumber() + " ("
-                + timeRange(otherPeriod) + ") tại " + schoolName
-                + (className != null ? " lớp " + className : "") + " — phân công #" + other.getId() + state;
+        return "Không thể tạo phân công — giáo viên đã có lịch dạy trùng khung giờ "
+                + dayLabelVi(dayOfWeek) + ", " + timeRange(period) + " (tiết " + period.getPeriodNumber()
+                + "): tiết " + otherPeriod.getPeriodNumber() + " (" + timeRange(otherPeriod) + ") tại "
+                + schoolName + (className != null ? ", lớp " + className : "") + pendingNote(other) + ".";
     }
 
     /** Hai khung tiết có giao nhau về thời gian không (null = không xác định được → bỏ qua). */

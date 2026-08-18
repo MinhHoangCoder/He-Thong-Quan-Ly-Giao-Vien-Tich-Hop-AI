@@ -1106,7 +1106,7 @@ GO
 
 -- Hồ sơ Trường (1-1 với AppUser 'school')
 INSERT INTO School (BranchId, Name, AppUserId, ContactPerson)
-SELECT b.Id, N'Trường THPT Demo', u.Id, N'Thầy Hiệu trưởng'
+SELECT b.Id, N'Trường THCS Demo', u.Id, N'Thầy Hiệu trưởng'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'school' AND b.Name = N'Chi nhánh trung tâm';
 GO

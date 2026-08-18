@@ -1073,6 +1073,14 @@ function formatDate(d) {
   box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
   background: var(--c-surface);
 }
+/* Ô Kinh nghiệm dừng nhận chữ đúng ở 500 ký tự (bằng NVARCHAR(500) dưới DB).
+   Không có số đếm thì người dùng gõ tới hạn sẽ tưởng bàn phím hỏng. */
+.char-counter {
+  font-size: 0.78rem;
+  color: var(--a-text-muted);
+  text-align: right;
+  margin: 0.35rem 0 0;
+}
 
 /* ── Buttons ── */
 .btn {

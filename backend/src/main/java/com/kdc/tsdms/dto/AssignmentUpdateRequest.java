@@ -15,8 +15,9 @@ import java.util.List;
  * Chờ xác nhận / Bị từ chối / Hết hạn.
  *
  * <p>ĐỔI ĐƯỢC giáo viên (phiếu bị từ chối thì xếp cho người khác; giáo viên cũ vẫn chọn lại
- * được phòng khi họ bấm nhầm nút Từ chối). KHÔNG đổi được trường và môn: khung tiết và danh
- * sách lớp thuộc về từng trường, đổi trường thì thực chất là một phiếu khác — hãy hủy và tạo mới.
+ * được phòng khi họ bấm nhầm nút Từ chối) và ĐỔI ĐƯỢC TRƯỜNG của từng tiết — từ V27 trường
+ * nằm ở {@code slots[].schoolId} chứ không còn ở cấp phiếu, nên sửa trường không còn là "một
+ * phiếu khác" nữa. KHÔNG đổi được MÔN: môn vẫn ở cấp phiếu.
  */
 public record AssignmentUpdateRequest(
 

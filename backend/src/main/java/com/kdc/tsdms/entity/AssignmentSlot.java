@@ -54,6 +54,17 @@ public class AssignmentSlot extends SoftDeletableEntity {
     @Column(name = "ClassId")
     private Integer classId;
 
+    /**
+     * Trường của ô lịch NÀY (V27) — mỗi tiết một trường, vì trung tâm điều phối theo NGƯỜI:
+     * sáng thứ 2 giáo viên dạy tiết 1 ở trường này rồi tiết 2 chạy sang trường kia. Nullable
+     * cho dữ liệu cũ: Service fallback về {@link Assignment#getSchoolId()} khi slot chưa gán.
+     *
+     * <p>Bất biến do tầng Service giữ: trường của slot = trường của {@code classId} = trường
+     * của {@code periodId} (khung tiết và lớp đều thuộc về một trường cụ thể).
+     */
+    @Column(name = "SchoolId")
+    private Integer schoolId;
+
     /** Phòng mặc định của ô lịch (nullable) — generator copy xuống Schedule, cho override. */
     @Column(name = "RoomId")
     private Integer roomId;
