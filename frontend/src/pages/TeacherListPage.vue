@@ -6,6 +6,7 @@ import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import DateField from '@/components/ui/DateField.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
@@ -36,12 +37,13 @@ const filters = reactive({
 
 // Chế độ giao diện
 const viewMode = ref('list') // 'list' | 'trash'
-/* ══════════════════════════════════════════════════════════
-   PHÂN TRANG (client-side, dựa trên danh sách đã lọc)
-══════════════════════════════════════════════════════════ */
+// ══════════════════════════════════════════════════════════
+  //  PHÂN TRANG (client-side, dựa trên danh sách đã lọc)
+  //  — Dùng component dùng chung <Pagination />, giống các trang khác
+  //  (Bài giảng, Chấm công, Bảng lương…). Không tự vẽ nút trang tay nữa.
+//══════════════════════════════════════════════════════════ 
 const PAGE_SIZE = 6
 const page = ref(0)
-const pageInput = ref('')
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE_SIZE)))
 
@@ -49,41 +51,6 @@ const paginatedTeachers = computed(() => {
   const start = page.value * PAGE_SIZE
   return filtered.value.slice(start, start + PAGE_SIZE)
 })
-
-const visiblePages = computed(() => {
-  const total = totalPages.value
-  const current = page.value + 1
-
-  let start = Math.max(1, current - 2)
-  let end = Math.min(total, current + 2)
-
-  if (end - start < 4) {
-    if (start === 1) {
-      end = Math.min(5, total)
-    } else if (end === total) {
-      start = Math.max(1, total - 4)
-    }
-  }
-
-  const arr = []
-  for (let i = start; i <= end; i++) arr.push(i)
-  return arr
-})
-
-function goPage(index) {
-  if (index < 0 || index >= totalPages.value) return
-  page.value = index
-}
-
-function jumpPage() {
-  const p = Number(pageInput.value)
-
-  if (isNaN(p)) return
-  if (p < 1) return
-  if (p > totalPages.value) return
-
-  goPage(p - 1)
-}
 
 // Đổi bộ lọc → quay về trang 1
 watch(filters, () => {
@@ -1188,42 +1155,12 @@ function formatDate(d) {
         </table>
       </div>
 
-      <!-- ── Pagination ─────────────────────────────── -->
-      <div v-if="filtered.length && totalPages > 1" class="pagination">
-        <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
-
-        <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
-
-        <button
-          v-for="p in visiblePages"
-          :key="p"
-          class="pg-btn"
-          :class="{ 'pg-btn--active': page === p - 1 }"
-          @click="goPage(p - 1)"
-        >
-          {{ p }}
-        </button>
-
-        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
-          ›
-        </button>
-
-        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
-          »
-        </button>
-
-        <input
-          v-model="pageInput"
-          class="page-input"
-          type="number"
-          min="1"
-          :max="totalPages"
-          placeholder="Trang"
-          @keyup.enter="jumpPage"
-        />
-
-        <button class="pg-btn" @click="jumpPage">Đi</button>
-      </div>
+      <!-- ── Pagination (dùng component dùng chung) ─── -->
+      <Pagination
+        v-if="filtered.length && totalPages > 1"
+        v-model="page"
+        :total-pages="totalPages"
+      />
 
       <!-- Empty state -->
       <div v-if="!loading && !filtered.length" class="tl__empty">
@@ -2437,51 +2374,6 @@ function formatDate(d) {
 .ra-btn:hover {
   filter: brightness(0.92);
   transform: scale(1.08);
-}
-
-/* ── Pagination ── */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  margin-top: 1.2rem;
-  flex-wrap: wrap;
-}
-.pg-btn {
-  min-width: 38px;
-  height: 38px;
-  border: 1px solid var(--a-border);
-  border-radius: 8px;
-  background: var(--c-surface);
-  color: var(--a-text);
-  cursor: pointer;
-  font-size: 0.85rem;
-  font-weight: 600;
-  transition: all 0.15s;
-}
-.pg-btn:hover:not(:disabled) {
-  background: var(--c-primary);
-  border-color: var(--c-primary);
-  color: #fff;
-}
-.pg-btn--active {
-  background: var(--grad-primary);
-  border-color: transparent;
-  color: #fff;
-}
-.pg-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.page-input {
-  width: 64px;
-  height: 38px;
-  border: 1px solid var(--a-border);
-  border-radius: 8px;
-  text-align: center;
-  background: var(--a-bg);
-  color: var(--a-text);
 }
 
 /* ── Trash table ── */

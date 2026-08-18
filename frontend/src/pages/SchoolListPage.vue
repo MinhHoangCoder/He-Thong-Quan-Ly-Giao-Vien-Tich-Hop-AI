@@ -1,14 +1,15 @@
 <!-- src/pages/SchoolListPage.vue -->
 <script setup>
-/**
- * Trang "Quản lý trường": CRUD School (trường khách hàng).
- * Đồng bộ giao diện với SubjectCategoryListPage.vue / LessonListPage.vue —
- * cùng bố cục page__head/filter-bar/table-wrap/pagination, cùng token màu & badge.
- */
+
+  // Trang "Quản lý trường": CRUD School (trường khách hàng).
+  // Đồng bộ giao diện với SubjectCategoryListPage.vue / LessonListPage.vue —
+  // đồng bộ với TeacherListPage.vue.
+ 
 import { ref, reactive, computed, onMounted } from 'vue'
 import { schoolApi } from '@/api/schools'
 import { branchApi } from '@/api/branches'
 import DateField from '@/components/ui/DateField.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 
 /* ── State: danh sách trường ── */
 const loading = ref(false)
@@ -18,8 +19,7 @@ const keyword = ref('')
 const branchFilter = ref('')
 const statusFilter = ref('')
 const page = ref(0)
-const pageSize = 10
-const pageInput = ref('')
+const pageSize = 5
 
 /** Danh sách chi nhánh — dùng cho dropdown lọc + form thêm/sửa. */
 const branches = ref([])
@@ -48,46 +48,14 @@ const modal = reactive({
 
 const deleteTarget = ref(null)
 
-/* =========================
-   Pagination
-========================= */
+ //  Pagination — dùng component dùng chung Pagination
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
-
-const visiblePages = computed(() => {
-  const totalP = totalPages.value
-  const current = page.value + 1
-
-  let start = Math.max(1, current - 2)
-  let end = Math.min(totalP, current + 2)
-
-  if (end - start < 4) {
-    if (start === 1) {
-      end = Math.min(5, totalP)
-    } else if (end === totalP) {
-      start = Math.max(1, totalP - 4)
-    }
-  }
-
-  const arr = []
-  for (let i = start; i <= end; i++) {
-    arr.push(i)
-  }
-  return arr
-})
 
 function goPage(index) {
   if (index < 0 || index >= totalPages.value) return
   page.value = index
   load()
-}
-
-function jumpPage() {
-  const p = Number(pageInput.value)
-  if (isNaN(p)) return
-  if (p < 1) return
-  if (p > totalPages.value) return
-  goPage(p - 1)
 }
 
 /* ── Load danh sách trường ── */
@@ -294,45 +262,41 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
       <button class="btn" @click="openCreate">+ Thêm trường</button>
     </div>
 
-    <!-- ================= FILTER ================= -->
-    <div class="filter-bar">
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
+    <!-- ================= FILTER (gọn, đồng bộ trang Giáo viên) ================= -->
+    <div class="filters">
+      <div class="filter-total">
+        <span class="filter-total__num">{{ total }}</span>
+        <span class="filter-total__label">Tổng trường</span>
+      </div>
+
+      <div class="filter-search">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
         <input
           v-model="keyword"
+          type="text"
           placeholder="Tên trường, địa chỉ, người liên hệ, SĐT..."
           @keyup.enter="onSearch"
         />
-      </label>
-
-      <label class="field">
-        <span>Chi nhánh</span>
-        <select v-model="branchFilter">
-          <option value="">Tất cả chi nhánh</option>
-          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Trạng thái</span>
-        <select v-model="statusFilter">
-          <option value="">Tất cả trạng thái</option>
-          <option value="ACTIVE">Hoạt động</option>
-          <option value="INACTIVE">Ngừng hoạt động</option>
-          <option value="EXPIRED">Hết hạn</option>
-        </select>
-      </label>
-
-      <div class="filter-actions">
-        <button class="btn" @click="onSearch">Lọc</button>
-        <button class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
       </div>
-    </div>
 
-    <!-- ================= INFO ================= -->
-    <p v-if="!loading" class="total">
-      Tổng cộng <strong>{{ total }}</strong> trường
-    </p>
+      <select v-model="branchFilter" class="filter-select">
+        <option value="">Tất cả chi nhánh</option>
+        <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+      </select>
+
+      <select v-model="statusFilter" class="filter-select">
+        <option value="">Tất cả trạng thái</option>
+        <option value="ACTIVE">Hoạt động</option>
+        <option value="INACTIVE">Ngừng hoạt động</option>
+        <option value="EXPIRED">Hết hạn</option>
+      </select>
+
+      <button class="btn-filter" @click="onSearch">Lọc</button>
+      <button class="btn-filter btn-filter--ghost" @click="clearSearch">Xóa lọc</button>
+    </div>
 
     <!-- ================= TABLE ================= -->
     <div class="table-wrap">
@@ -398,38 +362,13 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
       </table>
     </div>
 
-    <!-- ================= PAGINATION ================= -->
-    <div v-if="totalPages > 1" class="pagination">
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
-
-      <button
-        v-for="p in visiblePages"
-        :key="p"
-        class="pg-btn"
-        :class="{ 'pg-btn--active': page === p - 1 }"
-        @click="goPage(p - 1)"
-      >
-        {{ p }}
-      </button>
-
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
-        ›
-      </button>
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
-        »
-      </button>
-
-      <input
-        v-model="pageInput"
-        class="page-input"
-        type="number"
-        min="1"
-        :max="totalPages"
-        placeholder="Trang"
-      />
-      <button class="pg-btn" @click="jumpPage">Đi</button>
-    </div>
+    <!-- ================= PAGINATION (component dùng chung) ================= -->
+    <Pagination
+      v-if="totalPages > 1"
+      :model-value="page"
+      :total-pages="totalPages"
+      @update:model-value="goPage"
+    />
 
     <!-- ================= MODAL: tạo/sửa trường ================= -->
     <div v-if="modal.open" class="overlay" @click.self="modal.open = false">
@@ -511,31 +450,31 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           }}</small>
         </div>
 
-      <div class="form-row">
-  <div class="form-group">
-    <label>Ngày bắt đầu hợp đồng *</label>
-    <DateField
-      v-model="modal.form.contractStartDate"
-      :invalid="!!modal.errors.contractStartDate"
-      @update:modelValue="clearFieldError('contractStartDate')"
-    />
-    <small v-if="modal.errors.contractStartDate" class="field-error">{{
-      modal.errors.contractStartDate
-    }}</small>
-  </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Ngày bắt đầu hợp đồng *</label>
+            <DateField
+              v-model="modal.form.contractStartDate"
+              :invalid="!!modal.errors.contractStartDate"
+              @update:modelValue="clearFieldError('contractStartDate')"
+            />
+            <small v-if="modal.errors.contractStartDate" class="field-error">{{
+              modal.errors.contractStartDate
+            }}</small>
+          </div>
 
-  <div class="form-group">
-    <label>Ngày hết hạn hợp đồng *</label>
-    <DateField
-      v-model="modal.form.contractEndDate"
-      :invalid="!!modal.errors.contractEndDate"
-      @update:modelValue="clearFieldError('contractEndDate')"
-    />
-    <small v-if="modal.errors.contractEndDate" class="field-error">{{
-      modal.errors.contractEndDate
-    }}</small>
-  </div>
-</div>
+          <div class="form-group">
+            <label>Ngày hết hạn hợp đồng *</label>
+            <DateField
+              v-model="modal.form.contractEndDate"
+              :invalid="!!modal.errors.contractEndDate"
+              @update:modelValue="clearFieldError('contractEndDate')"
+            />
+            <small v-if="modal.errors.contractEndDate" class="field-error">{{
+              modal.errors.contractEndDate
+            }}</small>
+          </div>
+        </div>
 
         <div class="form-group">
           <label>Trạng thái</label>
@@ -602,54 +541,117 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
   font-size: 14px;
 }
 
-/* ================= Filter ================= */
-.filter-bar {
+/* ================= Filter (gọn, giống trang Giáo viên) ================= */
+.filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 18px;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1rem 1.1rem;
   margin-bottom: 18px;
   background: var(--c-surface);
-  border-radius: 14px;
   border: 1px solid var(--c-border);
+  border-radius: 12px;
 }
 
-.field {
+.filter-total {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  min-width: 170px;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.5rem 1.1rem;
+  background: #f97316;
+  border-radius: 10px;
+  color: #fff;
+  flex-shrink: 0;
 }
 
-.field--wide {
+.filter-total__num {
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.filter-total__label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.92;
+}
+
+.filter-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   flex: 1;
+  min-width: 200px;
+  height: 38px;
+  padding: 0 0.75rem;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-input-border);
+  border-radius: 8px;
+  color: var(--c-text-muted);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
-.field span {
-  font-size: 13px;
-  font-weight: 600;
+.filter-search:focus-within {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
+}
+
+.filter-search input {
+  border: none;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 0.875rem;
   color: var(--c-text);
 }
 
-.field input,
-.field select {
-  height: 40px;
+.filter-select {
+  height: 38px;
+  padding: 0 0.75rem;
+  background: var(--c-surface-2);
   border: 1px solid var(--c-input-border);
   border-radius: 8px;
-  padding: 0 12px;
-  font-size: 14px;
+  font-size: 0.85rem;
+  color: var(--c-text);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
 }
 
-.field input:focus,
-.field select:focus {
-  outline: none;
+.filter-select:focus {
   border-color: #f97316;
 }
 
-.filter-actions {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
+.btn-filter {
+  height: 38px;
+  padding: 0 1.1rem;
+  border: none;
+  border-radius: 8px;
+  background: #f97316;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    filter 0.15s,
+    transform 0.15s;
+}
+
+.btn-filter:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.btn-filter--ghost {
+  background: var(--c-surface-2);
+  color: var(--c-text);
 }
 
 /* ================= Buttons ================= */
@@ -794,49 +796,6 @@ tbody tr:hover {
   background: rgba(239, 68, 68, 0.12);
 }
 
-/* ================= Pagination ================= */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 24px;
-  flex-wrap: wrap;
-}
-
-.pg-btn {
-  min-width: 38px;
-  height: 38px;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  background: var(--c-surface);
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.pg-btn:hover:not(:disabled) {
-  background: #f97316;
-  color: white;
-}
-
-.pg-btn--active {
-  background: #f97316;
-  color: white;
-}
-
-.pg-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.page-input {
-  width: 70px;
-  height: 38px;
-  border: 1px solid var(--c-input-border);
-  border-radius: 8px;
-  text-align: center;
-}
-
 /* ================= Modal ================= */
 .overlay {
   position: fixed;
@@ -944,35 +903,41 @@ tbody tr:hover {
   color: #f87171;
 }
 
-.total {
-  margin-bottom: 14px;
-  color: var(--c-text-muted);
-}
+/* ================= Responsive ================= */
+@media (max-width: 640px) {
+  .page__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
 
-.page__head {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 15px;
-}
+  .page__head .btn {
+    width: 100%;
+  }
 
-.filter-bar {
-  flex-direction: column;
-}
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-.field {
-  width: 100%;
-}
+  .filter-total {
+    flex-direction: row;
+    justify-content: center;
+    gap: 0.4rem;
+  }
 
-.filter-actions {
-  width: 100%;
-}
+  .filter-search,
+  .filter-select {
+    width: 100%;
+  }
 
-.btn {
-  width: 100%;
-}
+  .btn-filter {
+    width: 100%;
+  }
 
-.form-row {
-  flex-direction: column;
-  gap: 0;
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 </style>
