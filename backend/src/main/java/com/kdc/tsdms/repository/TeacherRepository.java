@@ -25,6 +25,9 @@ public interface TeacherRepository extends JpaRepository<Teacher, Integer> {
 
     Optional<Teacher> findByIdAndDeletedTrue(Integer id);
 
+    /** Đếm giáo viên còn sống của một chi nhánh — chặn xóa chi nhánh còn người. */
+    long countByBranchIdAndDeletedFalse(Integer branchId);
+
     /**
      * Đếm dòng còn trỏ vào một giáo viên ở TẤT CẢ 11 bảng con, mỗi bảng một dòng kết quả
      * {@code [mã loại, số dòng]}. Chỉ trả về bảng nào thật sự còn dòng ({@code HAVING}).

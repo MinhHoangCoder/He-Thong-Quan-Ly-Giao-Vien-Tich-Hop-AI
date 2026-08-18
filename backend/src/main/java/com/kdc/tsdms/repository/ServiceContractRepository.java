@@ -20,4 +20,7 @@ public interface ServiceContractRepository extends JpaRepository<ServiceContract
 
     /** Hợp đồng dịch vụ còn sống của một trường — chặn xóa trường khi còn hợp đồng. */
     long countBySchoolIdAndDeletedFalse(Integer schoolId);
+
+    /** Hợp đồng dịch vụ còn sống của một chi nhánh — chặn xóa chi nhánh còn hợp đồng. */
+    long countByBranchIdAndDeletedFalse(Integer branchId);
 }

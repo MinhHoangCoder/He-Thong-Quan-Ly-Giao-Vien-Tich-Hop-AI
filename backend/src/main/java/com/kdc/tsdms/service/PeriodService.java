@@ -1,15 +1,20 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.StandardFrameResult;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
+import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.text.Normalizer;
+import java.time.Instant;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,11 +62,20 @@ public class PeriodService {
     private final PeriodRepository periodRepo;
     private final SchoolRepository schoolRepo;
     private final SchoolClassRepository classRepo;
+    private final AssignmentSlotRepository slotRepo;
+    private final ScheduleRepository scheduleRepo;
 
-    public PeriodService(PeriodRepository periodRepo, SchoolRepository schoolRepo, SchoolClassRepository classRepo) {
+    public PeriodService(
+            PeriodRepository periodRepo,
+            SchoolRepository schoolRepo,
+            SchoolClassRepository classRepo,
+            AssignmentSlotRepository slotRepo,
+            ScheduleRepository scheduleRepo) {
         this.periodRepo = periodRepo;
         this.schoolRepo = schoolRepo;
         this.classRepo = classRepo;
+        this.slotRepo = slotRepo;
+        this.scheduleRepo = scheduleRepo;
     }
 
     /**
@@ -232,5 +246,48 @@ public class PeriodService {
             }
         }
         return number;
+    }
+
+    /** Buổi dạy còn hiệu lực — cùng bộ trạng thái với chốt xóa giáo viên/phòng học. */
+    private static final List<String> BUOI_CON_HIEU_LUC = List.of("PENDING", "APPROVED");
+
+    /**
+     * Xóa mềm một tiết khỏi khung giờ của trường — luật RESTRICT. Tiết là chỗ NEO của thời
+     * khóa biểu: {@code AssignmentSlot.PeriodId} (lịch lặp hằng tuần) và
+     * {@code Schedule.PeriodId} (từng buổi cụ thể) đều trỏ vào đây. Rút một tiết đang có lớp
+     * học là làm sập cả cột lịch đó, nên còn ai dùng thì cấm — kể đủ đang vướng bao nhiêu.
+     *
+     * <p>Buổi ĐÃ DẠY không chặn: xóa mềm giữ nguyên dòng Period nên giờ giấc các buổi cũ vẫn
+     * tra ra được.
+     */
+    @Transactional
+    public void delete(Integer id) {
+        Period p = periodRepo
+                .findByIdAndDeletedFalse(id)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy tiết id=" + id));
+        String truong =
+                schoolRepo.findById(p.getSchoolId()).map(School::getName).orElse("trường id=" + p.getSchoolId());
+        DeleteGuard.of("tiết " + p.getPeriodNumber() + " (" + tenBuoi(p.getSessionType()) + ") của " + truong)
+                .blockIf(slotRepo.countByPeriodIdAndDeletedFalse(id), "ô thời khóa biểu hằng tuần đang dùng tiết này")
+                .blockIf(
+                        scheduleRepo.countByPeriodIdAndStartTimeAfterAndStatusInAndDeletedFalse(
+                                id, BusinessTime.now(), BUOI_CON_HIEU_LUC),
+                        "buổi dạy sắp tới xếp vào tiết này")
+                .check();
+        Integer nguoiXoa = SecurityUtils.currentUserId();
+        p.setDeleted(true);
+        p.setDeletedAt(Instant.now());
+        p.setDeletedBy(nguoiXoa);
+        p.setUpdatedAt(Instant.now());
+        p.setUpdatedBy(nguoiXoa);
+        periodRepo.save(p);
+    }
+
+    private static String tenBuoi(String sessionType) {
+        return switch (sessionType == null ? "" : sessionType) {
+            case "MORNING" -> "buổi sáng";
+            case "AFTERNOON" -> "buổi chiều";
+            default -> sessionType;
+        };
     }
 }

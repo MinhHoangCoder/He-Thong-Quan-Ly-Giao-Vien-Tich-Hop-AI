@@ -15,4 +15,7 @@ public interface PeriodRepository extends JpaRepository<Period, Integer> {
 
     /** Số tiết của một BUỔI (MORNING|AFTERNOON) — dùng quy đổi "tiết thứ mấy trong buổi". */
     int countBySchoolIdAndSessionTypeAndDeletedFalse(Integer schoolId, String sessionType);
+
+    /** Tiết còn sống theo id — dùng cho luồng xóa có kiểm soát ({@code PeriodService.delete}). */
+    Optional<Period> findByIdAndDeletedFalse(Integer id);
 }
