@@ -17,6 +17,9 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
     /** Dùng để chặn xóa Subject đang được bài giảng nào đó tham chiếu. */
     long countBySubjectIdAndDeletedFalse(Integer subjectId);
 
+    /** Đếm bài giảng còn sống của một chi nhánh — chặn xóa chi nhánh còn kho bài giảng. */
+    long countByBranchIdAndDeletedFalse(Integer branchId);
+
     /**
      * Lấy toàn bộ bài giảng (chưa xóa mềm) thuộc 1 môn học — dùng để xóa mềm
      * hàng loạt khi môn học đã bị tắt hoạt động (DISABLED) và người dùng xác nhận

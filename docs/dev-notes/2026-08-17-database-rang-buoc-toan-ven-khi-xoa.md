@@ -1,7 +1,8 @@
-# DB: ràng buộc toàn vẹn khi xóa — Đợt 1 (RESTRICT) & Đợt 2 (bảo vệ dữ liệu tiền) (2026-08-17)
+# DB: ràng buộc toàn vẹn khi xóa — Đợt 1 (RESTRICT), Đợt 2 (dữ liệu tiền) & Đợt 3 (phòng ngừa) (2026-08-17, bổ sung 19/08)
 
-Ghi cho cả hai đợt cùng lúc vì chúng dùng chung một phát hiện gốc và chung một hạ tầng
-(`DeleteGuard`). Đợt 1 đã merge ở PR #157, Đợt 2 nằm ở nhánh `feat/rang-buoc-xoa-dot-2`.
+Ghi cho cả ba đợt cùng lúc vì chúng dùng chung một phát hiện gốc và chung một hạ tầng
+(`DeleteGuard`). Đợt 1 merge ở PR #157, Đợt 2 merge ở PR #161, Đợt 3 ở nhánh
+`feat/rang-buoc-xoa-dot-3`.
 
 ## Gọi tên cho đúng
 
@@ -231,13 +232,34 @@ bảng mới trỏ vào `Teacher` mà quên khai vào câu `UNION` → test đ�
 - **Sửa file bằng script rồi chạy test ngay sẽ vướng spotless** (khác line-ending). Luôn
   `./mvnw spotless:apply` sau khi sửa bằng script.
 
+## Đợt 3 (19/08) — chốt phòng ngừa cho 5 bảng CHƯA có luồng xóa
+
+`Branch`, `Employee`, `Room`, `Student`, `Period` chưa hề có API xóa. Chốt luật TRƯỚC khi
+thành viên nào đó viết chức năng xóa và vô tình tái sinh đúng lỗ hổng của Nhóm A. Mỗi bảng
+một `service.delete()` dùng sẵn `DeleteGuard` — **ai làm feature xóa thì gọi method có sẵn,
+đừng tự viết**:
+
+| Bảng | Service | Luật |
+|---|---|---|
+| Branch | `BranchService.delete` | RESTRICT trên CẢ 5 bảng con (trường, GV, NV, bài giảng, HĐ dịch vụ) — chi nhánh rỗng thật sự mới xóa được |
+| Employee | `EmployeeService.delete` | Chỉ chặn NGHĨA VỤ TƯƠNG LAI: ca `SCHEDULED` chưa tới ngày + đơn xin ca `PENDING`. Dấu vết ai-phân-công/ai-duyệt cố tình KHÔNG chặn (xóa mềm giữ nguyên dòng nên tên vẫn tra được) |
+| Room | `RoomService.delete` | Chặn theo thứ SẮP DÙNG: buổi dạy tương lai + ô TKB hằng tuần. Buổi đã dạy là lịch sử, không chặn |
+| Student | `StudentService.delete` | `ClassEnrollment` không có cờ xóa mềm — còn dòng là còn đang học: rút khỏi lớp trước, xóa hồ sơ sau |
+| Period | `PeriodService.delete` | Tiết là chỗ NEO của TKB (`AssignmentSlot.PeriodId` + `Schedule.PeriodId`) — còn ai dùng thì cấm |
+
+14 method đếm/tìm mới trên 12 repository, toàn bộ là **derived query** — không thêm câu SQL
+thuần nào, Hibernate tự đối chiếu tên cột lúc dựng context (tức là `SchemaMigrationValidationIT`
+phủ luôn phần validation, không cần IT riêng như hai câu native của Đợt 2).
+
+Về bullet "cân nhắc `ON DELETE` tường minh cho FK xóa cứng": **cân nhắc rồi, quyết định KHÔNG
+làm.** SQL Server mặc định `NO ACTION` đã là RESTRICT — thêm `ON DELETE NO ACTION` tường minh
+là đổi 43 constraint để được đúng hành vi đang có; còn đổi sang `CASCADE` thì ngược với quyết
+định "chặn hẳn" đã chốt. Không có thay đổi hành vi nào đáng để đụng schema giữa kỳ.
+
 ## Còn lại
 
-- **Đợt 3** — chốt phòng ngừa cho `Branch`, `Employee`, `Room`, `Student`, `Period`: các bảng
-  này **chưa có luồng xóa nào**. Chưa hỏng, nhưng khi thành viên thêm chức năng xóa mà không
-  biết luật thì lại sinh đúng lỗ hổng của Đợt 1. Cần chốt luật trước khi có người viết.
 - **Đợt 4** — migration rà và dọn dữ liệu mồ côi đã có sẵn (con đang trỏ vào cha `IsDeleted=1`).
-  Chỉ làm sau khi Đợt 1–3 đã chặn được nguồn sinh mồ côi mới.
+  Chỉ làm sau khi Đợt 1–3 đã chặn được nguồn sinh mồ côi mới. Giờ là lúc làm được rồi.
 - **Chưa xử lý (báo để quyết):** `TeacherService.saveContract` ghi ĐÈ hợp đồng cũ tại chỗ —
   số hợp đồng, lương, thời hạn cũ mất sạch không dấu vết. Nếu coi hợp đồng là hồ sơ pháp lý thì
   đây còn nặng hơn cả xóa cứng. Sửa cho đúng phải lưu trữ bản cũ rồi tạo bản mới, mà `ContractNo`

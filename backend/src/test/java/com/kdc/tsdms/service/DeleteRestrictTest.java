@@ -10,10 +10,15 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.kdc.tsdms.entity.Assignment;
+import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.Certificate;
+import com.kdc.tsdms.entity.Employee;
 import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.LessonFile;
+import com.kdc.tsdms.entity.Period;
+import com.kdc.tsdms.entity.Room;
 import com.kdc.tsdms.entity.School;
+import com.kdc.tsdms.entity.Student;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
@@ -21,12 +26,17 @@ import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
+import com.kdc.tsdms.repository.ClassEnrollmentRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.EmployeeRepository;
+import com.kdc.tsdms.repository.EmployeeScheduleRepository;
 import com.kdc.tsdms.repository.LessonFileRepository;
 import com.kdc.tsdms.repository.LessonRepository;
+import com.kdc.tsdms.repository.PartTimeShiftRequestRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
+import com.kdc.tsdms.repository.RoomRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
@@ -521,6 +531,284 @@ class DeleteRestrictTest {
                     .isEqualTo("7/bang-dai-hoc.pdf");
             verify(ceRepo).save(c);
             verify(ceRepo, never()).delete(any());
+        }
+    }
+
+    /* ══════════════════ ĐỢT 3 — NHÓM D: CHỐT PHÒNG NGỪA ══════════════════ */
+
+    /** Chi nhánh là gốc của gần nửa hệ thống — 5 bảng con cùng treo vào BranchId. */
+    @Nested
+    class XoaChiNhanh {
+
+        @Mock
+        private BranchRepository branchRepo;
+
+        @Mock
+        private SchoolRepository schoolRepo;
+
+        @Mock
+        private TeacherRepository teacherRepo;
+
+        @Mock
+        private EmployeeRepository employeeRepo;
+
+        @Mock
+        private LessonRepository lessonRepo;
+
+        @Mock
+        private ServiceContractRepository serviceContractRepo;
+
+        @InjectMocks
+        private BranchService service;
+
+        private Branch givenBranch() {
+            Branch b = new Branch();
+            b.setId(2);
+            b.setName("Chi nhánh Lê Chân");
+            when(branchRepo.findByIdAndDeletedFalse(2)).thenReturn(Optional.of(b));
+            return b;
+        }
+
+        @Test
+        void conBatCuGi_thiCam_vaKeDuCa5Loai() {
+            givenBranch();
+            when(schoolRepo.countByBranchIdAndDeletedFalse(2)).thenReturn(4L);
+            when(teacherRepo.countByBranchIdAndDeletedFalse(2)).thenReturn(30L);
+            when(employeeRepo.countByBranchIdAndDeletedFalse(2)).thenReturn(6L);
+            when(lessonRepo.countByBranchIdAndDeletedFalse(2)).thenReturn(12L);
+            when(serviceContractRepo.countByBranchIdAndDeletedFalse(2)).thenReturn(3L);
+
+            assertThatThrownBy(() -> service.delete(2))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("Chi nhánh Lê Chân")
+                    .hasMessageContaining("4 trường đang hợp tác")
+                    .hasMessageContaining("30 giáo viên")
+                    .hasMessageContaining("6 nhân viên")
+                    .hasMessageContaining("12 bài giảng")
+                    .hasMessageContaining("3 hợp đồng dịch vụ");
+            verify(branchRepo, never()).save(any());
+        }
+
+        @Test
+        void rongThatSu_thiXoaMemDuoc() {
+            Branch b = givenBranch();
+
+            service.delete(2);
+
+            assertThat(b.isDeleted()).isTrue();
+            assertThat(b.getDeletedAt()).isNotNull();
+            verify(branchRepo).save(b);
+        }
+    }
+
+    /**
+     * Nhân viên: chỉ chặn NGHĨA VỤ TƯƠNG LAI (ca đã xếp, đơn treo). Dấu vết ai-phân-công /
+     * ai-duyệt cố tình KHÔNG chặn — service không hề hỏi tới các bảng đó.
+     */
+    @Nested
+    class XoaNhanVien {
+
+        @Mock
+        private EmployeeRepository employeeRepo;
+
+        @Mock
+        private EmployeeScheduleRepository scheduleRepo;
+
+        @Mock
+        private PartTimeShiftRequestRepository shiftRequestRepo;
+
+        @InjectMocks
+        private EmployeeService service;
+
+        private Employee givenEmployee() {
+            Employee e = new Employee();
+            e.setId(9);
+            e.setLastName("Phạm Văn");
+            e.setFirstName("Cường");
+            when(employeeRepo.findByIdAndDeletedFalse(9)).thenReturn(Optional.of(e));
+            return e;
+        }
+
+        @Test
+        void conCaLamSapToi_hoacDonTreo_thiCam() {
+            givenEmployee();
+            when(scheduleRepo.countByEmployeeIdAndWorkDateGreaterThanEqualAndStatusAndDeletedFalse(
+                            anyInt(), any(), any()))
+                    .thenReturn(3L);
+            when(shiftRequestRepo.countByEmployeeIdAndStatusAndDeletedFalse(9, "PENDING"))
+                    .thenReturn(1L);
+
+            assertThatThrownBy(() -> service.delete(9))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("Phạm Văn Cường")
+                    .hasMessageContaining("3 ca làm sắp tới")
+                    .hasMessageContaining("1 đơn xin ca chờ duyệt");
+            verify(employeeRepo, never()).save(any());
+        }
+
+        @Test
+        void hetNghiaVu_thiXoaMemDuoc_duCoDayLichSuPhanCong() {
+            Employee e = givenEmployee();
+
+            service.delete(9);
+
+            assertThat(e.isDeleted()).isTrue();
+            verify(employeeRepo).save(e);
+        }
+    }
+
+    /** Phòng học: chặn theo thứ SẮP DÙNG; buổi đã dạy là lịch sử, không chặn. */
+    @Nested
+    class XoaPhongHoc {
+
+        @Mock
+        private RoomRepository roomRepo;
+
+        @Mock
+        private ScheduleRepository scheduleRepo;
+
+        @Mock
+        private AssignmentSlotRepository slotRepo;
+
+        @InjectMocks
+        private RoomService service;
+
+        private Room givenRoom() {
+            Room r = new Room();
+            r.setId(15);
+            r.setName("P.301");
+            when(roomRepo.findByIdAndDeletedFalse(15)).thenReturn(Optional.of(r));
+            return r;
+        }
+
+        @Test
+        void conLichSapToi_hoacTkbDangGan_thiCam() {
+            givenRoom();
+            when(scheduleRepo.countByRoomIdAndStartTimeAfterAndStatusInAndDeletedFalse(
+                            anyInt(), any(LocalDateTime.class), any()))
+                    .thenReturn(7L);
+            when(slotRepo.countByRoomIdAndDeletedFalse(15)).thenReturn(2L);
+
+            assertThatThrownBy(() -> service.delete(15))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("P.301")
+                    .hasMessageContaining("7 buổi dạy sắp tới")
+                    .hasMessageContaining("2 ô thời khóa biểu hằng tuần");
+            verify(roomRepo, never()).save(any());
+        }
+
+        @Test
+        void chiConBuoiDaDayTrongQuaKhu_thiVanXoaDuoc() {
+            // Hai count đều đếm TƯƠNG LAI/đang sống — quá khứ trả 0 là xóa được, đúng luật.
+            Room r = givenRoom();
+
+            service.delete(15);
+
+            assertThat(r.isDeleted()).isTrue();
+            verify(roomRepo).save(r);
+        }
+    }
+
+    /** Học sinh: còn dòng ghi danh nghĩa là còn đang học — rút khỏi lớp trước, xóa hồ sơ sau. */
+    @Nested
+    class XoaHocSinh {
+
+        @Mock
+        private StudentRepository studentRepo;
+
+        @Mock
+        private ClassEnrollmentRepository enrollmentRepo;
+
+        @InjectMocks
+        private StudentService service;
+
+        private Student givenStudent() {
+            Student st = new Student();
+            st.setId(88);
+            st.setLastName("Lê Thị");
+            st.setFirstName("Duyên");
+            when(studentRepo.findByIdAndDeletedFalse(88)).thenReturn(Optional.of(st));
+            return st;
+        }
+
+        @Test
+        void conGhiDanhLop_thiCam() {
+            givenStudent();
+            when(enrollmentRepo.countByStudentId(88)).thenReturn(1L);
+
+            assertThatThrownBy(() -> service.delete(88))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("Lê Thị Duyên")
+                    .hasMessageContaining("1 lượt ghi danh lớp đang học");
+            verify(studentRepo, never()).save(any());
+        }
+
+        @Test
+        void daRutKhoiMoiLop_thiXoaMemDuoc() {
+            Student st = givenStudent();
+
+            service.delete(88);
+
+            assertThat(st.isDeleted()).isTrue();
+            verify(studentRepo).save(st);
+        }
+    }
+
+    /** Tiết học là chỗ NEO của thời khóa biểu — rút tiết đang có lớp là sập cả cột lịch. */
+    @Nested
+    class XoaTietHoc {
+
+        @Mock
+        private PeriodRepository periodRepo;
+
+        @Mock
+        private SchoolRepository schoolRepo;
+
+        @Mock
+        private SchoolClassRepository classRepo;
+
+        @Mock
+        private AssignmentSlotRepository slotRepo;
+
+        @Mock
+        private ScheduleRepository scheduleRepo;
+
+        @InjectMocks
+        private PeriodService service;
+
+        private Period givenPeriod() {
+            Period p = new Period();
+            p.setId(41);
+            p.setSchoolId(3);
+            p.setPeriodNumber((short) 3);
+            p.setSessionType("MORNING");
+            when(periodRepo.findByIdAndDeletedFalse(41)).thenReturn(Optional.of(p));
+            School truong = new School();
+            truong.setName("THCS Ngô Quyền");
+            when(schoolRepo.findById(3)).thenReturn(Optional.of(truong));
+            return p;
+        }
+
+        @Test
+        void tkbDangDungTiet_thiCam_vaNoiRoTietNaoTruongNao() {
+            givenPeriod();
+            when(slotRepo.countByPeriodIdAndDeletedFalse(41)).thenReturn(5L);
+
+            assertThatThrownBy(() -> service.delete(41))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("tiết 3 (buổi sáng) của THCS Ngô Quyền")
+                    .hasMessageContaining("5 ô thời khóa biểu hằng tuần");
+            verify(periodRepo, never()).save(any());
+        }
+
+        @Test
+        void khongAiDung_thiXoaMemDuoc() {
+            Period p = givenPeriod();
+
+            service.delete(41);
+
+            assertThat(p.isDeleted()).isTrue();
+            verify(periodRepo).save(p);
         }
     }
 }
