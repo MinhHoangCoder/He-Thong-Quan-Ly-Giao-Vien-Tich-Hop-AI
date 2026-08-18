@@ -57,7 +57,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-09 | backend | ⭐ Bỏ neo TÊN ROLE ở tầng service — `SecurityUtils.isCentreStaff()` | [2026-08-09-be-bo-neo-ten-role-tang-service.md](2026-08-09-be-bo-neo-ten-role-tang-service.md) |
 | 2026-08-13 | fullstack | ⭐ Màn Đặt lại mật khẩu bấm không ra gì + bẫy MockMvc đi vòng qua Security | [2026-08-13-fullstack-quen-mat-khau-nut-cam-lang.md](2026-08-13-fullstack-quen-mat-khau-nut-cam-lang.md) |
 | 2026-08-14 | domain | ⭐ Bỏ hẳn cấp 3 — chỉ còn khối 1..9 (V26) + vá lỗi tính sai lương khối 10–12 | [2026-08-14-domain-bo-cap-3-khoi-1-9.md](2026-08-14-domain-bo-cap-3-khoi-1-9.md) |
-| 2026-08-17 | database | ⭐ Ràng buộc toàn vẹn khi xóa — RESTRICT cho trường/GV, khóa cứng theo kỳ lương, hồ sơ pháp lý chỉ xóa mềm | [2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md](2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md) |
+| 2026-08-17 | database | ⭐ Ràng buộc toàn vẹn khi xóa (Đợt 1–3) — RESTRICT, khóa cứng theo kỳ lương, chốt phòng ngừa 5 bảng chưa có luồng xóa | [2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md](2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
