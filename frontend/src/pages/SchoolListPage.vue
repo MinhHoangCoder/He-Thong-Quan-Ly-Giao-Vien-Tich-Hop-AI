@@ -1,11 +1,5 @@
-<!-- src/pages/SchoolListPage.vue -->
 <script setup>
-
-  // Trang "Quản lý trường": CRUD School (trường khách hàng).
-  // Đồng bộ giao diện với SubjectCategoryListPage.vue / LessonListPage.vue —
-  // đồng bộ với TeacherListPage.vue.
- 
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { schoolApi } from '@/api/schools'
 import { branchApi } from '@/api/branches'
 import DateField from '@/components/ui/DateField.vue'
@@ -97,7 +91,23 @@ function onSearch() {
   load()
 }
 
+// Lọc theo chi nhánh/trạng thái -> áp dụng ngay khi đổi lựa chọn, không cần bấm nút.
+watch([branchFilter, statusFilter], onSearch)
+
+// Ô tìm kiếm -> debounce 350ms để không gọi API dồn dập theo từng ký tự gõ.
+let searchDebounce = null
+watch(keyword, () => {
+  clearTimeout(searchDebounce)
+  searchDebounce = setTimeout(onSearch, 350)
+})
+// Bấm Enter -> tìm ngay, không cần chờ debounce.
+function searchNow() {
+  clearTimeout(searchDebounce)
+  onSearch()
+}
+
 function clearSearch() {
+  clearTimeout(searchDebounce) // hủy debounce đang chờ (nếu có) để khỏi gọi API lần nữa sau đó
   keyword.value = ''
   branchFilter.value = ''
   statusFilter.value = ''
@@ -278,7 +288,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           v-model="keyword"
           type="text"
           placeholder="Tên trường, địa chỉ, người liên hệ, SĐT..."
-          @keyup.enter="onSearch"
+          @keyup.enter="searchNow"
         />
       </div>
 
@@ -294,7 +304,6 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
         <option value="EXPIRED">Hết hạn</option>
       </select>
 
-      <button class="btn-filter" @click="onSearch">Lọc</button>
       <button class="btn-filter btn-filter--ghost" @click="clearSearch">Xóa lọc</button>
     </div>
 
@@ -352,10 +361,8 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             </td>
 
             <td class="col-actions" @click.stop>
-              <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
-              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
-                Xóa
-              </button>
+              <button class="act-btn act-btn--edit" title="Sửa" @click="openEdit(item)">Sửa</button>
+              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">Xóa</button>
             </td>
           </tr>
         </tbody>
@@ -782,18 +789,33 @@ tbody tr:hover {
   border: none;
   background: transparent;
   cursor: pointer;
-  padding: 6px;
+  padding: 6px 12px;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 500;
   transition: 0.2s;
 }
 
 .act-btn:hover {
   background: var(--c-surface-2);
 }
+.act-btn--edit {
+  color: #16a34a;
+}
+.act-btn--del {
+  color: #dc2626;
+}
 
-.act-btn--del:hover {
-  background: rgba(239, 68, 68, 0.12);
+
+.act-btn--edit:hover,
+.act-btn--edit:focus-visible {
+  background: #16a34a;
+  color: #fff;
+}
+.act-btn--del:hover,
+.act-btn--del:focus-visible {
+  background: #dc2626;
+  color: #fff;
 }
 
 /* ================= Modal ================= */

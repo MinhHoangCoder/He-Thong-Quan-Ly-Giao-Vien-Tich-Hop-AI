@@ -58,7 +58,7 @@ function onPeriodChange() {
 /* ─── Điều hướng (mọi thẻ/nút đều bấm được) ─── */
 const statRoutes = {
   teachers: '/dashboard/teacher',
-  schools: '/dashboard/teacher',
+  schools: '/admin/schools',
   assignments: '/assignments',
   lessons: '/schedule',
 }
