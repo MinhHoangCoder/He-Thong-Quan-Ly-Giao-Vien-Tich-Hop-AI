@@ -42,7 +42,7 @@ const modal = reactive({
 
 const deleteTarget = ref(null)
 
- //  Pagination — dùng component dùng chung Pagination
+//  Pagination — dùng component dùng chung Pagination
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
 
@@ -280,7 +280,14 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
       </div>
 
       <div class="filter-search">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -362,7 +369,9 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
 
             <td class="col-actions" @click.stop>
               <button class="act-btn act-btn--edit" title="Sửa" @click="openEdit(item)">Sửa</button>
-              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">Xóa</button>
+              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
+                Xóa
+              </button>
             </td>
           </tr>
         </tbody>
@@ -805,7 +814,6 @@ tbody tr:hover {
 .act-btn--del {
   color: #dc2626;
 }
-
 
 .act-btn--edit:hover,
 .act-btn--edit:focus-visible {

@@ -67,15 +67,27 @@ const MAJOR_GROUPS = [
   {
     label: 'Tin học',
     options: [
-      'Công nghệ thông tin', 'Khoa học máy tính', 'Kỹ thuật phần mềm', 'Hệ thống thông tin',
-      'Mạng máy tính và truyền thông dữ liệu', 'An toàn thông tin', 'Kỹ thuật máy tính',
-      'Tin học ứng dụng', 'Sư phạm Tin học',
+      'Công nghệ thông tin',
+      'Khoa học máy tính',
+      'Kỹ thuật phần mềm',
+      'Hệ thống thông tin',
+      'Mạng máy tính và truyền thông dữ liệu',
+      'An toàn thông tin',
+      'Kỹ thuật máy tính',
+      'Tin học ứng dụng',
+      'Sư phạm Tin học',
     ],
   },
   { label: 'Tiếng Anh', options: ['Sư phạm Tiếng Anh', 'Ngôn ngữ Anh'] },
   {
     label: 'STEM - AI',
-    options: ['Trí tuệ nhân tạo', 'Khoa học máy tính', 'Cơ điện tử', 'Kỹ thuật Robot', 'Kỹ thuật điều khiển & tự động hóa'],
+    options: [
+      'Trí tuệ nhân tạo',
+      'Khoa học máy tính',
+      'Cơ điện tử',
+      'Kỹ thuật Robot',
+      'Kỹ thuật điều khiển & tự động hóa',
+    ],
   },
   { label: 'Kĩ năng sống', options: ['Sư phạm Giáo dục công dân', 'Giáo dục kỹ năng sống'] },
 ]
@@ -148,51 +160,56 @@ const fieldErrors = reactive({
 /* ── Validate (dùng chung, chỉ password là bắt buộc riêng cho create) ── */
 function validateUsername() {
   const v = account.username.trim()
-  if (!v) return (fieldErrors.username = 'Không được để trống'), false
-  if (v.length < 3) return (fieldErrors.username = 'Ít nhất 3 ký tự'), false
-  if (v.length > 50) return (fieldErrors.username = 'Tối đa 50 ký tự'), false
+  if (!v) return ((fieldErrors.username = 'Không được để trống'), false)
+  if (v.length < 3) return ((fieldErrors.username = 'Ít nhất 3 ký tự'), false)
+  if (v.length > 50) return ((fieldErrors.username = 'Tối đa 50 ký tự'), false)
   fieldErrors.username = ''
   return true
 }
 function validateEmail() {
   const v = account.email.trim()
-  if (!v) return (fieldErrors.email = 'Không được để trống'), false
-  if (!EMAIL_RE.test(v)) return (fieldErrors.email = 'Email không hợp lệ (VD: gv@tsdms.local)'), false
+  if (!v) return ((fieldErrors.email = 'Không được để trống'), false)
+  if (!EMAIL_RE.test(v))
+    return ((fieldErrors.email = 'Email không hợp lệ (VD: gv@tsdms.local)'), false)
   fieldErrors.email = ''
   return true
 }
 function validatePassword() {
   const v = account.password
-  if (!v) return (fieldErrors.password = 'Không được để trống'), false
-  if (!isStrongPassword(v)) return (fieldErrors.password = `Chưa đủ mạnh (${PASSWORD_HINT})`), false
+  if (!v) return ((fieldErrors.password = 'Không được để trống'), false)
+  if (!isStrongPassword(v))
+    return ((fieldErrors.password = `Chưa đủ mạnh (${PASSWORD_HINT})`), false)
   fieldErrors.password = ''
   return true
 }
 function validateLastName() {
   const v = profile.lastName.trim()
-  if (!v) return (fieldErrors.lastName = 'Không được để trống'), false
-  if (!NAME_RE.test(v)) return (fieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'), false
+  if (!v) return ((fieldErrors.lastName = 'Không được để trống'), false)
+  if (!NAME_RE.test(v))
+    return ((fieldErrors.lastName = 'Chỉ được chứa chữ cái và khoảng trắng'), false)
   fieldErrors.lastName = ''
   return true
 }
 function validateFirstName() {
   const v = profile.firstName.trim()
-  if (!v) return (fieldErrors.firstName = 'Không được để trống'), false
-  if (!NAME_RE.test(v)) return (fieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'), false
+  if (!v) return ((fieldErrors.firstName = 'Không được để trống'), false)
+  if (!NAME_RE.test(v))
+    return ((fieldErrors.firstName = 'Chỉ được chứa chữ cái và khoảng trắng'), false)
   fieldErrors.firstName = ''
   return true
 }
 function validatePhone() {
   const v = profile.phone.trim()
-  if (!v) return (fieldErrors.phone = ''), true
-  if (!PHONE_RE.test(v)) return (fieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'), false
+  if (!v) return ((fieldErrors.phone = ''), true)
+  if (!PHONE_RE.test(v))
+    return ((fieldErrors.phone = 'SĐT phải bắt đầu bằng 0 hoặc +84, có 10-11 chữ số'), false)
   fieldErrors.phone = ''
   return true
 }
 function validateIdCard() {
   const v = profile.idCardNo.trim()
-  if (!v) return (fieldErrors.idCardNo = ''), true
-  if (!CCCD_RE.test(v)) return (fieldErrors.idCardNo = 'CCCD phải có 12 số'), false
+  if (!v) return ((fieldErrors.idCardNo = ''), true)
+  if (!CCCD_RE.test(v)) return ((fieldErrors.idCardNo = 'CCCD phải có 12 số'), false)
   fieldErrors.idCardNo = ''
   return true
 }
@@ -210,8 +227,23 @@ function validateDates() {
 function validateAll() {
   const checks =
     props.mode === 'create'
-      ? [validateUsername(), validateEmail(), validatePassword(), validateLastName(), validateFirstName(), validatePhone(), validateIdCard(), validateDates()]
-      : [validateLastName(), validateFirstName(), validatePhone(), validateIdCard(), validateDates()]
+      ? [
+          validateUsername(),
+          validateEmail(),
+          validatePassword(),
+          validateLastName(),
+          validateFirstName(),
+          validatePhone(),
+          validateIdCard(),
+          validateDates(),
+        ]
+      : [
+          validateLastName(),
+          validateFirstName(),
+          validatePhone(),
+          validateIdCard(),
+          validateDates(),
+        ]
   if (!profile.branchId) {
     error.value = 'Vui lòng chọn chi nhánh.'
     activeTab.value = 'profile'
@@ -316,7 +348,9 @@ async function viewCert(cert) {
   viewingCertId.value = cert.id
   try {
     const response = await teacherApi.openCertificateFile(props.teacher.id, cert.id)
-    const blobUrl = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+    const blobUrl = window.URL.createObjectURL(
+      new Blob([response.data], { type: 'application/pdf' }),
+    )
     window.open(blobUrl, '_blank', 'noopener')
     setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60_000)
   } catch (e) {
@@ -363,7 +397,8 @@ async function submitCreate() {
 
     const { data: allTeachers } = await teacherApi.list()
     const created = allTeachers.find((t) => t.appUserId === userInfo.id)
-    if (!created) throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
+    if (!created)
+      throw new Error('Tạo tài khoản thành công nhưng không tìm thấy hồ sơ giáo viên vừa tạo.')
     createdTeacherId = created.id
 
     await teacherApi.update(created.id, {
@@ -451,7 +486,9 @@ function close() {
       <div v-if="open" class="overlay" @click.self="close">
         <div class="modal modal--xl">
           <div class="modal__head">
-            <h3 class="modal__title">{{ mode === 'create' ? 'Thêm giáo viên mới' : 'Chỉnh sửa Giáo viên' }}</h3>
+            <h3 class="modal__title">
+              {{ mode === 'create' ? 'Thêm giáo viên mới' : 'Chỉnh sửa Giáo viên' }}
+            </h3>
             <button class="modal__close" @click="close">❌</button>
           </div>
 
@@ -459,7 +496,8 @@ function close() {
             <!-- Menu trái -->
             <div class="create-nav">
               <button
-                v-for="tab in tabs" :key="tab.key"
+                v-for="tab in tabs"
+                :key="tab.key"
                 :class="['create-nav__item', activeTab === tab.key && 'create-nav__item--active']"
                 @click="activeTab = tab.key"
               >
@@ -473,50 +511,64 @@ function close() {
               <template v-if="activeTab === 'profile'">
                 <template v-if="mode === 'create'">
                   <h4 class="create-section-title">Tài khoản đăng nhập</h4>
-                  <p class="create-section-hint">Giáo viên cần 1 tài khoản để đăng nhập hệ thống.</p>
+                  <p class="create-section-hint">
+                    Giáo viên cần 1 tài khoản để đăng nhập hệ thống.
+                  </p>
                 </template>
                 <h4 v-else class="create-section-title">Thông tin cá nhân</h4>
 
                 <div class="form-row">
                   <div class="form-field">
-                    <label class="form-label" >Tên đăng nhập <span class="req">*</span>
+                    <label class="form-label"
+                      >Tên đăng nhập <span class="req">*</span>
                       <input
-                        v-model="account.username" class="form-input"
+                        v-model="account.username"
+                        class="form-input"
                         :class="{ 'form-input--error': fieldErrors.username }"
                         :readonly="mode === 'edit' ? false : false"
                         placeholder="VD: abc123"
                         @blur="mode === 'create' && validateUsername()"
                       />
                     </label>
-                    <span v-if="fieldErrors.username" class="field-error">{{ fieldErrors.username }}</span>
+                    <span v-if="fieldErrors.username" class="field-error">{{
+                      fieldErrors.username
+                    }}</span>
                   </div>
                   <div class="form-field">
-                    <label class="form-label" >Email <span class="req">*</span>
+                    <label class="form-label"
+                      >Email <span class="req">*</span>
                       <input
-                        v-model="account.email" type="email" class="form-input"
+                        v-model="account.email"
+                        type="email"
+                        class="form-input"
                         :class="{ 'form-input--error': fieldErrors.email }"
                         placeholder="VD: abc123@gmail.com"
                         @blur="mode === 'create' && validateEmail()"
                       />
                     </label>
-                    <span v-if="fieldErrors.email" class="field-error">{{ fieldErrors.email }}</span>
+                    <span v-if="fieldErrors.email" class="field-error">{{
+                      fieldErrors.email
+                    }}</span>
                   </div>
                 </div>
 
                 <div v-if="mode === 'create'" class="form-row">
                   <div class="form-field">
-                    <label class="form-label" >Mật khẩu <span class="req">*</span>
+                    <label class="form-label"
+                      >Mật khẩu <span class="req">*</span>
                       <div class="pwd-wrap">
                         <input
                           v-model="account.password"
-                          :type="showPassword ? 'text' : 'password'"  class="form-input"
+                          :type="showPassword ? 'text' : 'password'"
+                          class="form-input"
                           :class="{ 'form-input--error': fieldErrors.password }"
                           autocomplete="new-password"
                           placeholder="Đặt mật khẩu đăng nhập"
                           @blur="validatePassword"
                         />
                         <button
-                          type="button" class="pwd-toggle"
+                          type="button"
+                          class="pwd-toggle"
                           :title="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
                           @click="showPassword = !showPassword"
                         >
@@ -524,44 +576,59 @@ function close() {
                         </button>
                       </div>
                     </label>
-                    <span v-if="fieldErrors.password" class="field-error">{{ fieldErrors.password }}</span>
+                    <span v-if="fieldErrors.password" class="field-error">{{
+                      fieldErrors.password
+                    }}</span>
                     <span v-else class="field-hint">{{ PASSWORD_HINT }}</span>
                   </div>
                 </div>
 
-                <h4 v-if="mode === 'create'" class="create-section-title create-section-title--gap">Thông tin cá nhân</h4>
+                <h4 v-if="mode === 'create'" class="create-section-title create-section-title--gap">
+                  Thông tin cá nhân
+                </h4>
                 <div class="form-row">
                   <div class="form-field">
-                    <label class="form-label" >Họ và tên đệm <span class="req">*</span>
+                    <label class="form-label"
+                      >Họ và tên đệm <span class="req">*</span>
                       <input
-                        v-model="profile.lastName" class="form-input"
+                        v-model="profile.lastName"
+                        class="form-input"
                         :class="{ 'form-input--error': fieldErrors.lastName }"
                         placeholder="VD: Trần Đức"
                         @blur="validateLastName"
                       />
                     </label>
-                    <span v-if="fieldErrors.lastName" class="field-error">{{ fieldErrors.lastName }}</span>
+                    <span v-if="fieldErrors.lastName" class="field-error">{{
+                      fieldErrors.lastName
+                    }}</span>
                   </div>
                   <div class="form-field">
-                    <label class="form-label" >Tên gọi <span class="req">*</span>
+                    <label class="form-label"
+                      >Tên gọi <span class="req">*</span>
                       <input
-                        v-model="profile.firstName" class="form-input"
-                        :class="{ 'form-input--error': fieldErrors.firstName }" placeholder="VD: A Đức"
+                        v-model="profile.firstName"
+                        class="form-input"
+                        :class="{ 'form-input--error': fieldErrors.firstName }"
+                        placeholder="VD: A Đức"
                         @blur="validateFirstName"
                       />
                     </label>
-                    <span v-if="fieldErrors.firstName" class="field-error">{{ fieldErrors.firstName }}</span>
+                    <span v-if="fieldErrors.firstName" class="field-error">{{
+                      fieldErrors.firstName
+                    }}</span>
                   </div>
                 </div>
 
                 <div class="form-row">
-                  <label class="form-label" >Chi nhánh <span class="req">*</span>
+                  <label class="form-label"
+                    >Chi nhánh <span class="req">*</span>
                     <select v-model="profile.branchId" class="form-input">
                       <option value="">-- Chọn chi nhánh --</option>
                       <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
                     </select>
                   </label>
-                  <label class="form-label" >Giới tính
+                  <label class="form-label"
+                    >Giới tính
                     <select v-model="profile.gender" class="form-input">
                       <option :value="null">-- Chọn --</option>
                       <option :value="true">Nam</option>
@@ -572,53 +639,81 @@ function close() {
 
                 <div class="form-row">
                   <div class="form-field">
-                    <label class="form-label" >Số điện thoại
+                    <label class="form-label"
+                      >Số điện thoại
                       <input
-                        v-model="profile.phone" class="form-input"
+                        v-model="profile.phone"
+                        class="form-input"
                         :class="{ 'form-input--error': fieldErrors.phone }"
                         placeholder="VD: 0901234567"
                         @blur="validatePhone"
                       />
                     </label>
-                    <span v-if="fieldErrors.phone" class="field-error">{{ fieldErrors.phone }}</span>
+                    <span v-if="fieldErrors.phone" class="field-error">{{
+                      fieldErrors.phone
+                    }}</span>
                   </div>
                   <div class="form-field">
-                    <label class="form-label" >Số CCCD
+                    <label class="form-label"
+                      >Số CCCD
                       <input
-                        v-model="profile.idCardNo"  class="form-input"
+                        v-model="profile.idCardNo"
+                        class="form-input"
                         :class="{ 'form-input--error': fieldErrors.idCardNo }"
                         placeholder="12 số"
                         @blur="validateIdCard"
                       />
                     </label>
-                    <span v-if="fieldErrors.idCardNo" class="field-error">{{ fieldErrors.idCardNo }}</span>
+                    <span v-if="fieldErrors.idCardNo" class="field-error">{{
+                      fieldErrors.idCardNo
+                    }}</span>
                   </div>
                 </div>
 
                 <div class="form-row">
                   <div class="form-field">
-                    <label class="form-label">Ngày sinh
-                      <DateField v-model="profile.dateOfBirth" :invalid="!!fieldErrors.dateOfBirth" @update:model-value="validateDates" />
+                    <label class="form-label"
+                      >Ngày sinh
+                      <DateField
+                        v-model="profile.dateOfBirth"
+                        :invalid="!!fieldErrors.dateOfBirth"
+                        @update:model-value="validateDates"
+                      />
                     </label>
-                    <span v-if="fieldErrors.dateOfBirth" class="field-error">{{ fieldErrors.dateOfBirth }}</span>
+                    <span v-if="fieldErrors.dateOfBirth" class="field-error">{{
+                      fieldErrors.dateOfBirth
+                    }}</span>
                   </div>
                   <div class="form-field">
-                    <label class="form-label">Ngày vào làm
-                      <DateField v-model="profile.hireDate" :invalid="!!fieldErrors.hireDate" @update:model-value="validateDates" />
+                    <label class="form-label"
+                      >Ngày vào làm
+                      <DateField
+                        v-model="profile.hireDate"
+                        :invalid="!!fieldErrors.hireDate"
+                        @update:model-value="validateDates"
+                      />
                     </label>
-                    <span v-if="fieldErrors.hireDate" class="field-error">{{ fieldErrors.hireDate }}</span>
+                    <span v-if="fieldErrors.hireDate" class="field-error">{{
+                      fieldErrors.hireDate
+                    }}</span>
                   </div>
                 </div>
 
-                <label class="form-label" >Loại hình
+                <label class="form-label"
+                  >Loại hình
                   <select v-model="profile.employmentType" class="form-input">
                     <option value="">-- Chọn loại hình hợp đồng --</option>
                     <option value="CO_HUU">Cơ hữu</option>
                     <option value="THINH_GIANG">Thỉnh giảng</option>
                   </select>
                 </label>
-                <label class="form-label" >Địa chỉ
-                  <input v-model="profile.address" class="form-input" placeholder="Địa chỉ thường trú" />
+                <label class="form-label"
+                  >Địa chỉ
+                  <input
+                    v-model="profile.address"
+                    class="form-input"
+                    placeholder="Địa chỉ thường trú"
+                  />
                 </label>
               </template>
 
@@ -626,24 +721,35 @@ function close() {
               <template v-else-if="activeTab === 'degree'">
                 <template v-if="mode === 'edit'">
                   <h4 class="create-section-title">Đã lưu</h4>
-                  <p v-if="!existingCerts.length" class="create-section-hint">Chưa có bằng cấp nào.</p>
+                  <p v-if="!existingCerts.length" class="create-section-hint">
+                    Chưa có bằng cấp nào.
+                  </p>
                   <div v-for="c in existingCerts" :key="c.id" class="existing-doc">
                     <div>
                       <strong>{{ c.name }}</strong>
                       <span v-if="!c.fileUrl" class="existing-doc__nofile">— chưa có file kèm</span>
                     </div>
                     <div class="existing-doc__actions">
-                      <button v-if="c.fileUrl" class="doc-view" :disabled="viewingCertId === c.id" @click="viewCert(c)">
+                      <button
+                        v-if="c.fileUrl"
+                        class="doc-view"
+                        :disabled="viewingCertId === c.id"
+                        @click="viewCert(c)"
+                      >
                         {{ viewingCertId === c.id ? 'Đang mở…' : 'Xem' }}
                       </button>
-                      <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">➖</button>
+                      <button class="doc-remove" title="Xóa" @click="removeExistingCert(c.id)">
+                        ➖
+                      </button>
                     </div>
                   </div>
                   <h4 class="create-section-title create-section-title--gap">Thêm bằng cấp mới</h4>
                 </template>
                 <template v-else>
                   <h4 class="create-section-title">Bằng cấp</h4>
-                  <p class="create-section-hint">Có thể bỏ trống nếu chưa có, sau này thêm cũng được.</p>
+                  <p class="create-section-hint">
+                    Có thể bỏ trống nếu chưa có, sau này thêm cũng được.
+                  </p>
                 </template>
 
                 <div v-for="(d, i) in newDegrees" :key="i" class="degree-row">
@@ -665,19 +771,31 @@ function close() {
                         <option :value="MAJOR_OTHER">Khác (tự nhập)…</option>
                       </select>
                     </label>
-                     <input
+                    <input
                       v-if="d.major === MAJOR_OTHER"
-                      v-model="d.majorOther" class="form-input degree-row__span"
+                      v-model="d.majorOther"
+                      class="form-input degree-row__span"
                       placeholder="Nhập chuyên ngành"
                     />
                     <label class="doc-file degree-row__span">
                       <SvgIcon name="assignment" :size="14" />
                       <span class="doc-file__name">{{ d.file ? d.file.name : 'Chọn PDF' }}</span>
-                      <input type="file" accept="application/pdf" hidden @change="onPickFile(d, $event)" />
+                      <input
+                        type="file"
+                        accept="application/pdf"
+                        hidden
+                        @change="onPickFile(d, $event)"
+                      />
                     </label>
                   </div>
-                  <button v-if="newDegrees.length > 1" class="doc-remove" title="Xóa dòng này" @click="removeDoc(newDegrees, i)">❌</button>
-
+                  <button
+                    v-if="newDegrees.length > 1"
+                    class="doc-remove"
+                    title="Xóa dòng này"
+                    @click="removeDoc(newDegrees, i)"
+                  >
+                    ❌
+                  </button>
                 </div>
                 <button class="btn-add-row" @click="addDoc(newDegrees)">
                   <SvgIcon name="plus" :size="14" /> Thêm bằng cấp
@@ -687,7 +805,9 @@ function close() {
               <!-- Tab: Kinh nghiệm -->
               <template v-else-if="activeTab === 'experience'">
                 <h4 class="create-section-title">Kinh nghiệm giảng dạy</h4>
-                <p v-if="mode === 'edit'" class="create-section-hint">Không bắt buộc — ghi chú nhanh.</p>
+                <p v-if="mode === 'edit'" class="create-section-hint">
+                  Không bắt buộc — ghi chú nhanh.
+                </p>
                 <textarea
                   v-model="teachingExperience"
                   class="form-input form-textarea"
@@ -698,7 +818,9 @@ function close() {
                 <small
                   class="field__hint"
                   :class="{
-                    'field__hint--warn': (teachingExperience || '').length >= EXPERIENCE_MAX - 30 && (teachingExperience || '').length <= EXPERIENCE_MAX,
+                    'field__hint--warn':
+                      (teachingExperience || '').length >= EXPERIENCE_MAX - 30 &&
+                      (teachingExperience || '').length <= EXPERIENCE_MAX,
                     'field__hint--over': (teachingExperience || '').length > EXPERIENCE_MAX,
                   }"
                 >
@@ -709,7 +831,9 @@ function close() {
               <!-- Tab: Trạng thái -->
               <template v-else-if="activeTab === 'status'">
                 <h4 class="create-section-title">Trạng thái</h4>
-                <span v-if="mode === 'create'" class="badge badge--active badge--lg">Đang hoạt động</span>
+                <span v-if="mode === 'create'" class="badge badge--active badge--lg"
+                  >Đang hoạt động</span
+                >
                 <select v-else v-model="profile.status" class="form-input" style="max-width: 280px">
                   <option value="ACTIVE">Đang hoạt động</option>
                   <option value="RETIRED">Ngừng hoạt động</option>
@@ -725,7 +849,15 @@ function close() {
             <button class="btn btn--ghost" @click="close">Hủy</button>
             <button class="btn btn--primary" :disabled="saving" @click="submit">
               <span v-if="saving" class="spinner spinner--sm" />
-              {{ saving ? (mode === 'create' ? 'Đang tạo…' : 'Đang lưu…') : mode === 'create' ? 'Tạo giáo viên' : 'Lưu thay đổi' }}
+              {{
+                saving
+                  ? mode === 'create'
+                    ? 'Đang tạo…'
+                    : 'Đang lưu…'
+                  : mode === 'create'
+                    ? 'Tạo giáo viên'
+                    : 'Lưu thay đổi'
+              }}
             </button>
           </div>
         </div>
@@ -895,8 +1027,7 @@ function close() {
   gap: 0.6rem 0.5rem;
   flex: 1;
   align-items: start;
-
-  }
+}
 /* Ô nhập "Chuyên ngành khác" và ô chọn PDF nằm riêng 1 dòng, rộng hết khung —
    không còn bị bóp chung với 2 select Trình độ/Chuyên ngành nữa. */
 .degree-row__span {
@@ -913,7 +1044,9 @@ function close() {
   font-size: 0.8rem;
   color: var(--a-text-muted);
   cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
 }
 .doc-file:hover {
   border-color: var(--c-primary);
@@ -999,7 +1132,9 @@ function close() {
   color: var(--a-text);
   background: var(--a-bg);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   box-sizing: border-box;
 }
 .form-input:focus {

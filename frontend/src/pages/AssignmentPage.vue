@@ -435,8 +435,9 @@ async function confirmPurge() {
                 {{ tietShort(s.periodNumber, s.sessionType, s.indexInSession)
                 }}<template v-if="s.className"> · {{ s.className }}</template
                 ><template v-if="isMultiSchool(a) && s.schoolName">
-                  <span class="chip__school">{{ s.schoolName }}</span> </template
-              ></span>
+                  <span class="chip__school">{{ s.schoolName }}</span>
+                </template></span
+              >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
             <td>

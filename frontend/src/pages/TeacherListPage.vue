@@ -50,7 +50,14 @@ const trashLoading = ref(false)
 
 // Confirm xóa
 const confirmDelete = reactive({ open: false })
-const confirmPurge = reactive({ open: false, id: null, name: '', phone: '', typedName: '', purging: false })
+const confirmPurge = reactive({
+  open: false,
+  id: null,
+  name: '',
+  phone: '',
+  typedName: '',
+  purging: false,
+})
 
 // Toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
@@ -86,8 +93,16 @@ function onManagerSaved(msg) {
 /* ══════════════════════════════════════════════════════════
    NHÃN / MÀU DÙNG CHUNG TRONG TRANG
 ══════════════════════════════════════════════════════════ */
-const statusLabel = { ACTIVE: 'Đang hoạt động', RETIRED: 'Ngừng hoạt động', SUSPENDED: 'Đã nghỉ phép' }
-const statusClass = { ACTIVE: 'badge--active', RETIRED: 'badge--retired', SUSPENDED: 'badge--suspended' }
+const statusLabel = {
+  ACTIVE: 'Đang hoạt động',
+  RETIRED: 'Ngừng hoạt động',
+  SUSPENDED: 'Đã nghỉ phép',
+}
+const statusClass = {
+  ACTIVE: 'badge--active',
+  RETIRED: 'badge--retired',
+  SUSPENDED: 'badge--suspended',
+}
 // Khớp bộ giá trị Teacher.EmploymentType sau migration V20 (CO_HUU / THINH_GIANG).
 const empLabel = { CO_HUU: 'Cơ hữu', THINH_GIANG: 'Thỉnh giảng' }
 const avatarPalette = ['#0ea5e9', '#22c55e', '#8b5cf6', '#f97316', '#ec4899', '#14b8a6', '#f43f5e']
@@ -279,7 +294,10 @@ function formatDate(d) {
         <h1 class="tl__title">Quản lý Giáo viên</h1>
       </div>
       <div class="tl__header-actions">
-        <button :class="['btn-tab', viewMode === 'list' && 'btn-tab--active']" @click="switchView('list')">
+        <button
+          :class="['btn-tab', viewMode === 'list' && 'btn-tab--active']"
+          @click="switchView('list')"
+        >
           <SvgIcon name="teacher" :size="16" /> Danh sách
         </button>
         <button
@@ -338,7 +356,11 @@ function formatDate(d) {
           🗑️ {{ deleteMode ? 'Hủy chọn' : 'Xóa' }}
         </button>
 
-        <button v-if="canManage && deleteMode && selectedIds.length" class="btn-confirm-delete" @click="requestDelete">
+        <button
+          v-if="canManage && deleteMode && selectedIds.length"
+          class="btn-confirm-delete"
+          @click="requestDelete"
+        >
           Xóa {{ selectedIds.length }} giáo viên
         </button>
       </div>
@@ -379,7 +401,9 @@ function formatDate(d) {
                 <div class="t-name-cell">
                   <span class="t-avatar" :style="{ background: avatarColor(t.id) }">
                     {{ (t.firstName || '?')[0].toUpperCase() }}
-                    <span :class="['t-avatar-dot', t.status === 'ACTIVE' ? 'dot--active' : 'dot--off']" />
+                    <span
+                      :class="['t-avatar-dot', t.status === 'ACTIVE' ? 'dot--active' : 'dot--off']"
+                    />
                   </span>
                   <div>
                     <div class="t-name" :title="t.fullName">{{ t.fullName }}</div>
@@ -390,7 +414,9 @@ function formatDate(d) {
 
               <td>
                 <div class="t-contact"><strong>SĐT:</strong> {{ t.phone || '—' }}</div>
-                <div class="t-contact t-contact--muted"><strong>CCCD:</strong>{{ t.idCardNo || '—' }}</div>
+                <div class="t-contact t-contact--muted">
+                  <strong>CCCD:</strong>{{ t.idCardNo || '—' }}
+                </div>
               </td>
 
               <td>
@@ -405,8 +431,17 @@ function formatDate(d) {
 
               <td class="col-action" @click.stop>
                 <div class="row-actions">
-                  <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">Xem</button>
-                  <button v-if="canManage" class="ra-btn ra-btn--delete" title="Xóa giáo viên" @click="quickDelete(t.id)">Xóa</button>
+                  <button class="ra-btn ra-btn--edit" title="Chỉnh sửa" @click="openEdit(t)">
+                    Xem
+                  </button>
+                  <button
+                    v-if="canManage"
+                    class="ra-btn ra-btn--delete"
+                    title="Xóa giáo viên"
+                    @click="quickDelete(t.id)"
+                  >
+                    Xóa
+                  </button>
                 </div>
               </td>
             </tr>
@@ -414,7 +449,11 @@ function formatDate(d) {
         </table>
       </div>
 
-      <Pagination v-if="filtered.length && totalPages > 1" v-model="page" :total-pages="totalPages" />
+      <Pagination
+        v-if="filtered.length && totalPages > 1"
+        v-model="page"
+        :total-pages="totalPages"
+      />
 
       <div v-if="!loading && !filtered.length" class="tl__empty">
         <SvgIcon name="teacher" :size="48" />
@@ -429,7 +468,9 @@ function formatDate(d) {
       <div class="trash-header">
         <div>
           <h2 class="trash-title"><i class="history" />📜 Lịch sử giáo viên đã xóa</h2>
-          <p class="trash-sub">Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Có thể khôi phục bất kỳ lúc nào.</p>
+          <p class="trash-sub">
+            Các giáo viên bên dưới đã bị xóa khỏi danh sách chính. Có thể khôi phục bất kỳ lúc nào.
+          </p>
         </div>
       </div>
 
@@ -456,7 +497,9 @@ function formatDate(d) {
               <td>{{ item.idCardNo || '—' }}</td>
               <td>{{ empLabel[item.employmentType] || '—' }}</td>
               <td>
-                <span :class="['badge', statusClass[item.status]]">{{ statusLabel[item.status] }}</span>
+                <span :class="['badge', statusClass[item.status]]">{{
+                  statusLabel[item.status]
+                }}</span>
               </td>
               <td>{{ formatDate(item.deletedAt) }}</td>
               <td>
@@ -504,8 +547,8 @@ function formatDate(d) {
             <div class="modal__icon modal__icon--warn">❌</div>
             <h3 class="modal__title">Bạn chắc chắn muốn xóa không?</h3>
             <p class="modal__body">
-              {{ selectedIds.length }} giáo viên sẽ bị xóa khỏi danh sách chính, và có thể khôi phục lại trong mục
-              <strong>Lịch sử</strong>.
+              {{ selectedIds.length }} giáo viên sẽ bị xóa khỏi danh sách chính, và có thể khôi phục
+              lại trong mục <strong>Lịch sử</strong>.
             </p>
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="confirmDelete.open = false">Không</button>
@@ -538,7 +581,11 @@ function formatDate(d) {
             />
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="closePurge">Hủy</button>
-              <button class="btn btn--danger" :disabled="!purgeConfirmValid || confirmPurge.purging" @click="confirmDoPurge">
+              <button
+                class="btn btn--danger"
+                :disabled="!purgeConfirmValid || confirmPurge.purging"
+                @click="confirmDoPurge"
+              >
                 {{ confirmPurge.purging ? 'Đang xóa…' : 'Xóa vĩnh viễn' }}
               </button>
             </div>
@@ -611,7 +658,9 @@ function formatDate(d) {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 6px 14px rgba(249, 115, 22, 0.28);
-  transition: filter 0.15s, transform 0.15s;
+  transition:
+    filter 0.15s,
+    transform 0.15s;
 }
 .btn-add:hover {
   filter: brightness(1.06);
@@ -666,7 +715,9 @@ function formatDate(d) {
   border: 1px solid var(--a-border);
   border-radius: 8px;
   color: var(--a-text-muted);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 .filter-search:focus-within {
   border-color: var(--c-primary);
@@ -1065,7 +1116,9 @@ function formatDate(d) {
   color: var(--a-text);
   background: var(--a-bg);
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   box-sizing: border-box;
 }
 .form-input:focus {
