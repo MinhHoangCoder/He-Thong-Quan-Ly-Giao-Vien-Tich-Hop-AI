@@ -1119,6 +1119,7 @@ function formatDate(d) {
           <thead>
             <tr>
               <th v-if="deleteMode" class="col-check"></th>
+              <th class="col-stt">STT</th>
               <th>Giáo viên</th>
               <th>Liên hệ</th>
               <th>Chi nhánh</th>
@@ -1129,7 +1130,7 @@ function formatDate(d) {
           </thead>
           <tbody>
             <tr
-              v-for="t in paginatedTeachers"
+              v-for="(t, i) in paginatedTeachers"
               :key="t.id"
               :class="['t-row', deleteMode && selectedIds.includes(t.id) && 't-row--selected']"
               :title="deleteMode ? '' : 'Bấm để xem'"
@@ -1139,6 +1140,13 @@ function formatDate(d) {
                 <span :class="['tick', selectedIds.includes(t.id) && 'tick--checked']">
                   <SvgIcon v-if="selectedIds.includes(t.id)" name="attendance" :size="13" />
                 </span>
+              </td>
+
+              <!-- STT: đếm liên tục qua các trang (trang 2 bắt đầu từ 7), KHÔNG
+                   phải Id. Id là khóa cố định của hồ sơ nên sẽ thủng lỗ sau mỗi
+                   lần xóa; STT luôn là 1..N theo đúng danh sách đang hiển thị. -->
+              <td class="col-stt">
+                <span class="t-stt">{{ page * PAGE_SIZE + i + 1 }}</span>
               </td>
 
               <!-- Tên + avatar + ID -->
@@ -1262,6 +1270,7 @@ function formatDate(d) {
         <table class="teacher-table">
           <thead>
             <tr>
+              <th class="col-stt">STT</th>
               <th>Họ và tên</th>
               <th>SĐT</th>
               <th>CCCD</th>
@@ -1273,7 +1282,11 @@ function formatDate(d) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in trashItems" :key="item.id">
+            <tr v-for="(item, i) in trashItems" :key="item.id">
+              <!-- Thùng rác không phân trang nên STT chạy thẳng 1..N. -->
+              <td class="col-stt">
+                <span class="t-stt">{{ i + 1 }}</span>
+              </td>
               <td class="t-name">{{ item.fullName }}</td>
               <td>{{ item.phone || '—' }}</td>
               <td>{{ item.idCardNo || '—' }}</td>
@@ -2298,8 +2311,20 @@ function formatDate(d) {
 .col-check {
   width: 36px;
 }
+.col-stt {
+  width: 52px;
+  text-align: center;
+}
 .col-action {
   width: 130px;
+}
+
+/* Số thứ tự: chữ số canh giữa, dùng font tabular để các hàng thẳng cột
+   khi số nhảy từ 1 chữ số lên 2-3 chữ số. */
+.t-stt {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--a-text-muted);
 }
 
 /* Tick chọn (bảng) */

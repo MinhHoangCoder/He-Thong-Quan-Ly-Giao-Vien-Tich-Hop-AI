@@ -9,6 +9,7 @@ import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.security.SecurityUtils;
+import java.text.Normalizer;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -128,7 +129,68 @@ public class PeriodService {
                             + "Hãy thêm lớp cho trường trước, rồi áp lại khung tiết.");
         }
 
-        boolean tieuHoc = max <= 5;
+        return generate(schoolId, school.getName(), max <= 5);
+    }
+
+    /**
+     * Sinh khung tiết chuẩn với cấp học CHO SẴN, không suy từ lớp.
+     *
+     * <p>Dùng lúc TẠO MỚI trường: khi đó trường chưa có lớp nào nên
+     * {@link #applyStandardFrame(Integer)} không dùng được — nó cần khối lớp để suy ra cấp. Cấp
+     * học ở đây do người tạo trường chọn (hoặc suy từ tên trường, xem {@link #suyCapTuTen}).
+     *
+     * <p>Trường đã có khung tiết thì KHÔNG làm gì và trả {@code null} — im lặng bỏ qua chứ không
+     * ném lỗi, vì đây là bước phụ chạy kèm việc tạo trường: không đáng để làm hỏng cả thao tác
+     * chính chỉ vì phần khung tiết đã có sẵn.
+     */
+    @Transactional
+    public StandardFrameResult applyStandardFrame(Integer schoolId, String schoolName, boolean tieuHoc) {
+        if (!periodRepo
+                .findBySchoolIdAndDeletedFalseOrderByPeriodNumber(schoolId)
+                .isEmpty()) {
+            return null;
+        }
+        return generate(schoolId, schoolName, tieuHoc);
+    }
+
+    /**
+     * Suy cấp học TỪ TÊN TRƯỜNG, dùng khi người tạo không chọn cấp.
+     *
+     * <p>Trả {@code TRUE} = tiểu học, {@code FALSE} = THCS, {@code null} = không đoán được (tên
+     * không chứa dấu hiệu nào) — lúc đó KHÔNG sinh khung, để người dùng tự bấm nút "Áp khung tiết
+     * chuẩn" ở màn Phân công sau khi đã thêm lớp. Thà không có khung còn hơn gán nhầm khung 35
+     * phút cho một trường THCS: sai giờ toàn bộ lịch dạy mà không có lỗi nào bắn ra.
+     *
+     * <p>Phải kiểm "THCS"/"trung học cơ sở" TRƯỚC "TH"/"tiểu học": chuỗi "THCS" cũng bắt đầu bằng
+     * "TH", kiểm ngược thứ tự là mọi trường THCS đều bị nhận nhầm thành tiểu học.
+     *
+     * <p>BỎ DẤU trước khi so khớp: người nhập liệu gõ "Tiểu học" hay "Tieu hoc" đều phải ra cùng
+     * kết quả. Không bỏ dấu thì một trường gõ thiếu dấu sẽ âm thầm không có khung tiết.
+     */
+    public static Boolean suyCapTuTen(String name) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String s = boDau(name.trim().toLowerCase());
+        if (s.startsWith("thcs ") || s.contains(" thcs ") || s.contains("trung hoc co so")) {
+            return Boolean.FALSE;
+        }
+        if (s.startsWith("th ") || s.contains(" th ") || s.contains("tieu hoc")) {
+            return Boolean.TRUE;
+        }
+        return null;
+    }
+
+    /** Bỏ dấu tiếng Việt để so khớp không phụ thuộc người nhập có gõ dấu hay không. */
+    private static String boDau(String s) {
+        return Normalizer.normalize(s, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .replace('đ', 'd')
+                .replace('Đ', 'D');
+    }
+
+    /** Dựng và lưu bộ tiết cho một trường. Người gọi chịu trách nhiệm kiểm trùng trước. */
+    private StandardFrameResult generate(Integer schoolId, String schoolName, boolean tieuHoc) {
         Frame frame = tieuHoc ? TIEU_HOC : TRUNG_HOC;
         Integer userId = SecurityUtils.currentUserId();
 
@@ -139,7 +201,7 @@ public class PeriodService {
         periodRepo.saveAll(out);
 
         return new StandardFrameResult(
-                schoolId, school.getName(), tieuHoc ? "Tiểu học" : "THCS", out.size(), frame.lengthMin());
+                schoolId, schoolName, tieuHoc ? "Tiểu học" : "THCS", out.size(), frame.lengthMin());
     }
 
     /** Trải một buổi thành các tiết liên tiếp, chèn giờ ra chơi sau tiết thứ {@value #BREAK_AFTER}. */
