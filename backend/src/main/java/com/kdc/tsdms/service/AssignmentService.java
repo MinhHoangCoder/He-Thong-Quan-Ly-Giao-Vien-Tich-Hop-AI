@@ -1,8 +1,8 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.DeleteGuard;
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
-import com.kdc.tsdms.dto.AssignmentConflict;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
 import com.kdc.tsdms.dto.AssignmentInviteDetail;
@@ -10,6 +10,7 @@ import com.kdc.tsdms.dto.AssignmentResponse;
 import com.kdc.tsdms.dto.AssignmentSlotRequest;
 import com.kdc.tsdms.dto.AssignmentSlotResponse;
 import com.kdc.tsdms.dto.AssignmentUpdateRequest;
+import com.kdc.tsdms.dto.ClassBusySlot;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.PeriodOption;
 import com.kdc.tsdms.dto.SchoolScopedOptions;
@@ -24,6 +25,7 @@ import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
@@ -39,9 +41,7 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -82,6 +82,7 @@ public class AssignmentService {
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
     private final PayrollRepository payrollRepo;
+    private final AppUserRepository userRepo;
     private final AssignmentApprovalService approvalService;
     private final TeacherTimeConflictChecker conflictChecker;
     private final ApplicationContext applicationContext;
@@ -96,6 +97,7 @@ public class AssignmentService {
             SubjectRepository subjectRepo,
             PeriodRepository periodRepo,
             PayrollRepository payrollRepo,
+            AppUserRepository userRepo,
             AssignmentApprovalService approvalService,
             TeacherTimeConflictChecker conflictChecker,
             ApplicationContext applicationContext) {
@@ -108,6 +110,7 @@ public class AssignmentService {
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
         this.payrollRepo = payrollRepo;
+        this.userRepo = userRepo;
         this.approvalService = approvalService;
         this.conflictChecker = conflictChecker;
         this.applicationContext = applicationContext;
@@ -203,18 +206,83 @@ public class AssignmentService {
         return SecurityUtils.isCentreStaff();
     }
 
-    /** Danh sách GV / môn / trường cho form tạo phân công. */
+    /**
+     * Danh sách GV / môn / trường cho form tạo phân công, kèm thông tin phụ để ô tìm kiếm hiện
+     * dòng hai (tải hiện tại của GV, cấp học của trường…).
+     *
+     * <p>Gom sẵn ở server bằng vài truy vấn "lấy tất rồi gộp trong bộ nhớ": dữ liệu ở quy mô vài
+     * chục trường / vài chục giáo viên nên rẻ hơn nhiều so với để frontend gọi lắt nhắt.
+     */
     @Transactional(readOnly = true)
     public AssignmentFormOptions formOptions() {
-        List<OptionItem> teachers = teacherRepo.findByDeletedFalse().stream()
-                .map(t -> new OptionItem(t.getId(), fullName(t)))
+        // Tải hiện tại của từng GV: đếm ô lịch của các phiếu CÒN GIỮ CHỖ, gom theo giáo viên.
+        Map<Integer, Integer> weeklyPeriods = new HashMap<>();
+        Map<Integer, Set<Integer>> schoolsByTeacher = new HashMap<>();
+        Map<Integer, Assignment> aCache = new HashMap<>();
+        for (AssignmentSlot slot : slotRepo.findByDeletedFalse()) {
+            Assignment a = aCache.computeIfAbsent(
+                    slot.getAssignmentId(),
+                    id -> assignmentRepo.findByIdAndDeletedFalse(id).orElse(null));
+            if (a == null || !a.holdsTimeSlot()) {
+                continue;
+            }
+            weeklyPeriods.merge(slot.getTeacherId(), 1, Integer::sum);
+            Integer schoolId = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+            if (schoolId != null) {
+                schoolsByTeacher
+                        .computeIfAbsent(slot.getTeacherId(), k -> new LinkedHashSet<>())
+                        .add(schoolId);
+            }
+        }
+
+        // Tên đăng nhập làm "mã giáo viên" — Teacher không có cột mã riêng.
+        Map<Integer, String> usernameByUserId = new HashMap<>();
+        userRepo.findAll().forEach(u -> usernameByUserId.put(u.getId(), u.getUsername()));
+
+        List<AssignmentFormOptions.TeacherOption> teachers = teacherRepo.findByDeletedFalse().stream()
+                .map(t -> new AssignmentFormOptions.TeacherOption(
+                        t.getId(),
+                        fullName(t),
+                        usernameByUserId.get(t.getAppUserId()),
+                        weeklyPeriods.getOrDefault(t.getId(), 0),
+                        schoolsByTeacher.getOrDefault(t.getId(), Set.of()).size()))
                 .toList();
-        List<OptionItem> subjects = subjectRepo.findByDeletedFalseOrderByName().stream()
-                .map(s -> new OptionItem(s.getId(), s.getName()))
+
+        List<AssignmentFormOptions.SubjectOption> subjects = subjectRepo.findByDeletedFalseOrderByName().stream()
+                .map(s -> new AssignmentFormOptions.SubjectOption(
+                        s.getId(),
+                        s.getName(),
+                        s.getCode(),
+                        s.getCategory() == null ? null : s.getCategory().getName()))
                 .toList();
-        List<OptionItem> schools = schoolRepo.findAll().stream()
+
+        // Lớp + khung tiết gom theo trường để tính cấp học / số lớp / số tiết một lượt.
+        Map<Integer, List<SchoolClass>> classesBySchool = new HashMap<>();
+        for (SchoolClass c : classRepo.findAll()) {
+            if (!c.isDeleted()) {
+                classesBySchool
+                        .computeIfAbsent(c.getSchoolId(), k -> new ArrayList<>())
+                        .add(c);
+            }
+        }
+        Map<Integer, Integer> periodCountBySchool = new HashMap<>();
+        for (Period p : periodRepo.findAll()) {
+            if (!p.isDeleted()) {
+                periodCountBySchool.merge(p.getSchoolId(), 1, Integer::sum);
+            }
+        }
+
+        List<AssignmentFormOptions.SchoolOption> schools = schoolRepo.findAll().stream()
                 .filter(s -> !s.isDeleted())
-                .map(s -> new OptionItem(s.getId(), s.getName()))
+                .map(s -> {
+                    List<SchoolClass> cls = classesBySchool.getOrDefault(s.getId(), List.of());
+                    return new AssignmentFormOptions.SchoolOption(
+                            s.getId(),
+                            s.getName(),
+                            PeriodService.levelLabel(cls),
+                            cls.size(),
+                            periodCountBySchool.getOrDefault(s.getId(), 0));
+                })
                 .toList();
         return new AssignmentFormOptions(teachers, subjects, schools);
     }
@@ -286,9 +354,12 @@ public class AssignmentService {
             b.sessionType = p.getSessionType();
             b.startTime = p.getStartTime();
             b.endTime = p.getEndTime();
-            b.schoolId = a.getSchoolId();
+            // Trường của CHÍNH ô lịch này (V27): bảng "giờ bận" dùng để báo cho người xếp lịch
+            // biết giáo viên đang vướng Ở ĐÂU, mà một phiếu nay trải nhiều trường.
+            Integer slotSchoolId = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+            b.schoolId = slotSchoolId;
             b.schoolName = schoolNames.computeIfAbsent(
-                    a.getSchoolId(),
+                    slotSchoolId,
                     id -> schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")"));
             b.className = classId == null
                     ? null
@@ -307,126 +378,67 @@ public class AssignmentService {
     }
 
     /**
-     * Quét TOÀN BỘ phân công đang chạy, tìm các cặp ô lịch của cùng một GV bị đè giờ lên
-     * nhau. Cần thiết vì luật chống trùng cũ so theo {@code periodId} — hai trường khác
-     * nhau có periodId khác nhau nên GV vẫn được xếp dạy hai nơi cùng khung giờ; những cặp
-     * đã lọt lưới chỉ lộ ra khi so giờ thật như ở đây.
+     * Bảng "lớp đang bận" của một TRƯỜNG: mọi ô lịch còn giữ chỗ, kèm khung giờ thật và tên
+     * giáo viên đang dạy. Lưới xếp phân công dùng nó để tô xám sẵn ô đã có người.
+     *
+     * <p>Chiều ngược của {@link #teacherBusy}: luật {@code checkClass} chặn "một lớp hai giáo
+     * viên cùng giờ" ở backend, nhưng trước đây form không có cách nào biết trước — người dùng
+     * xếp xong cả thời khóa biểu rồi mới nhận 409.
+     *
+     * @param startDate/endDate giai đoạn đang định xếp — chỉ trả ô lịch của phân công có giai
+     *     đoạn chồng lên khoảng này (null = không lọc theo ngày)
      */
     @Transactional(readOnly = true)
-    public List<AssignmentConflict> scanConflicts() {
+    public List<ClassBusySlot> classBusy(Integer schoolId, LocalDate startDate, LocalDate endDate) {
         Map<Integer, Assignment> aCache = new HashMap<>();
         Map<Integer, Period> periodCache = new HashMap<>();
-        Map<Integer, String> schoolNames = new HashMap<>();
-        Map<Integer, String> classNames = new HashMap<>();
-        Map<Integer, String> subjectNames = new HashMap<>();
         Map<Integer, String> teacherNames = new HashMap<>();
+        Map<Integer, String> subjectNames = new HashMap<>();
 
-        // Gom theo GV + Thứ: chỉ những ô lịch trong cùng nhóm mới có thể đè giờ nhau.
-        Map<String, List<AssignmentSlot>> byTeacherDay = new LinkedHashMap<>();
-        for (AssignmentSlot slot : slotRepo.findByDeletedFalse()) {
+        List<ClassBusySlot> out = new ArrayList<>();
+        for (AssignmentSlot slot : slotRepo.findBySchoolIdAndDeletedFalse(schoolId)) {
             Assignment a = aCache.computeIfAbsent(
                     slot.getAssignmentId(),
                     id -> assignmentRepo.findByIdAndDeletedFalse(id).orElse(null));
+            // Phiếu hết hạn / đã hủy KHÔNG còn giữ chỗ → lớp trống trở lại, đừng khóa oan.
             if (a == null || !a.holdsTimeSlot()) {
                 continue;
             }
-            byTeacherDay
-                    .computeIfAbsent(slot.getTeacherId() + "#" + slot.getDayOfWeek(), k -> new ArrayList<>())
-                    .add(slot);
-        }
-
-        List<AssignmentConflict> out = new ArrayList<>();
-        for (List<AssignmentSlot> group : byTeacherDay.values()) {
-            for (int i = 0; i < group.size(); i++) {
-                for (int j = i + 1; j < group.size(); j++) {
-                    AssignmentSlot s1 = group.get(i);
-                    AssignmentSlot s2 = group.get(j);
-                    Assignment a1 = aCache.get(s1.getAssignmentId());
-                    Assignment a2 = aCache.get(s2.getAssignmentId());
-                    if (!datesOverlap(a1.getStartDate(), a1.getEndDate(), a2.getStartDate(), a2.getEndDate())) {
-                        continue;
-                    }
-                    Period p1 = periodCache.computeIfAbsent(
-                            s1.getPeriodId(), id -> periodRepo.findById(id).orElse(null));
-                    Period p2 = periodCache.computeIfAbsent(
-                            s2.getPeriodId(), id -> periodRepo.findById(id).orElse(null));
-                    if (!timeOverlaps(p1, p2)) {
-                        continue;
-                    }
-
-                    AssignmentConflict c = new AssignmentConflict();
-                    c.teacherId = s1.getTeacherId();
-                    c.teacherName = teacherNames.computeIfAbsent(s1.getTeacherId(), id -> teacherRepo
-                            .findById(id)
-                            .map(AssignmentService::fullName)
-                            .orElse("(GV #" + id + ")"));
-                    c.dayOfWeek = s1.getDayOfWeek();
-                    c.dayOfWeekLabel = dayLabelVi(s1.getDayOfWeek());
-                    c.overlapStart = maxDate(a1.getStartDate(), a2.getStartDate());
-                    c.overlapEnd = minEndDate(a1.getEndDate(), a2.getEndDate());
-                    c.overlapFrom = maxTime(p1.getStartTime(), p2.getStartTime());
-                    c.overlapTo = minTime(p1.getEndTime(), p2.getEndTime());
-                    c.first = conflictSide(s1, a1, p1, schoolNames, classNames, subjectNames);
-                    c.second = conflictSide(s2, a2, p2, schoolNames, classNames, subjectNames);
-                    out.add(c);
-                }
+            if (startDate != null && !datesOverlap(startDate, endDate, a.getStartDate(), a.getEndDate())) {
+                continue;
             }
+            Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
+            if (classId == null) {
+                continue;
+            }
+            Period p = periodCache.computeIfAbsent(
+                    slot.getPeriodId(), id -> periodRepo.findById(id).orElse(null));
+            if (p == null) {
+                continue;
+            }
+
+            ClassBusySlot b = new ClassBusySlot();
+            b.classId = classId;
+            b.dayOfWeek = slot.getDayOfWeek();
+            b.periodId = p.getId();
+            b.periodNumber = p.getPeriodNumber();
+            b.startTime = p.getStartTime();
+            b.endTime = p.getEndTime();
+            b.teacherId = slot.getTeacherId();
+            b.teacherName = teacherNames.computeIfAbsent(slot.getTeacherId(), id -> teacherRepo
+                    .findById(id)
+                    .map(AssignmentService::fullName)
+                    .orElse("(GV #" + id + ")"));
+            b.subjectName = subjectNames.computeIfAbsent(
+                    a.getSubjectId(),
+                    id -> subjectRepo.findById(id).map(Subject::getName).orElse(null));
+            b.assignmentId = a.getId();
+            b.pending = AssignmentStatus.PENDING.equals(a.getStatus());
+            b.startDate = a.getStartDate();
+            b.endDate = a.getEndDate();
+            out.add(b);
         }
-        out.sort(Comparator.comparing((AssignmentConflict c) -> c.teacherName).thenComparing(c -> c.dayOfWeek));
         return out;
-    }
-
-    private AssignmentConflict.Side conflictSide(
-            AssignmentSlot slot,
-            Assignment a,
-            Period p,
-            Map<Integer, String> schoolNames,
-            Map<Integer, String> classNames,
-            Map<Integer, String> subjectNames) {
-        Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
-        AssignmentConflict.Side s = new AssignmentConflict.Side();
-        s.assignmentId = a.getId();
-        s.slotId = slot.getId();
-        s.schoolId = a.getSchoolId();
-        s.schoolName = schoolNames.computeIfAbsent(
-                a.getSchoolId(),
-                id -> schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")"));
-        s.className = classId == null
-                ? null
-                : classNames.computeIfAbsent(
-                        classId,
-                        id -> classRepo.findById(id).map(SchoolClass::getName).orElse(null));
-        s.subjectName = subjectNames.computeIfAbsent(
-                a.getSubjectId(),
-                id -> subjectRepo.findById(id).map(Subject::getName).orElse(null));
-        s.periodNumber = p.getPeriodNumber();
-        s.sessionType = p.getSessionType();
-        s.startTime = p.getStartTime();
-        s.endTime = p.getEndTime();
-        return s;
-    }
-
-    private static LocalDate maxDate(LocalDate a, LocalDate b) {
-        return a.isAfter(b) ? a : b;
-    }
-
-    /** null = vô thời hạn nên "sớm hơn" luôn là phía có ngày. */
-    private static LocalDate minEndDate(LocalDate a, LocalDate b) {
-        if (a == null) {
-            return b;
-        }
-        if (b == null) {
-            return a;
-        }
-        return a.isBefore(b) ? a : b;
-    }
-
-    private static LocalTime maxTime(LocalTime a, LocalTime b) {
-        return a.isAfter(b) ? a : b;
-    }
-
-    private static LocalTime minTime(LocalTime a, LocalTime b) {
-        return a.isBefore(b) ? a : b;
     }
 
     /* ─────────────────────────── CREATE ─────────────────────────── */
@@ -446,28 +458,42 @@ public class AssignmentService {
         if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
         }
+        // Phiếu MỚI không được bắt đầu trong quá khứ: sinh buổi cho những ngày đã trôi qua thì
+        // giáo viên không thể chấm công cho chúng, mà chúng vẫn nằm trong lịch và bị đếm là
+        // "vắng". Sửa phiếu cũ thì KHÔNG áp luật này — xem update().
+        if (req.startDate().isBefore(BusinessTime.today())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày bắt đầu không được là ngày trong quá khứ.");
+        }
 
         Map<Integer, Period> periodById = new HashMap<>();
-        List<Integer> slotClassIds = validateSlots(
+        List<ResolvedSlot> resolved = validateSlots(
                 req.slots(), school, req.classId(), teacher.getId(), req.startDate(), req.endDate(), null, periodById);
 
         Integer userId = SecurityUtils.currentUserId();
 
+        // Bỏ trống ngày kết thúc thì CHỐT LUÔN thành ngày sinh lịch cuối cùng, không lưu null.
+        // Lưu null là nói dối hai lần: màn hình ghi "không giới hạn" trong khi buổi dạy dừng ở
+        // tuần thứ 8, và luật chống trùng coi giai đoạn là VÔ HẠN nên khung giờ đó bị giữ mãi
+        // dù chẳng còn buổi nào — giáo viên vĩnh viễn không xếp được lịch khác vào chỗ trống.
+        LocalDate effectiveEnd =
+                req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
+
         Assignment a = new Assignment();
         a.setTeacherId(teacher.getId());
-        a.setSchoolId(school.getId());
+        // Trường cấp phân công = TRƯỜNG CHÍNH (trường của tiết đầu tiên) — cột này NOT NULL và
+        // vẫn là chỗ dựa của dữ liệu cũ, nhưng trường thật của mỗi buổi nằm ở từng slot (V27).
+        a.setSchoolId(resolved.get(0).schoolId());
         a.setSubjectId(req.subjectId());
         // Lớp cấp phân công = lớp mặc định (client cũ) hoặc lớp của tiết đầu tiên — chỉ còn
         // là giá trị đại diện/dự phòng, lớp thật nằm ở từng slot.
-        a.setClassId(req.classId() != null ? req.classId() : slotClassIds.get(0));
+        a.setClassId(req.classId() != null ? req.classId() : resolved.get(0).classId());
         a.setStartDate(req.startDate());
-        a.setEndDate(req.endDate());
+        a.setEndDate(effectiveEnd);
         // CHỜ XÁC NHẬN: lịch chưa có hiệu lực cho tới khi giáo viên đồng ý (hoặc admin ép duyệt).
         a.setStatus(AssignmentStatus.PENDING);
         a.setCreatedBy(userId);
         assignmentRepo.save(a);
 
-        LocalDate end = req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
         for (int i = 0; i < req.slots().size(); i++) {
             AssignmentSlotRequest slotReq = req.slots().get(i);
             AssignmentSlot slot = new AssignmentSlot();
@@ -475,11 +501,12 @@ public class AssignmentService {
             slot.setTeacherId(teacher.getId());
             slot.setDayOfWeek(slotReq.dayOfWeek());
             slot.setPeriodId(slotReq.periodId());
-            slot.setClassId(slotClassIds.get(i));
+            slot.setClassId(resolved.get(i).classId());
+            slot.setSchoolId(resolved.get(i).schoolId());
             slot.setCreatedBy(userId);
             slotRepo.save(slot);
 
-            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), end, userId);
+            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, userId);
         }
 
         // Hạn trả lời phải biết buổi đầu tiên diễn ra lúc nào → tính SAU khi đã sinh buổi.
@@ -492,27 +519,40 @@ public class AssignmentService {
         return toResponse(a);
     }
 
+    /** Trường + lớp đã chốt cho một tiết sau khi soát xong (V27). */
+    private record ResolvedSlot(Integer schoolId, Integer classId) {}
+
     /**
-     * Soát toàn bộ danh sách tiết của một phiếu (dùng chung cho tạo mới và sửa): tiết phải
-     * thuộc đúng trường, mỗi tiết phải có lớp và lớp phải thuộc đúng trường, các tiết không
-     * được trùng/đè giờ nhau, và không được đè lịch sẵn có của giáo viên ở BẤT KỲ trường nào.
+     * Soát toàn bộ danh sách tiết của một phiếu (dùng chung cho tạo mới và sửa): mỗi tiết mang
+     * TRƯỜNG riêng, tiết và lớp phải cùng thuộc đúng trường đó, các tiết không được trùng/đè
+     * giờ nhau, và không được đè lịch sẵn có của giáo viên ở BẤT KỲ trường nào.
      *
+     * @param defaultSchool trường mặc định cấp phiếu, dùng cho slot bỏ trống trường (client cũ)
      * @param defaultClassId lớp mặc định cấp phiếu, dùng cho slot bỏ trống lớp (client cũ)
      * @param ignoreAssignmentId bỏ qua chính phiếu này khi dò trùng (lúc sửa), null khi tạo mới
      * @param periodByIdOut nhận các Period đã nạp để bên gọi tái sử dụng, khỏi truy vấn lại
-     * @return classId đã chốt cho từng slot (cùng thứ tự với {@code slots})
+     * @return trường + lớp đã chốt cho từng slot (cùng thứ tự với {@code slots})
      */
-    private List<Integer> validateSlots(
+    private List<ResolvedSlot> validateSlots(
             List<AssignmentSlotRequest> slots,
-            School school,
+            School defaultSchool,
             Integer defaultClassId,
             Integer teacherId,
             LocalDate startDate,
             LocalDate endDate,
             Integer ignoreAssignmentId,
             Map<Integer, Period> periodByIdOut) {
+        // KHÔNG xếp lịch Chủ nhật. Chặn ở đây chứ không ở @Pattern của DTO: mã SUN vẫn phải hợp
+        // lệ ở tầng dữ liệu để phiếu cũ (nếu có) còn đọc/sửa được, chỉ cấm đường TẠO MỚI.
+        for (AssignmentSlotRequest slot : slots) {
+            if ("SUN".equals(slot.dayOfWeek())) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "Không xếp lịch dạy vào Chủ nhật.");
+            }
+        }
+
         // Chặn slot TRÙNG NHAU ngay trong request (cùng Thứ + Tiết) — nếu lọt sẽ sinh
-        // đúp Schedule cho cùng một khung giờ.
+        // đúp Schedule cho cùng một khung giờ. PeriodId là khóa toàn cục nên vẫn phân biệt
+        // được tiết của hai trường khác nhau.
         Set<String> seenSlots = new HashSet<>();
         for (AssignmentSlotRequest slot : slots) {
             if (!seenSlots.add(slot.dayOfWeek() + "#" + slot.periodId())) {
@@ -522,16 +562,30 @@ public class AssignmentService {
             }
         }
 
-        // Nạp & validate TIẾT (phải thuộc đúng trường) và LỚP của TỪNG tiết (V16 — mỗi tiết
-        // một lớp; slot bỏ trống lớp thì dùng lớp mặc định ở cấp phân công).
+        // Nạp & validate TRƯỜNG (V27), TIẾT và LỚP của TỪNG tiết (V16). Ba thứ này phải khớp
+        // nhau: khung tiết và danh sách lớp đều thuộc về một trường cụ thể, lệch một cái là
+        // buổi dạy sinh ra sai chỗ.
+        Map<Integer, School> schoolById = new HashMap<>();
         Map<Integer, SchoolClass> classById = new HashMap<>();
-        List<Integer> slotClassIds = new ArrayList<>(); // song song với slots
+        List<ResolvedSlot> resolved = new ArrayList<>(); // song song với slots
         for (AssignmentSlotRequest slot : slots) {
+            Integer schoolId =
+                    slot.schoolId() != null ? slot.schoolId() : (defaultSchool == null ? null : defaultSchool.getId());
+            if (schoolId == null) {
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST, "Vui lòng chọn trường cho " + dayLabelVi(slot.dayOfWeek()) + ".");
+            }
+            School school = schoolById.computeIfAbsent(schoolId, id -> schoolRepo
+                    .findById(id)
+                    .filter(x -> !x.isDeleted())
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường đã chọn.")));
+
             Period p = periodRepo
                     .findById(slot.periodId())
                     .filter(x -> !x.isDeleted() && x.getSchoolId().equals(school.getId()))
                     .orElseThrow(() -> new ApiException(
-                            HttpStatus.BAD_REQUEST, "Tiết đã chọn không thuộc khung tiết của trường này."));
+                            HttpStatus.BAD_REQUEST,
+                            "Tiết đã chọn không thuộc khung tiết của trường " + school.getName() + "."));
             periodByIdOut.put(p.getId(), p);
 
             Integer classId = slot.classId() != null ? slot.classId() : defaultClassId;
@@ -546,12 +600,15 @@ public class AssignmentService {
                     .filter(x -> !x.isDeleted())
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy lớp học đã chọn.")));
             if (!c.getSchoolId().equals(school.getId())) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "Lớp " + c.getName() + " không thuộc trường đã chọn.");
+                throw new ApiException(
+                        HttpStatus.BAD_REQUEST, "Lớp " + c.getName() + " không thuộc trường " + school.getName() + ".");
             }
-            slotClassIds.add(classId);
+            resolved.add(new ResolvedSlot(school.getId(), classId));
         }
 
         // Hai tiết trong CÙNG request đè giờ nhau (khác periodId nhưng khung giờ giao nhau).
+        // Nay còn quan trọng hơn: một phiếu trải nhiều trường thì hai tiết ở hai trường hoàn
+        // toàn có thể cùng rơi vào 07:00 mà không có gì ngoài phép so giờ này bắt được.
         checkSelfTimeConflicts(slots, periodByIdOut);
 
         // DÒ TRÙNG LỊCH GV THEO GIỜ THẬT: quét mọi ô lịch của GV trong cùng Thứ ở MỌI
@@ -565,13 +622,9 @@ public class AssignmentService {
             // "lớp này đã có ai dạy chưa" — nên xếp được ba giáo viên vào cùng một lớp cùng
             // một tiết, và cả ba đều sinh buổi dạy rồi đều được tính công.
             conflictChecker.checkClass(
-                    slotClassIds.get(i), teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
-            // Tan trường này rồi vào ngay trường kia cũng là việc không làm được, dù giờ
-            // không đè nhau — xem checkTravelGap().
-            conflictChecker.checkTravelGap(
-                    teacherId, school.getId(), slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
+                    resolved.get(i).classId(), teacherId, slot.dayOfWeek(), p, startDate, endDate, ignoreAssignmentId);
         }
-        return slotClassIds;
+        return resolved;
     }
 
     /**
@@ -582,7 +635,7 @@ public class AssignmentService {
      * lúc buổi học đã dạy xong — xác nhận lúc đó chẳng còn nghĩa gì.
      */
     private LocalDateTime computeConfirmDeadline(Integer assignmentId) {
-        LocalDateTime byWindow = LocalDateTime.now().plusHours(CONFIRM_WINDOW_HOURS);
+        LocalDateTime byWindow = BusinessTime.now().plusHours(CONFIRM_WINDOW_HOURS);
         LocalDateTime firstLesson = scheduleRepo.findByAssignmentIdAndDeletedFalse(assignmentId).stream()
                 .map(Schedule::getStartTime)
                 .min(LocalDateTime::compareTo)
@@ -694,17 +747,24 @@ public class AssignmentService {
         if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
         }
+        // Sửa phiếu: chỉ chặn khi ĐỔI sang một ngày quá khứ KHÁC. Giữ nguyên ngày cũ (dù đã qua)
+        // phải cho phép — nếu không thì phiếu tạo hôm qua sẽ không bao giờ đổi được giáo viên
+        // nữa, mà thay người dạy gấp lại đúng là lúc cần sửa nhất.
+        if (!req.startDate().equals(a.getStartDate()) && req.startDate().isBefore(BusinessTime.today())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày bắt đầu mới không được là ngày trong quá khứ.");
+        }
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(req.teacherId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên đã chọn."));
-        School school = schoolRepo
-                .findById(a.getSchoolId())
-                .filter(s -> !s.isDeleted())
-                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Trường của phân công không còn tồn tại."));
+        // Trường CŨ chỉ còn là giá trị mặc định cho slot không ghi trường (client cũ). Từ V27 mỗi
+        // tiết tự mang trường nên sửa phiếu ĐỔI ĐƯỢC cả trường — không tìm thấy trường cũ (đã bị
+        // xóa mềm) cũng không chặn nữa, miễn là các tiết mới đều chỉ rõ trường của mình.
+        School defaultSchool =
+                schoolRepo.findById(a.getSchoolId()).filter(s -> !s.isDeleted()).orElse(null);
 
         Map<Integer, Period> periodById = new HashMap<>();
-        List<Integer> slotClassIds = validateSlots(
-                req.slots(), school, null, teacher.getId(), req.startDate(), req.endDate(), id, periodById);
+        List<ResolvedSlot> resolved = validateSlots(
+                req.slots(), defaultSchool, null, teacher.getId(), req.startDate(), req.endDate(), id, periodById);
 
         Integer userId = SecurityUtils.currentUserId();
 
@@ -714,9 +774,13 @@ public class AssignmentService {
         slotRepo.deleteByAssignmentId(id);
 
         a.setTeacherId(teacher.getId());
-        a.setClassId(slotClassIds.get(0));
+        a.setSchoolId(resolved.get(0).schoolId());
+        a.setClassId(resolved.get(0).classId());
         a.setStartDate(req.startDate());
-        a.setEndDate(req.endDate());
+        // Như create(): chốt luôn ngày kết thúc THẬT, không lưu null (xem giải thích ở create).
+        LocalDate effectiveEnd =
+                req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
+        a.setEndDate(effectiveEnd);
         a.setStatus(AssignmentStatus.PENDING);
         a.setRejectionReason(null);
         a.setApprovalNote(null);
@@ -727,7 +791,6 @@ public class AssignmentService {
         a.setUpdatedBy(userId);
         assignmentRepo.save(a);
 
-        LocalDate end = req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
         for (int i = 0; i < req.slots().size(); i++) {
             AssignmentSlotRequest slotReq = req.slots().get(i);
             AssignmentSlot slot = new AssignmentSlot();
@@ -735,10 +798,11 @@ public class AssignmentService {
             slot.setTeacherId(teacher.getId());
             slot.setDayOfWeek(slotReq.dayOfWeek());
             slot.setPeriodId(slotReq.periodId());
-            slot.setClassId(slotClassIds.get(i));
+            slot.setClassId(resolved.get(i).classId());
+            slot.setSchoolId(resolved.get(i).schoolId());
             slot.setCreatedBy(userId);
             slotRepo.save(slot);
-            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), end, userId);
+            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, userId);
         }
 
         a.setConfirmDeadline(computeConfirmDeadline(a.getId()));
@@ -799,7 +863,7 @@ public class AssignmentService {
         a.setUpdatedAt(Instant.now());
         a.setUpdatedBy(userId);
         assignmentRepo.save(a);
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = BusinessTime.now();
         for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
             if (!"CANCELLED".equals(s.getStatus())
                     && (neverConfirmed || s.getStartTime().isAfter(now))) {
@@ -809,6 +873,10 @@ public class AssignmentService {
                 scheduleRepo.save(s);
             }
         }
+        // Đóng lời mời còn treo trong chuông của giáo viên. Thiếu bước này thì admin hủy phiếu
+        // xong giáo viên VẪN thấy nút "Xác nhận" cho một phân công không còn tồn tại — bấm vào
+        // chỉ nhận lỗi, và tệ hơn là họ tưởng mình vẫn phải đi dạy buổi đó.
+        approvalService.closeOpenInvites(id, "CANCELLED");
         return toResponse(a);
     }
 
@@ -1008,6 +1076,10 @@ public class AssignmentService {
         Map<Integer, String> classNameCache = new HashMap<>();
         // Lớp hiển thị ở dòng tóm tắt: khử trùng, giữ thứ tự xuất hiện trong tuần.
         Set<String> classNames = new LinkedHashSet<>();
+        // Lời mời phải kể ĐỦ các trường: giáo viên cần biết hôm đó phải chạy mấy nơi trước khi
+        // bấm Xác nhận — đó chính là thông tin quyết định họ nhận hay từ chối.
+        Set<String> schoolNames = new LinkedHashSet<>();
+        Map<Integer, String> schoolNameCache = new HashMap<>();
         List<AssignmentSlotResponse> slots = new ArrayList<>();
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
             Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
@@ -1021,11 +1093,15 @@ public class AssignmentService {
             if (slotClassName != null) {
                 classNames.add(slotClassName);
             }
-            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, sessionIndex.of(p)));
+            String slotSchoolName = schoolNameOfSlot(slot, a, schoolNameCache);
+            if (slotSchoolName != null) {
+                schoolNames.add(slotSchoolName);
+            }
+            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, slotSchoolName, sessionIndex.of(p)));
         }
         return new AssignmentInviteDetail(
                 a.getId(),
-                schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("(Trường #" + a.getSchoolId() + ")"),
+                schoolNames.isEmpty() ? schoolNameById(a.getSchoolId()) : String.join(", ", schoolNames),
                 subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("(Môn #" + a.getSubjectId() + ")"),
                 teacherRepo
                         .findById(a.getTeacherId())
@@ -1052,8 +1128,6 @@ public class AssignmentService {
                 .findById(a.getTeacherId())
                 .map(AssignmentService::fullName)
                 .orElse("(GV #" + a.getTeacherId() + ")");
-        String schoolName =
-                schoolRepo.findById(a.getSchoolId()).map(School::getName).orElse("(Trường #" + a.getSchoolId() + ")");
         String subjectName =
                 subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("(Môn #" + a.getSubjectId() + ")");
 
@@ -1061,10 +1135,14 @@ public class AssignmentService {
                 ? slotRepo.findByAssignmentId(a.getId())
                 : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
         Map<Integer, String> classNameCache = new HashMap<>();
+        Map<Integer, String> schoolNameCache = new HashMap<>();
         // Một phân công nay trải nhiều lớp (mỗi tiết một lớp) → cột "Lớp" ở danh sách là
         // tập hợp các lớp KHÁC NHAU của các tiết, giữ thứ tự xuất hiện. LinkedHashSet vừa
         // khử trùng vừa giữ thứ tự.
         Set<String> classNames = new LinkedHashSet<>();
+        // Y hệt cho TRƯỜNG (V27): một phiếu trải nhiều trường thì cột "Trường" phải kể đủ,
+        // nếu chỉ hiện trường chính thì người xem tưởng giáo viên chỉ dạy một nơi.
+        Set<String> schoolNames = new LinkedHashSet<>();
         PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
         List<AssignmentSlotResponse> slots = new ArrayList<>();
         for (AssignmentSlot slot : slotEntities) {
@@ -1079,7 +1157,11 @@ public class AssignmentService {
             if (slotClassName != null) {
                 classNames.add(slotClassName);
             }
-            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, sessionIndex.of(p)));
+            String slotSchoolName = schoolNameOfSlot(slot, a, schoolNameCache);
+            if (slotSchoolName != null) {
+                schoolNames.add(slotSchoolName);
+            }
+            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, slotSchoolName, sessionIndex.of(p)));
         }
         String className = classNames.isEmpty()
                 ? (a.getClassId() == null
@@ -1089,8 +1171,24 @@ public class AssignmentService {
                                 .map(SchoolClass::getName)
                                 .orElse(null))
                 : String.join(", ", classNames);
+        String schoolName = schoolNames.isEmpty() ? schoolNameById(a.getSchoolId()) : String.join(", ", schoolNames);
         return AssignmentResponse.fromEntity(
                 a, teacherName, schoolName, subjectName, className, slots, effectiveStatus(a));
+    }
+
+    private String schoolNameById(Integer id) {
+        return id == null ? null : schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")");
+    }
+
+    /**
+     * Tên trường của MỘT TIẾT: trường của ô lịch (V27) trước, trường cấp phiếu sau.
+     *
+     * <p>Trường ở đây có thể ĐÃ BỊ XÓA MỀM — vẫn phải trả tên ra: 8 phiếu đang chạy trỏ tới một
+     * trường đã đóng, giấu tên đi thì cả cột "Trường" của những dòng đó thành trống.
+     */
+    private String schoolNameOfSlot(AssignmentSlot slot, Assignment a, Map<Integer, String> cache) {
+        Integer schoolId = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
+        return schoolId == null ? null : cache.computeIfAbsent(schoolId, this::schoolNameById);
     }
 
     private static String fullName(Teacher t) {

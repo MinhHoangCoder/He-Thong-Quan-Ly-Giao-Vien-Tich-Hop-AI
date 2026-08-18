@@ -27,6 +27,13 @@ import org.springframework.stereotype.Component;
  * ({@link AssignmentService}) và lúc admin ép duyệt một phiếu đã hết hạn
  * ({@link AssignmentApprovalService}) — phiếu hết hạn đã nhả chỗ nên trong lúc nó nằm chờ,
  * khung giờ có thể đã bị người khác chiếm.
+ *
+ * <p><b>CỐ Ý KHÔNG có luật "khoảng nghỉ tối thiểu giữa hai trường".</b> Từng có
+ * {@code checkTravelGap()} bắt hai buổi khác trường phải cách nhau 60 phút; đã gỡ bỏ theo
+ * quyết định nghiệp vụ: dạy tiết 1 ở trường A rồi tiết 2 ở trường B là việc BÌNH THƯỜNG của
+ * trung tâm (các trường ở gần nhau), luật kia chặn oan phần lớn lịch có thật. Chỉ còn chặn
+ * đúng thứ vật lý không thể xảy ra: giờ ĐÈ HẲN lên nhau ({@link #check}) và một lớp có hai
+ * giáo viên cùng lúc ({@link #checkClass}). Đừng thêm lại.
  */
 @Component
 public class TeacherTimeConflictChecker {
@@ -136,81 +143,6 @@ public class TeacherTimeConflictChecker {
             throw new ApiException(
                     HttpStatus.CONFLICT, classMessage(classId, dayOfWeek, period, otherPeriod, existing, other));
         }
-    }
-
-    /** Hai buổi ở HAI TRƯỜNG khác nhau phải cách nhau ít nhất ngần này phút. */
-    public static final int MIN_TRAVEL_GAP_MIN = 60;
-
-    /**
-     * Ném 409 nếu giáo viên phải chạy giữa hai trường trong thời gian quá ngắn.
-     *
-     * <p>{@link #check} chỉ bắt được giờ đè hẳn lên nhau. Nhưng tan ở trường này rồi vào ngay
-     * trường kia cũng là việc không làm được, chỉ là lịch nhìn vẫn "hợp lệ" — nên cấm luôn thay
-     * vì cảnh báo rồi cho bấm bỏ qua: một cảnh báo bỏ qua được thì lần nào cũng bị bỏ qua.
-     *
-     * <p>Đo bằng SỐ PHÚT giữa giờ tan và giờ vào, KHÔNG dùng "số tiết liền nhau": mỗi trường có
-     * khung tiết riêng (tiểu học 35 phút, THCS 45 phút, giờ vào khác nhau) nên "tiết 2" của
-     * trường này không so được với "tiết 1" của trường kia. Đo bằng phút còn bắt được cả ca
-     * không liền tiết mà vẫn gấp.
-     *
-     * <p>CHỈ áp khi khác trường: trong cùng một trường, các tiết liền nhau vốn cách nhau 0 phút.
-     */
-    public void checkTravelGap(
-            Integer teacherId,
-            Integer schoolId,
-            String dayOfWeek,
-            Period period,
-            LocalDate startDate,
-            LocalDate endDate,
-            Integer ignoreAssignmentId) {
-        if (teacherId == null || schoolId == null || period == null) {
-            return;
-        }
-        for (AssignmentSlot existing : slotRepo.findByTeacherIdAndDayOfWeekAndDeletedFalse(teacherId, dayOfWeek)) {
-            if (ignoreAssignmentId != null && ignoreAssignmentId.equals(existing.getAssignmentId())) {
-                continue;
-            }
-            Assignment other = assignmentRepo
-                    .findByIdAndDeletedFalse(existing.getAssignmentId())
-                    .orElse(null);
-            if (other == null || !other.holdsTimeSlot() || schoolId.equals(other.getSchoolId())) {
-                continue;
-            }
-            if (!datesOverlap(startDate, endDate, other.getStartDate(), other.getEndDate())) {
-                continue;
-            }
-            Period otherPeriod = periodRepo.findById(existing.getPeriodId()).orElse(null);
-            if (otherPeriod == null || otherPeriod.getStartTime() == null) {
-                continue;
-            }
-            // Giờ đè hẳn lên nhau đã bị check() chặn cứng — ở đây chỉ lo khoảng nghỉ quá ngắn.
-            long gap = gapMinutes(period, otherPeriod);
-            if (gap < 0 || gap >= MIN_TRAVEL_GAP_MIN) {
-                continue;
-            }
-            // Nêu ĐIỀU GIÁO VIÊN ĐANG VƯỚNG (tiết mấy, trường nào, thứ mấy) rồi mới tới luật:
-            // người xếp lịch cần biết vướng ở đâu để sửa, chứ không phải học thuộc con số.
-            String otherSchool = schoolRepo
-                    .findById(other.getSchoolId())
-                    .map(School::getName)
-                    .orElse("một trường khác");
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Giáo viên đang dạy tiết " + otherPeriod.getPeriodNumber() + " tại " + otherSchool + " vào "
-                            + dayLabelVi(dayOfWeek).toLowerCase() + ". Hai buổi ở hai trường khác nhau phải cách nhau "
-                            + "ít nhất " + MIN_TRAVEL_GAP_MIN + " phút.");
-        }
-    }
-
-    /** Khoảng nghỉ giữa hai tiết, tính theo chiều tiết nào diễn ra trước; âm nếu chúng đè nhau. */
-    private static long gapMinutes(Period a, Period b) {
-        if (!a.getStartTime().isBefore(b.getEndTime())) {
-            return java.time.Duration.between(b.getEndTime(), a.getStartTime()).toMinutes();
-        }
-        if (!b.getStartTime().isBefore(a.getEndTime())) {
-            return java.time.Duration.between(a.getEndTime(), b.getStartTime()).toMinutes();
-        }
-        return -1; // đè giờ — việc của check(), không phải của cảnh báo này
     }
 
     private String classMessage(

@@ -153,4 +153,19 @@ export const adminRoutes = [
     component: () => import('@/pages/SchoolClassListPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
   },
+  // ── Tạo / sửa phân công (wizard 3 bước, trang riêng) ─────────────
+  // Tách khỏi modal cũ vì bước xếp tiết là lưới thời khóa biểu 10 tiết × 7 thứ cho TỪNG
+  // trường — modal không đủ chỗ. Sửa dùng CHUNG trang này để hai luồng không lệch nhau.
+  {
+    path: '/assignments/new',
+    name: 'assignment-new',
+    component: () => import('@/pages/AssignmentFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
+  {
+    path: '/assignments/:id/edit',
+    name: 'assignment-edit',
+    component: () => import('@/pages/AssignmentFormPage.vue'),
+    meta: { layout: 'admin', roles: ['ADMIN', 'EMPLOYEE'] },
+  },
 ]

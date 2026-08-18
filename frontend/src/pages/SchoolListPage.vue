@@ -34,6 +34,9 @@ const emptyForm = () => ({
   contractStartDate: '',
   contractEndDate: '',
   status: 'ACTIVE',
+  // Chỉ dùng lúc THÊM MỚI: quyết định bộ khung tiết sinh sẵn cho trường.
+  // Để trống thì backend tự đoán theo tên trường. Không gửi khi SỬA.
+  educationLevel: '',
 })
 
 const modal = reactive({
@@ -145,11 +148,73 @@ function branchName(branchId) {
 const PHONE_RE = /^$|^(\+84|0)\d{9,10}$/
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-function validateForm(form) {
+/**
+ * Suy cấp học từ TÊN trường: 'TH' | 'THCS' | '' (không đoán được).
+ *
+ * BẢN SAO của PeriodService#suyCapTuTen bên backend — sửa quy tắc một bên thì
+ * phải sửa cả hai, nếu không form sẽ cho qua rồi backend mới trả lỗi.
+ *
+ * Bỏ dấu trước khi so để "Tiểu học" và "Tieu hoc" cho cùng kết quả. Phải xét
+ * THCS TRƯỚC TH vì "THCS" cũng bắt đầu bằng "TH".
+ */
+function suyCapTuTen(name) {
+  if (!name) return ''
+  const s = boDau(name.trim().toLowerCase())
+  if (s.startsWith('thcs ') || s.includes(' thcs ') || s.includes('trung hoc co so')) return 'THCS'
+  if (s.startsWith('th ') || s.includes(' th ') || s.includes('tieu hoc')) return 'TH'
+  return ''
+}
+
+function boDau(s) {
+  return s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+}
+
+/**
+ * Cụm chỉ cấp học có thể đứng đầu tên trường (không dấu, tách token), dài trước ngắn sau.
+ * BẢN SAO của SchoolService#TIEN_TO_CAP bên backend — sửa một bên phải sửa cả hai.
+ */
+const TIEN_TO_CAP = [
+  ['truong', 'trung', 'hoc', 'co', 'so'],
+  ['trung', 'hoc', 'co', 'so'],
+  ['truong', 'tieu', 'hoc'],
+  ['tieu', 'hoc'],
+  ['truong', 'thcs'],
+  ['truong', 'th'],
+  ['thcs'],
+  ['th'],
+]
+
+/**
+ * Ghép tên hiển thị = tiền tố cấp học + tên riêng, giống hệt SchoolService#ghepTenTheoCap.
+ * Dùng cho dòng xem trước dưới ô Tên trường, để người dùng thấy trước tên sẽ lưu.
+ */
+function ghepTenTheoCap(name, cap) {
+  const ten = (name || '').trim().replace(/\s+/g, ' ')
+  if (!cap || !ten) return ten
+  let token = ten.split(' ')
+  const khongDau = token.map((t) => boDau(t.toLowerCase()))
+  for (const cum of TIEN_TO_CAP) {
+    if (token.length > cum.length && cum.every((w, i) => w === khongDau[i])) {
+      token = token.slice(cum.length)
+      break
+    }
+  }
+  const tenRieng = token.join(' ')
+  return tenRieng ? `${cap} ${tenRieng}` : ten
+}
+
+function validateForm(form, isCreate) {
   const errors = {}
   const name = form.name.trim()
 
   if (!form.branchId) errors.branchId = 'Vui lòng chọn chi nhánh phụ trách'
+  // Cấp học BẮT BUỘC khi thêm mới, và cố ý KHÔNG đặt sẵn giá trị mặc định:
+  // chọn nhầm cấp là cả trường chạy sai khung giờ (tiểu học 35 phút vs THCS
+  // 45 phút) mà không có lỗi nào bắn ra. Thà bắt chọn còn hơn đoán hộ.
+  if (isCreate && !form.educationLevel) errors.educationLevel = 'Vui lòng chọn cấp học'
   if (!name) errors.name = 'Tên trường không được để trống'
   else if (name.length > 200) errors.name = 'Tên tối đa 200 ký tự'
   if (form.address && form.address.length > 255) errors.address = 'Địa chỉ tối đa 255 ký tự'
@@ -207,8 +272,38 @@ function clearFieldError(field) {
   if (modal.errors[field]) delete modal.errors[field]
 }
 
+/**
+ * Tên đầy đủ sẽ được lưu — hiện ngay khi THÊM MỚI có đủ tên + cấp học.
+ *
+ * Cố tình hiện cả khi kết quả trùng đúng chuỗi người dùng vừa gõ (gõ sẵn
+ * "THCS Ban Mai" rồi chọn THCS): dòng này là câu trả lời cho "rốt cuộc bảng
+ * sẽ hiện tên gì", ẩn đi lúc trùng thì đúng lúc cần trấn an lại không có gì.
+ */
+const tenSeLuu = computed(() => {
+  if (modal.mode !== 'create') return ''
+  if (!modal.form.name.trim() || !modal.form.educationLevel) return ''
+  return ghepTenTheoCap(modal.form.name, modal.form.educationLevel)
+})
+
+/**
+ * Gõ tên trường thì tự chọn luôn cấp học tương ứng (chỉ khi THÊM MỚI).
+ *
+ * Người dùng gần như luôn đặt tên có sẵn cấp ("THCS Ban Mai"), nên để họ tự
+ * chọn lại là thừa một thao tác và là chỗ để chọn nhầm. Vẫn cho đổi tay sau
+ * đó — nhưng nếu đổi thành cấp chỏi với tên thì validateForm sẽ chặn.
+ */
+function onNameInput() {
+  clearFieldError('name')
+  if (modal.mode !== 'create') return
+  const theoTen = suyCapTuTen(modal.form.name)
+  if (theoTen && theoTen !== modal.form.educationLevel) {
+    modal.form.educationLevel = theoTen
+    clearFieldError('educationLevel')
+  }
+}
+
 async function saveModal() {
-  modal.errors = validateForm(modal.form)
+  modal.errors = validateForm(modal.form, modal.mode === 'create')
   if (Object.keys(modal.errors).length) return
 
   modal.saving = true
@@ -223,6 +318,13 @@ async function saveModal() {
     contactPerson: modal.form.contactPerson || null,
     contractStartDate: modal.form.contractStartDate || null,
     contractEndDate: modal.form.contractEndDate || null,
+  }
+  // Cấp học chỉ có nghĩa lúc TẠO (để sinh khung tiết). Khi sửa thì bỏ hẳn khỏi
+  // payload: khung tiết đã dùng xếp lịch, không được đổi ngầm qua form sửa.
+  if (modal.mode === 'create') {
+    body.educationLevel = modal.form.educationLevel || null
+  } else {
+    delete body.educationLevel
   }
 
   try {
@@ -429,11 +531,42 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
           <label>Tên trường *</label>
           <input
             v-model="modal.form.name"
-            placeholder="VD: Trường Tiểu học Ban Mai"
+            placeholder="VD: Ban Mai"
             :class="{ 'input-error': modal.errors.name }"
-            @input="clearFieldError('name')"
+            @input="onNameInput"
           />
           <small v-if="modal.errors.name" class="field-error">{{ modal.errors.name }}</small>
+          <!-- Xem trước tên sẽ lưu: ô trên chỉ nhận TÊN RIÊNG, tiền tố cấp học do
+               ô Cấp học sinh ra. Cho thấy trước để không ai bất ngờ khi mở bảng. -->
+          <small v-if="tenSeLuu" class="name-preview">
+            Lưu vào hệ thống: <strong>{{ tenSeLuu }}</strong>
+          </small>
+        </div>
+
+        <!-- Cấp học: CHỈ hiện khi thêm mới. Nó không phải thuộc tính lưu trong bảng
+             School mà chỉ quyết định bộ khung tiết sinh sẵn cho trường (tiểu học 10
+             tiết 35 phút, THCS 9 tiết 45 phút). Khi SỬA thì ẩn đi — khung tiết đã
+             dùng để xếp lịch, đổi ngầm là lệch giờ những buổi đã sinh ra. -->
+        <div v-if="modal.mode === 'create'" class="form-group">
+          <label>Cấp học *</label>
+          <select
+            v-model="modal.form.educationLevel"
+            :class="{ 'input-error': modal.errors.educationLevel }"
+            @change="clearFieldError('educationLevel')"
+          >
+            <!-- Dòng này disabled + hidden nên KHÔNG hiện trong danh sách xổ xuống
+                 (người dùng chỉ thấy đúng 2 lựa chọn), nhưng vẫn giữ ô ở trạng thái
+                 "chưa chọn" lúc mở form. Bỏ nó đi thì trình duyệt tự chọn mục đầu
+                 tiên, và một trường THCS sẽ âm thầm nhận khung tiểu học 35 phút. -->
+            <!-- Nhãn để đúng "TH"/"THCS" trùng với tiền tố sẽ ghép vào tên trường,
+                 để cái người dùng chọn và cái hiện ra ở bảng là một. -->
+            <option value="" disabled hidden>-- Chọn cấp học --</option>
+            <option value="TH">TH</option>
+            <option value="THCS">THCS</option>
+          </select>
+          <small v-if="modal.errors.educationLevel" class="field-error">{{
+            modal.errors.educationLevel
+          }}</small>
         </div>
 
         <div class="form-group">
@@ -891,6 +1024,14 @@ tbody tr:hover {
 
 .field-error {
   color: #dc2626 !important;
+}
+
+/* Dòng xem trước tên trường sẽ lưu (tiền tố cấp học + tên riêng). */
+.name-preview {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--c-text-muted);
 }
 
 /* ================= Message ================= */
