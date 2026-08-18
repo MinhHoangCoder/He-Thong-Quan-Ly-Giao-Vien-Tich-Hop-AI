@@ -9,6 +9,11 @@ Microsoft SQL Server 2019+. Schema gồm **42 bảng** (36 bảng lõi + 6 bản
 | `schema/TSDMS_Schema.sql` | Schema lõi (bản thiết kế, để đọc & tham chiếu) |
 | `migrations/` | Nơi đặt migration nguồn trước khi đưa vào Flyway (tùy chọn) |
 | `seed/TSDMS_Seed_Demo.sql` | Bộ dữ liệu demo toàn hệ thống (~5 dòng/bảng) — chạy TAY trong SSMS, KHÔNG đưa vào Flyway |
+| `seed/TSDMS_Seed_100GiaoVien.sql` | 100 giáo viên + 23 môn học (kèm bằng cấp, hợp đồng, môn dạy được) — chạy TAY, KHÔNG đưa vào Flyway |
+| `seed/TSDMS_Rollback_100GiaoVien.sql` | Gỡ đúng bộ 100 giáo viên ở trên, không đụng dữ liệu khác |
+| `seed/TSDMS_Seed_TruongHaiPhong.sql` | 30 trường TH/THCS công lập Hải Phòng + khung tiết + 198 lớp — chạy TAY, KHÔNG đưa vào Flyway |
+| `seed/TSDMS_Rollback_TruongHaiPhong.sql` | Gỡ đúng bộ 30 trường ở trên |
+| `seed/TSDMS_TruongHaiPhong_CanRaSoat.md` | Bảng đối chiếu tên trường + độ tin cậy — **đọc trước khi dùng thật** |
 | `TSDMS_TuDien_DB.md` | Từ điển thuật ngữ & hướng dẫn đọc database (tiếng Việt) |
 
 ## Flyway (chạy migration tự động)
@@ -42,6 +47,19 @@ Migration thực thi nằm trong backend: `backend/src/main/resources/db/migrati
 3. (Tùy chọn) Muốn có dữ liệu nghiệp vụ mẫu: chạy `seed/TSDMS_Seed_Demo.sql` bằng SSMS.
    Nếu dùng `sqlcmd` thì PHẢI kèm cờ `-I` (bật `QUOTED_IDENTIFIER ON` — schema có filtered
    index `WHERE IsDeleted = 0`, thiếu cờ này mọi INSERT đều lỗi Msg 1934).
+4. (Tùy chọn) Muốn có đội ngũ giáo viên đủ lớn để thử phân công / lọc / báo cáo:
+   chạy `seed/TSDMS_Seed_100GiaoVien.sql`. File này tự đặt `SET QUOTED_IDENTIFIER ON`
+   nên KHÔNG cần cờ `-I`; chạy lại lần hai sẽ tự bỏ qua. Gỡ ra bằng
+   `seed/TSDMS_Rollback_100GiaoVien.sql`. Dữ liệu trong đó là dữ liệu GIẢ (CCCD, số
+   điện thoại, email `@tsdms.local`) — chỉ dùng cho máy dev/demo.
+5. (Tùy chọn) Muốn có trường + lớp để thử phân công: chạy
+   `seed/TSDMS_Seed_TruongHaiPhong.sql` (30 trường TH/THCS ở 5 phường Hồng Bàng,
+   Lê Chân, Ngô Quyền, Hải An, Kiến An; tự tạo khung tiết chuẩn V22 cho từng
+   trường và 198 lớp cho các trường đang hoạt động). Gỡ bằng
+   `seed/TSDMS_Rollback_TruongHaiPhong.sql`.
+   ⚠ **Tên trường là trường học CÓ THẬT và CHƯA được đối chiếu danh bạ chính
+   thức** — đọc `seed/TSDMS_TruongHaiPhong_CanRaSoat.md` trước khi dùng cho
+   mục đích thật.
 
 **TUYỆT ĐỐI KHÔNG** dựng DB dev bằng cách chạy tay `schema/TSDMS_Schema.sql` rồi mới bật
 backend: file đó là bản **mirror trạng thái CUỐI** (sau V10). Flyway thấy DB có bảng nhưng
