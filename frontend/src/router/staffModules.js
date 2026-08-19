@@ -35,6 +35,14 @@ export const STAFF_MODULES = [
   },
   {
     section: 'Giảng dạy',
+    perm: 'HOLIDAY_VIEW',
+    label: 'Lịch nghỉ',
+    icon: 'clock',
+    to: '/staff/holidays',
+    desc: 'Ngày lễ & kỳ nghỉ — lịch dạy không sinh buổi vào những ngày này',
+  },
+  {
+    section: 'Giảng dạy',
     perm: 'LESSON_VIEW',
     label: 'Kho bài giảng',
     icon: 'subject',
