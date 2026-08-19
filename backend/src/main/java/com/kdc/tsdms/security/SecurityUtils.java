@@ -28,7 +28,7 @@ public final class SecurityUtils {
      * Các role KHÔNG phải nhân sự trung tâm: hai cổng ngoài (giáo viên, trường khách hàng)
      * và role ẩn danh của Spring. Mọi role còn lại đều là người của trung tâm.
      */
-    private static final Set<String> NON_STAFF_ROLES = Set.of("ROLE_TEACHER", "ROLE_SCHOOL", "ROLE_ANONYMOUS");
+    private static final Set<String> NON_STAFF_ROLES = Set.of("ROLE_TEACHER", "ROLE_ANONYMOUS");
 
     private SecurityUtils() {}
 

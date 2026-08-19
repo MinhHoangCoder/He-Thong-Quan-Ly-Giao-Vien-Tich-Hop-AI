@@ -2,32 +2,29 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.repository.EmployeeRepository;
-import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import org.springframework.stereotype.Component;
 
 /**
- * Ghép TÊN HIỂN THỊ cho một tài khoản từ hồ sơ tác nhân (Teacher/Employee/School),
- * vì {@link AppUser} không còn lưu họ tên.
+ * Ghép TÊN HIỂN THỊ cho một tài khoản từ hồ sơ tác nhân (Teacher/Employee), vì
+ * {@link AppUser} không còn lưu họ tên.
  *
  * <ul>
  *   <li>Người (GV/NV): "Họ và tên đệm" + "Tên" = LastName + FirstName (thứ tự đọc tiếng Việt).</li>
- *   <li>Trường: tên trường.</li>
  *   <li>Tài khoản hệ thống không có hồ sơ (vd admin): hiển thị theo username.</li>
  * </ul>
+ *
+ * <p>Không còn nhánh TRƯỜNG: trường không phải người dùng của hệ thống (Flyway V31).
  */
 @Component
 public class DisplayNameResolver {
 
     private final TeacherRepository teacherRepo;
     private final EmployeeRepository employeeRepo;
-    private final SchoolRepository schoolRepo;
 
-    public DisplayNameResolver(
-            TeacherRepository teacherRepo, EmployeeRepository employeeRepo, SchoolRepository schoolRepo) {
+    public DisplayNameResolver(TeacherRepository teacherRepo, EmployeeRepository employeeRepo) {
         this.teacherRepo = teacherRepo;
         this.employeeRepo = employeeRepo;
-        this.schoolRepo = schoolRepo;
     }
 
     /** Tên hiển thị của tài khoản (không bao giờ null — tệ nhất trả về username). */
@@ -39,12 +36,6 @@ public class DisplayNameResolver {
         var employee = employeeRepo.findByAppUserIdAndDeletedFalse(user.getId());
         if (employee.isPresent()) {
             return person(employee.get().getLastName(), employee.get().getFirstName(), user.getUsername());
-        }
-        var school = schoolRepo.findByAppUserIdAndDeletedFalse(user.getId());
-        if (school.isPresent()
-                && school.get().getName() != null
-                && !school.get().getName().isBlank()) {
-            return school.get().getName();
         }
         return user.getUsername(); // admin / tài khoản không gắn hồ sơ
     }

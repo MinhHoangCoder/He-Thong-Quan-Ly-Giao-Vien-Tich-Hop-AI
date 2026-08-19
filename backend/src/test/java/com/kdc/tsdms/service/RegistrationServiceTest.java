@@ -11,14 +11,12 @@ import com.kdc.tsdms.dto.RegisterRequest;
 import com.kdc.tsdms.dto.UserInfo;
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Role;
-import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.entity.UserRole;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.RoleRepository;
-import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.repository.UserRoleRepository;
 import java.util.Arrays;
@@ -42,8 +40,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * quyền (SecurityUtils đọc SecurityContext) được dựng bằng Authentication thật nạp vào
  * SecurityContextHolder để test luôn logic phân quyền thật.
  *
- * <p>Trọng tâm: chốt 2 tầng /register — tạo GV cần TEACHER_MANAGE (HR), tạo trường cần
- * SCHOOL_MANAGE (SALES), ADMIN đi tắt; cộng các luật validate & chống trùng.
+ * <p>Trọng tâm: chốt 2 tầng /register — tạo GV cần TEACHER_MANAGE (phòng Nhân sự), ADMIN
+ * đi tắt; cộng các luật validate & chống trùng.
+ *
+ * <p>Các test tạo tài khoản TRƯỜNG đã gỡ cùng tác nhân nhà trường (Flyway V31): endpoint
+ * nay chỉ nhận role TEACHER.
  */
 @ExtendWith(MockitoExtension.class)
 class RegistrationServiceTest {
@@ -62,9 +63,6 @@ class RegistrationServiceTest {
 
     @Mock
     private TeacherRepository teacherRepo;
-
-    @Mock
-    private SchoolRepository schoolRepo;
 
     @Mock
     private PasswordEncoder passwordEncoder;
@@ -87,12 +85,7 @@ class RegistrationServiceTest {
 
     private static RegisterRequest teacherReq() {
         return new RegisterRequest(
-                "TEACHER", "gv01", "gv01@tsdms.local", "An", "Nguyễn Văn", null, "Password1", "0900000000", 1);
-    }
-
-    private static RegisterRequest schoolReq() {
-        return new RegisterRequest(
-                "SCHOOL", "sch01", "sch01@tsdms.local", null, null, "Trường THCS Demo", "Password1", "0900000000", 1);
+                "TEACHER", "gv01", "gv01@tsdms.local", "An", "Nguyễn Văn", "Password1", "0900000000", 1);
     }
 
     private static Role role(int id, String name) {
@@ -118,8 +111,7 @@ class RegistrationServiceTest {
 
     @Test
     void register_invalidRole_throws400() {
-        RegisterRequest req =
-                new RegisterRequest("STUDENT", "x", "x@tsdms.local", "A", "B", null, "Password1", null, 1);
+        RegisterRequest req = new RegisterRequest("STUDENT", "x", "x@tsdms.local", "A", "B", "Password1", null, 1);
 
         assertThatThrownBy(() -> service.register(req)).satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
         verify(appUserRepo, never()).save(any());
@@ -128,17 +120,9 @@ class RegistrationServiceTest {
     @Test
     void register_teacherMissingName_throws400() {
         RegisterRequest req =
-                new RegisterRequest("TEACHER", "gv01", "gv01@tsdms.local", " ", null, null, "Password1", null, 1);
+                new RegisterRequest("TEACHER", "gv01", "gv01@tsdms.local", " ", null, "Password1", null, 1);
 
         // Thiếu tên gọi/họ đệm -> chặn TRƯỚC cả bước phân quyền.
-        assertThatThrownBy(() -> service.register(req)).satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
-    }
-
-    @Test
-    void register_schoolMissingName_throws400() {
-        RegisterRequest req =
-                new RegisterRequest("SCHOOL", "sch01", "sch01@tsdms.local", null, null, "  ", "Password1", null, 1);
-
         assertThatThrownBy(() -> service.register(req)).satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
     }
 
@@ -148,15 +132,6 @@ class RegistrationServiceTest {
         authWith("SCHOOL_MANAGE");
 
         assertThatThrownBy(() -> service.register(teacherReq())).satisfies(e -> assertStatus(e, HttpStatus.FORBIDDEN));
-        verify(appUserRepo, never()).save(any());
-    }
-
-    @Test
-    void register_schoolByUserWithoutSchoolManage_throws403() {
-        // Người dùng HR (chỉ TEACHER_MANAGE) cố tạo TRƯỜNG -> phải bị chặn.
-        authWith("TEACHER_MANAGE");
-
-        assertThatThrownBy(() -> service.register(schoolReq())).satisfies(e -> assertStatus(e, HttpStatus.FORBIDDEN));
         verify(appUserRepo, never()).save(any());
     }
 
@@ -175,7 +150,6 @@ class RegistrationServiceTest {
 
         assertThat(info.roles()).containsExactly("TEACHER");
         verify(teacherRepo).save(any(Teacher.class));
-        verify(schoolRepo, never()).save(any());
     }
 
     @Test
@@ -240,25 +214,20 @@ class RegistrationServiceTest {
         assertThat(roleCaptor.getValue().getRoleId()).isEqualTo(5);
 
         verify(teacherRepo).save(any(Teacher.class));
-        verify(schoolRepo, never()).save(any());
     }
 
+    /**
+     * Tài khoản TRƯỜNG không còn tạo được: trường là dữ liệu chứ không phải người dùng
+     * (Flyway V31 đã bỏ role SCHOOL và cột School.AppUserId). Giữ test này để đường tạo
+     * tài khoản trường không lặng lẽ sống lại — chặn phải là 400, không phải "chạy được".
+     */
     @Test
-    void register_schoolSuccess_savesSchoolProfileAndReturnsName() {
-        authWith("SCHOOL_MANAGE");
-        when(appUserRepo.existsByUsernameAndDeletedFalse("sch01")).thenReturn(false);
-        when(appUserRepo.existsByEmailAndDeletedFalse("sch01@tsdms.local")).thenReturn(false);
-        when(branchRepo.existsById(1)).thenReturn(true);
-        when(roleRepo.findByName("SCHOOL")).thenReturn(Optional.of(role(3, "SCHOOL")));
-        when(passwordEncoder.encode("Password1")).thenReturn("hashed");
-        stubSaveAssignsId(77);
+    void register_schoolRole_khongConTaoDuoc_throws400() {
+        authWith("ROLE_ADMIN");
+        RegisterRequest req =
+                new RegisterRequest("SCHOOL", "sch01", "sch01@tsdms.local", "A", "B", "Password1", null, 1);
 
-        UserInfo info = service.register(schoolReq());
-
-        assertThat(info.id()).isEqualTo(77);
-        assertThat(info.fullName()).isEqualTo("Trường THCS Demo"); // tên hiển thị = tên trường
-        assertThat(info.roles()).containsExactly("SCHOOL");
-        verify(schoolRepo).save(any(School.class));
-        verify(teacherRepo, never()).save(any());
+        assertThatThrownBy(() -> service.register(req)).satisfies(e -> assertStatus(e, HttpStatus.BAD_REQUEST));
+        verify(appUserRepo, never()).save(any());
     }
 }

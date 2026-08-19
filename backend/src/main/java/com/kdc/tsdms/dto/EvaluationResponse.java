@@ -16,8 +16,6 @@ public record EvaluationResponse(
         String evaluatorName,
         Integer schoolId,
         String schoolName,
-        /** CENTER = trung tâm chấm; SCHOOL = trường chấm. */
-        String source,
         Short score,
         String comment,
         String periodNote,

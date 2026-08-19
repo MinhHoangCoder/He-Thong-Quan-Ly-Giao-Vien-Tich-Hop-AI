@@ -13,7 +13,6 @@ import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.EmployeeRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
-import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.repository.UserRoleRepository;
 import com.kdc.tsdms.security.JwtService;
@@ -37,7 +36,6 @@ public class UserSettingsService {
     private final RefreshTokenRepository refreshTokenRepo;
     private final TeacherRepository teacherRepo;
     private final EmployeeRepository employeeRepo;
-    private final SchoolRepository schoolRepo;
     private final BranchRepository branchRepo;
     private final CertificateRepository certificateRepo;
     private final PasswordEncoder passwordEncoder;
@@ -49,7 +47,6 @@ public class UserSettingsService {
             RefreshTokenRepository refreshTokenRepo,
             TeacherRepository teacherRepo,
             EmployeeRepository employeeRepo,
-            SchoolRepository schoolRepo,
             BranchRepository branchRepo,
             CertificateRepository certificateRepo,
             PasswordEncoder passwordEncoder,
@@ -59,7 +56,6 @@ public class UserSettingsService {
         this.refreshTokenRepo = refreshTokenRepo;
         this.teacherRepo = teacherRepo;
         this.employeeRepo = employeeRepo;
-        this.schoolRepo = schoolRepo;
         this.branchRepo = branchRepo;
         this.certificateRepo = certificateRepo;
         this.passwordEncoder = passwordEncoder;
@@ -120,22 +116,10 @@ public class UserSettingsService {
                     e.getStatus(),
                     null);
         }
-        var school = schoolRepo.findByAppUserIdAndDeletedFalse(user.getId());
-        if (school.isPresent()) {
-            var s = school.get();
-            return new ProfileResponse(
-                    user.getUsername(),
-                    user.getEmail(),
-                    s.getName(),
-                    s.getPhone(),
-                    "SCHOOL",
-                    null,
-                    roles,
-                    null,
-                    null,
-                    s.getStatus(),
-                    null);
-        }
+        // Không còn nhánh hồ sơ TRƯỜNG: trường không phải người dùng của hệ thống nữa
+        // (Flyway V31 bỏ role SCHOOL và cột School.AppUserId), nên không tài khoản nào
+        // gắn được vào một trường.
+
         // Tài khoản không gắn hồ sơ (admin hệ thống)
         return new ProfileResponse(
                 user.getUsername(),
@@ -181,7 +165,6 @@ public class UserSettingsService {
                 : req.phone().trim();
         teacherRepo.findByAppUserIdAndDeletedFalse(user.getId()).ifPresent(t -> t.setPhone(phone));
         employeeRepo.findByAppUserIdAndDeletedFalse(user.getId()).ifPresent(e -> e.setPhone(phone));
-        schoolRepo.findByAppUserIdAndDeletedFalse(user.getId()).ifPresent(s -> s.setPhone(phone));
 
         return getProfile();
     }

@@ -56,7 +56,6 @@ const profile = reactive({
 const ACTOR_LABELS = {
   TEACHER: 'Giáo viên',
   EMPLOYEE: 'Nhân viên trung tâm',
-  SCHOOL: 'Trường khách hàng',
   NONE: 'Tài khoản hệ thống',
 }
 
