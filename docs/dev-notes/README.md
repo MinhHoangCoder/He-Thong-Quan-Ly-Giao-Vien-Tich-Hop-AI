@@ -58,6 +58,8 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-13 | fullstack | ⭐ Màn Đặt lại mật khẩu bấm không ra gì + bẫy MockMvc đi vòng qua Security | [2026-08-13-fullstack-quen-mat-khau-nut-cam-lang.md](2026-08-13-fullstack-quen-mat-khau-nut-cam-lang.md) |
 | 2026-08-14 | domain | ⭐ Bỏ hẳn cấp 3 — chỉ còn khối 1..9 (V26) + vá lỗi tính sai lương khối 10–12 | [2026-08-14-domain-bo-cap-3-khoi-1-9.md](2026-08-14-domain-bo-cap-3-khoi-1-9.md) |
 | 2026-08-17 | database | ⭐ Ràng buộc toàn vẹn khi xóa (Đợt 1–3) — RESTRICT, khóa cứng theo kỳ lương, chốt phòng ngừa 5 bảng chưa có luồng xóa | [2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md](2026-08-17-database-rang-buoc-toan-ven-khi-xoa.md) |
+| 2026-08-19 | fullstack | ⭐ Bảng lịch nghỉ (V29) — hết buổi dạy "ma" ngày lễ bị trừ lương + seed toàn bộ luồng Phân công→Lịch dạy→Chấm công→Lương | [2026-08-19-fullstack-lich-nghi-va-seed-dieu-phoi.md](2026-08-19-fullstack-lich-nghi-va-seed-dieu-phoi.md) |
+| 2026-08-19 | fullstack | ⭐ Seed đánh giá / phòng học / HĐ dịch vụ / 234 bài giảng · màn Lịch nghỉ (V30) · **GỠ TÁC NHÂN NHÀ TRƯỜNG (V31)** + bẫy `mvn test` xanh giả khi server đang chạy | [2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md](2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
