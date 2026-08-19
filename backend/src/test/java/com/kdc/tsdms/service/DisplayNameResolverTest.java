@@ -5,10 +5,8 @@ import static org.mockito.Mockito.when;
 
 import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Employee;
-import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.repository.EmployeeRepository;
-import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
@@ -22,7 +20,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
  *
  * <p>Kiểm chứng góp ý GVHD ở V6: AppUser bỏ họ tên, tên hiển thị ghép từ hồ sơ tác nhân
  * theo thứ tự đọc tiếng Việt "Họ và tên đệm" + "Tên" (LastName + FirstName). Cộng thứ tự
- * ưu tiên Teacher → Employee → School → username, và các trường hợp tên rỗng/null.
+ * ưu tiên Teacher → Employee → username, và các trường hợp tên rỗng/null.
+ *
+ * <p>Nhánh hồ sơ TRƯỜNG đã gỡ cùng tác nhân nhà trường (Flyway V31).
  */
 @ExtendWith(MockitoExtension.class)
 class DisplayNameResolverTest {
@@ -32,9 +32,6 @@ class DisplayNameResolverTest {
 
     @Mock
     private EmployeeRepository employeeRepo;
-
-    @Mock
-    private SchoolRepository schoolRepo;
 
     @InjectMocks
     private DisplayNameResolver resolver;
@@ -60,12 +57,6 @@ class DisplayNameResolverTest {
         return e;
     }
 
-    private static School school(String name) {
-        School s = new School();
-        s.setName(name);
-        return s;
-    }
-
     @Test
     void resolve_teacher_joinsLastNameThenFirstName_vietnameseOrder() {
         // "Nguyễn Văn" (họ và tên đệm) + "An" (tên gọi) = "Nguyễn Văn An".
@@ -84,27 +75,17 @@ class DisplayNameResolverTest {
     }
 
     @Test
-    void resolve_school_usesSchoolName() {
-        when(teacherRepo.findByAppUserIdAndDeletedFalse(3)).thenReturn(Optional.empty());
-        when(employeeRepo.findByAppUserIdAndDeletedFalse(3)).thenReturn(Optional.empty());
-        when(schoolRepo.findByAppUserIdAndDeletedFalse(3)).thenReturn(Optional.of(school("Trường THCS Demo")));
-
-        assertThat(resolver.resolve(user(3, "sch01"))).isEqualTo("Trường THCS Demo");
-    }
-
-    @Test
     void resolve_noProfile_fallsBackToUsername() {
         // Tài khoản admin / không gắn hồ sơ -> hiển thị theo username.
         when(teacherRepo.findByAppUserIdAndDeletedFalse(4)).thenReturn(Optional.empty());
         when(employeeRepo.findByAppUserIdAndDeletedFalse(4)).thenReturn(Optional.empty());
-        when(schoolRepo.findByAppUserIdAndDeletedFalse(4)).thenReturn(Optional.empty());
 
         assertThat(resolver.resolve(user(4, "admin"))).isEqualTo("admin");
     }
 
     @Test
-    void resolve_teacherTakesPriorityOverEmployeeAndSchool() {
-        // Có hồ sơ GV thì dừng ngay, không truy vấn employee/school (STRICT_STUBS đảm bảo).
+    void resolve_teacherTakesPriorityOverEmployee() {
+        // Có hồ sơ GV thì dừng ngay, không truy vấn employee (STRICT_STUBS đảm bảo).
         when(teacherRepo.findByAppUserIdAndDeletedFalse(5)).thenReturn(Optional.of(teacher("Lê", "Cường")));
 
         assertThat(resolver.resolve(user(5, "gv02"))).isEqualTo("Lê Cường");
@@ -124,15 +105,5 @@ class DisplayNameResolverTest {
         when(teacherRepo.findByAppUserIdAndDeletedFalse(7)).thenReturn(Optional.of(teacher("Phạm Văn", null)));
 
         assertThat(resolver.resolve(user(7, "gv04"))).isEqualTo("Phạm Văn");
-    }
-
-    @Test
-    void resolve_schoolWithBlankName_fallsBackToUsername() {
-        // Hồ sơ trường tồn tại nhưng tên trống -> bỏ qua, dùng username.
-        when(teacherRepo.findByAppUserIdAndDeletedFalse(8)).thenReturn(Optional.empty());
-        when(employeeRepo.findByAppUserIdAndDeletedFalse(8)).thenReturn(Optional.empty());
-        when(schoolRepo.findByAppUserIdAndDeletedFalse(8)).thenReturn(Optional.of(school("  ")));
-
-        assertThat(resolver.resolve(user(8, "sch02"))).isEqualTo("sch02");
     }
 }

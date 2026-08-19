@@ -2,7 +2,7 @@
 /**
  * Workbench dùng chung cho Staff / Admin / School:
  * KPI + filter + bảng + modal tạo/sửa + xóa.
- * portal: 'staff' | 'admin' | 'school' — khác nhãn / scope school.
+ * portal: 'staff' | 'admin' — khác nhãn hiển thị.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -15,12 +15,11 @@ import StatCard from '@/components/ui/StatCard.vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 
 const props = defineProps({
-  portal: { type: String, default: 'staff' }, // staff | admin | school
+  portal: { type: String, default: 'staff' }, // staff | admin
   title: { type: String, default: 'Đánh giá giáo viên' },
   subtitle: { type: String, default: 'Chấm điểm & nhận xét chất lượng giảng dạy' },
 })
 
-const isSchool = computed(() => props.portal === 'school')
 const PAGE_SIZE = 10
 
 const loading = ref(false)
@@ -708,8 +707,8 @@ onMounted(async () => {
       :prefill="modal.prefill"
       :saving="modal.saving"
       :error="modal.error"
-      :lock-teacher="isSchool"
-      :school-scoped="isSchool || schoolScoped"
+      :lock-teacher="schoolScoped"
+      :school-scoped="schoolScoped"
       @close="modal.open = false"
       @save="saveModal"
     />

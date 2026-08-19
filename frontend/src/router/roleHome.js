@@ -14,9 +14,6 @@ export function roleHome(roles = []) {
   if (roles.includes('EMPLOYEE')) {
     return { name: 'dashboard' }
   }
-  if (roles.includes('SCHOOL')) {
-    return { name: 'school-home' }
-  }
   if (roles.includes('TEACHER')) {
     return { name: 'teacher-home' }
   }

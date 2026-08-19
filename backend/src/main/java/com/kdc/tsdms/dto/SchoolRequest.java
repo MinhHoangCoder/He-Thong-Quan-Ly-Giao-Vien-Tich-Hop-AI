@@ -22,8 +22,6 @@ public record SchoolRequest(
 
         @Size(max = 150, message = "Tên người liên hệ tối đa 150 ký tự") String contactPerson,
 
-        Integer appUserId,
-
         LocalDate contractStartDate,
         LocalDate contractEndDate,
 

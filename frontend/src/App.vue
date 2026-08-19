@@ -18,7 +18,6 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import BlankLayout from '@/layouts/BlankLayout.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import TeacherLayout from '@/layouts/TeacherLayout.vue'
-import SchoolLayout from '@/layouts/SchoolLayout.vue'
 import StaffLayout from '@/layouts/StaffLayout.vue'
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
@@ -33,7 +32,6 @@ const layouts = {
   blank: BlankLayout,
   admin: AdminLayout,
   teacher: TeacherLayout,
-  school: SchoolLayout,
   staff: StaffLayout,
 }
 

@@ -109,8 +109,9 @@ const workflow = [
 ]
 
 // Cổng làm việc theo vai trò — mỗi vai trò một portal riêng đã có trong hệ thống.
-// Đợt bảo vệ TẠM bỏ "Trường liên kết" (nhà trường chưa tham dự hệ thống) — code
-// khu School/SchoolLayout vẫn còn, muốn hiện lại chỉ cần thêm object school vào đây.
+// Hệ thống chỉ có HAI tác nhân: nhân sự trung tâm và giáo viên. "Trường liên kết"
+// từng là portal thứ ba nhưng đã gỡ hẳn (Flyway V31) — trường là DỮ LIỆU, không
+// phải người dùng: không tài khoản, không màn hình, không quyền.
 const portals = [
   {
     icon: 'settings',

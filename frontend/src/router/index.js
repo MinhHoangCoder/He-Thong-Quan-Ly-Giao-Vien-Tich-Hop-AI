@@ -6,7 +6,6 @@ import { roleHome } from '@/router/roleHome'
 // (hạn chế merge conflict). File này chỉ GHÉP lại + giữ route guard — ít khi phải sửa.
 import { publicRoutes } from '@/router/public.routes'
 import { adminRoutes } from '@/router/admin.routes'
-import { schoolRoutes } from '@/router/school.routes'
 import { teacherRoutes } from '@/router/teacher.routes'
 import { staffRoutes } from '@/router/staff.routes'
 
@@ -24,7 +23,6 @@ const notFoundRoute = {
 const routes = [
   ...publicRoutes,
   ...adminRoutes,
-  ...schoolRoutes,
   ...teacherRoutes,
   ...staffRoutes,
   notFoundRoute,

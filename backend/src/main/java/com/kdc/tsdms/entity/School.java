@@ -40,10 +40,6 @@ public class School extends SoftDeletableEntity {
     @Column(name = "ContactPerson")
     private String contactPerson;
 
-    // Tài khoản đăng nhập của trường (nullable — trường có thể chưa có tài khoản).
-    @Column(name = "AppUserId")
-    private Integer appUserId;
-
     @Column(name = "ContractStartDate")
     private LocalDate contractStartDate;
 

@@ -173,11 +173,6 @@ public class EvaluationService {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền");
         }
-        if (isSchoolActor() && !isStaffOrAdmin()) {
-            School me = requireMySchool();
-            return new EvaluationResponse.FilterMeta(
-                    List.of(new EvaluationResponse.IdName(me.getId(), me.getName())), List.of(), true);
-        }
         List<EvaluationResponse.IdName> schools = schoolRepo.findAll().stream()
                 .filter(s -> !s.isDeleted() && "ACTIVE".equals(s.getStatus()))
                 .sorted(Comparator.comparing(School::getName, String.CASE_INSENSITIVE_ORDER))
@@ -200,7 +195,7 @@ public class EvaluationService {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không xem danh sách này");
         }
-        if (!isStaffOrAdmin() && !isSchoolActor() && !SecurityUtils.hasAuthority("EVALUATION_VIEW")) {
+        if (!isStaffOrAdmin() && !SecurityUtils.hasAuthority("EVALUATION_VIEW")) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Không có quyền xem");
         }
         String period = resolvePeriod(periodNote);
@@ -253,18 +248,12 @@ public class EvaluationService {
         String period = requirePeriodNote(req.periodNote());
 
         Integer evaluatorId = requireCurrentUserId();
+        // Đánh giá tạo qua giao diện KHÔNG gắn trường: trước đây cột SchoolId được suy ra từ
+        // tài khoản trường đang đăng nhập, mà tác nhân đó đã bị gỡ (Flyway V31). Form hiện chưa
+        // có ô chọn trường nên để null — các phiếu cũ/seed vẫn giữ nguyên trường của chúng.
         Integer schoolId = null;
 
-        if (isSchoolActor()) {
-            School school = requireMySchool();
-            schoolId = school.getId();
-            // Chỉ chấm GV có phân công còn hiệu lực tại trường mình (CANCELLED = chưa từng dạy)
-            if (!assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(
-                    teacher.getId(), schoolId, "CANCELLED")) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST, "Chỉ đánh giá giáo viên đã được phân công tại trường bạn");
-            }
-        } else if (isTeacherOnly()) {
+        if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không được gửi đánh giá");
         }
 
@@ -303,11 +292,6 @@ public class EvaluationService {
 
         requireActiveTeacher(req.teacherId());
         String period = requirePeriodNote(req.periodNote());
-        // Không cho đổi sang GV khác nếu là SCHOOL (tránh "chuyển" đánh giá sang GV ngoài phạm vi)
-        if (isSchoolActor() && !Objects.equals(e.getTeacherId(), req.teacherId())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Không được đổi giáo viên của phiếu đánh giá");
-        }
-
         Integer oldTeacherId = e.getTeacherId();
         String oldPeriod = e.getPeriodNote();
         boolean teacherChanged = !Objects.equals(oldTeacherId, req.teacherId());
@@ -464,24 +448,7 @@ public class EvaluationService {
                 throw new ApiException(HttpStatus.FORBIDDEN, "Bạn chỉ xem được đánh giá của chính mình");
             }
         }
-        // SCHOOL: chỉ xem summary GV có phân công còn hiệu lực tại trường mình
-        // (chặn dò tên/điểm GV bất kỳ theo id), và chỉ tính phiếu trường mình đã chấm.
-        // Gán MỘT LẦN (không gán lại) để biến còn effectively-final cho lambda filter bên dưới.
-        final Integer schoolFilter =
-                isSchoolActor() && !isStaffOrAdmin() ? requireMySchool().getId() : null;
-        if (schoolFilter != null
-                && !assignmentRepo.existsByTeacherIdAndSchoolIdAndDeletedFalseAndStatusNot(
-                        teacherId, schoolFilter, "CANCELLED")) {
-            throw new ApiException(
-                    HttpStatus.FORBIDDEN, "Chỉ xem đánh giá của giáo viên đã được phân công tại trường bạn");
-        }
-
         List<TeacherEvaluation> list = evaluationRepo.findByTeacherIdAndDeletedFalseOrderByCreatedAtDesc(teacherId);
-        if (schoolFilter != null) {
-            list = list.stream()
-                    .filter(e -> Objects.equals(e.getSchoolId(), schoolFilter))
-                    .toList();
-        }
 
         long[] dist = new long[6];
         long total = 0;
@@ -526,11 +493,6 @@ public class EvaluationService {
             centerOnly = false;
             schoolOnly = false;
             schoolId = null;
-        } else if (isSchoolActor() && !isStaffOrAdmin()) {
-            schoolId = requireMySchool().getId();
-            // Trường không xem đánh giá nội bộ trung tâm
-            schoolOnly = true;
-            centerOnly = false;
         }
 
         return new Scope(teacherId, schoolId, centerOnly, schoolOnly);
@@ -600,13 +562,6 @@ public class EvaluationService {
             }
             return;
         }
-        if (isSchoolActor()) {
-            Integer mySchoolId = requireMySchool().getId();
-            if (!Objects.equals(mySchoolId, e.getSchoolId())) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem đánh giá này");
-            }
-            return;
-        }
         throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền xem đánh giá");
     }
 
@@ -614,7 +569,7 @@ public class EvaluationService {
         if (isTeacherOnly()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Giáo viên không được quản lý đánh giá");
         }
-        if (!(isStaffOrAdmin() || isSchoolActor() || SecurityUtils.hasAuthority("EVALUATION_MANAGE"))) {
+        if (!(isStaffOrAdmin() || SecurityUtils.hasAuthority("EVALUATION_MANAGE"))) {
             throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền tạo/sửa đánh giá");
         }
     }
@@ -622,35 +577,20 @@ public class EvaluationService {
     private void assertCanEdit(TeacherEvaluation e) {
         assertCanManage();
         if (isStaffOrAdmin()) return;
-        // SCHOOL: chỉ sửa/xóa phiếu của trường mình (và nên là người tạo — nới: cùng schoolId)
-        if (isSchoolActor()) {
-            Integer mySchoolId = requireMySchool().getId();
-            if (!Objects.equals(mySchoolId, e.getSchoolId())) {
-                throw new ApiException(HttpStatus.FORBIDDEN, "Chỉ sửa/xóa đánh giá của trường bạn");
-            }
-            return;
-        }
         throw new ApiException(HttpStatus.FORBIDDEN, "Bạn không có quyền sửa đánh giá này");
     }
 
-    /**
-     * Ngữ cảnh người xem, tính MỘT lần mỗi request rồi dùng cho cả trang kết quả —
-     * trước đây mỗi dòng lại gọi requireMySchool() (N+1 query với tài khoản SCHOOL).
-     */
-    private record ViewerCtx(boolean staffOrAdmin, boolean schoolActor, Integer mySchoolId, boolean teacherOnly) {}
+    /** Ngữ cảnh người xem, tính MỘT lần mỗi request rồi dùng cho cả trang kết quả. */
+    private record ViewerCtx(boolean staffOrAdmin, boolean teacherOnly) {}
 
     private ViewerCtx viewerCtx() {
-        boolean staff = isStaffOrAdmin();
-        boolean school = !staff && isSchoolActor();
-        return new ViewerCtx(staff, school, school ? requireMySchool().getId() : null, isTeacherOnly());
+        return new ViewerCtx(isStaffOrAdmin(), isTeacherOnly());
     }
 
     /** Bản không-ném-exception của assertCanEdit, dùng ngữ cảnh đã tính sẵn. */
     private boolean canEdit(TeacherEvaluation e, ViewerCtx ctx) {
         if (ctx.teacherOnly()) return false;
-        if (ctx.staffOrAdmin()) return true;
-        if (ctx.schoolActor()) return Objects.equals(ctx.mySchoolId(), e.getSchoolId());
-        return false;
+        return ctx.staffOrAdmin();
     }
 
     /* ── Mapping / names ──────────────────────────────────────────── */
@@ -689,10 +629,9 @@ public class EvaluationService {
     }
 
     private EvaluationResponse toResponse(TeacherEvaluation e, NameBag names, ViewerCtx ctx) {
-        String source = e.getSchoolId() == null ? "CENTER" : "SCHOOL";
         boolean editable = canEdit(e, ctx);
         // Thiết kế ẩn danh với GIÁO VIÊN: không trả id/tên người chấm (FE không hiện,
-        // nhưng trước đây mở DevTools là thấy) — chỉ giữ nguồn CENTER/SCHOOL.
+        // nhưng trước đây mở DevTools là thấy).
         boolean hideEvaluator = ctx.teacherOnly();
         return new EvaluationResponse(
                 e.getId(),
@@ -706,7 +645,6 @@ public class EvaluationService {
                 e.getSchoolId() == null
                         ? null
                         : names.schoolNames().getOrDefault(e.getSchoolId(), "Trường #" + e.getSchoolId()),
-                source,
                 e.getScore(),
                 e.getComment(),
                 e.getPeriodNote(),
@@ -748,12 +686,6 @@ public class EvaluationService {
                 .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản chưa gắn hồ sơ giáo viên"));
     }
 
-    private School requireMySchool() {
-        return schoolRepo
-                .findByAppUserIdAndDeletedFalse(requireCurrentUserId())
-                .orElseThrow(() -> new ApiException(HttpStatus.FORBIDDEN, "Tài khoản chưa gắn hồ sơ trường"));
-    }
-
     private static String teacherFullName(Teacher t) {
         String full = ((t.getLastName() == null ? "" : t.getLastName()) + " "
                         + (t.getFirstName() == null ? "" : t.getFirstName()))
@@ -781,15 +713,6 @@ public class EvaluationService {
         List<Teacher> all = teacherRepo.findByDeletedFalse().stream()
                 .filter(t -> "ACTIVE".equals(t.getStatus()))
                 .toList();
-
-        if (isSchoolActor() && !isStaffOrAdmin()) {
-            Integer mySchoolId = requireMySchool().getId();
-            Set<Integer> assigned = new HashSet<>(assignmentRepo.findDistinctTeacherIdsBySchoolId(mySchoolId));
-            return all.stream()
-                    .filter(t -> assigned.contains(t.getId()))
-                    .filter(t -> branchIdFilter == null || Objects.equals(t.getBranchId(), branchIdFilter))
-                    .toList();
-        }
 
         // staff / admin
         Set<Integer> atSchool = null;
@@ -828,17 +751,10 @@ public class EvaluationService {
      */
     private List<EvaluationResponse.TeacherOption> buildTeacherOptions(List<Teacher> teachers, String periodNote) {
         if (teachers.isEmpty()) return List.of();
-        Integer schoolFilter =
-                isSchoolActor() && !isStaffOrAdmin() ? requireMySchool().getId() : null;
         String normPeriod = normalizePeriod(periodNote);
 
         Set<Integer> ids = teachers.stream().map(Teacher::getId).collect(Collectors.toSet());
         List<TeacherEvaluation> evals = evaluationRepo.findByTeacherIdInAndDeletedFalse(ids);
-        if (schoolFilter != null) {
-            evals = evals.stream()
-                    .filter(e -> Objects.equals(e.getSchoolId(), schoolFilter))
-                    .toList();
-        }
         Map<Integer, List<TeacherEvaluation>> byTeacher =
                 evals.stream().collect(Collectors.groupingBy(TeacherEvaluation::getTeacherId));
 
@@ -993,9 +909,5 @@ public class EvaluationService {
     /** pure TEACHER (không kiêm staff/admin). */
     private boolean isTeacherOnly() {
         return SecurityUtils.hasRole("TEACHER") && !isStaffOrAdmin();
-    }
-
-    private boolean isSchoolActor() {
-        return SecurityUtils.hasRole("SCHOOL");
     }
 }
