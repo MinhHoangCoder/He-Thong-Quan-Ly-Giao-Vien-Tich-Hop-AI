@@ -13,11 +13,11 @@ import { useAuthStore } from '@/stores/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
 /* ══════════════════════════════════════════════════════════
    PHÂN QUYỀN THEO VAI TRÒjdnjdnvjdnsdjnvd
-   ADMIN / EMPLOYEE: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
+   ADMIN: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
    TEACHER: chỉ xem + sửa — KHÔNG có nút "Xóa" và tab "Lịch sử".
 ══════════════════════════════════════════════════════════ */
 const auth = useAuthStore()
-const canManage = computed(() => auth.roles.some((r) => ['ADMIN', 'EMPLOYEE'].includes(r)))
+const canManage = computed(() => auth.roles.includes('ADMIN'))
 
 /* ══════════════════════════════════════════════════════════
    STATE
@@ -897,7 +897,7 @@ async function saveEdit() {
 }
 
 /* ══════════════════════════════════════════════════════════
-   XÓA MỀM (chỉ ADMIN / EMPLOYEE)
+   XÓA MỀM (chỉ ADMIN)
    Yêu cầu: khi ẩn GV khỏi danh sách, GV đó phải hiện trạng thái
    "Ngừng hoạt động" (RETIRED) ngay khi xem trong Lịch sử.
    BE hiện KHÔNG tự đổi status lúc xóa mềm, nên ở đây ta chủ động gọi
@@ -1088,7 +1088,7 @@ function formatDate(d) {
           <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
         </select>
 
-        <!-- Nút xóa: chỉ ADMIN / EMPLOYEE mới thấy -->
+        <!-- Nút xóa: chỉ ADMIN mới thấy -->
         <button
           v-if="canManage"
           :class="['btn-delete-toggle', deleteMode && 'btn-delete-toggle--active']"

@@ -297,6 +297,12 @@ public class TeacherService {
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
         teacherRepo.save(t);
+        // Khóa luôn TÀI KHOẢN ĐĂNG NHẬP gắn với hồ sơ.
+        // Bản cũ chỉ ẩn hồ sơ Teacher và không đụng gì tới AppUser, mà AuthService.login chỉ
+        // hỏi AppUser (còn sống? đúng mật khẩu? ACTIVE?) — nên "giáo viên đã xóa" vẫn đăng
+        // nhập bình thường, chỉ khác là mọi màn hình của họ ném 403 "Tài khoản không có hồ sơ
+        // giáo viên". Người bấm xóa không hề biết điều đó.
+        khoaTaiKhoanDangNhap(t.getAppUserId(), false);
     }
 
     // History
@@ -321,7 +327,12 @@ public class TeacherService {
         t.setStatus("ACTIVE");
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
-        return toResponse(teacherRepo.save(t), false);
+        Teacher saved = teacherRepo.save(t);
+        // Mở lại tài khoản đăng nhập — đối xứng với việc khóa lúc xóa. Khôi phục hồ sơ mà để
+        // tài khoản khóa thì giáo viên có mặt trong danh sách nhưng không vào được hệ thống,
+        // và không màn hình nào nói cho ai biết vì sao.
+        moLaiTaiKhoanDangNhap(saved.getAppUserId());
+        return toResponse(saved, false);
     }
 
     /**
@@ -360,8 +371,63 @@ public class TeacherService {
                         + "lương — không xóa được để dọn đường. Giáo viên vẫn nằm trong thùng rác và khôi "
                         + "phục lại được bất cứ lúc nào.")
                 .check();
+        // Xóa hồ sơ mà bỏ lại tài khoản là đẻ ra một TÀI KHOẢN MỒ CÔI: vẫn đăng nhập được,
+        // vẫn mang role TEACHER, nhưng không còn hồ sơ nào phía sau — mọi màn hình của nó ném
+        // 403. Xóa MỀM AppUser (chứ không DELETE) vì AppUser đang bị 13 bảng khác trỏ vào;
+        // xóa cứng là hẹn giờ lỗi khóa ngoại. Xóa mềm vẫn chặn được đăng nhập
+        // (AuthService.login lọc findByUsernameAndDeletedFalse) và nhả lại username cho người
+        // sau dùng lại (existsByUsernameAndDeletedFalseAndIdNot).
+        khoaTaiKhoanDangNhap(t.getAppUserId(), true);
         teacherRepo.delete(t);
         teacherRepo.flush();
+    }
+
+    /**
+     * Khóa tài khoản đăng nhập gắn với một hồ sơ giáo viên vừa bị xóa.
+     *
+     * <p>Vì sao phải thu hồi refresh token: đổi {@code Status} chỉ chặn LẦN ĐĂNG NHẬP SAU.
+     * Người đang mở sẵn phiên vẫn cầm access token còn hạn, và mỗi lần nó hết hạn thì refresh
+     * token lại đổi ra token mới. {@code AuthService.refresh} có kiểm tra trạng thái nên phiên
+     * cũng chết, nhưng thu hồi thẳng ở đây thì nó chết NGAY thay vì chờ tới lượt gia hạn.
+     *
+     * @param xoaLuonTaiKhoan true khi xóa vĩnh viễn hồ sơ — tài khoản cũng bị xóa mềm theo
+     */
+    private void khoaTaiKhoanDangNhap(Integer appUserId, boolean xoaLuonTaiKhoan) {
+        if (appUserId == null) {
+            return; // hồ sơ chưa từng gắn tài khoản đăng nhập
+        }
+        AppUser au = appUserRepository.findById(appUserId).orElse(null);
+        if (au == null) {
+            return;
+        }
+        Integer nguoiThaoTac = SecurityUtils.currentUserId();
+        au.setStatus("INACTIVE");
+        if (xoaLuonTaiKhoan) {
+            au.setDeleted(true);
+            au.setDeletedAt(Instant.now());
+            au.setDeletedBy(nguoiThaoTac);
+        }
+        au.setUpdatedAt(Instant.now());
+        au.setUpdatedBy(nguoiThaoTac);
+        appUserRepository.save(au);
+        refreshTokenRepo.revokeAllActiveByAppUserId(appUserId, Instant.now());
+    }
+
+    /** Mở lại tài khoản khi khôi phục hồ sơ từ thùng rác (chỉ áp dụng cho tài khoản chưa xóa). */
+    private void moLaiTaiKhoanDangNhap(Integer appUserId) {
+        if (appUserId == null) {
+            return;
+        }
+        AppUser au = appUserRepository.findById(appUserId).orElse(null);
+        // Tài khoản đã bị xóa mềm thì KHÔNG tự hồi sinh ở đây: nó chỉ bị xóa khi hồ sơ bị xóa
+        // vĩnh viễn, mà hồ sơ đó thì không còn để khôi phục nữa.
+        if (au == null || au.isDeleted()) {
+            return;
+        }
+        au.setStatus("ACTIVE");
+        au.setUpdatedAt(Instant.now());
+        au.setUpdatedBy(SecurityUtils.currentUserId());
+        appUserRepository.save(au);
     }
 
     /**

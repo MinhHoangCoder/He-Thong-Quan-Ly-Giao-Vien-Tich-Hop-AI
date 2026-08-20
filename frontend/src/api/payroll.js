@@ -31,4 +31,27 @@ export const payrollApi = {
   finalize(id) {
     return http.post(`/payroll/${id}/finalize`)
   },
+
+  /**
+   * Cảnh báo trước khi chốt: kỳ này còn dòng Vắng nào rơi vào ngày nghỉ.
+   * Chốt lương khóa luôn chấm công của kỳ — chốt khi còn Vắng giả là khóa lỗi vào trong.
+   */
+  holidayIssues(year, month) {
+    return http.get('/payroll/holiday-issues', { params: { year, month } })
+  },
+
+  /** Lịch sử chốt / mở lại của một phiếu lương (mới nhất trước). */
+  logs(id) {
+    return http.get(`/payroll/${id}/logs`)
+  },
+
+  /** Mở lại một phiếu đã chốt về nháp. Cần quyền PAYROLL_REOPEN. body: { reason } */
+  reopen(id, reason) {
+    return http.post(`/payroll/${id}/reopen`, { reason })
+  },
+
+  /** Mở lại MỌI phiếu đã chốt của một kỳ. Cần quyền PAYROLL_REOPEN. */
+  reopenPeriod(year, month, reason) {
+    return http.post('/payroll/reopen-period', { reason }, { params: { year, month } })
+  },
 }

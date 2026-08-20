@@ -25,6 +25,7 @@ import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
+import com.kdc.tsdms.entity.TeacherSubject;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
@@ -37,6 +38,7 @@ import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
+import com.kdc.tsdms.repository.TeacherSubjectRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.text.Normalizer;
 import java.time.DayOfWeek;
@@ -44,6 +46,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -75,10 +78,17 @@ public class AssignmentService {
      */
     static final int CONFIRM_WINDOW_HOURS = 48;
 
+    /** Trường đang hợp tác — chỉ những trường này mới nhận được phân công mới. */
+    private static final String SCHOOL_ACTIVE = "ACTIVE";
+
+    /** Giáo viên đang làm việc (khác RETIRED / SUSPENDED). */
+    private static final String TEACHER_ACTIVE = "ACTIVE";
+
     private final AssignmentRepository assignmentRepo;
     private final AssignmentSlotRepository slotRepo;
     private final ScheduleRepository scheduleRepo;
     private final TeacherRepository teacherRepo;
+    private final TeacherSubjectRepository teacherSubjectRepo;
     private final SchoolRepository schoolRepo;
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
@@ -95,6 +105,7 @@ public class AssignmentService {
             AssignmentSlotRepository slotRepo,
             ScheduleRepository scheduleRepo,
             TeacherRepository teacherRepo,
+            TeacherSubjectRepository teacherSubjectRepo,
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
@@ -109,6 +120,7 @@ public class AssignmentService {
         this.slotRepo = slotRepo;
         this.scheduleRepo = scheduleRepo;
         this.teacherRepo = teacherRepo;
+        this.teacherSubjectRepo = teacherSubjectRepo;
         this.schoolRepo = schoolRepo;
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
@@ -244,13 +256,26 @@ public class AssignmentService {
         Map<Integer, String> usernameByUserId = new HashMap<>();
         userRepo.findAll().forEach(u -> usernameByUserId.put(u.getId(), u.getUsername()));
 
+        // CHỈ giáo viên đang làm việc. Hồ sơ nghỉ hưu/đình chỉ vẫn giữ lại để tra lịch sử chấm
+        // công và lương nên deleted=false — lọt vào dropdown là mời người xếp lịch chọn nhầm
+        // một người sẽ không bao giờ tới lớp.
+        // Môn mỗi giáo viên DẠY ĐƯỢC — nạp một lượt rồi gom, thay vì hỏi DB cho từng người.
+        Map<Integer, List<Integer>> subjectsByTeacher = new HashMap<>();
+        for (TeacherSubject ts : teacherSubjectRepo.findAll()) {
+            subjectsByTeacher
+                    .computeIfAbsent(ts.getTeacherId(), k -> new ArrayList<>())
+                    .add(ts.getSubjectId());
+        }
+
         List<AssignmentFormOptions.TeacherOption> teachers = teacherRepo.findByDeletedFalse().stream()
+                .filter(t -> TEACHER_ACTIVE.equals(t.getStatus()))
                 .map(t -> new AssignmentFormOptions.TeacherOption(
                         t.getId(),
                         fullName(t),
                         usernameByUserId.get(t.getAppUserId()),
                         weeklyPeriods.getOrDefault(t.getId(), 0),
-                        schoolsByTeacher.getOrDefault(t.getId(), Set.of()).size()))
+                        schoolsByTeacher.getOrDefault(t.getId(), Set.of()).size(),
+                        subjectsByTeacher.getOrDefault(t.getId(), List.of())))
                 .toList();
 
         List<AssignmentFormOptions.SubjectOption> subjects = subjectRepo.findByDeletedFalseOrderByName().stream()
@@ -277,8 +302,12 @@ public class AssignmentService {
             }
         }
 
+        // CHỈ trường đang hợp tác (Status = ACTIVE). Trường hết hạn/ngừng hợp tác vẫn nằm
+        // trong hệ thống để giữ lịch sử hợp đồng, nhưng không được nhận phân công MỚI —
+        // để lọt vào dropdown là mời người xếp lịch điều giáo viên tới một nơi trung tâm
+        // không còn dạy nữa.
         List<AssignmentFormOptions.SchoolOption> schools = schoolRepo.findAll().stream()
-                .filter(s -> !s.isDeleted())
+                .filter(s -> !s.isDeleted() && SCHOOL_ACTIVE.equals(s.getStatus()))
                 .map(s -> {
                     List<SchoolClass> cls = classesBySchool.getOrDefault(s.getId(), List.of());
                     return new AssignmentFormOptions.SchoolOption(
@@ -295,9 +324,18 @@ public class AssignmentService {
     /** Lớp + khung tiết của một trường (dropdown cấp 2). */
     @Transactional(readOnly = true)
     public SchoolScopedOptions schoolOptions(Integer schoolId) {
+        // Nhãn PHẢI kèm năm học: mỗi lớp có một bản ghi riêng cho từng năm, nên không gắn năm
+        // vào thì danh sách hiện hai mục "1A1" giống hệt nhau và người xếp lịch không có cách
+        // nào phân biệt — chọn nhầm là xếp vào lớp năm ngoái. Cùng cách làm với
+        // SchoolClassService.listActiveBySchool. Năm mới lên trước cho đỡ phải cuộn.
         List<OptionItem> classes = classRepo.findAll().stream()
                 .filter(c -> !c.isDeleted() && c.getSchoolId().equals(schoolId))
-                .map(c -> new OptionItem(c.getId(), c.getName()))
+                .sorted(Comparator.comparing((SchoolClass c) -> c.getSchoolYear() == null ? "" : c.getSchoolYear())
+                        .reversed()
+                        .thenComparing(SchoolClass::getName))
+                .map(c -> new OptionItem(
+                        c.getId(),
+                        c.getSchoolYear() == null ? c.getName() : c.getName() + " (" + c.getSchoolYear() + ")"))
                 .toList();
         PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
         List<PeriodOption> periods = periodRepo.findBySchoolIdAndDeletedFalseOrderByPeriodNumber(schoolId).stream()
@@ -453,10 +491,12 @@ public class AssignmentService {
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(req.teacherId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên đã chọn."));
+        assertTeacherAvailable(teacher);
         School school = schoolRepo
                 .findById(req.schoolId())
                 .filter(s -> !s.isDeleted())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường đã chọn."));
+        assertSchoolActive(school);
         Subject subject = subjectRepo
                 .findByIdAndDeletedFalse(req.subjectId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy môn học đã chọn."));
@@ -541,6 +581,93 @@ public class AssignmentService {
     private record ResolvedSlot(Integer schoolId, Integer classId) {}
 
     /**
+     * Chặn xếp giáo viên vào lớp của NĂM HỌC ĐÃ QUA.
+     *
+     * <p>Mỗi lớp có một bản ghi RIÊNG cho từng năm học ({@code SchoolClass.SchoolYear}), nên
+     * "1A1" tồn tại nhiều lần với id khác nhau. Không có luật này thì lỗi rất khó thấy: phiếu
+     * lưu thành công, lịch dạy sinh ra đầy đủ, chỉ có điều nó trỏ vào lớp của năm ngoái.
+     *
+     * <p>Nguy hiểm hơn cả việc thống kê sai: {@code TeacherTimeConflictChecker.checkClass} dò
+     * trùng theo {@code classId}. Hai bản ghi của CÙNG một lớp thật là hai id khác nhau, nên
+     * xếp hai giáo viên vào cùng một phòng học cùng giờ mà hệ thống KHÔNG kêu gì cả — đúng
+     * thứ mà luật chống trùng lớp sinh ra để chặn.
+     *
+     * <p>So theo NĂM BẮT ĐẦU của năm học chứ không so ngày: mốc "từ tháng 8 là năm học mới"
+     * bao được cả giai đoạn tựu trường cuối tháng 8 (Hải Phòng 2026: tựu trường 24/8, khai
+     * giảng 5/9). Lớp thiếu/sai định dạng {@code SchoolYear} thì BỎ QUA — dữ liệu cũ không
+     * nên chặn người dùng, và đây là luật phòng nhầm chứ không phải ràng buộc toàn vẹn.
+     */
+    static void assertClassNotStale(SchoolClass c, LocalDate startDate) {
+        Integer classYear = schoolYearStartOf(c.getSchoolYear());
+        if (classYear == null || startDate == null) {
+            return;
+        }
+        int assignmentYear = startDate.getMonthValue() >= 8 ? startDate.getYear() : startDate.getYear() - 1;
+        if (classYear < assignmentYear) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Lớp " + c.getName() + " thuộc năm học " + c.getSchoolYear()
+                            + ", không xếp được cho phiếu bắt đầu ngày " + startDate
+                            + ". Chọn lớp của năm học " + assignmentYear + "-" + (assignmentYear + 1) + ".");
+        }
+    }
+
+    /**
+     * Giáo viên phải đang LÀM VIỆC mới nhận được phân công mới.
+     *
+     * <p>Hồ sơ nghỉ hưu (RETIRED) hay đình chỉ (SUSPENDED) vẫn nằm trong hệ thống để giữ lịch
+     * sử chấm công và lương, nên {@code deleted = false} — không đủ để kết luận là dùng được.
+     * Thiếu luật này, người xếp lịch chọn nhầm một người đã nghỉ và không có gì cản: phiếu lưu
+     * thành công, lời mời gửi đi, lịch sinh đủ, chỉ có điều lớp sẽ không có ai tới dạy.
+     */
+    private static void assertTeacherAvailable(Teacher t) {
+        if (!TEACHER_ACTIVE.equals(t.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Giáo viên " + fullName(t) + " đang ở trạng thái " + statusLabelVi(t.getStatus())
+                            + " nên không nhận phân công mới.");
+        }
+    }
+
+    /**
+     * Trường phải đang hợp tác. Cùng lý do với {@link #assertTeacherAvailable(Teacher)}: trường
+     * hết hạn hợp đồng vẫn được giữ lại để tra cứu lịch sử, không phải để xếp lịch mới vào.
+     */
+    private static void assertSchoolActive(School s) {
+        if (!SCHOOL_ACTIVE.equals(s.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Trường " + s.getName() + " đang ở trạng thái " + statusLabelVi(s.getStatus())
+                            + " nên không nhận phân công mới.");
+        }
+    }
+
+    private static String statusLabelVi(String status) {
+        if (status == null) {
+            return "không xác định";
+        }
+        return switch (status) {
+            case "RETIRED" -> "đã nghỉ việc";
+            case "SUSPENDED" -> "tạm đình chỉ";
+            case "EXPIRED" -> "hết hạn hợp đồng";
+            case "INACTIVE" -> "ngừng hợp tác";
+            default -> status;
+        };
+    }
+
+    /** "2026-2027" → 2026. Trả null nếu trống hoặc không đúng định dạng. */
+    private static Integer schoolYearStartOf(String schoolYear) {
+        if (schoolYear == null || schoolYear.length() < 4) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(schoolYear.trim().substring(0, 4));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
      * Soát toàn bộ danh sách tiết của một phiếu (dùng chung cho tạo mới và sửa): mỗi tiết mang
      * TRƯỜNG riêng, tiết và lớp phải cùng thuộc đúng trường đó, các tiết không được trùng/đè
      * giờ nhau, và không được đè lịch sẵn có của giáo viên ở BẤT KỲ trường nào.
@@ -597,6 +724,10 @@ public class AssignmentService {
                     .findById(id)
                     .filter(x -> !x.isDeleted())
                     .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường đã chọn.")));
+            // Soát trạng thái ở ĐÂY chứ không chỉ ở create(): từ V27 mỗi tiết tự mang trường
+            // của nó, nên kiểm tra mỗi trường "chính" của phiếu là bỏ lọt các trường phụ. Đặt
+            // trong validateSlots thì cả tạo mới lẫn sửa phiếu đều đi qua cùng một luật.
+            assertSchoolActive(school);
 
             Period p = periodRepo
                     .findById(slot.periodId())
@@ -621,6 +752,7 @@ public class AssignmentService {
                 throw new ApiException(
                         HttpStatus.BAD_REQUEST, "Lớp " + c.getName() + " không thuộc trường " + school.getName() + ".");
             }
+            assertClassNotStale(c, startDate);
             resolved.add(new ResolvedSlot(school.getId(), classId));
         }
 
@@ -813,6 +945,11 @@ public class AssignmentService {
         Teacher teacher = teacherRepo
                 .findByIdAndDeletedFalse(req.teacherId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy giáo viên đã chọn."));
+        // Sửa phiếu ĐỔI ĐƯỢC giáo viên (xem ghi chú dưới), nên luật "chỉ giao cho người đang
+        // làm việc" phải áp ở đây y như lúc tạo mới. Thiếu chỗ này thì cấm cửa đằng trước mà
+        // vẫn mở đằng sau: không tạo được phiếu cho người đã nghỉ, nhưng sửa một phiếu sẵn có
+        // sang tên họ thì lọt.
+        assertTeacherAvailable(teacher);
         // Trường CŨ chỉ còn là giá trị mặc định cho slot không ghi trường (client cũ). Từ V27 mỗi
         // tiết tự mang trường nên sửa phiếu ĐỔI ĐƯỢC cả trường — không tìm thấy trường cũ (đã bị
         // xóa mềm) cũng không chặn nữa, miễn là các tiết mới đều chỉ rõ trường của mình.

@@ -19,15 +19,13 @@ const router = useRouter()
 const isEdit = computed(() => !!route.params.id)
 const lessonId = computed(() => (isEdit.value ? Number(route.params.id) : null))
 
-// FIX (2026-07-10): trang này cũng được dùng chung cho 2 khu vực, giống
-// LessonListPage.vue (xem ghi chú ở đó). route.name ở đây là
-// 'admin-lesson-new' / 'admin-lesson-edit' (khu ADMIN) hoặc
-// 'lesson-new' / 'lesson-edit' (khu STAFF) tuỳ nơi người dùng bấm vào.
-// Trước đây mọi điều hướng (nút "Danh sách", sau khi Tạo mới) đều push cứng
-// sang tên route khu STAFF -> ADMIN bị route guard đá về dashboard.
-const isAdminArea = computed(() => route.name?.toString().startsWith('admin-'))
-const listRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-list' : 'lesson-list'))
-const editRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-edit' : 'lesson-edit'))
+// Từ Flyway V33 chỉ còn khu ADMIN (xem ghi chú ở LessonListPage.vue) — hai tên route
+// 'lesson-list'/'lesson-edit' của khu STAFF không còn tồn tại, nên đây là hằng số.
+//
+// Ghi lại lỗi cũ (FIX 2026-07-10): mọi điều hướng (nút "Danh sách", sau khi Tạo mới) từng
+// push CỨNG sang tên route khu STAFF -> ADMIN bị route guard đá về dashboard.
+const listRouteName = 'admin-lesson-list'
+const editRouteName = 'admin-lesson-edit'
 
 const subjects = ref([]) // tất cả subject ACTIVE
 const gradeLevels = ref([])
@@ -225,13 +223,12 @@ async function onSubmit() {
     } else {
       const { data } = await lessonApi.create(body)
       successMsg.value = 'Tạo bài giảng thành công!'
-      // FIX: editRouteName là computed ref — trong <script setup> (không phải
-      // template) Vue KHÔNG tự unwrap ref, nên phải lấy .value. Thiếu .value
-      // khiến router.replace() nhận cả object ComputedRefImpl làm "name",
-      // Vue Router không khớp được route -> throw lỗi ngay tại đây (dù POST
-      // /lessons vừa mới THÀNH CÔNG) -> rơi xuống catch bên dưới -> UI hiện
-      // đồng thời "Tạo bài giảng thành công!" VÀ "Lưu thất bại, thử lại sau."
-      router.replace({ name: editRouteName.value, params: { id: data.id } })
+      // editRouteName nay là chuỗi hằng, không còn là computed ref nên không cần .value.
+      // (Bẫy cũ đáng nhớ: hồi nó là computed, thiếu .value ở đây khiến router.replace()
+      // nhận nguyên object ComputedRefImpl làm "name" -> Vue Router throw ngay dù POST
+      // /lessons vừa THÀNH CÔNG, rơi xuống catch, UI hiện đồng thời "Tạo bài giảng thành
+      // công!" và "Lưu thất bại, thử lại sau.")
+      router.replace({ name: editRouteName, params: { id: data.id } })
     }
   } catch (e) {
     errorMsg.value = e.response?.data?.message || 'Lưu thất bại, thử lại sau.'

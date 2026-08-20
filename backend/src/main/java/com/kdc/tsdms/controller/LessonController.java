@@ -34,9 +34,9 @@ import org.springframework.web.multipart.MultipartFile;
  * Danh mục (Category) là 1 trong 4 giá trị cố định: Tin học / Tiếng Anh /
  * STEM - AI / Kĩ năng sống — gắn trực tiếp trên Lesson, không qua Subject.
  *
- * Quyền:
- * LESSON_VIEW : ADMIN, EMPLOYEE, TEACHER (TEACHER chỉ thấy PUBLISHED)
- * LESSON_MANAGE : ADMIN, EMPLOYEE (tạo/sửa/xóa/upload)
+ * Quyền (từ V33 hệ thống chỉ còn ADMIN và TEACHER):
+ * LESSON_VIEW : ADMIN, TEACHER (TEACHER chỉ thấy PUBLISHED)
+ * LESSON_MANAGE : ADMIN (tạo/sửa/xóa/upload)
  */
 @RestController
 @RequestMapping("/api/v1/lessons")
@@ -74,7 +74,7 @@ public class LessonController {
 
     /** Danh sách khối lớp gợi ý cho dropdown (text tự do, không ràng buộc DB). */
     @GetMapping("/grade-levels")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('ACADEMIC') or hasAuthority('LESSON_VIEW')")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_VIEW')")
     public List<String> gradeLevels() {
         return lessonService.getGradeLevels();
     }

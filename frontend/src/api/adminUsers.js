@@ -20,7 +20,7 @@ export const adminUsersApi = {
     return http.patch(`/admin/users/${id}/status`, { status })
   },
   setRoles(id, roles) {
-    // roles: ['HR', 'ACADEMIC', ...] — THAY trọn bộ danh sách role của tài khoản
+    // roles: ['ADMIN', 'TEACHER'] — THAY trọn bộ danh sách role của tài khoản
     return http.put(`/admin/users/${id}/roles`, { roles })
   },
   roles() {

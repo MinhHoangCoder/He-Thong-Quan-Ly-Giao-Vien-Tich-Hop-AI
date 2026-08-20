@@ -36,6 +36,20 @@ export const holidayApi = {
     return http.post(`/holidays/${id}/cancel-sessions`)
   },
 
+  /**
+   * Các dòng chấm công VẮNG mà hệ thống tự ghi cho buổi ĐÃ QUA trong kỳ nghỉ.
+   * Hủy buổi chỉ cứu được buổi CHƯA diễn ra — buổi đã qua thì job nền đã ghi Vắng mất rồi,
+   * và dòng vắng đó không biến mất khi buổi bị hủy.
+   */
+  absences(id) {
+    return http.get(`/holidays/${id}/absences`)
+  },
+
+  /** Chuyển các dòng Vắng đã chọn sang Nghỉ phép. body: { attendanceIds, reason } */
+  fixAbsences(id, body) {
+    return http.post(`/holidays/${id}/fix-absences`, body)
+  },
+
   remove(id) {
     return http.delete(`/holidays/${id}`)
   },

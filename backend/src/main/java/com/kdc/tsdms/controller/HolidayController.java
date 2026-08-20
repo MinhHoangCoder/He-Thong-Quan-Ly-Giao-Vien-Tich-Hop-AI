@@ -1,5 +1,7 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.dto.HolidayAbsenceResponse;
+import com.kdc.tsdms.dto.HolidayFixAbsencesRequest;
 import com.kdc.tsdms.dto.HolidayImpactResponse;
 import com.kdc.tsdms.dto.HolidayRequest;
 import com.kdc.tsdms.dto.HolidayResponse;
@@ -42,6 +44,19 @@ public class HolidayController {
     private static final String CAN_VIEW =
             "hasRole('ADMIN') or hasAuthority('HOLIDAY_VIEW') or hasAuthority('ASSIGNMENT_VIEW') or hasAuthority('SCHEDULE_VIEW')";
     private static final String CAN_MANAGE = "hasRole('ADMIN') or hasAuthority('HOLIDAY_MANAGE')";
+
+    /**
+     * Sửa hàng loạt chấm công theo kỳ nghỉ đòi CẢ HAI quyền.
+     *
+     * <p>Đây không còn là thao tác trên lịch nghỉ nữa mà là ghi đè hồ sơ chấm công của nhiều
+     * giáo viên cùng lúc: người chỉ được giao việc khai ngày lễ không nên làm được. Ngược lại
+     * cũng không mở cho mỗi ATTENDANCE_MANAGE, vì phải hiểu kỳ nghỉ mới biết dòng nào đáng sửa.
+     *
+     * <p>Hệ quả vận hành: phòng Đào tạo (đang giữ HOLIDAY_*) cần được cấp thêm
+     * ATTENDANCE_MANAGE, hoặc bước này do kế toán bấm.
+     */
+    private static final String CAN_FIX_ABSENCES =
+            "hasRole('ADMIN') or (hasAuthority('HOLIDAY_MANAGE') and hasAuthority('ATTENDANCE_MANAGE'))";
 
     private final HolidayService service;
 
@@ -94,6 +109,26 @@ public class HolidayController {
     @PreAuthorize(CAN_MANAGE)
     public Map<String, Integer> cancelSessions(@PathVariable Integer id) {
         return Map.of("cancelled", service.cancelSessions(id));
+    }
+
+    /**
+     * Các dòng chấm công VẮNG mà hệ thống tự ghi cho buổi đã qua trong kỳ nghỉ.
+     *
+     * <p>Chỉ đọc nên mở cho CAN_FIX_ABSENCES lẫn người xem: nhìn thấy vấn đề là việc của mọi
+     * người, sửa nó mới là việc cần quyền.
+     */
+    @GetMapping("/{id}/absences")
+    @PreAuthorize(CAN_VIEW)
+    public HolidayAbsenceResponse absences(@PathVariable Integer id) {
+        return service.absences(id);
+    }
+
+    /** Chuyển các dòng Vắng đã chọn sang Nghỉ phép (buổi đó trường không hoạt động). */
+    @PostMapping("/{id}/fix-absences")
+    @PreAuthorize(CAN_FIX_ABSENCES)
+    public Map<String, Integer> fixAbsences(
+            @PathVariable Integer id, @Valid @RequestBody HolidayFixAbsencesRequest req) {
+        return Map.of("fixed", service.fixAbsences(id, req));
     }
 
     @DeleteMapping("/{id}")

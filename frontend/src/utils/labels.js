@@ -3,14 +3,12 @@
 // thì người vận hành không đọc được — mọi chỗ cần "dịch" đều import từ đây,
 // tránh mỗi trang tự chế một bảng map lệch nhau.
 
+// Từ Flyway V33 hệ thống chỉ còn HAI tác nhân. Các nhãn phòng ban (Kế toán, Nhân sự,
+// Đào tạo, Tuyển sinh) và EMPLOYEE đã bỏ cùng lúc với role — giữ lại nhãn của thứ không
+// tồn tại chỉ khiến người đọc tưởng vẫn còn.
 export const ROLE_LABELS = {
   ADMIN: 'Quản trị viên',
-  EMPLOYEE: 'Nhân viên',
   TEACHER: 'Giáo viên',
-  ACCOUNTANT: 'Kế toán',
-  HR: 'Nhân sự',
-  ACADEMIC: 'Đào tạo',
-  SALES: 'Tuyển sinh',
 }
 
 export function roleLabel(role) {

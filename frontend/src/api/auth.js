@@ -12,7 +12,7 @@ export const authApi = {
   logout(refreshToken) {
     return http.post('/auth/logout', { refreshToken })
   },
-  // Tạo tài khoản GV/trường (chỉ ADMIN & EMPLOYEE).
+  // Tạo tài khoản giáo viên (chỉ ADMIN — từ V31 trường không còn là người dùng).
   register(payload) {
     // payload: { role, username, email, fullName, password, phone, branchId }
     return http.post('/auth/register', payload)

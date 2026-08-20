@@ -419,6 +419,28 @@ function teacherLabel(t) {
 }
 
 /**
+ * Danh sách giáo viên ĐÃ LỌC theo môn đang chọn (bảng TeacherSubject).
+ *
+ * Vì sao cần: trung tâm có 90 giáo viên đang làm việc và 23 môn. Không lọc thì mỗi lần xếp
+ * lịch là một lần tự nhớ xem ai dạy được môn này — nhân với gần trăm phiếu đầu năm học thì
+ * đó là chỗ chắc chắn sinh ra phân công sai người.
+ *
+ * KHÔNG lọc cứng: giáo viên chưa khai môn nào (subjectIds rỗng) vẫn được giữ lại, vì dữ liệu
+ * thiếu không nên chặn việc. Chỉ ẩn người đã khai môn mà KHÔNG có môn đang chọn — với họ thì
+ * "không dạy được môn này" là một khẳng định có căn cứ.
+ */
+const teachersForSubject = computed(() => {
+  const sid = Number(form.subjectId)
+  if (!sid) return options.teachers
+  return options.teachers.filter(
+    (t) => !t.subjectIds?.length || t.subjectIds.includes(sid),
+  )
+})
+
+/** Số người bị ẩn vì không dạy được môn đang chọn — nói ra để không ai tưởng mất dữ liệu. */
+const teachersHidden = computed(() => options.teachers.length - teachersForSubject.value.length)
+
+/**
  * Trường chưa có khung tiết VÀ chưa có lớp nào thì KHÓA hẳn: không suy được cấp học nên cũng
  * không áp được khung chuẩn, chọn vào chỉ là ngõ cụt. Trường thiếu mỗi khung tiết thì vẫn cho
  * chọn — vào trong có nút áp khung tiết chuẩn để gỡ tại chỗ.
@@ -640,7 +662,7 @@ function cancel() {
           <label>Giáo viên *</label>
           <SearchSelect
             v-model="form.teacherId"
-            :options="options.teachers"
+            :options="teachersForSubject"
             :search-extra="(t) => t.code"
             placeholder="-- Chọn giáo viên --"
             search-placeholder=""
@@ -654,6 +676,9 @@ function cancel() {
               </div>
             </template>
           </SearchSelect>
+          <small v-if="form.subjectId && teachersHidden > 0" class="afp__hint">
+            Đang lọc theo môn đã chọn — ẩn {{ teachersHidden }} giáo viên không dạy môn này.
+          </small>
         </div>
 
         <div class="form-group">
@@ -889,6 +914,10 @@ function cancel() {
 }
 .afp__fielderr {
   color: var(--c-danger);
+}
+.afp__hint {
+  color: var(--c-text-muted);
+  font-size: 12.5px;
 }
 .afp__loading,
 .afp__card {
