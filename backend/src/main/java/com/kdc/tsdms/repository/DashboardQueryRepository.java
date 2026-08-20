@@ -16,25 +16,15 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Toàn bộ truy vấn thống kê của Bảng điều khiển.
+ * Truy vấn thống kê cho Bảng điều khiển. Viết SQL tay để đẩy hết GROUP BY/SUM/COUNT xuống DB —
+ * gom bằng Java Stream thì phải nạp cả bảng Schedule (hơn 27.000 dòng) lên bộ nhớ.
  *
- * <p>VÌ SAO VIẾT SQL TAY THAY VÌ DÙNG JPA: bản dashboard trước nạp nguyên cả bảng {@code Schedule}
- * (hơn 27.000 dòng), cả {@code Assignment}, {@code Teacher}, {@code School}, {@code Subject},
- * {@code Payroll} vào bộ nhớ rồi mới lọc bằng Java Stream — mỗi lần mở trang là một lần kéo toàn
- * bộ cơ sở dữ liệu qua mạng. Mọi phép đếm và cộng ở đây đều là việc SQL Server làm giỏi nhất và
- * có sẵn chỉ mục để làm; đẩy xuống đó thì mỗi truy vấn chỉ trả về vài chục dòng kết quả.
- *
- * <p>QUY ƯỚC CHUNG CỦA MỌI TRUY VẤN Ở ĐÂY:
+ * <p>Quy ước chung:
  *
  * <ul>
- *   <li>"Buổi dạy" chỉ tính bản ghi {@code Schedule} đã DUYỆT và chưa xóa mềm. Buổi bị huỷ hay
- *       bị từ chối vẫn được đếm riêng để tính tỉ lệ duyệt, nhưng không bao giờ vào tổng.
- *   <li>Trường của một buổi lấy từ Ô LỊCH trước, phân công sau — từ V27 một phiếu phân công trải
- *       được nhiều trường nên {@code Assignment.SchoolId} không còn là câu trả lời đúng.
- *   <li>CHI PHÍ được PHÂN BỔ về từng buổi dạy: lương thực nhận của giáo viên trong tháng chia cho
- *       số tiết đã dạy tháng đó ({@code NetAmount / TaughtHours}). Nhờ vậy chi phí lọc được theo
- *       trường và theo môn — điều mà bảng {@code Payroll} (chỉ có grain giáo viên × tháng) tự nó
- *       không làm được.
+ *   <li>"Buổi dạy" = Schedule đã DUYỆT, chưa xóa mềm. Buổi huỷ/từ chối chỉ dùng tính tỉ lệ duyệt.
+ *   <li>Trường của buổi lấy từ Ô LỊCH trước, phân công sau (V27: một phiếu trải nhiều trường).
+ *   <li>Chi phí phân bổ về từng buổi = NetAmount / TaughtHours của kỳ lương tương ứng.
  * </ul>
  */
 @Repository
@@ -48,16 +38,9 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Khối FROM dùng chung cho mọi thống kê dựa trên buổi dạy.
-     *
-     * <p>{@code LEFT JOIN AssignmentSlot} phải đứng TRƯỚC {@code JOIN School} vì trường của buổi
-     * suy ra từ ô lịch. {@code LEFT JOIN Payroll} kéo theo đơn giá tiết của đúng tháng chứa buổi
-     * đó — bảng lương chốt theo tháng nên khoá nối là (giáo viên, năm, tháng).
-     *
-     * <p>{@code LEFT JOIN Attendance} an toàn với mọi phép đếm ở đây vì quan hệ là MỘT–MỘT: DB có
-     * ràng buộc duy nhất {@code UX_Attendance_ScheduleId}, mỗi buổi tối đa một dòng chấm công.
-     * Nhờ nối sẵn nên các truy vấn vừa đếm được buổi, vừa đếm được chuyên cần, vừa cộng được chi
-     * phí trong một lượt quét.
+     * Khối FROM dùng chung. LEFT JOIN AssignmentSlot phải đứng TRƯỚC JOIN School vì trường của
+     * buổi suy ra từ ô lịch. Nối Attendance an toàn cho các phép COUNT vì có ràng buộc duy nhất
+     * UX_Attendance_ScheduleId (mỗi buổi tối đa 1 dòng chấm công).
      */
     private static final String FROM_BUOI_DAY = """
             FROM Schedule sch
@@ -86,22 +69,13 @@ public class DashboardQueryRepository {
     private static final String GIO = "(DATEDIFF(MINUTE, sch.StartTime, sch.EndTime) / 60.0)";
 
     /**
-     * Chi phí lương phân bổ cho MỘT buổi dạy.
+     * Chi phí lương phân bổ cho MỘT buổi dạy = NetAmount / TaughtHours.
      *
-     * <p>Trung tâm trả lương theo TIẾT và mỗi buổi có mặt đúng bằng một tiết, nên chi phí một buổi
-     * chính là lương thực nhận của tháng chia cho số tiết đã dạy trong tháng đó. Cột
-     * {@code TaughtHours} lưu SỐ TIẾT chứ không phải số giờ — tên cột là di sản, ý nghĩa đã đổi từ
-     * khi trung tâm chuyển sang trả theo tiết (xem {@code PayrollService}); chia cho nó rồi nhân
-     * thêm thời lượng giờ là đếm trùng và cho ra con số cao gấp mấy lần thực tế.
+     * <p>BẪY: cột TaughtHours lưu SỐ TIẾT chứ không phải số giờ (xem PayrollService — trung tâm
+     * trả theo tiết, tên cột là di sản). Chia xong còn nhân thêm thời lượng giờ là đếm trùng.
      *
-     * <p>Phép chia này còn kéo theo cả thưởng và khấu trừ mà admin nhập tay, nên tổng chi phí trên
-     * Bảng điều khiển khớp đúng với tổng cột "Thực nhận" của màn hình Bảng lương.
-     *
-     * <p>Chỉ buổi giáo viên CÓ MẶT mới sinh chi phí, vì mẫu số {@code TaughtHours} cũng chỉ đếm
-     * những buổi ấy. Phân bổ cho cả buổi vắng thì tổng chi phí trên Bảng điều khiển sẽ vượt tổng
-     * cột "Thực nhận" của Bảng lương đúng bằng tỉ lệ vắng mặt — một khoản tiền không có thật.
-     *
-     * <p>Tháng chưa lập bảng lương thì tính 0 — không suy đoán một con số chưa ai duyệt.
+     * <p>Chỉ buổi CÓ MẶT mới sinh chi phí vì mẫu số cũng chỉ đếm những buổi ấy; tính cả buổi vắng
+     * thì tổng vượt cột "Thực nhận" của Bảng lương. Tháng chưa lập bảng lương tính 0.
      */
     private static final String CHI_PHI = """
             (CASE WHEN att.Status IN ('PRESENT','LATE') AND ISNULL(pr.TaughtHours, 0) > 0
@@ -118,12 +92,7 @@ public class DashboardQueryRepository {
 
     /* ═════════════════════════ THAM SỐ ═════════════════════════ */
 
-    /**
-     * Dựng bộ tham số từ bộ lọc.
-     *
-     * <p>Ba tham số lọc phải khai báo KIỂU tường minh: SQL Server từ chối một tham số NULL không
-     * rõ kiểu ngay trong biểu thức {@code :p IS NULL}, và lỗi báo về lại rất khó lần.
-     */
+    /** Tham số lọc phải khai kiểu tường minh: SQL Server từ chối tham số NULL không rõ kiểu. */
     private MapSqlParameterSource thamSo(DashboardFilter f) {
         return new MapSqlParameterSource()
                 .addValue("tuNgay", f.from().atStartOfDay())
@@ -136,12 +105,9 @@ public class DashboardQueryRepository {
     /* ═════════════════════════ CHỈ SỐ TỔNG HỢP ═════════════════════════ */
 
     /**
-     * Toàn bộ số liệu của một kỳ trong MỘT câu lệnh, một lượt quét.
-     *
-     * <p>Chín con số này đáng lẽ là chín truy vấn. Gộp lại không chỉ nhanh hơn: chúng chắc chắn
-     * thuộc về cùng một ảnh chụp dữ liệu. Chạy rời nhau thì giữa hai câu lệnh có thể có người vừa
-     * duyệt thêm một buổi, và trên màn hình sẽ hiện ra một tỉ lệ phần trăm lớn hơn 100 mà không ai
-     * tái hiện lại được.
+     * Toàn bộ số liệu của một kỳ trong MỘT câu lệnh. Gộp lại để chín con số chắc chắn thuộc
+     * cùng một ảnh chụp dữ liệu — chạy rời nhau thì giữa hai câu lệnh có thể có người vừa duyệt
+     * thêm một buổi, ra tỉ lệ lớn hơn 100%.
      */
     public ThongKeKy thongKeKy(DashboardFilter f) {
         String sql = """
@@ -183,10 +149,8 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Số trường đang có hợp đồng dịch vụ còn hiệu lực — mẫu số của chỉ số "trường đang phục vụ".
-     *
-     * <p>Đếm theo hợp đồng chứ không theo số bản ghi {@code School}: trong danh bạ có cả trường đã
-     * ngừng hợp tác, lấy tổng danh bạ làm mẫu số sẽ khiến tỉ lệ phục vụ luôn thấp một cách giả tạo.
+     * Số trường còn hợp đồng dịch vụ hiệu lực. Đếm theo hợp đồng chứ không theo bảng School vì
+     * danh bạ có cả trường đã ngừng hợp tác.
      */
     public long demTruongDangHopDong(Integer branchId) {
         return demTheoChiNhanh("""
@@ -232,10 +196,8 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Mật độ buổi dạy theo (thứ × tiết) cho bản đồ nhiệt.
-     *
-     * <p>Buổi nào chưa gắn tiết ({@code PeriodId} rỗng — dữ liệu có từ trước V9) thì bỏ qua thay
-     * vì dồn vào tiết 0: một ô "tiết 0" sáng rực ở góc bảng chỉ là lỗi dữ liệu đội lốt thông tin.
+     * Mật độ buổi dạy theo (thứ × tiết). Buổi chưa gắn tiết (PeriodId rỗng, dữ liệu trước V9)
+     * thì bỏ qua chứ không dồn vào "tiết 0".
      */
     public List<ODoNhiet> nhietDo(DashboardFilter f) {
         String sql = """
@@ -307,13 +269,8 @@ public class DashboardQueryRepository {
     /* ═════════════════════════ BẢNG PHÂN TÍCH ═════════════════════════ */
 
     /**
-     * Bảng phân tích sâu theo một trong ba chiều.
-     *
-     * <p>Cột nhóm được chọn từ hằng số trong {@code enum}, KHÔNG ghép từ chuỗi người dùng gửi lên —
-     * đây là chỗ duy nhất trong lớp này có mảnh SQL thay đổi được, nên nó phải đóng kín.
-     *
-     * <p>Chấm công nối bằng {@code LEFT JOIN} một-một qua {@code Attendance.ScheduleId} (đã có ràng
-     * buộc duy nhất ở DB) nên không làm sai các phép đếm buổi ở cùng câu lệnh.
+     * Bảng thống kê chi tiết theo một trong ba chiều. Cột nhóm lấy từ hằng số trong enum, KHÔNG
+     * ghép từ chuỗi client gửi lên — đây là chỗ duy nhất trong lớp có mảnh SQL thay đổi được.
      */
     public List<DongPhanTich> phanTich(DashboardFilter f, Chieu chieu) {
         String cotId =
@@ -376,11 +333,8 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Điểm đánh giá trung bình theo giáo viên hoặc theo trường, cho các lượt đánh giá lập trong kỳ.
-     *
-     * <p>Tách khỏi truy vấn bảng phân tích vì đánh giá KHÔNG gắn với buổi dạy: nối chung sẽ nhân
-     * bản mỗi buổi lên đúng bằng số lượt đánh giá của giáo viên đó, thổi phồng mọi phép cộng.
-     * Chiều "theo môn" không có số liệu này — hệ thống đánh giá con người, không đánh giá môn học.
+     * Điểm đánh giá trung bình theo giáo viên / theo trường. Tách khỏi truy vấn bảng chi tiết vì
+     * đánh giá không gắn với buổi dạy — nối chung sẽ nhân bản mỗi buổi lên bằng số lượt đánh giá.
      */
     public Map<Integer, Double> diemDanhGiaTheo(DashboardFilter f, Chieu chieu) {
         if (chieu == Chieu.MON) {
@@ -437,11 +391,8 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Buổi dạy đã diễn ra nhưng chưa có dòng chấm công.
-     *
-     * <p>Chỉ soi 30 ngày gần nhất: chấm công là đầu vào tính lương nên chỉ những kỳ còn sửa được
-     * mới đáng báo. Bới cả năm học lên sẽ ra một con số hàng nghìn mà không ai xử lý nổi, và một
-     * cảnh báo không ai xử lý được thì chỉ dạy người dùng thói quen phớt lờ cảnh báo.
+     * Buổi đã dạy nhưng chưa chấm công. Chỉ soi 30 ngày gần nhất — bới cả năm học ra con số
+     * hàng nghìn thì không ai xử lý nổi.
      */
     public long demBuoiChuaChamCong() {
         return demDon("""
@@ -479,12 +430,7 @@ public class DashboardQueryRepository {
         return n == null ? 0 : n;
     }
 
-    /**
-     * Trường còn hợp đồng dịch vụ nhưng không phát sinh buổi dạy nào trong kỳ.
-     *
-     * <p>Đây là cảnh báo đáng tiền nhất trên màn hình: một khách hàng ngừng đặt lịch mà không ai
-     * để ý thường là khách hàng sắp rời đi.
-     */
+    /** Trường còn hợp đồng nhưng không phát sinh buổi dạy nào trong kỳ. */
     public long demTruongKhongPhatSinh(DashboardFilter f) {
         String sql = """
                 SELECT COUNT(*) FROM School scl
@@ -516,12 +462,7 @@ public class DashboardQueryRepository {
 
     /* ═════════════════════════ KHU ĐIỀU HÀNH ═════════════════════════ */
 
-    /**
-     * Ngày dạy gần nhất kể từ {@code tuNgay} — dùng khi hôm nay không có buổi nào.
-     *
-     * <p>Không có bước này thì khối "Lịch dạy hôm nay" sẽ trống rỗng suốt ba tháng hè, và một ô
-     * trống thì không phân biệt được "hôm nay nghỉ" với "hệ thống hỏng".
-     */
+    /** Ngày dạy gần nhất kể từ tuNgay, dùng khi hôm nay không có buổi nào (hè, ngày nghỉ). */
     public LocalDate ngayDayKeTiep(LocalDate tuNgay) {
         return jdbc.queryForObject(
                 """
@@ -571,10 +512,8 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Sáu phân công lập gần nhất.
-     *
-     * <p>Nhãn trường gộp sẵn bằng {@code STRING_AGG} ngay trong SQL. Bản cũ chạy một truy vấn ô
-     * lịch cho TỪNG dòng để làm việc này — sáu dòng là bảy lượt đi lại cơ sở dữ liệu.
+     * Các phân công lập gần nhất. Nhãn trường gộp sẵn bằng FOR XML PATH ngay trong SQL; bản cũ
+     * chạy một truy vấn ô lịch cho TỪNG dòng.
      */
     public List<DongPhanCong> phanCongGanDay(int soLuong) {
         String sql = """
@@ -650,14 +589,8 @@ public class DashboardQueryRepository {
     /* ═════════════════════════ DANH MỤC CHO THANH LỌC ═════════════════════════ */
 
     /**
-     * Ba danh sách đổ vào các ô chọn của thanh lọc, lấy trong một lượt gọi.
-     *
-     * <p>Gọi ba API danh mục có sẵn cũng ra kết quả tương tự, nhưng chúng đều phân trang và trả về
-     * đầy đủ địa chỉ, số điện thoại, người liên hệ… Thanh lọc chỉ cần cặp (mã, tên), nên hỏi thẳng
-     * đúng hai cột là đủ và rẻ hơn hẳn.
-     *
-     * <p>Chỉ liệt kê TRƯỜNG CÒN HỢP ĐỒNG hiệu lực: một ô chọn đầy tên trường đã ngừng hợp tác chỉ
-     * làm người dùng lọc ra màn hình trống.
+     * Danh mục cho các ô lọc, lấy một lượt. Chỉ liệt kê trường CÒN HỢP ĐỒNG hiệu lực để người
+     * dùng không lọc ra màn hình trống.
      */
     public DanhMucLoc danhMucLoc() {
         List<MucLoc> chiNhanh = jdbc.query(
@@ -690,19 +623,7 @@ public class DashboardQueryRepository {
 
     /* ═════════════════════════ KIỂU TRẢ VỀ NỘI BỘ ═════════════════════════ */
 
-    /**
-     * Số liệu thô của một kỳ, trước khi tầng service nặn thành thẻ chỉ số.
-     *
-     * @param buoiDuyet số buổi đã duyệt
-     * @param buoiTatCa tổng số buổi đã xếp, kể cả huỷ và bị từ chối
-     * @param gioGiang tổng giờ giảng của các buổi đã duyệt
-     * @param chiPhi chi phí lương phân bổ
-     * @param gvCoLich số giáo viên có ít nhất một buổi
-     * @param truongCoLich số trường có ít nhất một buổi
-     * @param chamCongTong số dòng chấm công
-     * @param chamCongCoMat số dòng có mặt (đúng giờ hoặc đi muộn)
-     * @param chamCongDungGio số dòng đúng giờ
-     */
+    /** Số liệu thô của một kỳ. TaughtHours ở đây là SỐ TIẾT, xem ghi chú ở CHI_PHI. */
     public record ThongKeKy(
             long buoiDuyet,
             long buoiTatCa,

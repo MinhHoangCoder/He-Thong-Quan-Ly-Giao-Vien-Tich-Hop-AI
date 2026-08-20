@@ -23,23 +23,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST API Bảng điều khiển quản trị — {@code /api/v1/dashboard}.
+ * REST API Bảng điều khiển (admin) — /api/v1/dashboard. Chỉ ADMIN.
  *
- * <p>Tách làm ba endpoint thay vì một endpoint gộp như bản trước vì hai lý do:
- *
- * <ul>
- *   <li>HIỆN DẦN. Ba khu có chi phí truy vấn rất chênh nhau — {@code /summary} chỉ quét một lượt,
- *       còn {@code /analytics} phải gom theo ba chiều cộng bản đồ nhiệt. Tách ra thì sáu thẻ chỉ
- *       số hiện ngay khi vừa có, thay vì cả trang đứng im chờ truy vấn chậm nhất.
- *   <li>HỎNG RIÊNG. Một khu lỗi thì hai khu kia vẫn hiển thị được. Một endpoint gộp thì bất kỳ
- *       truy vấn nào hỏng cũng xoá trắng toàn bộ màn hình.
- * </ul>
- *
- * <p>Cả ba đều nhận cùng bộ lọc: khu điều hành cũng cần nó cho hai cảnh báo phụ thuộc kỳ ("giáo
- * viên chưa có lịch", "trường không phát sinh buổi dạy").
- *
- * <p>Toàn bộ endpoint ở đây chỉ dành cho ADMIN. Giáo viên có bảng điều khiển riêng dựng từ dữ liệu
- * của chính họ ({@code TeacherDashboardPage}), không đi qua đây.
+ * <p>Tách 3 endpoint đọc số liệu vì chi phí truy vấn chênh nhau nhiều: /summary quét một lượt
+ * nên về gần như tức thì, /analytics gom theo ba chiều nên nặng hơn hẳn. Gộp một cục thì cả
+ * trang phải chờ truy vấn chậm nhất, và một truy vấn hỏng là xoá trắng màn hình.
  */
 @RestController
 @RequestMapping("/api/v1/dashboard")
@@ -96,11 +84,8 @@ public class DashboardController {
     }
 
     /**
-     * Xuất bảng phân tích ra CSV.
-     *
-     * <p>Chuỗi ba byte đứng đầu nội dung là BOM UTF-8. Không có nó, Excel trên Windows đoán bảng
-     * mã theo vùng của máy và mọi tên tiếng Việt biến thành ký tự lạ — file vẫn "mở được" nên lỗi
-     * này thường chỉ bị phát hiện khi đã gửi báo cáo cho người khác.
+     * Xuất CSV. BOM UTF-8 ở đầu file là bắt buộc: thiếu nó Excel trên Windows đoán bảng mã theo
+     * vùng và toàn bộ tên tiếng Việt thành ký tự lạ — file vẫn mở được nên rất dễ lọt.
      */
     @GetMapping(value = "/export", produces = "text/csv; charset=UTF-8")
     public ResponseEntity<byte[]> export(
@@ -128,12 +113,7 @@ public class DashboardController {
                 .body(file);
     }
 
-    /**
-     * Dựng bộ lọc từ tham số URL; thiếu khoảng thời gian thì lấy năm học hiện hành.
-     *
-     * <p>Cho phép bỏ trống có chủ đích: người dùng dán lại đường dẫn {@code /dashboard} trần vẫn
-     * phải ra một màn hình có số liệu, chứ không phải một lỗi thiếu tham số.
-     */
+    /** Thiếu khoảng thời gian thì lấy năm học hiện hành, để mở /dashboard trần vẫn ra số liệu. */
     private DashboardFilter boLoc(
             LocalDate from, LocalDate to, Integer branchId, Integer schoolId, Integer categoryId) {
         if (from == null || to == null) {

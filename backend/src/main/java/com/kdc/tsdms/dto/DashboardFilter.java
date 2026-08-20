@@ -5,16 +5,13 @@ import java.time.LocalDate;
 import java.time.Month;
 
 /**
- * Bộ lọc áp cho TOÀN Bảng điều khiển — mọi thẻ số, biểu đồ và bảng đều đọc từ đây.
- *
- * <p>Có một bộ lọc duy nhất là chủ ý: trước đây biểu đồ tự chọn "8 tháng gần nhất" còn thẻ số
- * lại tính "tuần này", nên hai khối cạnh nhau nói về hai khoảng thời gian khác nhau mà không ai
- * nhận ra. Gom về một chỗ thì mọi con số trên màn hình luôn cùng một kỳ.
+ * Bộ lọc áp cho toàn Bảng điều khiển. Gom về một chỗ để mọi thẻ số, biểu đồ và bảng trên màn
+ * hình luôn nói về cùng một kỳ.
  *
  * @param from ngày đầu kỳ (tính cả ngày này)
  * @param to ngày cuối kỳ (tính cả ngày này)
  * @param branchId lọc theo chi nhánh; null = tất cả
- * @param schoolId lọc theo trường khách hàng; null = tất cả
+ * @param schoolId lọc theo trường; null = tất cả
  * @param categoryId lọc theo nhóm môn; null = tất cả
  */
 public record DashboardFilter(LocalDate from, LocalDate to, Integer branchId, Integer schoolId, Integer categoryId) {
@@ -32,11 +29,8 @@ public record DashboardFilter(LocalDate from, LocalDate to, Integer branchId, In
     }
 
     /**
-     * Kỳ mặc định khi mở Bảng điều khiển: NĂM HỌC hiện hành (01/9 → 31/8).
-     *
-     * <p>Không lấy "tháng này" vì chu kỳ kinh doanh của trung tâm gia sư là năm học chứ không
-     * phải tháng dương lịch: mở dashboard vào tháng 7 sẽ ra một màn hình toàn số 0 trong khi
-     * năm học vừa rồi có cả chục nghìn buổi dạy.
+     * Kỳ mặc định: NĂM HỌC hiện hành (01/9 → 31/8). Không lấy "tháng này" vì mở dashboard vào
+     * tháng hè sẽ ra màn hình toàn số 0.
      */
     public static DashboardFilter namHocHienHanh() {
         LocalDate homNay = BusinessTime.today();
@@ -71,10 +65,8 @@ public record DashboardFilter(LocalDate from, LocalDate to, Integer branchId, In
     }
 
     /**
-     * Kỳ liền trước có ĐỘ DÀI BẰNG ĐÚNG kỳ hiện tại, dùng cho mọi phép so sánh "so với kỳ trước".
-     *
-     * <p>Phải bằng đúng độ dài thì phần trăm mới có nghĩa: đem một quý so với một tháng rồi kết
-     * luận "giảm 66%" là con số vô nghĩa nhưng nhìn vẫn rất thuyết phục.
+     * Kỳ liền trước, dài BẰNG ĐÚNG kỳ hiện tại. Đem một quý so với một tháng rồi kết luận
+     * "giảm 66%" là con số vô nghĩa nhưng nhìn vẫn rất thuyết phục.
      */
     public DashboardFilter kyTruoc() {
         long ngay = soNgay();
