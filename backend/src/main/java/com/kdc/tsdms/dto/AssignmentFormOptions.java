@@ -19,8 +19,17 @@ public record AssignmentFormOptions(
      * @param weeklyPeriods tổng số tiết/tuần giáo viên đang gánh (các phiếu còn giữ chỗ) — con
      *     số quyết định có nên giao thêm việc hay không
      * @param schoolCount số trường giáo viên đang dạy
+     * @param subjectIds các môn giáo viên DẠY ĐƯỢC (bảng TeacherSubject). Form dùng để lọc danh
+     *     sách theo môn đang chọn — không có nó thì xếp lịch cho 90 người là 90 lần tra trí nhớ
+     *     xem ai dạy được môn gì. Rỗng = chưa khai môn nào, form vẫn cho chọn nhưng có cảnh báo.
      */
-    public record TeacherOption(Integer id, String name, String code, int weeklyPeriods, int schoolCount) {}
+    public record TeacherOption(
+            Integer id,
+            String name,
+            String code,
+            int weeklyPeriods,
+            int schoolCount,
+            java.util.List<Integer> subjectIds) {}
 
     /**
      * @param level "Tiểu học" | "THCS" — SUY từ khối lớp cao nhất của trường (1–5 là tiểu học),
