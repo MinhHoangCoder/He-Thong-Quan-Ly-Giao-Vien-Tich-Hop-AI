@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
@@ -27,6 +28,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -79,6 +81,7 @@ public class AssignmentService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final PayrollRepository payrollRepo;
     private final AppUserRepository userRepo;
     private final AssignmentApprovalService approvalService;
     private final TeacherTimeConflictChecker conflictChecker;
@@ -93,6 +96,7 @@ public class AssignmentService {
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
             PeriodRepository periodRepo,
+            PayrollRepository payrollRepo,
             AppUserRepository userRepo,
             AssignmentApprovalService approvalService,
             TeacherTimeConflictChecker conflictChecker,
@@ -105,6 +109,7 @@ public class AssignmentService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.payrollRepo = payrollRepo;
         this.userRepo = userRepo;
         this.approvalService = approvalService;
         this.conflictChecker = conflictChecker;
@@ -1016,12 +1021,27 @@ public class AssignmentService {
     /**
      * Xóa VĨNH VIỄN khỏi DB (chỉ khi phân công đang ở thùng rác). Xóa theo đúng thứ tự khóa
      * ngoại: nhật ký trạng thái &amp; chấm công (→ Schedule) → buổi → slot → phân công.
+     *
+     * <p><b>Khóa cứng theo tiền:</b> nếu chấm công của phân công này đã đi vào một kỳ lương
+     * ĐÃ CHỐT hoặc ĐÃ TRẢ thì cấm hẳn. Đây là chỗ duy nhất trong dự án xóa cứng
+     * {@code Attendance}, mà chấm công là nguồn duy nhất sinh ra con số trên phiếu lương —
+     * xóa xong thì phiếu lương đã trả tiền vẫn ghi 40 tiết nhưng không còn gì chứng minh 40
+     * tiết đó có thật, và {@code generate()} chạy lại cũng không dựng lại được (nó chỉ ghi đè
+     * dòng DRAFT). Không có nút mở lại kỳ lương, nên đây là rào chắn không gỡ được — cố ý.
      */
     @Transactional
     public void purge(Integer id) {
         Assignment a = assignmentRepo
                 .findByIdAndDeletedTrue(id)
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác."));
+        List<String> kyLuongDaChot = payrollRepo.findKyLuongDaChotTheoPhanCong(id);
+        DeleteGuard.of("vĩnh viễn phân công này")
+                .blockWhen(
+                        !kyLuongDaChot.isEmpty(),
+                        "chấm công thuộc kỳ lương đã chốt/đã trả (" + String.join(", ", kyLuongDaChot) + ")")
+                .huongDan("Phiếu lương đã chốt phải giữ nguyên bằng chứng chấm công, nên phân công này "
+                        + "chỉ có thể nằm lại trong thùng rác.")
+                .check();
         scheduleRepo.deleteStatusLogsByAssignmentId(id);
         scheduleRepo.deleteAttendanceByAssignmentId(id);
         scheduleRepo.deleteByAssignmentId(id);

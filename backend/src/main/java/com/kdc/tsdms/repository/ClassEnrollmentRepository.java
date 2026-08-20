@@ -9,4 +9,7 @@ public interface ClassEnrollmentRepository extends JpaRepository<ClassEnrollment
 
     /** Số học sinh đang gắn lớp — chặn xóa lớp còn học sinh. */
     long countByClassId(Integer classId);
+
+    /** Số lớp một học sinh đang theo — chặn xóa học sinh còn đang ghi danh. */
+    long countByStudentId(Integer studentId);
 }

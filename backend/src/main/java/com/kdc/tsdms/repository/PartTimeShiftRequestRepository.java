@@ -13,4 +13,7 @@ public interface PartTimeShiftRequestRepository extends JpaRepository<PartTimeSh
 
     /** Các đăng ký theo trạng thái (vd PENDING để HR duyệt). */
     List<PartTimeShiftRequest> findByStatusAndDeletedFalse(String status);
+
+    /** Đơn xin ca đang CHỜ DUYỆT của một nhân viên — chặn xóa người còn đơn treo. */
+    long countByEmployeeIdAndStatusAndDeletedFalse(Integer employeeId, String status);
 }

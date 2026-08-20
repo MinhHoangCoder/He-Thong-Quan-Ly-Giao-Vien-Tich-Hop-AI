@@ -80,4 +80,39 @@ class DeleteGuardTest {
     void blocked_choBietCoRaoMaKhongCanNemLoi() {
         assertThat(DeleteGuard.of("x").blockIf(1, "a").blocked()).isTrue();
     }
+
+    /* ── Đợt 2: rào chắn gom sẵn từ SQL + câu hướng dẫn riêng ── */
+
+    @Test
+    void blockAll_nhanCaMotMoRaoDaThanhCau() {
+        assertThatThrownBy(() -> DeleteGuard.of("vĩnh viễn giáo viên B")
+                        .blockAll(java.util.List.of("2 chứng chỉ", "1 hợp đồng", "3 phiếu lương"))
+                        .check())
+                .hasMessageContaining("2 chứng chỉ, 1 hợp đồng và 3 phiếu lương");
+    }
+
+    @Test
+    void blockAll_bo_quaChuoiRongVaNull() {
+        DeleteGuard g = DeleteGuard.of("x").blockAll(java.util.Arrays.asList(null, "", "   "));
+
+        assertThat(g.blocked()).isFalse();
+    }
+
+    @Test
+    void blockAll_danhSachRong_thiVanChoXoa() {
+        assertThatCode(() -> DeleteGuard.of("x").blockAll(java.util.List.of()).check())
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void huongDanRieng_thayCauMacDinh_khiNguoiDungKhongTheTuGo() {
+        // "Vui lòng xử lý mục này trước khi xóa" là lời hứa suông khi rào chắn là kỳ lương đã
+        // chốt hay hồ sơ pháp lý — không có nút nào để họ gỡ cả.
+        assertThatThrownBy(() -> DeleteGuard.of("vĩnh viễn phân công này")
+                        .blockWhen(true, "chấm công thuộc kỳ lương đã chốt/đã trả (8/2026)")
+                        .huongDan("Phiếu lương đã chốt phải giữ nguyên bằng chứng chấm công.")
+                        .check())
+                .hasMessageContaining("Phiếu lương đã chốt phải giữ nguyên bằng chứng chấm công.")
+                .hasMessageNotContaining("Vui lòng xử lý");
+    }
 }
