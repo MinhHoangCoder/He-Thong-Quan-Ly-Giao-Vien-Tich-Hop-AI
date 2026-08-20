@@ -56,12 +56,25 @@ FROM sys.default_constraints dc
 JOIN sys.columns c ON c.object_id = dc.parent_object_id AND c.column_id = dc.parent_column_id
 WHERE dc.parent_object_id = OBJECT_ID('dbo.School') AND c.name = 'AppUserId';
 
--- chỉ mục (kể cả unique/filtered)
+-- ràng buộc UNIQUE: V1 khai `AppUserId INT NULL UNIQUE` ngay trong CREATE TABLE, và
+-- SQL Server hiện thực nó bằng một CHỈ MỤC do RÀNG BUỘC sở hữu (tên tự sinh kiểu
+-- UQ__School__FC65C731...). Chỉ mục loại này KHÔNG xóa bằng DROP INDEX được — server
+-- từ chối thẳng: "An explicit DROP INDEX is not allowed on index ... It is being used
+-- for UNIQUE KEY constraint enforcement" (lỗi 3723). Phải gỡ bằng DROP CONSTRAINT.
+SELECT @sql = @sql + N'ALTER TABLE School DROP CONSTRAINT ' + QUOTENAME(i.name) + N';'
+FROM sys.indexes i
+JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
+JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
+WHERE i.object_id = OBJECT_ID('dbo.School') AND c.name = 'AppUserId'
+  AND i.is_primary_key = 0 AND i.is_unique_constraint = 1;
+
+-- chỉ mục THƯỜNG (do CREATE INDEX tạo, kể cả unique filtered) — loại này mới DROP INDEX được
 SELECT @sql = @sql + N'DROP INDEX ' + QUOTENAME(i.name) + N' ON School;'
 FROM sys.indexes i
 JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id
 JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id
-WHERE i.object_id = OBJECT_ID('dbo.School') AND c.name = 'AppUserId' AND i.is_primary_key = 0;
+WHERE i.object_id = OBJECT_ID('dbo.School') AND c.name = 'AppUserId'
+  AND i.is_primary_key = 0 AND i.is_unique_constraint = 0;
 
 IF @sql <> N'' EXEC sp_executesql @sql;
 GO
