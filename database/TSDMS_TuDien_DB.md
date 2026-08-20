@@ -70,6 +70,7 @@
 | SchoolClass | Lớp học |
 | Student | Học sinh |
 | Enrollment | Ghi danh (vào lớp) |
+| Holiday | Lịch nghỉ (ngày lễ / kỳ nghỉ) |
 | Assignment | Phân công |
 | AssignmentSlot | Mẫu lặp tuần của phân công (thứ + tiết) |
 | Schedule | Lịch dạy (từng buổi) |
@@ -89,7 +90,7 @@
 
 **1. Tổ chức.** `Branch` (chi nhánh) là gốc. Mỗi `Employee`, `Teacher`, `School` đều thuộc về một chi nhánh — nhờ vậy nhân viên chỉ thấy dữ liệu chi nhánh mình.
 
-**2. Đăng nhập.** Mọi người dùng đều có một dòng trong `AppUser`. Hồ sơ `Employee`, `Teacher`, `School` mỗi cái nối **1-1** tới một `AppUser`. Việc một người có vai trò gì được ghi ở bảng nối `UserRole` (nối `AppUser` với `Role`).
+**2. Đăng nhập.** Mọi người dùng đều có một dòng trong `AppUser`. Hồ sơ `Employee` và `Teacher` mỗi cái nối **1-1** tới một `AppUser`. `School` thì KHÔNG: từ V31 trường là **dữ liệu** chứ không phải người dùng — không tài khoản, không màn hình, không quyền (cột `School.AppUserId` đã bị xóa). Việc một người có vai trò gì được ghi ở bảng nối `UserRole` (nối `AppUser` với `Role`).
 
 **3. Giáo viên.** Một giáo viên dạy được nhiều môn → quan hệ **nhiều-nhiều** với `Subject` thông qua bảng nối `TeacherSubject`. Mỗi giáo viên còn có `Certificate` (bằng cấp) và `Contract` (hợp đồng) riêng.
 
@@ -106,7 +107,7 @@ Employee (TRUNG TÂM) ─tạo─► Assignment ─có nhiều─► AssignmentS
 - `AssignmentSlot` *(Flyway V9)*: **mẫu lặp theo tuần** của một phân công — mỗi ô là (thứ, tiết[, phòng]). Một `Assignment` mức KỲ ôm **nhiều** slot; đây là bảng CON để không phá grain "mức kỳ" của `Assignment`.
 - `Period` *(Flyway V9)*: khung **tiết** riêng của **từng trường** (mỗi trường số tiết & giờ vào/ra khác nhau; dữ liệu seed theo từng trường). `Schedule` ghi thêm `PeriodId` (buổi thuộc tiết nào) + `SourceSlotId` (buổi sinh từ slot nào).
 - `Schedule`: generator (tầng Service) **nở** các slot ra thành **buổi dạy cụ thể** (ngày, giờ, phòng, tiết) với trạng thái duyệt `PENDING → APPROVED/REJECTED/CANCELLED`.
-- **Trường** (School) chỉ **xem thống kê & báo cáo**, không tạo dữ liệu điều phối.
+- **Trường** (School) KHÔNG đăng nhập vào hệ thống (V31) — mọi thao tác điều phối đều do nhân sự trung tâm làm, trường chỉ là bên nhận dịch vụ.
 
 **6. Sau buổi dạy.** Mỗi buổi `Schedule` có thể gắn một `Attendance` (chấm công). Mỗi lần `Schedule` đổi trạng thái, hệ thống tự ghi vào `ScheduleStatusLog` (qua trigger).
 
@@ -124,7 +125,7 @@ Employee (TRUNG TÂM) ─tạo─► Assignment ─có nhiều─► AssignmentS
 
 1. **Branch** — chi nhánh của trung tâm.
 2. **AppUser** — tài khoản đăng nhập của mọi người dùng.
-3. **Role** — 4 vai trò: ADMIN, EMPLOYEE, SCHOOL, TEACHER.
+3. **Role** — vai trò: ADMIN, EMPLOYEE, TEACHER + 4 role phòng ban (HR, ACCOUNTANT, ACADEMIC, SALES). Role SCHOOL đã gỡ ở V31.
 4. **Permission** — danh mục quyền chi tiết.
 5. **RolePermission** — nối vai trò ⇄ quyền.
 6. **UserRole** — nối tài khoản ⇄ vai trò.
@@ -145,6 +146,7 @@ Employee (TRUNG TÂM) ─tạo─► Assignment ─có nhiều─► AssignmentS
 18. **ClassEnrollment** — nối lớp ⇄ học sinh.
 19. **Assignment** — phân công giáo viên (mức KỲ).
     - **19b. AssignmentSlot** *(Flyway V9)* — mẫu lặp tuần của phân công (thứ + tiết[+ phòng]); generator nở ra `Schedule`.
+    - **19c. Holiday** *(Flyway V29)* — lịch nghỉ: ngày lễ & kỳ nghỉ lưu theo KHOẢNG `[FromDate, ToDate]`, `SchoolId` null = toàn hệ thống. Generator KHÔNG sinh buổi dạy vào những ngày này — trước V29 buổi "ma" ngày lễ bị job chấm công tự ghi Vắng rồi trừ thẳng vào lương.
 20. **Schedule** — lịch dạy từng buổi (bảng trung tâm); thêm `PeriodId` + `SourceSlotId` ở V9.
 21. **ScheduleStatusLog** — nhật ký đổi trạng thái lịch.
 22. **Attendance** — chấm công.

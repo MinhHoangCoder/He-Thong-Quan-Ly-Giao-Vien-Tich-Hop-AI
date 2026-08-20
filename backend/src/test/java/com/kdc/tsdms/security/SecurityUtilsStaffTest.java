@@ -79,13 +79,6 @@ class SecurityUtilsStaffTest {
     }
 
     @Test
-    void schoolPortal_isNotStaff() {
-        loginWith("ROLE_SCHOOL", "EVALUATION_MANAGE");
-
-        assertThat(SecurityUtils.isCentreStaff()).isFalse();
-    }
-
-    @Test
     void anonymous_isNotStaff() {
         // ROLE_ANONYMOUS cũng là một authority mở đầu bằng ROLE_ — nếu quên loại trừ thì
         // khách vãng lai lọt vào nhánh "xem toàn hệ thống".

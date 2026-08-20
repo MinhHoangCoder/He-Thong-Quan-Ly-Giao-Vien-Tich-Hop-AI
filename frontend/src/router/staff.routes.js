@@ -54,6 +54,15 @@ export const staffRoutes = [
       evaluationPortal: 'staff',
     },
   },
+  // ── Lịch nghỉ (Holiday) ───────────────
+  // Chỉ ACADEMIC được cấp HOLIDAY_VIEW/HOLIDAY_MANAGE (V30) — mở cho cả 4
+  // phòng ban thì ba phòng kia vào được trang nhưng mọi API trả 403.
+  {
+    path: '/staff/holidays',
+    name: 'staff-holiday-list',
+    component: () => import('@/pages/HolidayListPage.vue'),
+    meta: { layout: 'staff', roles: ['ACADEMIC'] },
+  },
   // ── Cài đặt cá nhân (liên hệ / mật khẩu / thiết bị đăng nhập) ─────
   {
     path: '/staff/settings',

@@ -12,8 +12,6 @@ import org.springframework.data.repository.query.Param;
 public interface SchoolRepository extends JpaRepository<School, Integer> {
 
     /** Hồ sơ trường theo tài khoản (để lấy tên hiển thị khi đăng nhập). */
-    Optional<School> findByAppUserIdAndDeletedFalse(Integer appUserId);
-
     Optional<School> findByIdAndDeletedFalse(Integer id);
 
     /** Dropdown trường (chưa xóa mềm), sắp theo tên. */

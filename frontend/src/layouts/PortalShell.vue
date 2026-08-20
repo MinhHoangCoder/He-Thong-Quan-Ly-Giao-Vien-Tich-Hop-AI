@@ -115,8 +115,8 @@ const TEACHER_TYPE_ROUTES = {
   PAYROLL: '/teacher/payroll',
   EVALUATION: '/teacher/evaluations',
 }
-// Đánh giá có 4 portal riêng (teacher/admin/school/staff) — chọn theo nhóm vai trò,
-// nếu neo cứng /staff/evaluations thì ADMIN/EMPLOYEE/SCHOOL bị route-guard đá về trang chủ.
+// Đánh giá có 3 portal riêng (teacher/admin/staff) — chọn theo nhóm vai trò, nếu neo cứng
+// /staff/evaluations thì ADMIN/EMPLOYEE bị route-guard đá về trang chủ.
 // Xét roles.includes thay vì primaryRole: thông báo EVALUATION chỉ gửi cho tài khoản
 // giáo viên (publishToTeacher) — tài khoản kiêm nhiệm (TEACHER + staff) vẫn phải về
 // "Đánh giá của tôi" chứ không phải portal quản trị.
@@ -124,7 +124,6 @@ const evalRoute = computed(() => {
   const roles = auth.roles || []
   if (roles.includes('TEACHER')) return '/teacher/evaluations'
   if (roles.includes('ADMIN') || roles.includes('EMPLOYEE')) return '/admin/evaluations'
-  if (roles.includes('SCHOOL')) return '/school/evaluations'
   return '/staff/evaluations'
 })
 const ENTITY_ROUTES = computed(() =>

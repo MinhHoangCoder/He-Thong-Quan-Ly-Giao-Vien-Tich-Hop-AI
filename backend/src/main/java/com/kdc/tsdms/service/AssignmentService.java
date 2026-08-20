@@ -17,6 +17,7 @@ import com.kdc.tsdms.dto.TeacherBusySlot;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.AssignmentStatus;
+import com.kdc.tsdms.entity.Holiday;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -27,6 +28,8 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.HolidayRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -82,6 +85,7 @@ public class AssignmentService {
     private final AppUserRepository userRepo;
     private final AssignmentApprovalService approvalService;
     private final TeacherTimeConflictChecker conflictChecker;
+    private final HolidayRepository holidayRepo;
     private final ApplicationContext applicationContext;
 
     public AssignmentService(
@@ -96,6 +100,7 @@ public class AssignmentService {
             AppUserRepository userRepo,
             AssignmentApprovalService approvalService,
             TeacherTimeConflictChecker conflictChecker,
+            HolidayRepository holidayRepo,
             ApplicationContext applicationContext) {
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
@@ -108,6 +113,7 @@ public class AssignmentService {
         this.userRepo = userRepo;
         this.approvalService = approvalService;
         this.conflictChecker = conflictChecker;
+        this.holidayRepo = holidayRepo;
         this.applicationContext = applicationContext;
     }
 
@@ -473,6 +479,8 @@ public class AssignmentService {
         LocalDate effectiveEnd =
                 req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
 
+        HolidayCalendar holidays = loadHolidays(req.startDate(), effectiveEnd);
+
         Assignment a = new Assignment();
         a.setTeacherId(teacher.getId());
         // Trường cấp phân công = TRƯỜNG CHÍNH (trường của tiết đầu tiên) — cột này NOT NULL và
@@ -501,7 +509,18 @@ public class AssignmentService {
             slot.setCreatedBy(userId);
             slotRepo.save(slot);
 
-            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, userId);
+            generateSchedules(
+                    a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, holidays, userId);
+        }
+
+        // Cả giai đoạn rơi trọn vào ngày nghỉ thì không sinh được buổi nào. Phiếu rỗng như vậy
+        // vô dụng mà vẫn có hại: giáo viên không có gì để xác nhận, còn luật chống trùng vẫn coi
+        // khung giờ đó là đã bị chiếm suốt cả giai đoạn.
+        if (scheduleRepo.findByAssignmentIdAndDeletedFalse(a.getId()).isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Toàn bộ giai đoạn đã chọn rơi vào ngày nghỉ nên không sinh được buổi dạy nào — "
+                            + "hãy chọn lại ngày bắt đầu / ngày kết thúc.");
         }
 
         // Hạn trả lời phải biết buổi đầu tiên diễn ra lúc nào → tính SAU khi đã sinh buổi.
@@ -690,15 +709,54 @@ public class AssignmentService {
         return TeacherTimeConflictChecker.dayLabelVi(code);
     }
 
-    /** Trải 1 slot (Thứ+Tiết) thành các buổi Schedule hằng tuần trong [from, to]. */
+    /** Nạp lịch nghỉ đúng một lần cho cả giai đoạn của phiếu, thay vì hỏi DB cho từng ngày. */
+    private HolidayCalendar loadHolidays(LocalDate from, LocalDate to) {
+        return new HolidayCalendar(holidayRepo.findOverlapping(from, to));
+    }
+
+    /**
+     * Lịch nghỉ đã nạp sẵn của một đoạn thời gian — trả lời "ngày này, trường này có nghỉ không".
+     *
+     * <p>So theo trường của TỪNG TIẾT chứ không phải trường cấp phiếu: từ V27 một phiếu trải được
+     * nhiều trường, mà kỳ nghỉ riêng (sửa chữa, lịch riêng) chỉ thuộc về một trường.
+     */
+    private record HolidayCalendar(List<Holiday> ranges) {
+        boolean isOff(LocalDate day, Integer schoolId) {
+            for (Holiday h : ranges) {
+                if (h.getSchoolId() != null && !h.getSchoolId().equals(schoolId)) {
+                    continue; // kỳ nghỉ riêng của trường khác
+                }
+                if (!day.isBefore(h.getFromDate()) && !day.isAfter(h.getToDate())) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
+    /**
+     * Trải 1 slot (Thứ+Tiết) thành các buổi Schedule hằng tuần trong [from, to], BỎ QUA ngày nghỉ.
+     */
     private void generateSchedules(
-            Assignment a, AssignmentSlot slot, Period period, LocalDate from, LocalDate to, Integer userId) {
+            Assignment a,
+            AssignmentSlot slot,
+            Period period,
+            LocalDate from,
+            LocalDate to,
+            HolidayCalendar holidays,
+            Integer userId) {
         DayOfWeek target = toDayOfWeek(slot.getDayOfWeek());
         LocalDate d = from;
         while (d.getDayOfWeek() != target) {
             d = d.plusDays(1);
         }
         for (; !d.isAfter(to); d = d.plusWeeks(1)) {
+            // Ngày lễ / kỳ nghỉ thì KHÔNG sinh buổi. Sinh ra rồi hủy sau là quá muộn: job khép sổ
+            // chấm công chạy nền (AttendanceSweepService) tới trước mắt người, buổi "ma" ngày lễ
+            // đã kịp thành một dòng VẮNG thật và bị trừ vào lương.
+            if (holidays.isOff(d, slot.getSchoolId())) {
+                continue;
+            }
             Schedule s = new Schedule();
             s.setAssignmentId(a.getId());
             s.setTeacherId(a.getTeacherId());
@@ -776,6 +834,7 @@ public class AssignmentService {
         LocalDate effectiveEnd =
                 req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
         a.setEndDate(effectiveEnd);
+        HolidayCalendar holidays = loadHolidays(req.startDate(), effectiveEnd);
         a.setStatus(AssignmentStatus.PENDING);
         a.setRejectionReason(null);
         a.setApprovalNote(null);
@@ -797,7 +856,18 @@ public class AssignmentService {
             slot.setSchoolId(resolved.get(i).schoolId());
             slot.setCreatedBy(userId);
             slotRepo.save(slot);
-            generateSchedules(a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, userId);
+            generateSchedules(
+                    a, slot, periodById.get(slotReq.periodId()), req.startDate(), effectiveEnd, holidays, userId);
+        }
+
+        // Cả giai đoạn rơi trọn vào ngày nghỉ thì không sinh được buổi nào. Phiếu rỗng như vậy
+        // vô dụng mà vẫn có hại: giáo viên không có gì để xác nhận, còn luật chống trùng vẫn coi
+        // khung giờ đó là đã bị chiếm suốt cả giai đoạn.
+        if (scheduleRepo.findByAssignmentIdAndDeletedFalse(a.getId()).isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Toàn bộ giai đoạn đã chọn rơi vào ngày nghỉ nên không sinh được buổi dạy nào — "
+                            + "hãy chọn lại ngày bắt đầu / ngày kết thúc.");
         }
 
         a.setConfirmDeadline(computeConfirmDeadline(a.getId()));

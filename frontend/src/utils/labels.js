@@ -6,7 +6,6 @@
 export const ROLE_LABELS = {
   ADMIN: 'Quản trị viên',
   EMPLOYEE: 'Nhân viên',
-  SCHOOL: 'Trường',
   TEACHER: 'Giáo viên',
   ACCOUNTANT: 'Kế toán',
   HR: 'Nhân sự',

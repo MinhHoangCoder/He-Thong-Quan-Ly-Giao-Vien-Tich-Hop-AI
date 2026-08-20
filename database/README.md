@@ -42,6 +42,36 @@ Migration thực thi nằm trong backend: `backend/src/main/resources/db/migrati
 3. (Tùy chọn) Muốn có dữ liệu nghiệp vụ mẫu: chạy `seed/TSDMS_Seed_Demo.sql` bằng SSMS.
    Nếu dùng `sqlcmd` thì PHẢI kèm cờ `-I` (bật `QUOTED_IDENTIFIER ON` — schema có filtered
    index `WHERE IsDeleted = 0`, thiếu cờ này mọi INSERT đều lỗi Msg 1934).
+4. (Tùy chọn) Muốn có đội ngũ giáo viên đủ lớn để thử phân công / lọc / báo cáo:
+   chạy `seed/TSDMS_Seed_100GiaoVien.sql`. File này tự đặt `SET QUOTED_IDENTIFIER ON`
+   nên KHÔNG cần cờ `-I`; chạy lại lần hai sẽ tự bỏ qua. Gỡ ra bằng
+   `seed/TSDMS_Rollback_100GiaoVien.sql`. Dữ liệu trong đó là dữ liệu GIẢ (CCCD, số
+   điện thoại, email `@tsdms.local`) — chỉ dùng cho máy dev/demo.
+5. (Tùy chọn) Muốn có trường + lớp để thử phân công: chạy
+   `seed/TSDMS_Seed_TruongHaiPhong.sql` (30 trường TH/THCS ở 5 phường Hồng Bàng,
+   Lê Chân, Ngô Quyền, Hải An, Kiến An; tự tạo khung tiết chuẩn V22 cho từng
+   trường và 198 lớp cho các trường đang hoạt động). Gỡ bằng
+   `seed/TSDMS_Rollback_TruongHaiPhong.sql`.
+   ⚠ **Tên trường là trường học CÓ THẬT và CHƯA được đối chiếu danh bạ chính
+   thức** — đọc `seed/TSDMS_TruongHaiPhong_CanRaSoat.md` trước khi dùng cho
+   mục đích thật.
+6. (Tùy chọn) Muốn Bảng điều khiển / Lịch dạy / Chấm công / Bảng lương có số
+   thật thay vì toàn số 0: chạy `seed/TSDMS_Seed_PhanCong.sql` — sinh cả dây
+   chuyền `Assignment → AssignmentSlot → Schedule → Attendance → Payroll` cho
+   ba đợt (học kỳ đã xong, học kỳ đang chạy, phiếu chờ xác nhận). ĐÒI bước 5 đã
+   chạy và bảng `Holiday` (V29) đã có — buổi dạy không sinh vào ngày nghỉ. Gỡ
+   bằng `seed/TSDMS_Rollback_PhanCong.sql` (⚠ file gỡ xóa TOÀN BỘ dữ liệu phân
+   công/chấm công/lương, chỉ chạy trên máy demo). Chi tiết:
+   [dev-note 2026-08-19](../docs/dev-notes/2026-08-19-fullstack-lich-nghi-va-seed-dieu-phoi.md).
+7. (Tùy chọn) Ba bộ dữ liệu bổ sung, chạy được độc lập — mỗi bộ có file gỡ
+   cùng tên dạng `TSDMS_Rollback_*.sql`:
+   - `seed/TSDMS_Seed_DanhGia.sql` — đánh giá giáo viên 2 kỳ (cần bước 6 để
+     biết giáo viên nào thực sự đứng lớp). Đồng thời dọn dòng đánh giá test cũ.
+   - `seed/TSDMS_Seed_PhongHoc_HopDong.sql` — phòng học + hợp đồng dịch vụ
+     (nguồn số cho module Doanh thu). Chỉ cần bước 5.
+   - `seed/TSDMS_Seed_BaiGiang.sql` — ~234 bài giảng từ 46 chủ đề × các khối,
+     kèm học liệu link Canva. Cần bước 4 (giáo viên) + 23 môn học.
+     Sau khi chạy nhớ xóa file mồ côi: `rm -rf backend/uploads/lessons/{6,432,434,435,436}`.
 
 **TUYỆT ĐỐI KHÔNG** dựng DB dev bằng cách chạy tay `schema/TSDMS_Schema.sql` rồi mới bật
 backend: file đó là bản **mirror trạng thái CUỐI** (sau V10). Flyway thấy DB có bảng nhưng
