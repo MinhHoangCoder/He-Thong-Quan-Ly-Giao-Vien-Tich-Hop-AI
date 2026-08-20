@@ -25,14 +25,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Khung TIẾT HỌC của từng trường.
  *
- * <p>VÌ SAO CÓ SERVICE NÀY: trước đây khung tiết chỉ tạo được bằng SQL tay (xem V22). Hệ quả là
- * MỌI trường thêm mới qua giao diện đều có 0 tiết → không phân công được, vĩnh viễn, cho tới khi
- * có người vào database gõ lệnh. Người dùng nhìn thấy cảnh báo "hãy khai báo khung tiết" mà
- * không có màn nào để làm việc đó.
- *
- * <p>Ở đây không làm màn quản lý tiết đầy đủ — chỉ mở đúng lối thoát cần thiết: sinh BỘ KHUNG
- * CHUẨN theo cấp học. Quy ước lấy nguyên từ V22 (không bịa số mới), đối chiếu với dữ liệu đang
- * chạy của TH Dư Hàng và THCS Chu Văn An.
+ * <p>Trước đây khung tiết chỉ tạo được bằng SQL tay (V22), nên mọi trường thêm qua giao diện đều
+ * có 0 tiết và không phân công được. Service này không làm màn quản lý tiết đầy đủ, chỉ sinh BỘ
+ * KHUNG CHUẨN theo cấp học — quy ước lấy nguyên từ V22, đối chiếu với TH Dư Hàng và THCS Chu
+ * Văn An.
  */
 @Service
 public class PeriodService {
@@ -149,13 +145,11 @@ public class PeriodService {
     /**
      * Sinh khung tiết chuẩn với cấp học CHO SẴN, không suy từ lớp.
      *
-     * <p>Dùng lúc TẠO MỚI trường: khi đó trường chưa có lớp nào nên
-     * {@link #applyStandardFrame(Integer)} không dùng được — nó cần khối lớp để suy ra cấp. Cấp
-     * học ở đây do người tạo trường chọn (hoặc suy từ tên trường, xem {@link #suyCapTuTen}).
+     * <p>Dùng lúc TẠO MỚI trường, khi chưa có lớp nào nên {@link #applyStandardFrame(Integer)}
+     * không dùng được. Cấp học do người tạo chọn, hoặc suy từ tên (xem {@link #suyCapTuTen}).
      *
-     * <p>Trường đã có khung tiết thì KHÔNG làm gì và trả {@code null} — im lặng bỏ qua chứ không
-     * ném lỗi, vì đây là bước phụ chạy kèm việc tạo trường: không đáng để làm hỏng cả thao tác
-     * chính chỉ vì phần khung tiết đã có sẵn.
+     * <p>Trường đã có khung tiết thì trả {@code null}, KHÔNG ném lỗi — đây là bước phụ chạy kèm
+     * việc tạo trường, không nên làm hỏng thao tác chính.
      */
     @Transactional
     public StandardFrameResult applyStandardFrame(Integer schoolId, String schoolName, boolean tieuHoc) {
@@ -170,16 +164,12 @@ public class PeriodService {
     /**
      * Suy cấp học TỪ TÊN TRƯỜNG, dùng khi người tạo không chọn cấp.
      *
-     * <p>Trả {@code TRUE} = tiểu học, {@code FALSE} = THCS, {@code null} = không đoán được (tên
-     * không chứa dấu hiệu nào) — lúc đó KHÔNG sinh khung, để người dùng tự bấm nút "Áp khung tiết
-     * chuẩn" ở màn Phân công sau khi đã thêm lớp. Thà không có khung còn hơn gán nhầm khung 35
-     * phút cho một trường THCS: sai giờ toàn bộ lịch dạy mà không có lỗi nào bắn ra.
+     * <p>{@code TRUE} = tiểu học, {@code FALSE} = THCS, {@code null} = không đoán được → KHÔNG
+     * sinh khung, để người dùng tự bấm "Áp khung tiết chuẩn" sau khi thêm lớp. Gán nhầm khung 35
+     * phút cho trường THCS là sai giờ toàn bộ lịch dạy mà không lỗi nào bắn ra.
      *
-     * <p>Phải kiểm "THCS"/"trung học cơ sở" TRƯỚC "TH"/"tiểu học": chuỗi "THCS" cũng bắt đầu bằng
-     * "TH", kiểm ngược thứ tự là mọi trường THCS đều bị nhận nhầm thành tiểu học.
-     *
-     * <p>BỎ DẤU trước khi so khớp: người nhập liệu gõ "Tiểu học" hay "Tieu hoc" đều phải ra cùng
-     * kết quả. Không bỏ dấu thì một trường gõ thiếu dấu sẽ âm thầm không có khung tiết.
+     * <p>HAI BẪY: (1) phải kiểm "THCS" TRƯỚC "TH" vì "THCS" cũng bắt đầu bằng "TH"; (2) phải BỎ
+     * DẤU trước khi so, không thì trường gõ "Tieu hoc" âm thầm không có khung tiết.
      */
     public static Boolean suyCapTuTen(String name) {
         if (name == null || name.isBlank()) {
@@ -252,13 +242,11 @@ public class PeriodService {
     private static final List<String> BUOI_CON_HIEU_LUC = List.of("PENDING", "APPROVED");
 
     /**
-     * Xóa mềm một tiết khỏi khung giờ của trường — luật RESTRICT. Tiết là chỗ NEO của thời
-     * khóa biểu: {@code AssignmentSlot.PeriodId} (lịch lặp hằng tuần) và
-     * {@code Schedule.PeriodId} (từng buổi cụ thể) đều trỏ vào đây. Rút một tiết đang có lớp
-     * học là làm sập cả cột lịch đó, nên còn ai dùng thì cấm — kể đủ đang vướng bao nhiêu.
+     * Xóa mềm một tiết — luật RESTRICT. Tiết là chỗ neo của thời khóa biểu:
+     * {@code AssignmentSlot.PeriodId} và {@code Schedule.PeriodId} đều trỏ vào đây, nên còn ai
+     * dùng thì cấm, và báo rõ đang vướng bao nhiêu.
      *
-     * <p>Buổi ĐÃ DẠY không chặn: xóa mềm giữ nguyên dòng Period nên giờ giấc các buổi cũ vẫn
-     * tra ra được.
+     * <p>Buổi ĐÃ DẠY không chặn: xóa mềm giữ nguyên dòng Period nên giờ buổi cũ vẫn tra được.
      */
     @Transactional
     public void delete(Integer id) {

@@ -2,17 +2,13 @@
 /**
  * Tạo / sửa PHÂN CÔNG GIẢNG DẠY — wizard 3 bước trên trang riêng.
  *
- * VÌ SAO LÀ TRANG CHỨ KHÔNG PHẢI MODAL: bước xếp tiết là một lưới thời khóa biểu
- * (10 tiết × 7 thứ) cho TỪNG trường; nhồi vào modal thì lưới bị bóp đến mức phải cuộn
- * hai chiều mới thấy hết.
+ * Để là TRANG chứ không phải modal vì bước xếp tiết là lưới 10 tiết × 7 thứ cho TỪNG trường.
  *
- * MÔ HÌNH DỮ LIỆU (V27): một phiếu = 1 giáo viên + 1 MÔN + nhiều TRƯỜNG/LỚP/TIẾT. Mỗi ô
- * lịch tự mang trường của nó, nên sáng thứ 2 dạy tiết 1 ở trường A rồi tiết 2 chạy sang
- * trường B là hợp lệ và nằm gọn trong MỘT phiếu.
+ * MÔ HÌNH DỮ LIỆU (V27): một phiếu = 1 giáo viên + 1 MÔN + nhiều TRƯỜNG/LỚP/TIẾT. Mỗi ô lịch
+ * tự mang trường của nó, nên tiết 1 ở trường A rồi tiết 2 sang trường B vẫn nằm trong MỘT phiếu.
  *
- * CÁCH XẾP TIẾT — "cây cọ": mỗi khối trường có ô "Lớp đang xếp", bấm vào ô lưới là gán lớp
- * đó vào tiết đó. Đổi lớp rồi bấm tiếp. Nhanh hơn hẳn kiểu cũ (3 dropdown + nút Thêm) vì
- * ca dùng nhiều nhất là xếp liền mấy tiết cho vài lớp cùng khối.
+ * CÁCH XẾP TIẾT — "cây cọ": mỗi khối trường có ô "Lớp đang xếp", bấm ô lưới là gán lớp đó vào
+ * tiết đó, đổi lớp rồi bấm tiếp.
  *
  * Ô lưới bị KHÓA theo đúng hai luật backend còn chặn:
  *   - giáo viên đã có lịch đè giờ (kể cả TRƯỜNG KHÁC) → so GIỜ THẬT, không so periodId
@@ -333,10 +329,9 @@ function buildCellState(block, day, period) {
 /**
  * Trạng thái của MỌI ô trên MỌI lưới, tính một lượt.
  *
- * <p>Trước đây template gọi hàm dựng trạng thái ngay trong v-bind nên mỗi ô bị tính lại 5 lần
- * (class, disabled, title, nội dung…) — nhân với 10 tiết × 7 thứ × số trường là vài nghìn lượt
- * quét mảng cho một lần gõ phím. Gom vào computed thì mỗi ô tính đúng một lần và chỉ tính lại
- * khi dữ liệu nguồn đổi.
+ * <p>Gọi hàm dựng trạng thái ngay trong v-bind thì mỗi ô bị tính lại 5 lần (class, disabled,
+ * title, nội dung…), nhân 10 tiết × 7 thứ × số trường là vài nghìn lượt quét mảng cho một lần
+ * gõ phím. Gom vào computed để mỗi ô tính đúng một lần.
  */
 const cellStates = computed(() => {
   const map = new Map()
@@ -421,13 +416,10 @@ function teacherLabel(t) {
 /**
  * Danh sách giáo viên ĐÃ LỌC theo môn đang chọn (bảng TeacherSubject).
  *
- * Vì sao cần: trung tâm có 90 giáo viên đang làm việc và 23 môn. Không lọc thì mỗi lần xếp
- * lịch là một lần tự nhớ xem ai dạy được môn này — nhân với gần trăm phiếu đầu năm học thì
- * đó là chỗ chắc chắn sinh ra phân công sai người.
+ * Trung tâm có 90 giáo viên và 23 môn nên không lọc là dễ phân công sai người.
  *
- * KHÔNG lọc cứng: giáo viên chưa khai môn nào (subjectIds rỗng) vẫn được giữ lại, vì dữ liệu
- * thiếu không nên chặn việc. Chỉ ẩn người đã khai môn mà KHÔNG có môn đang chọn — với họ thì
- * "không dạy được môn này" là một khẳng định có căn cứ.
+ * KHÔNG lọc cứng: giáo viên chưa khai môn nào (subjectIds rỗng) vẫn giữ lại — dữ liệu thiếu
+ * không nên chặn việc. Chỉ ẩn người đã khai môn mà không có môn đang chọn.
  */
 const teachersForSubject = computed(() => {
   const sid = Number(form.subjectId)
