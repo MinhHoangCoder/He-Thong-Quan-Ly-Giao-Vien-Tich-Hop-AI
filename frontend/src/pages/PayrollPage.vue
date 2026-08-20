@@ -4,13 +4,11 @@
  * + thưởng − khấu trừ. "Tính lương" tổng hợp giờ dạy từ Chấm công; kế toán có thể
  * chỉnh từng dòng rồi chốt (FINALIZED).
  *
- * CHỐT LƯƠNG LÀ HÀNH ĐỘNG MỘT CHIỀU — hai thứ trang này thêm vào vì lẽ đó:
- * 1. Cảnh báo ngày nghỉ. Chốt xong là chấm công của kỳ bị khóa. Nếu kỳ còn dòng VẮNG mà hệ
- *    thống ghi nhầm cho buổi rơi vào ngày lễ (buổi sinh trước khi khai kỳ nghỉ — Flyway V29),
- *    chốt chính là khóa luôn lỗi vào trong. Banner báo trước, và hỏi lại lần hai lúc bấm.
- * 2. Nút "Mở lại". Trước V32 khóa đó là vĩnh viễn: một lỗi hoàn toàn nhìn thấy trở thành
- *    không thể sửa. Nay mở lại được, nhưng phải có quyền PAYROLL_REOPEN, phải nêu lý do, và
- *    mọi lần mở đều nằm lại trong nhật ký phiếu lương.
+ * CHỐT LƯƠNG KHÓA LUÔN CHẤM CÔNG CỦA KỲ — hai thứ trang này thêm vào vì lẽ đó:
+ * 1. Cảnh báo ngày nghỉ: kỳ còn dòng VẮNG ghi nhầm cho buổi rơi vào ngày lễ (buổi sinh trước
+ *    khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong. Banner báo trước + hỏi lại
+ *    lần hai lúc bấm.
+ * 2. Nút "Mở lại" (V32): cần quyền PAYROLL_REOPEN, bắt buộc nêu lý do, ghi vào nhật ký phiếu.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'

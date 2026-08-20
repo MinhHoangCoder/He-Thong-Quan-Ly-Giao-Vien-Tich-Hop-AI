@@ -352,10 +352,9 @@ public class AssignmentService {
     }
 
     /**
-     * Bảng "giờ bận" của một giáo viên: mọi ô lịch thuộc phân công ACTIVE, kèm KHUNG GIỜ
-     * THẬT của tiết. Form phân công dùng nó để khóa sẵn những tiết không chọn được — quan
-     * trọng nhất là các tiết ở TRƯỜNG KHÁC đè giờ, thứ mà form không thể tự suy ra từ
-     * periodId (mỗi trường một bộ Period riêng).
+     * Bảng "giờ bận" của một giáo viên: mọi ô lịch thuộc phân công ACTIVE, kèm KHUNG GIỜ THẬT
+     * của tiết. Form dùng để khóa sẵn tiết không chọn được — nhất là tiết ở TRƯỜNG KHÁC đè giờ,
+     * mà form không suy ra được từ periodId vì mỗi trường một bộ Period riêng.
      *
      * @param startDate/endDate giai đoạn đang định xếp — chỉ trả ô lịch của phân công có
      *     giai đoạn chồng lên khoảng này (null = không lọc theo ngày)
@@ -424,9 +423,8 @@ public class AssignmentService {
      * Bảng "lớp đang bận" của một TRƯỜNG: mọi ô lịch còn giữ chỗ, kèm khung giờ thật và tên
      * giáo viên đang dạy. Lưới xếp phân công dùng nó để tô xám sẵn ô đã có người.
      *
-     * <p>Chiều ngược của {@link #teacherBusy}: luật {@code checkClass} chặn "một lớp hai giáo
-     * viên cùng giờ" ở backend, nhưng trước đây form không có cách nào biết trước — người dùng
-     * xếp xong cả thời khóa biểu rồi mới nhận 409.
+     * <p>Chiều ngược của {@link #teacherBusy}, để form biết trước luật {@code checkClass} (một
+     * lớp không hai giáo viên cùng giờ) thay vì để người dùng xếp xong mới nhận 409.
      *
      * @param startDate/endDate giai đoạn đang định xếp — chỉ trả ô lịch của phân công có giai
      *     đoạn chồng lên khoảng này (null = không lọc theo ngày)
@@ -583,19 +581,15 @@ public class AssignmentService {
     /**
      * Chặn xếp giáo viên vào lớp của NĂM HỌC ĐÃ QUA.
      *
-     * <p>Mỗi lớp có một bản ghi RIÊNG cho từng năm học ({@code SchoolClass.SchoolYear}), nên
-     * "1A1" tồn tại nhiều lần với id khác nhau. Không có luật này thì lỗi rất khó thấy: phiếu
-     * lưu thành công, lịch dạy sinh ra đầy đủ, chỉ có điều nó trỏ vào lớp của năm ngoái.
+     * <p>Mỗi lớp có bản ghi riêng cho từng năm học ({@code SchoolClass.SchoolYear}) nên "1A1"
+     * tồn tại nhiều lần với id khác nhau. Hệ quả nguy hiểm: {@code
+     * TeacherTimeConflictChecker.checkClass} dò trùng theo {@code classId}, hai bản ghi của cùng
+     * một lớp thật là hai id nên xếp hai giáo viên vào cùng phòng cùng giờ mà không bị chặn.
      *
-     * <p>Nguy hiểm hơn cả việc thống kê sai: {@code TeacherTimeConflictChecker.checkClass} dò
-     * trùng theo {@code classId}. Hai bản ghi của CÙNG một lớp thật là hai id khác nhau, nên
-     * xếp hai giáo viên vào cùng một phòng học cùng giờ mà hệ thống KHÔNG kêu gì cả — đúng
-     * thứ mà luật chống trùng lớp sinh ra để chặn.
-     *
-     * <p>So theo NĂM BẮT ĐẦU của năm học chứ không so ngày: mốc "từ tháng 8 là năm học mới"
-     * bao được cả giai đoạn tựu trường cuối tháng 8 (Hải Phòng 2026: tựu trường 24/8, khai
-     * giảng 5/9). Lớp thiếu/sai định dạng {@code SchoolYear} thì BỎ QUA — dữ liệu cũ không
-     * nên chặn người dùng, và đây là luật phòng nhầm chứ không phải ràng buộc toàn vẹn.
+     * <p>So theo NĂM BẮT ĐẦU của năm học chứ không so ngày — mốc "từ tháng 8 là năm học mới" bao
+     * được giai đoạn tựu trường cuối tháng 8 (Hải Phòng 2026: tựu trường 24/8, khai giảng 5/9).
+     * Lớp thiếu hoặc sai định dạng {@code SchoolYear} thì bỏ qua: đây là luật phòng nhầm, không
+     * phải ràng buộc toàn vẹn.
      */
     static void assertClassNotStale(SchoolClass c, LocalDate startDate) {
         Integer classYear = schoolYearStartOf(c.getSchoolYear());
@@ -615,10 +609,8 @@ public class AssignmentService {
     /**
      * Giáo viên phải đang LÀM VIỆC mới nhận được phân công mới.
      *
-     * <p>Hồ sơ nghỉ hưu (RETIRED) hay đình chỉ (SUSPENDED) vẫn nằm trong hệ thống để giữ lịch
-     * sử chấm công và lương, nên {@code deleted = false} — không đủ để kết luận là dùng được.
-     * Thiếu luật này, người xếp lịch chọn nhầm một người đã nghỉ và không có gì cản: phiếu lưu
-     * thành công, lời mời gửi đi, lịch sinh đủ, chỉ có điều lớp sẽ không có ai tới dạy.
+     * <p>Hồ sơ RETIRED / SUSPENDED vẫn giữ lại để có lịch sử chấm công và lương, nên
+     * {@code deleted = false} KHÔNG đủ để kết luận là dùng được — phải soi cả {@code status}.
      */
     private static void assertTeacherAvailable(Teacher t) {
         if (!TEACHER_ACTIVE.equals(t.getStatus())) {
@@ -914,15 +906,14 @@ public class AssignmentService {
     /* ─────────────────────────── UPDATE (sửa & gửi lại) ─────────────────────────── */
 
     /**
-     * Sửa một phiếu CHƯA được xác nhận rồi GỬI LẠI lời mời: phiếu quay về Chờ xác nhận, hạn trả
-     * lời tính lại từ đầu, giáo viên nhận thông báo mới.
+     * Sửa phiếu CHƯA xác nhận rồi gửi lại lời mời: phiếu về Chờ xác nhận, hạn trả lời tính lại,
+     * giáo viên nhận thông báo mới.
      *
-     * <p>Đổi được giáo viên (phiếu bị từ chối thì xếp cho người khác — giáo viên cũ vẫn chọn lại
-     * được phòng khi bấm nhầm), nhưng KHÔNG đổi trường/môn: khung tiết và lớp gắn với trường nên
-     * đổi trường là một phiếu khác hẳn.
+     * <p>Đổi được GIÁO VIÊN, KHÔNG đổi trường/môn — khung tiết và lớp gắn với trường nên đổi
+     * trường là một phiếu khác hẳn.
      *
-     * <p>Toàn bộ tiết + buổi cũ bị xóa cứng rồi sinh lại. An toàn vì phiếu chưa từng được xác
-     * nhận nên chưa buổi nào APPROVED → chưa có dòng chấm công/lương nào bám vào.
+     * <p>Tiết + buổi cũ bị xóa cứng rồi sinh lại. An toàn vì phiếu chưa xác nhận nên chưa buổi
+     * nào APPROVED, chưa có chấm công/lương bám vào.
      */
     @Transactional
     public AssignmentResponse update(Integer id, AssignmentUpdateRequest req) {
@@ -1091,9 +1082,8 @@ public class AssignmentService {
      * Trước khi bật lại phải DÒ TRÙNG LỊCH: khung Thứ+Tiết có thể đã bị phiếu khác chiếm mất
      * trong lúc nó đang bị hủy.
      *
-     * <p>Phiếu quay về đúng chỗ nó đứng trước khi hủy: đã từng được giáo viên xác nhận thì trả
-     * về ACTIVE (buổi lên APPROVED), chưa từng xác nhận thì trả về CHỜ XÁC NHẬN (buổi giữ
-     * PENDING) — không được lén cho lịch chưa ai đồng ý chạy thẳng.
+     * <p>Phiếu về đúng chỗ trước khi hủy: từng được xác nhận thì về ACTIVE (buổi lên APPROVED),
+     * chưa xác nhận thì về CHỜ XÁC NHẬN (buổi giữ PENDING) — không cho lịch chưa ai đồng ý chạy.
      */
     @Transactional
     public AssignmentResponse reactivate(Integer id) {
@@ -1228,17 +1218,15 @@ public class AssignmentService {
      * Xóa VĨNH VIỄN khỏi DB (chỉ khi phân công đang ở thùng rác). Xóa theo đúng thứ tự khóa
      * ngoại: nhật ký trạng thái &amp; chấm công (→ Schedule) → buổi → slot → phân công.
      *
-     * <p><b>Khóa cứng theo tiền:</b> nếu chấm công của phân công này đã đi vào một kỳ lương
-     * ĐÃ CHỐT hoặc ĐÃ TRẢ thì cấm hẳn. Đây là chỗ duy nhất trong dự án xóa cứng
-     * {@code Attendance}, mà chấm công là nguồn duy nhất sinh ra con số trên phiếu lương —
-     * xóa xong thì phiếu lương đã trả tiền vẫn ghi 40 tiết nhưng không còn gì chứng minh 40
-     * tiết đó có thật, và {@code generate()} chạy lại cũng không dựng lại được (nó chỉ ghi đè
-     * dòng DRAFT).
+     * <p><b>Chặn theo tiền:</b> cấm nếu chấm công của phiếu đã vào kỳ lương FINALIZED hoặc PAID.
+     * Đây là chỗ DUY NHẤT trong dự án xóa cứng {@code Attendance}, mà chấm công là nguồn duy
+     * nhất sinh số trên phiếu lương; xóa rồi thì {@code generate()} cũng không dựng lại được vì
+     * nó chỉ ghi đè dòng DRAFT.
      *
-     * <p>Từ V32 kỳ ĐÃ CHỐT mở lại được (quyền {@code PAYROLL_REOPEN}, trong 3 tháng gần nhất),
-     * nên với kỳ đó rào này gỡ được — người dùng phải mở lại kỳ lương trước rồi mới xóa. Kỳ ĐÃ
-     * TRẢ thì {@code PayrollService.assertReopenable} từ chối thẳng vì tiền đã ra khỏi quỹ, nên
-     * ở đó rào vẫn là khóa cứng. Câu hướng dẫn phải nói đúng cả hai vế.
+     * <p>Hai vế khác nhau, câu hướng dẫn phải nói đúng cả hai: kỳ FINALIZED gỡ được (V32 cho mở
+     * lại với quyền {@code PAYROLL_REOPEN}, trong 3 tháng gần nhất) nên phải mở lại kỳ lương rồi
+     * mới xóa; kỳ PAID thì {@code PayrollService.assertReopenable} từ chối thẳng, ở đó là khóa
+     * cứng.
      */
     @Transactional
     public void purge(Integer id) {

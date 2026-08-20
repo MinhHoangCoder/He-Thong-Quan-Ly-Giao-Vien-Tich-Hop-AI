@@ -282,14 +282,12 @@ public class AssignmentApprovalService {
     /**
      * Phiếu hết hạn thì các buổi đã sinh cũng phải tắt theo.
      *
-     * <p>Trước đây {@code sweepExpired} chỉ đổi trạng thái PHIẾU, để nguyên {@code Schedule}.
-     * Buổi ở PENDING không có hiệu lực (không lên lịch dạy, không sinh chấm công) nên không gây
-     * sai số, nhưng nằm lại vĩnh viễn: đối chiếu dữ liệu thấy buổi "chưa duyệt" của một phiếu đã
-     * chết, không ai biết nên xử lý thế nào. {@code cancel()} vốn dọn đúng cách — làm cho hai
-     * đường giống nhau.
+     * <p>Trước đây {@code sweepExpired} chỉ đổi trạng thái PHIẾU, để nguyên {@code Schedule}: buổi
+     * PENDING không gây sai số nhưng nằm lại vĩnh viễn dưới một phiếu đã chết. Nay dọn giống
+     * {@code cancel()}.
      *
-     * <p>Chỉ đụng buổi CHƯA diễn ra: phiếu hết hạn nghĩa là giáo viên không bao giờ xác nhận,
-     * nên không có buổi nào đã dạy thật để phải giữ lại cho chấm công.
+     * <p>Chỉ đụng buổi CHƯA diễn ra — phiếu hết hạn nghĩa là giáo viên không bao giờ xác nhận nên
+     * không có buổi đã dạy thật cần giữ cho chấm công.
      */
     private void cancelPendingSchedules(Assignment a) {
         LocalDateTime now = BusinessTime.now();
@@ -327,10 +325,9 @@ public class AssignmentApprovalService {
     /**
      * "8 tiết/tuần · 4 lớp" — dòng thông báo chỉ nói QUY MÔ.
      *
-     * <p>Trước đây chỗ này liệt kê từng tiết ("Thứ 3 Tiết 6 lớp 1A1, Thứ 3 Tiết 7 lớp 1A2…").
-     * Phiếu vài chục tiết là dòng thông báo dài không đọc nổi, mà nội dung còn bị cắt ở
-     * 1000 ký tự (NotificationService) nên phiếu lớn hiện ra CỤT giữa chừng.
-     * Chi tiết thứ/tiết/lớp nay nằm ở bảng thời khóa biểu khi giáo viên bấm vào thông báo.
+     * <p>KHÔNG liệt kê từng tiết như trước: nội dung thông báo bị cắt ở 1000 ký tự
+     * (NotificationService) nên phiếu vài chục tiết hiện ra cụt giữa chừng. Chi tiết thứ/tiết/lớp
+     * xem ở bảng thời khóa biểu khi bấm vào thông báo.
      */
     private String slotSummary(Assignment a) {
         List<AssignmentSlot> slots = slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());

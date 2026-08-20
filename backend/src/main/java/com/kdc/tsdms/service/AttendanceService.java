@@ -45,9 +45,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Nguồn buổi dạy = {@link Schedule} đã duyệt; mỗi buổi tối đa MỘT dòng chấm công.
  *
- * <p>Từ V25, công chỉ sinh ra từ việc GIÁO VIÊN TỰ CHẤM. Nút "sinh hàng loạt từ lịch dạy"
- * đã bị bỏ vì nó tạo công cho những buổi chưa diễn ra — tính ra tiền cho việc chưa làm. Ba
- * đường ghi còn lại đều gắn với một buổi đã bắt đầu:
+ * <p>Từ V25, công chỉ sinh từ việc GIÁO VIÊN TỰ CHẤM; nút "sinh hàng loạt từ lịch dạy" đã bỏ vì
+ * nó tạo công cho buổi chưa diễn ra. Ba đường ghi còn lại đều gắn với buổi đã bắt đầu:
  *
  * <ul>
  *   <li>giáo viên check-in/check-out trong cửa sổ của buổi (nguồn {@code SELF})
@@ -335,12 +334,10 @@ public class AttendanceService {
     }
 
     /**
-     * Dòng này có thật sự cần người soát không?
+     * Dòng này có cần người soát không?
      *
-     * <p>Điểm tinh: "đã vào lớp mà chưa có giờ ra" chỉ đáng báo khi BUỔI ĐÃ TAN. Giáo viên
-     * đang đứng lớp thì dĩ nhiên chưa check-out — trước đây lọc thiếu vế đó nên mở hộp giữa
-     * giờ dạy là thấy hàng loạt dòng hoàn toàn bình thường, đúng lúc kế toán cần tin cậy vào
-     * danh sách này nhất thì nó lại toàn nhiễu.
+     * <p>BẪY: "đã vào mà chưa có giờ ra" chỉ đáng báo khi BUỔI ĐÃ TAN — giáo viên đang đứng lớp
+     * thì đương nhiên chưa check-out. Thiếu vế đó là danh sách đầy nhiễu vào giữa giờ dạy.
      */
     private static boolean needsAttention(Attendance a, LocalDateTime sessionEnd, LocalDateTime now) {
         if (a.isAutoCheckOut() || "SYSTEM".equals(a.getCheckInMethod())) {
@@ -617,9 +614,8 @@ public class AttendanceService {
     /**
      * BUỔI CHƯA TỚI GIỜ THÌ KHÔNG AI GHI ĐƯỢC — kể cả admin.
      *
-     * <p>Ranh giới lấy đúng thời điểm cửa sổ check-in mở ({@value #EARLY_CHECKIN_MIN} phút
-     * trước giờ dạy): sớm hơn thế thì buổi học chưa xảy ra, mà chấm công là ghi nhận việc ĐÃ
-     * làm. Trước V25 chỗ này để hở nên có thể sinh sẵn cả tháng công cho tương lai.
+     * <p>Ranh giới là lúc cửa sổ check-in mở ({@value #EARLY_CHECKIN_MIN} phút trước giờ dạy).
+     * Trước V25 chỗ này để hở nên sinh được cả tháng công cho tương lai.
      *
      * @return buổi dạy đã kiểm tra, để hàm gọi dùng tiếp mà không phải tra lại
      */
@@ -641,10 +637,10 @@ public class AttendanceService {
     /**
      * Dòng chấm công phải KHỚP với buổi dạy nó trỏ tới.
      *
-     * <p>Trước đây {@code update} cho sửa {@code teacherId}/{@code workDate} tùy ý mà không so
-     * lại với Schedule. Hệ quả không thấy ngay nhưng ra tiền: {@code PayrollService} suy đơn
-     * giá qua {@code Attendance.scheduleId → Schedule → Assignment → lớp → khối}, nên một dòng
-     * mang tên giáo viên A mà trỏ vào buổi của giáo viên B sẽ tính lương A theo cấp lớp của B.
+     * <p>RA TIỀN: {@code PayrollService} suy đơn giá qua {@code Attendance.scheduleId → Schedule
+     * → Assignment → lớp → khối}. Dòng mang tên giáo viên A mà trỏ vào buổi của B sẽ tính lương
+     * A theo cấp lớp của B. Trước đây {@code update} cho sửa {@code teacherId}/{@code workDate}
+     * tùy ý mà không so lại với Schedule.
      */
     private static void assertMatchesSession(Schedule s, AttendanceRequest req) {
         if (!s.getTeacherId().equals(req.teacherId())) {
@@ -709,13 +705,12 @@ public class AttendanceService {
     /**
      * Ghi công cho một buổi sau khi admin DUYỆT yêu cầu bổ sung.
      *
-     * <p>Buổi bị lỡ thường đã có sẵn dòng {@code ABSENT} do job nền sinh, nên ở đây SỬA dòng
-     * đó chứ không thêm dòng mới — thêm là vỡ {@code UX_Attendance_ScheduleId}. Nguồn ghi
-     * nhận để {@code EMPLOYEE}: công này do người duyệt xác nhận, không phải giáo viên tự
-     * bấm, và {@code AdjustReason} giữ dấu vết vì sao.
+     * <p>Buổi lỡ thường đã có sẵn dòng {@code ABSENT} do job nền sinh nên phải SỬA dòng đó, thêm
+     * dòng mới là vỡ {@code UX_Attendance_ScheduleId}. Nguồn ghi nhận là {@code EMPLOYEE} (người
+     * duyệt xác nhận, không phải giáo viên tự bấm); lý do lưu ở {@code AdjustReason}.
      *
-     * <p>Cố tình KHÔNG gọi {@code assertSessionStarted}: yêu cầu bổ sung chỉ tồn tại cho buổi
-     * đã kết thúc, luật "chưa dạy thì không được chấm" đã chặn từ lúc gửi.
+     * <p>Cố tình KHÔNG gọi {@code assertSessionStarted}: yêu cầu bổ sung chỉ tồn tại cho buổi đã
+     * kết thúc, luật "chưa dạy thì không được chấm" đã chặn từ lúc gửi.
      *
      * @param statusOverride admin ép trạng thái; {@code null} thì suy từ giờ giáo viên khai
      */
