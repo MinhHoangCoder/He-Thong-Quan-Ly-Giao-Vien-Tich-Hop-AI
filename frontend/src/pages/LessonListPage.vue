@@ -1,25 +1,20 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { lessonApi } from '@/api/lessons'
 import { subjectCategoryApi } from '@/api/subjectCategories'
 
 const router = useRouter()
-const route = useRoute()
 
-// FIX (2026-07-10): trang này được DÙNG CHUNG cho 2 khu vực (2 bộ route khác
-// tên/khác meta.roles):
-//   - Khu ADMIN:  /admin/lessons        (name: 'admin-lesson-list', roles ADMIN/EMPLOYEE)
-//   - Khu STAFF:  /staff/lessons        (name: 'lesson-list', roles ACCOUNTANT/HR/ACADEMIC/SALES)
-// Trước đây nút "Sửa"/"+ Thêm bài giảng" LUÔN push cứng sang tên route của khu
-// STAFF ('lesson-edit' / 'lesson-new'). Khi ADMIN đang ở /admin/lessons bấm
-// "Sửa", router điều hướng sang /staff/lessons/:id/edit — route này không cho
-// phép role ADMIN/EMPLOYEE vào -> route guard tự động đá về dashboard.
-// -> Phải chọn ĐÚNG tên route theo khu vực đang đứng, dựa vào tiền tố route
-// hiện tại ('admin-lesson-list' vs 'lesson-list').
-const isAdminArea = computed(() => route.name === 'admin-lesson-list')
-const editRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-edit' : 'lesson-edit'))
-const newRouteName = computed(() => (isAdminArea.value ? 'admin-lesson-new' : 'lesson-new'))
+// Từ Flyway V33 trang này CHỈ còn phục vụ khu ADMIN — khu STAFF (/staff/lessons) đã bỏ cùng
+// các role phòng ban, nên hai tên route 'lesson-new'/'lesson-edit' không còn tồn tại. Vì thế
+// tên route là hằng số, không còn chọn theo khu vực đang đứng.
+//
+// Ghi lại lỗi cũ để đừng lặp nếu sau này dựng lại khu thứ hai (FIX 2026-07-10): nút
+// "Sửa"/"+ Thêm bài giảng" từng push CỨNG sang tên route của khu STAFF, nên ADMIN đứng ở
+// /admin/lessons bấm Sửa là bị route guard đá về dashboard vì không khớp meta.roles.
+const editRouteName = 'admin-lesson-edit'
+const newRouteName = 'admin-lesson-new'
 
 /* =========================
    State

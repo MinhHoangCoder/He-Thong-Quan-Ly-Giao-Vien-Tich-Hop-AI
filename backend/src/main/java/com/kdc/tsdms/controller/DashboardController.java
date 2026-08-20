@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST API Bảng điều khiển (admin) — /api/v1/dashboard.
  *
- * <p>Chỉ nhân sự trung tâm (ADMIN / EMPLOYEE) xem số liệu tổng hợp toàn hệ thống.
+ * <p>Chỉ ADMIN xem số liệu tổng hợp toàn hệ thống. Từ V33 hệ thống chỉ còn hai tác nhân —
+ * giáo viên có bảng điều khiển riêng ({@code TeacherDashboardPage}) dựng từ lịch dạy / chấm
+ * công / đánh giá của chính họ, không đi qua endpoint này.
  */
 @RestController
 @RequestMapping("/api/v1/dashboard")
@@ -25,7 +27,7 @@ public class DashboardController {
 
     /** Tổng hợp số liệu; {@code months} = số tháng vẽ biểu đồ (mặc định 8). */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN') or hasRole('EMPLOYEE')")
+    @PreAuthorize("hasRole('ADMIN')")
     public DashboardResponse summary(@RequestParam(defaultValue = "8") int months) {
         return service.summary(months);
     }

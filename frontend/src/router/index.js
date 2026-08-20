@@ -7,7 +7,6 @@ import { roleHome } from '@/router/roleHome'
 import { publicRoutes } from '@/router/public.routes'
 import { adminRoutes } from '@/router/admin.routes'
 import { teacherRoutes } from '@/router/teacher.routes'
-import { staffRoutes } from '@/router/staff.routes'
 
 // Route 404 CATCH-ALL: khớp MỌI URL không trùng route nào ở trên. BẮT BUỘC đặt CUỐI
 // CÙNG — vue-router khớp theo thứ tự, để trước sẽ nuốt hết các route thật. public:true
@@ -24,7 +23,6 @@ const routes = [
   ...publicRoutes,
   ...adminRoutes,
   ...teacherRoutes,
-  ...staffRoutes,
   notFoundRoute,
 ]
 

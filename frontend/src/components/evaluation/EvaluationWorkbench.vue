@@ -1,8 +1,10 @@
 <script setup>
 /**
- * Workbench dùng chung cho Staff / Admin / School:
- * KPI + filter + bảng + modal tạo/sửa + xóa.
- * portal: 'staff' | 'admin' — khác nhãn hiển thị.
+ * Workbench đánh giá giáo viên: KPI + filter + bảng + modal tạo/sửa + xóa.
+ *
+ * Từng có prop `portal` ('staff' | 'admin' | 'school') để đổi nhãn, nhưng KHÔNG chỗ nào đọc
+ * tới — chỉ khai báo rồi bỏ đó, với giá trị mặc định trỏ vào một portal nay đã bị gỡ (V33).
+ * Đã bỏ: nhãn muốn khác thì truyền thẳng qua `title` / `subtitle`.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -14,10 +16,9 @@ import EvaluationFormModal from '@/components/evaluation/EvaluationFormModal.vue
 import StatCard from '@/components/ui/StatCard.vue'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 
-const props = defineProps({
-  portal: { type: String, default: 'staff' }, // staff | admin
+defineProps({
   title: { type: String, default: 'Đánh giá giáo viên' },
-  subtitle: { type: String, default: 'Chấm điểm & nhận xét chất lượng giảng dạy' },
+  subtitle: { type: String, default: '' },
 })
 
 const PAGE_SIZE = 10

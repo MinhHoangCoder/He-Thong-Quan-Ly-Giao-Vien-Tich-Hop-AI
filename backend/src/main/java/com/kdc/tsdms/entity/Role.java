@@ -9,7 +9,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
 
-/** Vai trò cố định: ADMIN | EMPLOYEE | SCHOOL | TEACHER (bảng Role). */
+/** Vai trò cố định: ADMIN | TEACHER (bảng Role). Flyway V31 bỏ SCHOOL, V33 bỏ các role nhân viên. */
 @Entity
 @Table(name = "Role")
 @Getter

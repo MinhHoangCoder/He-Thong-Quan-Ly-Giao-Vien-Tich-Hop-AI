@@ -23,7 +23,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * Cấu hình bảo mật:
  * - Stateless (không session, mỗi request tự mang JWT).
  * - Tắt CSRF (API token, không dùng cookie session).
- * - Mở các endpoint auth công khai; /register chỉ cho ADMIN & EMPLOYEE; còn lại
+ * - Mở các endpoint auth công khai; /register cần TEACHER_MANAGE/SCHOOL_MANAGE (ADMIN đi tắt); còn lại
  * cần đăng nhập.
  * - Cắm JwtAuthenticationFilter trước filter username/password mặc định.
  */

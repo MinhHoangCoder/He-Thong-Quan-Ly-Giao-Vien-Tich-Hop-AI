@@ -18,7 +18,6 @@ import DefaultLayout from '@/layouts/DefaultLayout.vue'
 import BlankLayout from '@/layouts/BlankLayout.vue'
 import AdminLayout from '@/layouts/AdminLayout.vue'
 import TeacherLayout from '@/layouts/TeacherLayout.vue'
-import StaffLayout from '@/layouts/StaffLayout.vue'
 import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { refreshSession } from '@/api/http'
@@ -32,7 +31,6 @@ const layouts = {
   blank: BlankLayout,
   admin: AdminLayout,
   teacher: TeacherLayout,
-  staff: StaffLayout,
 }
 
 // computed = tự tính lại mỗi khi route đổi. Lấy layout theo nhãn; không có thì
