@@ -18,10 +18,8 @@ const SCHOOL_LEVELS = [
   { code: 'THCS', short: 'THCS', label: 'THCS', grades: [6, 7, 8, 9] },
 ]
 
-const YEAR_RANGE = 5
 /** Hậu tố: đúng 1 chữ cái + số 1–20 (bắt buộc). VD: A1, B20 — không A, không A21, không AB. */
 const CLASS_SUFFIX_RE = /^[A-Z](20|[1-9]|1[0-9])$/
-const YEAR_RE = /^(\d{4})-(\d{4})$/
 
 const loading = ref(false)
 const items = ref([])
@@ -105,16 +103,6 @@ function defaultSchoolYear() {
   const s = currentSchoolYearStart()
   return `${s}-${s + 1}`
 }
-
-/** Danh sách năm học: hiện tại ± YEAR_RANGE, mới → cũ. */
-const schoolYearOptions = computed(() => {
-  const cur = currentSchoolYearStart()
-  const list = []
-  for (let y = cur + YEAR_RANGE; y >= cur - YEAR_RANGE; y--) {
-    list.push(`${y}-${y + 1}`)
-  }
-  return list
-})
 
 /** Lưu DB: chỉ số khối (ví dụ "7"). */
 function gradeLabel(num) {

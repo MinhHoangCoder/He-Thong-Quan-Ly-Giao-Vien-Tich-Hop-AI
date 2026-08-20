@@ -32,6 +32,18 @@ export default [
   // Tắt các rule format của ESLint để nhường việc format cho Prettier (phải đặt cuối)
   skipFormatting,
 
+  // Component NỀN trong components/ui/ được đặt tên một từ (Pagination, và các primitive
+  // thêm sau này). Rule multi-word sinh ra để tránh trùng tên thẻ HTML thật và để tên
+  // component nghiệp vụ đủ đặc thù — cả hai lý do đó không áp cho thư mục primitive dùng
+  // chung. Đổi tên Pagination sẽ phải sửa 13 file cho một quy ước thuần hình thức.
+  {
+    name: 'app/ui-primitives',
+    files: ['src/components/ui/**/*.vue'],
+    rules: {
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
   // Tùy chỉnh rule cho dự án
   {
     name: 'app/custom-rules',
