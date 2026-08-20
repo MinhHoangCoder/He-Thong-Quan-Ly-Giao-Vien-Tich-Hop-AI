@@ -1233,7 +1233,12 @@ public class AssignmentService {
      * {@code Attendance}, mà chấm công là nguồn duy nhất sinh ra con số trên phiếu lương —
      * xóa xong thì phiếu lương đã trả tiền vẫn ghi 40 tiết nhưng không còn gì chứng minh 40
      * tiết đó có thật, và {@code generate()} chạy lại cũng không dựng lại được (nó chỉ ghi đè
-     * dòng DRAFT). Không có nút mở lại kỳ lương, nên đây là rào chắn không gỡ được — cố ý.
+     * dòng DRAFT).
+     *
+     * <p>Từ V32 kỳ ĐÃ CHỐT mở lại được (quyền {@code PAYROLL_REOPEN}, trong 3 tháng gần nhất),
+     * nên với kỳ đó rào này gỡ được — người dùng phải mở lại kỳ lương trước rồi mới xóa. Kỳ ĐÃ
+     * TRẢ thì {@code PayrollService.assertReopenable} từ chối thẳng vì tiền đã ra khỏi quỹ, nên
+     * ở đó rào vẫn là khóa cứng. Câu hướng dẫn phải nói đúng cả hai vế.
      */
     @Transactional
     public void purge(Integer id) {
@@ -1245,8 +1250,9 @@ public class AssignmentService {
                 .blockWhen(
                         !kyLuongDaChot.isEmpty(),
                         "chấm công thuộc kỳ lương đã chốt/đã trả (" + String.join(", ", kyLuongDaChot) + ")")
-                .huongDan("Phiếu lương đã chốt phải giữ nguyên bằng chứng chấm công, nên phân công này "
-                        + "chỉ có thể nằm lại trong thùng rác.")
+                .huongDan("Phiếu lương phải giữ nguyên bằng chứng chấm công. Kỳ ĐÃ CHỐT thì mở lại "
+                        + "kỳ lương đó (cần quyền mở lại bảng lương) rồi xóa; kỳ ĐÃ TRẢ thì tiền đã ra "
+                        + "khỏi quỹ nên phân công buộc phải nằm lại trong thùng rác.")
                 .check();
         scheduleRepo.deleteStatusLogsByAssignmentId(id);
         scheduleRepo.deleteAttendanceByAssignmentId(id);
