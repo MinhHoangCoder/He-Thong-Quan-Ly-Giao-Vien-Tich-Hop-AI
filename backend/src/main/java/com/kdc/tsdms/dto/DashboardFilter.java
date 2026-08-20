@@ -1,0 +1,83 @@
+package com.kdc.tsdms.dto;
+
+import com.kdc.tsdms.common.BusinessTime;
+import java.time.LocalDate;
+import java.time.Month;
+
+/**
+ * Bộ lọc áp cho TOÀN Bảng điều khiển — mọi thẻ số, biểu đồ và bảng đều đọc từ đây.
+ *
+ * <p>Có một bộ lọc duy nhất là chủ ý: trước đây biểu đồ tự chọn "8 tháng gần nhất" còn thẻ số
+ * lại tính "tuần này", nên hai khối cạnh nhau nói về hai khoảng thời gian khác nhau mà không ai
+ * nhận ra. Gom về một chỗ thì mọi con số trên màn hình luôn cùng một kỳ.
+ *
+ * @param from ngày đầu kỳ (tính cả ngày này)
+ * @param to ngày cuối kỳ (tính cả ngày này)
+ * @param branchId lọc theo chi nhánh; null = tất cả
+ * @param schoolId lọc theo trường khách hàng; null = tất cả
+ * @param categoryId lọc theo nhóm môn; null = tất cả
+ */
+public record DashboardFilter(LocalDate from, LocalDate to, Integer branchId, Integer schoolId, Integer categoryId) {
+
+    /** Tháng bắt đầu năm học ở Việt Nam. */
+    private static final Month THANG_KHAI_GIANG = Month.SEPTEMBER;
+
+    public DashboardFilter {
+        if (from == null || to == null) {
+            throw new IllegalArgumentException("Khoảng thời gian không được để trống.");
+        }
+        if (to.isBefore(from)) {
+            throw new IllegalArgumentException("Ngày cuối kỳ phải sau ngày đầu kỳ.");
+        }
+    }
+
+    /**
+     * Kỳ mặc định khi mở Bảng điều khiển: NĂM HỌC hiện hành (01/9 → 31/8).
+     *
+     * <p>Không lấy "tháng này" vì chu kỳ kinh doanh của trung tâm gia sư là năm học chứ không
+     * phải tháng dương lịch: mở dashboard vào tháng 7 sẽ ra một màn hình toàn số 0 trong khi
+     * năm học vừa rồi có cả chục nghìn buổi dạy.
+     */
+    public static DashboardFilter namHocHienHanh() {
+        LocalDate homNay = BusinessTime.today();
+        int namBatDau = homNay.getMonthValue() >= THANG_KHAI_GIANG.getValue() ? homNay.getYear() : homNay.getYear() - 1;
+        return new DashboardFilter(
+                LocalDate.of(namBatDau, THANG_KHAI_GIANG, 1),
+                LocalDate.of(namBatDau + 1, THANG_KHAI_GIANG, 1).minusDays(1),
+                null,
+                null,
+                null);
+    }
+
+    /** Nhãn hiển thị của kỳ, vd "Năm học 2025–2026" hoặc "01/09/2025 – 31/12/2025". */
+    public String nhan() {
+        LocalDate namHocTu = LocalDate.of(from.getYear(), THANG_KHAI_GIANG, 1);
+        if (from.equals(namHocTu) && to.equals(namHocTu.plusYears(1).minusDays(1))) {
+            return "Năm học " + from.getYear() + "–" + (from.getYear() + 1);
+        }
+        return "%02d/%02d/%d – %02d/%02d/%d"
+                .formatted(
+                        from.getDayOfMonth(),
+                        from.getMonthValue(),
+                        from.getYear(),
+                        to.getDayOfMonth(),
+                        to.getMonthValue(),
+                        to.getYear());
+    }
+
+    /** Số ngày của kỳ (tính cả hai đầu). */
+    public long soNgay() {
+        return java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1;
+    }
+
+    /**
+     * Kỳ liền trước có ĐỘ DÀI BẰNG ĐÚNG kỳ hiện tại, dùng cho mọi phép so sánh "so với kỳ trước".
+     *
+     * <p>Phải bằng đúng độ dài thì phần trăm mới có nghĩa: đem một quý so với một tháng rồi kết
+     * luận "giảm 66%" là con số vô nghĩa nhưng nhìn vẫn rất thuyết phục.
+     */
+    public DashboardFilter kyTruoc() {
+        long ngay = soNgay();
+        return new DashboardFilter(from.minusDays(ngay), from.minusDays(1), branchId, schoolId, categoryId);
+    }
+}
