@@ -33,11 +33,11 @@ const nav = [
     items: [
       { label: 'Phân công', icon: 'assignment', to: '/assignments' },
       { label: 'Lịch dạy', icon: 'schedule', to: '/schedule' },
-      { label: 'Chấm công', icon: 'clock', to: '/attendance' },
-      { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
-      // Đặt trong nhóm Điều phối vì đây là thứ quyết định lịch dạy có buổi hay không —
+      // Đặt ngay dưới Lịch dạy vì đây là thứ quyết định lịch dạy có buổi hay không —
       // ai thấy buổi dạy "biến mất" khỏi thời khóa biểu sẽ tìm câu trả lời ở ngay đây.
       { label: 'Lịch nghỉ', icon: 'clock', to: '/admin/holidays' },
+      { label: 'Chấm công', icon: 'clock', to: '/attendance' },
+      { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
     ],
   },
   // Nhóm "Hệ thống" TẠM ẨN cho đợt bảo vệ (demo chỉ dùng admin + teacher).

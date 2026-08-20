@@ -17,9 +17,12 @@
  *    một kỳ nghỉ gõ nhầm năm mà tự hủy sẽ quét sạch lịch trước khi ai kịp nhìn.
  */
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { holidayApi } from '@/api/holidays'
 import { schoolApi } from '@/api/schools'
 import DateField from '@/components/ui/DateField.vue'
+
+const route = useRoute()
 
 const KINDS = [
   { value: 'NATIONAL', label: 'Lễ theo luật' },
@@ -182,7 +185,38 @@ async function save() {
 
 /* ──────────── Buổi dạy đã sinh đang rơi vào kỳ nghỉ ──────────── */
 
+/**
+ * Một hộp thoại, HAI việc — cố ý gộp: chúng là hai nửa của cùng một sự cố.
+ *   · Buổi CHƯA diễn ra  → hủy đi là xong (impact).
+ *   · Buổi ĐÃ diễn ra    → hủy không cứu được, dòng VẮNG mà job nền ghi vẫn nằm trong hồ sơ
+ *                          chuyên cần của giáo viên và phải chuyển sang Nghỉ phép (absence).
+ * Tách thành hai nút riêng thì ai cũng bấm nút đầu rồi tưởng đã xong.
+ */
 const impact = reactive({ open: false, holiday: null, data: null, loading: false, working: false, done: '' })
+
+const absence = reactive({
+  rows: [],
+  /** attendanceId đang được tick — mặc định tick hết, bỏ tick dòng giáo viên thật sự có dạy. */
+  picked: new Set(),
+  lockedCount: 0,
+  lockedPeriods: [],
+  reason: '',
+  working: false,
+  done: '',
+})
+
+const pickedCount = computed(() => absence.picked.size)
+const allPicked = computed(() => absence.rows.length > 0 && absence.picked.size === absence.rows.length)
+
+function togglePick(id) {
+  if (absence.picked.has(id)) absence.picked.delete(id)
+  else absence.picked.add(id)
+}
+
+function toggleAll() {
+  if (allPicked.value) absence.picked.clear()
+  else absence.rows.forEach((r) => absence.picked.add(r.attendanceId))
+}
 
 async function checkImpact(h) {
   impact.open = true
@@ -190,11 +224,25 @@ async function checkImpact(h) {
   impact.data = null
   impact.done = ''
   impact.loading = true
+  absence.rows = []
+  absence.picked = new Set()
+  absence.lockedCount = 0
+  absence.lockedPeriods = []
+  absence.done = ''
+  // Lý do điền sẵn theo tên kỳ nghỉ: hệ thống bắt mọi can thiệp tay phải có lý do, mà bắt gõ
+  // tay 50 lần thì chỉ nhận về "sua loi". Vẫn cho sửa nếu đợt này có bối cảnh riêng.
+  absence.reason = `${h.name} — buổi không diễn ra, lịch sinh trước khi khai báo kỳ nghỉ`
   try {
-    const res = await holidayApi.impact(h.id)
-    impact.data = res.data
-    // Không có buổi nào vướng thì không bắt người dùng đóng một hộp thoại vô nghĩa.
-    if (!res.data?.sessionCount && !res.data?.pastSessionCount) impact.open = false
+    const [imp, abs] = await Promise.all([holidayApi.impact(h.id), holidayApi.absences(h.id)])
+    impact.data = imp.data
+    absence.rows = abs.data?.rows ?? []
+    absence.lockedCount = abs.data?.lockedCount ?? 0
+    absence.lockedPeriods = abs.data?.lockedPeriods ?? []
+    absence.rows.forEach((r) => absence.picked.add(r.attendanceId))
+    // Không có gì vướng thì đừng bắt người dùng đóng một hộp thoại rỗng.
+    const nothing =
+      !imp.data?.sessionCount && !imp.data?.pastSessionCount && !absence.rows.length && !absence.lockedCount
+    if (nothing) impact.open = false
   } catch {
     impact.open = false
   } finally {
@@ -212,6 +260,26 @@ async function doCancelSessions() {
     impact.done = e.response?.data?.message || 'Không hủy được. Thử lại.'
   } finally {
     impact.working = false
+  }
+}
+
+/** Chuyển các dòng Vắng đã tick sang Nghỉ phép — KHÔNG đụng tới tiền, chỉ sạch hồ sơ. */
+async function doFixAbsences() {
+  if (!absence.picked.size) return
+  absence.working = true
+  try {
+    const res = await holidayApi.fixAbsences(impact.holiday.id, {
+      attendanceIds: [...absence.picked],
+      reason: absence.reason.trim(),
+    })
+    const fixed = res.data?.fixed ?? 0
+    absence.done = `Đã chuyển ${fixed} dòng sang Nghỉ phép và báo cho giáo viên liên quan.`
+    absence.rows = absence.rows.filter((r) => !absence.picked.has(r.attendanceId))
+    absence.picked = new Set()
+  } catch (e) {
+    absence.done = e.response?.data?.message || 'Không sửa được. Thử lại.'
+  } finally {
+    absence.working = false
   }
 }
 
@@ -241,6 +309,18 @@ onMounted(async () => {
   } catch {
     schools.value = []
   }
+  // Cảnh báo bên Bảng lương trỏ sang đây kèm ?focus=<id>: mở thẳng hộp thoại xử lý của đúng
+  // kỳ nghỉ đó. Đẩy người dùng tới danh sách rồi để họ tự dò lại là làm hỏng nửa sau của
+  // chuỗi "phát hiện → sửa".
+  const focusId = Number(route.query.focus)
+  if (focusId) {
+    try {
+      const res = await holidayApi.detail(focusId)
+      await checkImpact(res.data)
+    } catch {
+      /* kỳ nghỉ đã bị xóa — im lặng, danh sách vẫn dùng được bình thường */
+    }
+  }
 })
 </script>
 
@@ -249,9 +329,6 @@ onMounted(async () => {
     <div class="page__head">
       <div>
         <h1 class="page__title">Lịch nghỉ</h1>
-        <p class="page__sub">
-          Ngày lễ và kỳ nghỉ khai ở đây thì hệ thống KHÔNG sinh buổi dạy vào những ngày đó.
-        </p>
       </div>
       <button class="btn" @click="openCreate">+ Thêm kỳ nghỉ</button>
     </div>
@@ -424,40 +501,119 @@ onMounted(async () => {
 
     <!-- ============ Modal: buổi dạy vướng kỳ nghỉ ============ -->
     <div v-if="impact.open" class="modal" @click.self="impact.open = false">
-      <div class="modal-box">
+      <div class="modal-box modal-box--lg">
         <h2 class="modal-title">Buổi dạy rơi vào kỳ nghỉ</h2>
         <p class="modal-sub">{{ impact.holiday?.name }} · {{ impact.holiday && fmtRange(impact.holiday) }}</p>
 
         <p v-if="impact.loading">Đang kiểm tra...</p>
 
-        <template v-else-if="impact.data">
-          <p v-if="impact.data.sessionCount > 0" class="impact-warn">
-            Có <strong>{{ impact.data.sessionCount }}</strong> buổi dạy chưa diễn ra của
-            <strong>{{ impact.data.teacherCount }}</strong> giáo viên đang nằm trong kỳ nghỉ này
-            (từ {{ fmt(impact.data.firstDate) }} đến {{ fmt(impact.data.lastDate) }}).
-            <br />
-            Chúng được sinh ra TRƯỚC khi kỳ nghỉ được khai báo nên vẫn còn trong lịch. Không hủy
-            thì hệ thống sẽ tự ghi vắng cho giáo viên vào ngày trường đóng cửa, và trừ vào lương.
-          </p>
-          <p v-else class="impact-ok">Không còn buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.</p>
+        <template v-else>
+          <!-- ─── Phần 1: buổi CHƯA diễn ra — hủy là xong ─── -->
+          <h3 class="sec-title">1 · Buổi chưa diễn ra</h3>
 
-          <p v-if="impact.data.pastSessionCount > 0" class="impact-note">
-            Ngoài ra có {{ impact.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này —
-            giữ nguyên, không hủy: chúng có thể đã gắn chấm công và đã vào bảng lương.
+          <template v-if="impact.data">
+            <p v-if="impact.data.sessionCount > 0" class="impact-warn">
+              Có <strong>{{ impact.data.sessionCount }}</strong> buổi dạy chưa diễn ra của
+              <strong>{{ impact.data.teacherCount }}</strong> giáo viên đang nằm trong kỳ nghỉ này
+              (từ {{ fmt(impact.data.firstDate) }} đến {{ fmt(impact.data.lastDate) }}).
+              <br />
+              Chúng được sinh ra TRƯỚC khi kỳ nghỉ được khai báo nên vẫn còn trong lịch. Không hủy
+              thì hệ thống sẽ tự ghi vắng cho giáo viên vào ngày trường đóng cửa.
+            </p>
+            <p v-else class="impact-ok">Không còn buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.</p>
+
+            <p v-if="impact.data.pastSessionCount > 0" class="impact-note">
+              Ngoài ra có {{ impact.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này —
+              giữ nguyên, không hủy: chúng có thể đã gắn chấm công và đã vào bảng lương.
+            </p>
+
+            <p v-if="impact.done" class="msg">{{ impact.done }}</p>
+
+            <div v-if="impact.data.sessionCount > 0" class="sec-actions">
+              <button class="btn btn--danger" :disabled="impact.working" @click="doCancelSessions">
+                {{ impact.working ? 'Đang hủy...' : `Hủy ${impact.data.sessionCount} buổi dạy` }}
+              </button>
+            </div>
+          </template>
+
+          <!-- ─── Phần 2: buổi ĐÃ diễn ra — hủy không cứu được, phải sửa chấm công ─── -->
+          <h3 class="sec-title">2 · Dòng chấm công Vắng của buổi đã qua</h3>
+
+          <p v-if="!absence.rows.length && !absence.lockedCount" class="impact-ok">
+            Không có dòng Vắng nào do hệ thống ghi nhầm trong kỳ nghỉ này.
           </p>
 
-          <p v-if="impact.done" class="msg">{{ impact.done }}</p>
+          <template v-if="absence.rows.length">
+            <p class="impact-warn">
+              <strong>{{ absence.rows.length }}</strong> dòng chấm công đang ghi
+              <strong>Vắng</strong> cho buổi rơi vào kỳ nghỉ. Hủy buổi KHÔNG xóa được các dòng
+              này — chúng nằm trong hồ sơ chuyên cần của giáo viên, và job nền đã nhắn cho họ là
+              đã vắng buổi đó.
+              <br />
+              Chuyển sang <strong>Nghỉ phép</strong> không làm đổi tiền lương (cả hai đều không
+              tính tiết) — nó chỉ trả lại hồ sơ đúng sự thật: hôm đó trường không hoạt động.
+            </p>
+
+            <div class="abs-wrap">
+              <table class="abs-table">
+                <thead>
+                  <tr>
+                    <th width="36">
+                      <input type="checkbox" :checked="allPicked" @change="toggleAll" />
+                    </th>
+                    <th width="110">Ngày</th>
+                    <th>Giáo viên</th>
+                    <th>Ghi chú của hệ thống</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="r in absence.rows"
+                    :key="r.attendanceId"
+                    :class="{ 'row--off': !absence.picked.has(r.attendanceId) }"
+                  >
+                    <td>
+                      <input
+                        type="checkbox"
+                        :checked="absence.picked.has(r.attendanceId)"
+                        @change="togglePick(r.attendanceId)"
+                      />
+                    </td>
+                    <td>{{ fmt(r.workDate) }}</td>
+                    <td>{{ r.teacherName }}</td>
+                    <td class="desc-text">{{ r.note || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <label class="field">
+              <span>Lý do điều chỉnh *</span>
+              <input v-model="absence.reason" placeholder="Vì sao sửa các dòng này..." />
+              <small class="hint-inline">
+                Ghi vào từng dòng chấm công và lưu vĩnh viễn trong nhật ký thay đổi.
+              </small>
+            </label>
+          </template>
+
+          <p v-if="absence.lockedCount > 0" class="impact-note">
+            Còn <strong>{{ absence.lockedCount }}</strong> dòng thuộc kỳ lương ĐÃ CHỐT
+            ({{ absence.lockedPeriods.join(', ') }}) nên chưa sửa được. Vào Bảng lương mở lại kỳ
+            đó rồi quay lại đây.
+          </p>
+
+          <p v-if="absence.done" class="msg">{{ absence.done }}</p>
         </template>
 
         <div class="modal-actions">
           <button class="btn btn--ghost" @click="impact.open = false">Đóng</button>
           <button
-            v-if="impact.data?.sessionCount > 0"
-            class="btn btn--danger"
-            :disabled="impact.working"
-            @click="doCancelSessions"
+            v-if="absence.rows.length"
+            class="btn"
+            :disabled="absence.working || !pickedCount || !absence.reason.trim()"
+            @click="doFixAbsences"
           >
-            {{ impact.working ? 'Đang hủy...' : `Hủy ${impact.data.sessionCount} buổi dạy` }}
+            {{ absence.working ? 'Đang sửa...' : `Chuyển ${pickedCount} dòng sang Nghỉ phép` }}
           </button>
         </div>
       </div>
@@ -504,12 +660,6 @@ onMounted(async () => {
   font-size: 26px;
   font-weight: 700;
   color: var(--c-text);
-}
-.page__sub {
-  margin: 6px 0 0;
-  color: var(--c-text-muted);
-  font-size: 14px;
-  max-width: 62ch;
 }
 
 /* ================= Filter ================= */
@@ -754,6 +904,10 @@ tbody tr:hover {
 .modal-box--sm {
   max-width: 460px;
 }
+/* Hộp thoại "Buổi dạy" chứa cả bảng chấm công nên cần rộng hơn hộp thoại nhập liệu. */
+.modal-box--lg {
+  max-width: 860px;
+}
 .modal-title {
   margin: 0;
   font-size: 20px;
@@ -811,6 +965,57 @@ tbody tr:hover {
 .impact-note {
   margin: 0;
   font-size: 13px;
+  color: var(--c-text-muted);
+}
+
+/* ===== Hai phần của hộp thoại "Buổi dạy" ===== */
+.sec-title {
+  margin: 6px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-border);
+  font-size: 15px;
+  font-weight: 700;
+}
+.sec-title:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+.sec-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.abs-wrap {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+}
+.abs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.abs-table th,
+.abs-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--c-border);
+}
+.abs-table th {
+  position: sticky;
+  top: 0;
+  background: var(--c-surface);
+  font-weight: 600;
+}
+.abs-table tr:last-child td {
+  border-bottom: 0;
+}
+/* Dòng bị bỏ tick — làm mờ để thấy ngay cái gì sẽ KHÔNG bị sửa. */
+.row--off {
+  opacity: 0.45;
+}
+.hint-inline {
+  font-size: 12.5px;
   color: var(--c-text-muted);
 }
 

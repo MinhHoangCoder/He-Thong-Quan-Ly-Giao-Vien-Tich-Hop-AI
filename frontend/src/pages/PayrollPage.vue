@@ -3,10 +3,28 @@
  * Trang Bảng lương: tính lương theo kỳ (tháng/năm) = GIỜ DẠY × ĐƠN GIÁ + phụ cấp
  * + thưởng − khấu trừ. "Tính lương" tổng hợp giờ dạy từ Chấm công; kế toán có thể
  * chỉnh từng dòng rồi chốt (FINALIZED).
+ *
+ * CHỐT LƯƠNG LÀ HÀNH ĐỘNG MỘT CHIỀU — hai thứ trang này thêm vào vì lẽ đó:
+ * 1. Cảnh báo ngày nghỉ. Chốt xong là chấm công của kỳ bị khóa. Nếu kỳ còn dòng VẮNG mà hệ
+ *    thống ghi nhầm cho buổi rơi vào ngày lễ (buổi sinh trước khi khai kỳ nghỉ — Flyway V29),
+ *    chốt chính là khóa luôn lỗi vào trong. Banner báo trước, và hỏi lại lần hai lúc bấm.
+ * 2. Nút "Mở lại". Trước V32 khóa đó là vĩnh viễn: một lỗi hoàn toàn nhìn thấy trở thành
+ *    không thể sửa. Nay mở lại được, nhưng phải có quyền PAYROLL_REOPEN, phải nêu lý do, và
+ *    mọi lần mở đều nằm lại trong nhật ký phiếu lương.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { payrollApi } from '@/api/payroll'
+import { useAuthStore } from '@/stores/auth'
 import Pagination from '@/components/ui/Pagination.vue'
+
+const router = useRouter()
+const auth = useAuthStore()
+
+/** Nút mở lại chỉ hiện với người thật sự bấm được — ADMIN đi tắt như mọi quyền khác. */
+const canReopen = computed(
+  () => auth.roles.includes('ADMIN') || (auth.user?.perms ?? []).includes('PAYROLL_REOPEN'),
+)
 
 const now = new Date()
 const filter = reactive({
@@ -40,6 +58,22 @@ const editModal = reactive({ open: false, saving: false, error: '', row: null, f
 const vnd = (n) =>
   n == null ? '—' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(n) + ' ₫'
 
+/**
+ * Dòng Vắng rơi vào ngày nghỉ trong kỳ đang xem — nguồn của cả banner lẫn hộp xác nhận.
+ * Một nguồn duy nhất để hai chỗ không bao giờ nói hai con số khác nhau.
+ */
+const issues = ref(null)
+const hasIssues = computed(() => (issues.value?.absenceCount ?? 0) > 0)
+
+async function loadIssues() {
+  try {
+    const { data } = await payrollApi.holidayIssues(filter.year, filter.month)
+    issues.value = data
+  } catch {
+    issues.value = null // cảnh báo hỏng thì im lặng, không chặn việc chính
+  }
+}
+
 async function load() {
   loading.value = true
   info.value = ''
@@ -53,6 +87,7 @@ async function load() {
   } finally {
     loading.value = false
   }
+  loadIssues()
 }
 
 onMounted(load)
@@ -109,12 +144,76 @@ async function saveEdit() {
   }
 }
 
-async function finalize(r) {
+/* ──────────── Chốt lương: hỏi lại nếu kỳ còn Vắng rơi vào ngày nghỉ ──────────── */
+
+const confirmModal = reactive({ open: false, row: null, working: false })
+
+/**
+ * Kỳ sạch thì chốt thẳng, không thêm một cú bấm vô nghĩa. Kỳ còn lỗi mới hỏi lại — cảnh báo
+ * hiện ra ở mọi lần bấm sẽ bị bấm qua theo phản xạ trong đúng một tuần.
+ */
+function finalize(r) {
+  if (!hasIssues.value) {
+    doFinalize(r)
+    return
+  }
+  confirmModal.open = true
+  confirmModal.row = r
+  confirmModal.working = false
+}
+
+async function doFinalize(r) {
+  confirmModal.working = true
   try {
     await payrollApi.finalize(r.id)
+    confirmModal.open = false
     load()
   } catch (e) {
     alert(e.response?.data?.message ?? 'Chốt lương thất bại')
+  } finally {
+    confirmModal.working = false
+  }
+}
+
+/** Từ cảnh báo đi thẳng sang kỳ nghỉ gây lỗi — chỉ ra vấn đề mà không chỉ đường sửa là vô ích. */
+function goFixHoliday(holidayId) {
+  confirmModal.open = false
+  router.push({ path: '/admin/holidays', query: { focus: holidayId } })
+}
+
+/* ──────────── Mở lại kỳ lương đã chốt (V32) ──────────── */
+
+const reopenModal = reactive({ open: false, row: null, reason: '', working: false, error: '' })
+
+const finalizedCount = computed(() => rows.value.filter((r) => r.status === 'FINALIZED').length)
+
+/** row = null → mở lại CẢ THÁNG (lỗi lịch nghỉ hiếm khi chỉ dính một người). */
+function openReopen(row) {
+  reopenModal.open = true
+  reopenModal.row = row
+  reopenModal.reason = ''
+  reopenModal.error = ''
+  reopenModal.working = false
+}
+
+async function doReopen() {
+  if (!reopenModal.reason.trim()) return
+  reopenModal.working = true
+  reopenModal.error = ''
+  try {
+    if (reopenModal.row) {
+      await payrollApi.reopen(reopenModal.row.id, reopenModal.reason.trim())
+      info.value = `Đã mở lại phiếu lương của ${reopenModal.row.teacherName}.`
+    } else {
+      const { data } = await payrollApi.reopenPeriod(filter.year, filter.month, reopenModal.reason.trim())
+      info.value = `Đã mở lại ${data?.reopened ?? 0} phiếu lương của kỳ ${filter.month}/${filter.year}.`
+    }
+    reopenModal.open = false
+    load()
+  } catch (e) {
+    reopenModal.error = e.response?.data?.message ?? 'Mở lại thất bại'
+  } finally {
+    reopenModal.working = false
   }
 }
 
@@ -141,7 +240,40 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
       <button class="btn btn-outline btn-sm" @click="load">Xem</button>
       <span class="divider" />
       <button class="btn btn-primary btn-sm" @click="generate">Tính lương từ chấm công</button>
+      <button
+        v-if="canReopen && finalizedCount > 0"
+        class="btn btn-outline btn-sm"
+        @click="openReopen(null)"
+      >
+        Mở lại cả tháng ({{ finalizedCount }})
+      </button>
       <span v-if="info" class="info-text">{{ info }}</span>
+    </div>
+
+    <!-- Cảnh báo NGÀY NGHỈ: hiện ngay khi chọn tháng, trước cả khi người dùng định chốt. -->
+    <div v-if="hasIssues" class="alert-holiday">
+      <div class="alert-holiday__body">
+        <strong
+          >Kỳ này còn {{ issues.absenceCount }} dòng chấm công Vắng rơi vào ngày nghỉ</strong
+        >
+        ({{ issues.teacherCount }} giáo viên).
+        Đó là buổi dạy sinh ra trước khi kỳ nghỉ được khai báo — hôm đó trường đóng cửa nhưng
+        hệ thống vẫn ghi giáo viên vắng mặt.
+        <br />
+        <span class="alert-holiday__warn">
+          Chốt lương sẽ KHÓA chấm công của kỳ này. Xử lý trước khi chốt.
+        </span>
+        <div class="alert-holiday__links">
+          <button
+            v-for="h in issues.holidays"
+            :key="h.holidayId"
+            class="link-chip"
+            @click="goFixHoliday(h.holidayId)"
+          >
+            {{ h.name }} · {{ h.absenceCount }} dòng →
+          </button>
+        </div>
+      </div>
     </div>
 
     <div class="table-wrap">
@@ -197,6 +329,13 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
                 @click="finalize(r)"
               >
                 Chốt
+              </button>
+              <button
+                v-if="canReopen && r.status === 'FINALIZED'"
+                class="btn btn-sm btn-outline"
+                @click="openReopen(r)"
+              >
+                Mở lại
               </button>
             </td>
           </tr>
@@ -254,10 +393,135 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         </div>
       </div>
     </div>
+
+    <!-- Modal xác nhận chốt khi kỳ còn Vắng rơi vào ngày nghỉ -->
+    <div v-if="confirmModal.open" class="modal-overlay" @click.self="confirmModal.open = false">
+      <div class="modal-box">
+        <h3>Chốt lương khi kỳ còn lỗi ngày nghỉ?</h3>
+        <p class="warn-block">
+          Kỳ {{ filter.month }}/{{ filter.year }} còn
+          <strong>{{ issues?.absenceCount }}</strong> dòng chấm công ghi Vắng cho buổi rơi vào
+          ngày nghỉ ({{ issues?.teacherCount }} giáo viên).
+          <br /><br />
+          Chốt xong sẽ <strong>khóa chấm công của cả kỳ này</strong>. Các dòng Vắng đó nằm lại
+          trong hồ sơ chuyên cần của giáo viên, và chỉ sửa được sau khi mở lại bảng lương.
+        </p>
+        <p class="small text-muted">
+          Nếu bạn biết rõ đây là vắng thật (giáo viên có buổi dạy bù hôm đó mà bỏ) thì cứ chốt.
+        </p>
+        <div class="chip-row">
+          <button
+            v-for="h in issues?.holidays ?? []"
+            :key="h.holidayId"
+            class="link-chip"
+            @click="goFixHoliday(h.holidayId)"
+          >
+            Đi sửa: {{ h.name }} ({{ h.absenceCount }}) →
+          </button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="confirmModal.open = false">Để tôi xử lý trước</button>
+          <button
+            class="btn btn-primary"
+            :disabled="confirmModal.working"
+            @click="doFinalize(confirmModal.row)"
+          >
+            {{ confirmModal.working ? 'Đang chốt…' : 'Vẫn chốt' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal mở lại bảng lương đã chốt -->
+    <div v-if="reopenModal.open" class="modal-overlay" @click.self="reopenModal.open = false">
+      <div class="modal-box">
+        <h3>
+          {{
+            reopenModal.row
+              ? `Mở lại phiếu lương — ${reopenModal.row.teacherName}`
+              : `Mở lại cả kỳ ${filter.month}/${filter.year}`
+          }}
+        </h3>
+        <p class="warn-block">
+          Phiếu sẽ quay về trạng thái <strong>Nháp</strong>, chấm công của kỳ mở khóa trở lại và
+          giáo viên tạm thời KHÔNG xem được phiếu lương (họ sẽ nhận thông báo giải thích).
+          <span v-if="!reopenModal.row">
+            <br /><br />
+            Áp dụng cho <strong>{{ finalizedCount }}</strong> phiếu đang ở trạng thái đã chốt.
+          </span>
+        </p>
+        <div class="form-group">
+          <label>Lý do mở lại *</label>
+          <input
+            v-model="reopenModal.reason"
+            placeholder="VD: sửa dòng Vắng ghi nhầm vào ngày lễ 2/9"
+          />
+          <small class="text-muted">Lưu vĩnh viễn trong nhật ký phiếu lương.</small>
+        </div>
+        <p v-if="reopenModal.error" class="error-msg">{{ reopenModal.error }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="reopenModal.open = false">Hủy</button>
+          <button
+            class="btn btn-primary"
+            :disabled="reopenModal.working || !reopenModal.reason.trim()"
+            @click="doReopen"
+          >
+            {{ reopenModal.working ? 'Đang mở…' : 'Mở lại' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* ===== Cảnh báo ngày nghỉ ===== */
+.alert-holiday {
+  display: flex;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  border-left: 4px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.alert-holiday__warn {
+  font-weight: 700;
+}
+.alert-holiday__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.link-chip {
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.link-chip:hover {
+  border-color: var(--c-primary);
+  color: var(--c-primary-dark);
+}
+.warn-block {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
 .num {
   text-align: right;
 }

@@ -1,17 +1,23 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.dto.PayrollChangeLogResponse;
+import com.kdc.tsdms.dto.PayrollHolidayIssueResponse;
 import com.kdc.tsdms.dto.PayrollResponse;
 import com.kdc.tsdms.dto.PayrollUpdateRequest;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Attendance;
 import com.kdc.tsdms.entity.Payroll;
+import com.kdc.tsdms.entity.PayrollChangeLog;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.PayrollChangeLogRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -22,6 +28,8 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -65,6 +73,15 @@ public class PayrollService {
 
     private static final Pattern DIGITS = Pattern.compile("(\\d{1,2})");
 
+    /**
+     * Mở lại được kỳ lương lùi tối đa ngần này tháng (Flyway V32).
+     *
+     * <p>Luật nghiệp vụ chứ không phải ràng buộc kỹ thuật: đủ rộng cho mọi sai sót thực tế
+     * (lỗi ngày nghỉ luôn lộ ra trong vòng một hai kỳ), nhưng vẫn có một điểm coi là đã quyết
+     * toán xong — không có mốc nào thì "sổ đã chốt" chẳng còn nghĩa gì.
+     */
+    private static final int REOPEN_MAX_MONTHS_BACK = 3;
+
     private final PayrollRepository payrollRepo;
     private final AttendanceRepository attendanceRepo;
     private final TeacherRepository teacherRepo;
@@ -72,6 +89,10 @@ public class PayrollService {
     private final AssignmentRepository assignmentRepo;
     private final AssignmentSlotRepository slotRepo;
     private final SchoolClassRepository classRepo;
+    private final PayrollChangeLogRepository changeLogRepo;
+    private final AppUserRepository userRepo;
+    private final DisplayNameResolver displayNameResolver;
+    private final HolidayService holidayService;
     private final EntityManager em;
     private final NotificationService notificationService;
 
@@ -83,6 +104,10 @@ public class PayrollService {
             AssignmentRepository assignmentRepo,
             AssignmentSlotRepository slotRepo,
             SchoolClassRepository classRepo,
+            PayrollChangeLogRepository changeLogRepo,
+            AppUserRepository userRepo,
+            DisplayNameResolver displayNameResolver,
+            HolidayService holidayService,
             EntityManager em,
             NotificationService notificationService) {
         this.payrollRepo = payrollRepo;
@@ -92,6 +117,10 @@ public class PayrollService {
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
         this.classRepo = classRepo;
+        this.changeLogRepo = changeLogRepo;
+        this.userRepo = userRepo;
+        this.displayNameResolver = displayNameResolver;
+        this.holidayService = holidayService;
         this.em = em;
         this.notificationService = notificationService;
     }
@@ -237,6 +266,7 @@ public class PayrollService {
         p.setUpdatedAt(Instant.now());
         payrollRepo.saveAndFlush(p);
         em.refresh(p);
+        writeLog(p, "FINALIZE", null, "DRAFT", "FINALIZED", null, p.getNetAmount());
         // Bảng lương đã chốt → giáo viên xem được: báo cho GV.
         notificationService.publishToTeacher(
                 p.getTeacherId(),
@@ -249,6 +279,151 @@ public class PayrollService {
                 p.getId().longValue(),
                 false);
         return toResponse(p);
+    }
+
+    /* ──────────────── MỞ LẠI KỲ LƯƠNG ĐÃ CHỐT (V32) ──────────────── */
+
+    /**
+     * Đưa một phiếu lương ĐÃ CHỐT về lại trạng thái nháp để sửa được.
+     *
+     * <p>Vì sao cần: chốt lương khóa luôn chấm công của kỳ đó ({@code
+     * AttendanceService.assertPeriodOpen}). Trước V32 điều đó biến một lỗi dữ liệu hoàn toàn có
+     * thật — dòng VẮNG mà hệ thống ghi nhầm cho buổi "ma" ngày lễ — thành lỗi KHÔNG THỂ SỬA,
+     * mà người dùng không làm sai bước nào: họ chỉ chốt lương đúng hạn.
+     *
+     * <p>CHỈ mở được phiếu "đã chốt", không mở phiếu "đã trả": tiền đã ra khỏi quỹ thì sửa số
+     * trên hệ thống mà không sửa được thực tế chỉ tạo ra lệch sổ sách.
+     */
+    @Transactional
+    public PayrollResponse reopen(Integer id, String reason) {
+        Payroll p = getOrThrow(id);
+        assertReopenable(p);
+
+        BigDecimal before = p.getNetAmount();
+        p.setStatus("DRAFT");
+        p.setUpdatedBy(SecurityUtils.currentUserId());
+        p.setUpdatedAt(Instant.now());
+        payrollRepo.saveAndFlush(p);
+        em.refresh(p);
+        writeLog(p, "REOPEN", reason, "FINALIZED", "DRAFT", before, null);
+
+        // Phiếu về nháp là GV mất quyền xem (TEACHER_VISIBLE_STATUS). Phiếu tự biến mất mà
+        // không một lời nào là thứ chắc chắn sinh ra thắc mắc — nói trước thì không.
+        notificationService.publishToTeacher(
+                p.getTeacherId(),
+                "Phiếu lương kỳ " + p.getPeriodMonth() + "/" + p.getPeriodYear() + " đang được điều chỉnh",
+                "Phiếu lương tháng " + p.getPeriodMonth() + "/" + p.getPeriodYear()
+                        + " đã được mở lại để điều chỉnh nên tạm thời không hiển thị."
+                        + " Bạn sẽ xem lại được ngay khi kế toán chốt lại.",
+                "PAYROLL",
+                "Payroll",
+                p.getId().longValue(),
+                false);
+        return toResponse(p);
+    }
+
+    /**
+     * Mở lại MỌI phiếu đã chốt của một kỳ.
+     *
+     * <p>Có mặt vì lỗi lịch nghỉ hiếm khi chỉ dính một người: một ngày lễ khai muộn kéo theo cả
+     * chục giáo viên. Bắt bấm từng dòng, mỗi dòng nhập lại lý do, là cách chắc chắn để người ta
+     * bỏ dở giữa chừng.
+     *
+     * @return số phiếu đã mở lại
+     */
+    @Transactional
+    public int reopenPeriod(short year, short month, String reason) {
+        assertPeriodWithinReopenWindow(year, month);
+        List<Payroll> targets = payrollRepo.findByPeriodYearAndPeriodMonthOrderByTeacherId(year, month).stream()
+                .filter(p -> "FINALIZED".equals(p.getStatus()))
+                .toList();
+        if (targets.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Kỳ lương " + month + "/" + year + " không có phiếu nào ở trạng thái đã chốt.");
+        }
+        for (Payroll p : targets) {
+            reopen(p.getId(), reason);
+        }
+        return targets.size();
+    }
+
+    /** Lịch sử chốt/mở lại của một phiếu — mới nhất trước. */
+    @Transactional(readOnly = true)
+    public List<PayrollChangeLogResponse> logs(Integer id) {
+        getOrThrow(id); // 404 sớm thay vì trả mảng rỗng khó hiểu
+        Map<Integer, String> nameCache = new HashMap<>();
+        List<PayrollChangeLogResponse> out = new ArrayList<>();
+        for (PayrollChangeLog l : changeLogRepo.findByPayrollIdOrderByChangedAtDescIdDesc(id)) {
+            out.add(PayrollChangeLogResponse.fromEntity(l, actorName(l.getChangedBy(), nameCache)));
+        }
+        return out;
+    }
+
+    /**
+     * Cảnh báo trước khi chốt: kỳ này còn dòng Vắng nào rơi vào ngày nghỉ không.
+     *
+     * <p>Ủy quyền sang {@link HolidayService} vì đó là nơi biết luật ngày nghỉ (phạm vi trường,
+     * khoảng ngày chồng nhau). Bảng lương chỉ là bên ĐẶT CÂU HỎI, đúng lúc nó sắp làm một việc
+     * một chiều.
+     */
+    @Transactional(readOnly = true)
+    public PayrollHolidayIssueResponse holidayIssues(short year, short month) {
+        return holidayService.holidayIssues(year, month);
+    }
+
+    private void assertReopenable(Payroll p) {
+        if ("DRAFT".equals(p.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Phiếu lương này đang là nháp — không cần mở lại.");
+        }
+        if (!"FINALIZED".equals(p.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Phiếu lương đã ở trạng thái ĐÃ TRẢ — tiền đã ra khỏi quỹ nên không mở lại được."
+                            + " Điều chỉnh chênh lệch vào kỳ lương kế tiếp.");
+        }
+        assertPeriodWithinReopenWindow(p.getPeriodYear(), p.getPeriodMonth());
+    }
+
+    private void assertPeriodWithinReopenWindow(short year, short month) {
+        YearMonth target = YearMonth.of(year, month);
+        YearMonth oldest = YearMonth.from(BusinessTime.today()).minusMonths(REOPEN_MAX_MONTHS_BACK);
+        if (target.isBefore(oldest)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Kỳ lương " + month + "/" + year + " đã quá " + REOPEN_MAX_MONTHS_BACK
+                            + " tháng nên không mở lại được (sớm nhất: " + oldest.getMonthValue() + "/"
+                            + oldest.getYear() + "). Điều chỉnh chênh lệch vào kỳ lương kế tiếp.");
+        }
+    }
+
+    private void writeLog(
+            Payroll p,
+            String action,
+            String reason,
+            String statusBefore,
+            String statusAfter,
+            BigDecimal netBefore,
+            BigDecimal netAfter) {
+        PayrollChangeLog l = new PayrollChangeLog();
+        l.setPayrollId(p.getId());
+        l.setAction(action);
+        l.setReason(reason == null || reason.isBlank() ? null : reason.trim());
+        l.setStatusBefore(statusBefore);
+        l.setStatusAfter(statusAfter);
+        l.setNetAmountBefore(netBefore);
+        l.setNetAmountAfter(netAfter);
+        l.setChangedBy(SecurityUtils.currentUserId());
+        changeLogRepo.save(l);
+    }
+
+    private String actorName(Integer userId, Map<Integer, String> cache) {
+        if (userId == null) {
+            return null;
+        }
+        return cache.computeIfAbsent(
+                userId,
+                id -> userRepo.findById(id).map(displayNameResolver::resolve).orElse("(user #" + id + ")"));
     }
 
     /** Định dạng tiền VND gọn (vd 3.250.000đ). Null → "—". */
