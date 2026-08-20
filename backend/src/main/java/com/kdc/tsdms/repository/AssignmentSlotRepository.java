@@ -50,10 +50,4 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     @Modifying
     @Query("DELETE FROM AssignmentSlot s WHERE s.assignmentId = :assignmentId")
     void deleteByAssignmentId(@Param("assignmentId") Integer assignmentId);
-
-    /** Ô thời khóa biểu hằng tuần còn sống đang GẮN một phòng — chặn xóa phòng đang dùng. */
-    long countByRoomIdAndDeletedFalse(Integer roomId);
-
-    /** Ô thời khóa biểu hằng tuần còn sống đang DÙNG một tiết — chặn xóa tiết đang dùng. */
-    long countByPeriodIdAndDeletedFalse(Integer periodId);
 }

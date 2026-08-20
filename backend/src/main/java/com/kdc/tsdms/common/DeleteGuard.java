@@ -2,7 +2,6 @@ package com.kdc.tsdms.common;
 
 import com.kdc.tsdms.exception.ApiException;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 
@@ -34,7 +33,6 @@ public final class DeleteGuard {
 
     private final String subject;
     private final List<String> blockers = new ArrayList<>();
-    private String huongDanRieng;
 
     private DeleteGuard(String subject) {
         this.subject = subject;
@@ -68,28 +66,6 @@ public final class DeleteGuard {
         return this;
     }
 
-    /**
-     * Nhận cả một mớ rào chắn đã thành câu sẵn — dùng khi một câu SQL gom hết dữ liệu con của
-     * nhiều bảng trong một lượt (xem {@code TeacherRepository.countChildRowsByTeacherId}) thay
-     * vì tiêm chục repository vào constructor chỉ để đếm.
-     */
-    public DeleteGuard blockAll(Collection<String> reasons) {
-        if (reasons != null) {
-            reasons.stream().filter(r -> r != null && !r.isBlank()).forEach(blockers::add);
-        }
-        return this;
-    }
-
-    /**
-     * Thay câu hướng dẫn mặc định. Cần khi rào chắn là thứ người dùng KHÔNG có cách nào tự gỡ
-     * (kỳ lương đã chốt, hồ sơ pháp lý phải lưu) — câu mặc định "vui lòng xử lý trước khi xóa"
-     * lúc đó thành lời hứa suông, người dùng đi tìm nút gỡ không bao giờ có.
-     */
-    public DeleteGuard huongDan(String huongDan) {
-        this.huongDanRieng = huongDan;
-        return this;
-    }
-
     /** Có rào nào không — dùng khi bên gọi muốn tự xử lý thay vì ném lỗi. */
     public boolean blocked() {
         return !blockers.isEmpty();
@@ -113,9 +89,6 @@ public final class DeleteGuard {
     }
 
     private String huong() {
-        if (huongDanRieng != null) {
-            return huongDanRieng;
-        }
         return blockers.size() == 1
                 ? "Vui lòng xử lý mục này trước khi xóa."
                 : "Vui lòng xử lý các mục trên trước khi xóa.";

@@ -39,7 +39,4 @@ public interface SchoolRepository extends JpaRepository<School, Integer> {
             @Param("branchId") Integer branchId,
             @Param("status") String status,
             Pageable pageable);
-
-    /** Đếm trường còn hợp tác của một chi nhánh — chặn xóa chi nhánh còn trường. */
-    long countByBranchIdAndDeletedFalse(Integer branchId);
 }

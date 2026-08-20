@@ -69,14 +69,6 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
     /** Đếm buổi của phân công (thống kê). */
     long countByAssignmentIdAndDeletedFalse(Integer assignmentId);
 
-    /** Buổi dạy SẮP TỚI còn hiệu lực đang ĐẶT một phòng — chặn xóa phòng còn lịch dùng. */
-    long countByRoomIdAndStartTimeAfterAndStatusInAndDeletedFalse(
-            Integer roomId, LocalDateTime from, java.util.Collection<String> statuses);
-
-    /** Buổi dạy SẮP TỚI còn hiệu lực đang GẮN một tiết (khung giờ) — chặn xóa tiết còn lịch dùng. */
-    long countByPeriodIdAndStartTimeAfterAndStatusInAndDeletedFalse(
-            Integer periodId, LocalDateTime from, java.util.Collection<String> statuses);
-
     /** Mọi buổi (mọi trạng thái) trong khoảng — nguồn tính chỉ số dashboard (biểu đồ, giờ dạy...). */
     List<Schedule> findByStartTimeBetweenAndDeletedFalse(LocalDateTime from, LocalDateTime to);
 

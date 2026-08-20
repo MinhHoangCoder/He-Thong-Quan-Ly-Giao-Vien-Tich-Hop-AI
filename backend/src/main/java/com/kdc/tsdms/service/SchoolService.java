@@ -14,12 +14,8 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.ServiceContractRepository;
 import com.kdc.tsdms.repository.StudentRepository;
 import com.kdc.tsdms.security.SecurityUtils;
-import java.text.Normalizer;
 import java.time.Instant;
-import java.util.Arrays;
 import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -34,15 +30,12 @@ public class SchoolService {
     private static final List<String> PHAN_CONG_CON_HIEU_LUC =
             List.of(AssignmentStatus.ACTIVE, AssignmentStatus.PENDING);
 
-    private static final Logger log = LoggerFactory.getLogger(SchoolService.class);
-
     private final SchoolRepository sRepo;
     private final BranchRepository bRepo;
     private final SchoolClassRepository classRepo;
     private final AssignmentRepository assignmentRepo;
     private final ServiceContractRepository serviceContractRepo;
     private final StudentRepository studentRepo;
-    private final PeriodService periodService;
 
     public SchoolService(
             SchoolRepository schoolRepo,
@@ -50,15 +43,13 @@ public class SchoolService {
             SchoolClassRepository classRepo,
             AssignmentRepository assignmentRepo,
             ServiceContractRepository serviceContractRepo,
-            StudentRepository studentRepo,
-            PeriodService periodService) {
+            StudentRepository studentRepo) {
         this.sRepo = schoolRepo;
         this.bRepo = branchRepo;
         this.classRepo = classRepo;
         this.assignmentRepo = assignmentRepo;
         this.serviceContractRepo = serviceContractRepo;
         this.studentRepo = studentRepo;
-        this.periodService = periodService;
     }
 
     /* ── Danh sách có phân trang + tìm kiếm/lọc ── */
@@ -82,121 +73,8 @@ public class SchoolService {
 
         School s = new School();
         apply(s, req);
-        // Ghi đè tên bằng bản đã ghép tiền tố cấp học ("Ban Mai" + THCS -> "THCS Ban Mai").
-        s.setName(ghepTenTheoCap(req.name(), req.educationLevel()));
         s.setCreatedBy(SecurityUtils.currentUserId());
-        School saved = sRepo.save(s);
-
-        sinhKhungTietChuan(saved, req.educationLevel());
-        return toResponse(saved);
-    }
-
-    /**
-     * Các cụm từ chỉ cấp học có thể đứng đầu tên trường, viết KHÔNG DẤU và tách sẵn thành token.
-     * Xếp từ dài tới ngắn để "truong trung hoc co so" được cắt trọn thay vì chỉ cắt được "truong".
-     */
-    private static final List<String[]> TIEN_TO_CAP = List.of(
-            new String[] {"truong", "trung", "hoc", "co", "so"},
-            new String[] {"trung", "hoc", "co", "so"},
-            new String[] {"truong", "tieu", "hoc"},
-            new String[] {"tieu", "hoc"},
-            new String[] {"truong", "thcs"},
-            new String[] {"truong", "th"},
-            new String[] {"thcs"},
-            new String[] {"th"});
-
-    /**
-     * Ghép tên hiển thị của trường = tiền tố cấp học + tên riêng.
-     *
-     * <p>Ô "Tên trường" trên form giờ chỉ nhận TÊN RIÊNG ("Ban Mai"); phần "TH"/"THCS" do ô Cấp
-     * học quyết định. Nhờ vậy tên hiển thị và khung tiết LUÔN khớp nhau — trước đây hai thứ này
-     * nhập rời nhau nên có thể chỏi ("THCS Ban Mai" mà lại chạy khung tiểu học 35 phút, khiến mọi
-     * buổi dạy sai giờ mà không có lỗi nào bắn ra).
-     *
-     * <p>Người dùng lỡ gõ/dán cả tiền tố ("THCS Ban Mai") thì cắt bỏ rồi ghép lại, để không ra
-     * "THCS THCS Ban Mai". Cắt theo TOKEN chứ không theo vị trí ký tự: bỏ dấu tiếng Việt bằng
-     * NFD làm đổi độ dài chuỗi nên đếm chỉ số là sai.
-     *
-     * <p>Không chọn cấp (gọi API trực tiếp, script cũ) thì giữ nguyên tên như đã gửi.
-     */
-    static String ghepTenTheoCap(String name, String educationLevel) {
-        String ten = name == null ? "" : name.trim().replaceAll("\\s+", " ");
-        if (educationLevel == null || educationLevel.isBlank()) {
-            return ten;
-        }
-        String[] token = ten.isEmpty() ? new String[0] : ten.split(" ");
-        String[] khongDau = new String[token.length];
-        for (int i = 0; i < token.length; i++) {
-            khongDau[i] = boDau(token[i].toLowerCase());
-        }
-        for (String[] cum : TIEN_TO_CAP) {
-            if (token.length > cum.length && khopDau(khongDau, cum)) {
-                token = Arrays.copyOfRange(token, cum.length, token.length);
-                break;
-            }
-        }
-        String tenRieng = String.join(" ", token);
-        return tenRieng.isEmpty() ? ten : educationLevel + " " + tenRieng;
-    }
-
-    private static boolean khopDau(String[] khongDau, String[] cum) {
-        for (int i = 0; i < cum.length; i++) {
-            if (!cum[i].equals(khongDau[i])) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** Bỏ dấu tiếng Việt để so khớp không phụ thuộc người nhập có gõ dấu hay không. */
-    private static String boDau(String s) {
-        return Normalizer.normalize(s, Normalizer.Form.NFD)
-                .replaceAll("\\p{M}", "")
-                .replace('đ', 'd');
-    }
-
-    /**
-     * Sinh sẵn khung tiết chuẩn cho trường VỪA TẠO.
-     *
-     * <p>VÌ SAO: trường mới luôn có 0 tiết, mà 0 tiết thì KHÔNG phân công được. Trước đây người
-     * dùng phải tự mò sang màn Phân công bấm nút "Áp khung tiết chuẩn" — mà nút đó lại đòi trường
-     * phải có lớp trước (cấp học suy từ khối lớp cao nhất). Thêm trường xong không dùng được
-     * ngay là một cái bẫy im lặng.
-     *
-     * <p>Cấp học lấy theo thứ tự: người tạo chọn -> đoán từ tên trường -> chịu. Trường hợp cuối
-     * KHÔNG sinh gì cả và cũng KHÔNG báo lỗi: nút áp khung ở màn Phân công vẫn còn nguyên làm
-     * lối thoát. Đoán bừa nguy hiểm hơn là bỏ trống — gán nhầm khung 35 phút cho trường THCS là
-     * sai giờ toàn bộ lịch dạy về sau mà không có lỗi nào bắn ra.
-     *
-     * <p>Lỗi ở bước này KHÔNG được làm hỏng việc tạo trường: khung tiết là tiện ích đi kèm, còn
-     * bản ghi trường mới là thao tác chính người dùng yêu cầu.
-     */
-    private void sinhKhungTietChuan(School saved, String educationLevel) {
-        Boolean tieuHoc;
-        if ("TH".equals(educationLevel)) {
-            tieuHoc = Boolean.TRUE;
-        } else if ("THCS".equals(educationLevel)) {
-            tieuHoc = Boolean.FALSE;
-        } else {
-            tieuHoc = PeriodService.suyCapTuTen(saved.getName());
-        }
-        if (tieuHoc == null) {
-            log.info(
-                    "Trường '{}' (id={}) chưa xác định được cấp học nên chưa sinh khung tiết —"
-                            + " dùng nút 'Áp khung tiết chuẩn' ở màn Phân công sau khi đã thêm lớp.",
-                    saved.getName(),
-                    saved.getId());
-            return;
-        }
-        try {
-            periodService.applyStandardFrame(saved.getId(), saved.getName(), tieuHoc);
-        } catch (RuntimeException ex) {
-            log.warn(
-                    "Tạo trường '{}' (id={}) thành công nhưng sinh khung tiết thất bại: {}",
-                    saved.getName(),
-                    saved.getId(),
-                    ex.getMessage());
-        }
+        return toResponse(sRepo.save(s));
     }
 
     /* ── Cập nhật ── */

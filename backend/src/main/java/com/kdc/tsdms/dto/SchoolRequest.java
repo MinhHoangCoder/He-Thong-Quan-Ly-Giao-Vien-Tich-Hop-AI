@@ -28,17 +28,4 @@ public record SchoolRequest(
         LocalDate contractEndDate,
 
         @Pattern(regexp = "^(ACTIVE|INACTIVE|EXPIRED)$", message = "Trạng thái phải là ACTIVE, INACTIVE hoặc EXPIRED")
-        String status,
-
-        /**
-         * Cấp học của trường — CHỈ dùng lúc TẠO MỚI để sinh sẵn khung tiết chuẩn (tiểu học 10
-         * tiết 35 phút, THCS 9 tiết 45 phút). KHÔNG lưu vào bảng School: cấp học thật của trường
-         * về sau luôn suy được từ khối lớp cao nhất, thêm một cột nữa là thêm chỗ để hai nguồn
-         * mâu thuẫn nhau.
-         *
-         * <p>Để trống thì hệ thống tự đoán từ TÊN trường; đoán không ra thì bỏ qua, không sinh
-         * khung. Lúc SỬA trường, giá trị này bị bỏ qua hoàn toàn — khung tiết đã dùng để xếp lịch
-         * thì không được đổi ngầm.
-         */
-        @Pattern(regexp = "^$|^(TH|THCS)$", message = "Cấp học chỉ nhận TH hoặc THCS")
-        String educationLevel) {}
+        String status) {}
