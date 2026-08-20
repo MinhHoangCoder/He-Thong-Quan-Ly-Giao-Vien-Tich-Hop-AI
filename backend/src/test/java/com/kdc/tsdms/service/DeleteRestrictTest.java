@@ -365,14 +365,16 @@ class DeleteRestrictTest {
         }
 
         @Test
-        void loiPhaiNoiRoKhongCoCachGo_thayVi_vuiLongXuLyTruocKhiXoa() {
-            // Câu mặc định của DeleteGuard hứa một việc người dùng làm được. Ở đây thì không:
-            // không có nút mở lại kỳ lương, nên hứa suông là đẩy họ đi tìm cái không tồn tại.
+        void loiPhaiChiDungDuongGo_chuKhongPhaiCauMacDinh() {
+            // Câu mặc định của DeleteGuard ("vui lòng xử lý mục này trước khi xóa") không chỉ
+            // được đường nào. Ở đây đường gỡ có thật nhưng chỉ đúng một nửa: kỳ ĐÃ CHỐT mở lại
+            // được (V32), kỳ ĐÃ TRẢ thì không. Nói thiếu vế nào cũng là chỉ sai đường.
             givenTrashedAssignment();
             when(payrollRepo.findKyLuongDaChotTheoPhanCong(11)).thenReturn(List.of("8/2026"));
 
             assertThatThrownBy(() -> service.purge(11))
-                    .hasMessageContaining("chỉ có thể nằm lại trong thùng rác")
+                    .hasMessageContaining("mở lại")
+                    .hasMessageContaining("ĐÃ TRẢ")
                     .hasMessageNotContaining("Vui lòng xử lý");
         }
     }

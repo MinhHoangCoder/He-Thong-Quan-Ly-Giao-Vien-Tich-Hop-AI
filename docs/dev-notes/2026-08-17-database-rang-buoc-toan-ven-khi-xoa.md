@@ -1,8 +1,8 @@
-# DB: ràng buộc toàn vẹn khi xóa — Đợt 1 (RESTRICT), Đợt 2 (dữ liệu tiền) & Đợt 3 (phòng ngừa) (2026-08-17, bổ sung 19/08)
+# DB: ràng buộc toàn vẹn khi xóa — trọn bộ Đợt 1→4 (2026-08-17, hoàn tất 20/08)
 
-Ghi cho cả ba đợt cùng lúc vì chúng dùng chung một phát hiện gốc và chung một hạ tầng
-(`DeleteGuard`). Đợt 1 merge ở PR #157, Đợt 2 merge ở PR #161, Đợt 3 ở nhánh
-`feat/rang-buoc-xoa-dot-3`.
+Ghi cho cả bốn đợt cùng lúc vì chúng dùng chung một phát hiện gốc và chung một hạ tầng
+(`DeleteGuard`). Đợt 1 merge ở PR #157, Đợt 2 ở PR #161, Đợt 3 ở PR #163, Đợt 4 ở nhánh
+`feat/rang-buoc-xoa-dot-4`. **Đợt 4 là đợt cuối — chuỗi này đã khép.**
 
 ## Gọi tên cho đúng
 
@@ -256,10 +256,55 @@ làm.** SQL Server mặc định `NO ACTION` đã là RESTRICT — thêm `ON DEL
 là đổi 43 constraint để được đúng hành vi đang có; còn đổi sang `CASCADE` thì ngược với quyết
 định "chặn hẳn" đã chốt. Không có thay đổi hành vi nào đáng để đụng schema giữa kỳ.
 
-## Còn lại
+## Đợt 4 (20/08) — rà soát dữ liệu mồ côi, và vì sao KHÔNG tự dọn
 
-- **Đợt 4** — migration rà và dọn dữ liệu mồ côi đã có sẵn (con đang trỏ vào cha `IsDeleted=1`).
-  Chỉ làm sau khi Đợt 1–3 đã chặn được nguồn sinh mồ côi mới. Giờ là lúc làm được rồi.
+Đợt 1–3 đã bịt mọi đường **sinh ra** mồ côi mới. Còn lại là những dòng đã mồ côi từ trước —
+và chúng vô hình, vì không câu query nghiệp vụ nào lọc theo cờ `IsDeleted` của bảng CHA.
+
+**`V35__ra_soat_du_lieu_mo_coi.sql` không xóa gì cả. Cố ý.**
+
+Mỗi cặp mồ côi có hai cách xử lý trái ngược nhau và chỉ con người mới chọn được. Một trường bị
+xóa nhầm mà còn 12 lớp đang học — việc đúng là **khôi phục trường**, không phải xóa nốt 12 lớp.
+Một migration tự dọn theo cờ sẽ chọn phương án hủy diệt trong *cả hai* trường hợp, và làm việc
+đó âm thầm trên dữ liệu thật. Đúng lý do đã chốt RESTRICT thay vì CASCADE ở Đợt 1.
+
+Hai thứ V35 giao lại cho người vận hành:
+
+| Thành phần | Vai trò |
+|---|---|
+| bảng `OrphanScan` | nhật ký kết quả, mỗi lần quét một ảnh chụp — có lịch sử mới trả lời được câu quan trọng nhất: **số mồ côi có đang TĂNG không** (tăng = còn đường sinh mồ côi lọt qua chốt Đợt 1–3) |
+| `usp_ScanOrphanRows @GhiNhatKy` | thủ tục quét, `1` = ghi nhật ký, `0` = chỉ xem |
+
+**Quét ĐỘNG qua `sys.foreign_keys`, không chép tay 43 câu đếm.** Danh sách khóa ngoại còn đổi
+dài dài (riêng chuỗi V27→V34 đã thêm/bớt vài bảng). Danh sách chép tay sẽ lệch khỏi schema đúng
+lúc không ai để ý, và lệch theo hướng nguy hiểm nhất — bỏ **sót** bảng mới mà vẫn báo "sạch".
+
+Định nghĩa mồ côi: con **đang sống** (`IsDeleted = 0`, hoặc bảng không có cờ) trỏ vào cha **đã
+xóa mềm**. Con đã xóa trỏ vào cha đã xóa thì **không tính** — đó là trạng thái nhất quán. Đếm
+cả dòng đó thì mọi lần xóa đúng luật cũng kêu báo động, mà báo động lúc nào cũng kêu là hết
+tác dụng.
+
+Đọc kết quả cần biết trước: cặp `School → Room` và `School → Period` gần như chắc chắn có số.
+Đó là hệ quả **cố ý** của Đợt 1 (xem lại phần `SchoolService.delete` ở trên) — mồ côi vô hại.
+
+## Hai thứ vá thêm khi làm Đợt 4
+
+**1. `V31` làm chết Flyway trên DB trống.** V1 khai `AppUserId INT NULL UNIQUE` trong
+`CREATE TABLE School`; SQL Server hiện thực bằng một chỉ mục **do ràng buộc sở hữu** và từ chối
+thẳng `DROP INDEX` trên nó (lỗi 3723). V31 dùng `DROP INDEX` nên chết 100% trên mọi DB dựng từ
+V1 — không ai từng chạy qua được. Hậu quả: Flyway dừng ở V31 → `EntityManagerFactory` không
+dựng được → **toàn bộ IT báo "Failed to load ApplicationContext"**, một triệu chứng không liên
+quan gì tới nguyên nhân. CI không bắt được vì không có Docker nên failsafe **skip** hết IT mà
+vẫn báo BUILD SUCCESS. Fix: tách theo `is_unique_constraint` — `1` thì `DROP CONSTRAINT`, `0`
+thì mới `DROP INDEX`.
+
+**2. Thông báo của Đợt 2 đã lỗi thời.** Lúc viết Đợt 2, hệ thống không có nút mở lại bảng
+lương nên câu hướng dẫn nói "phân công chỉ có thể nằm lại trong thùng rác". V32 thêm
+`PAYROLL_REOPEN` → kỳ **ĐÃ CHỐT** giờ mở lại được (trong 3 tháng), chỉ kỳ **ĐÃ TRẢ** mới còn là
+khóa cứng. Câu cũ thành chỉ sai đường cho đúng nửa số trường hợp. Đã sửa để nói rõ cả hai vế.
+
+Bài học chung: câu thông báo lỗi cũng là code có thể mục theo thời gian — nó khẳng định một
+điều về hệ thống, và điều đó có thể hết đúng mà không có test nào đỏ.
 - **Chưa xử lý (báo để quyết):** `TeacherService.saveContract` ghi ĐÈ hợp đồng cũ tại chỗ —
   số hợp đồng, lương, thời hạn cũ mất sạch không dấu vết. Nếu coi hợp đồng là hồ sơ pháp lý thì
   đây còn nặng hơn cả xóa cứng. Sửa cho đúng phải lưu trữ bản cũ rồi tạo bản mới, mà `ContractNo`
