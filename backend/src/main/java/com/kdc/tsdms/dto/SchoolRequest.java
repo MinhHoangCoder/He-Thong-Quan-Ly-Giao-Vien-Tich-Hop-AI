@@ -1,5 +1,6 @@
 package com.kdc.tsdms.dto;
 
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -39,4 +40,16 @@ public record SchoolRequest(
          * thì không được đổi ngầm.
          */
         @Pattern(regexp = "^$|^(TH|THCS)$", message = "Cấp học chỉ nhận TH hoặc THCS")
-        String educationLevel) {}
+        String educationLevel) {
+
+    /**
+     * Ngày hết hạn không được trước ngày bắt đầu.
+     *
+     * <p>Luật này trước đây CHỈ có ở form Vue, nên gọi thẳng API là lưu được hợp đồng kết thúc
+     * trước ngày ký — mà cảnh báo "sắp hết hạn" ở màn danh sách đọc phải dữ liệu đó thì tính ra
+     * số ngày âm vô nghĩa. Đặt ở đây để cả hai đường vào đều bị chặn.
+     */
+    @AssertTrue(message = "Ngày hết hạn hợp đồng phải sau ngày bắt đầu") public boolean isHanHopDongHopLe() {
+        return contractStartDate == null || contractEndDate == null || !contractEndDate.isBefore(contractStartDate);
+    }
+}

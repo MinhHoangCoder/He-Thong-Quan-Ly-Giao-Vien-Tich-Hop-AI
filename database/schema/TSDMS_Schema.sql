@@ -399,7 +399,6 @@ CREATE TABLE School (
     Phone             VARCHAR(20)   NULL,
     Email             VARCHAR(100)  NULL,
     ContactPerson     NVARCHAR(150) NULL,            -- người liên hệ phía trường
-    AppUserId         INT           NULL UNIQUE,     -- → AppUser (tài khoản trường, nếu có)
     ContractStartDate DATE          NULL,            -- ngày bắt đầu hợp đồng dịch vụ
     ContractEndDate   DATE          NULL,            -- ngày hết hạn (dùng để cảnh báo/khóa)
     Status            VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / INACTIVE / EXPIRED
@@ -411,11 +410,12 @@ CREATE TABLE School (
     CreatedBy         INT           NULL,
     UpdatedAt         DATETIME2(3)  NULL,
     UpdatedBy         INT           NULL,
-    FOREIGN KEY (BranchId)  REFERENCES Branch(Id),
-    FOREIGN KEY (AppUserId) REFERENCES AppUser(Id)
+    FOREIGN KEY (BranchId)  REFERENCES Branch(Id)
 );
 CREATE INDEX IX_School_Branch ON School(BranchId);
 CREATE INDEX IX_School_Name   ON School(Name);
+-- V36: tên trường duy nhất trong MỘT chi nhánh, chỉ tính trường chưa xóa mềm
+CREATE UNIQUE INDEX UX_School_BranchName ON School(BranchId, Name) WHERE IsDeleted = 0;
 
 /* ========== Bảng 15: Room — PHÒNG HỌC (thuộc trường) ==========
    Ý nghĩa : Phòng để xếp lịch dạy. Chỉ phòng AVAILABLE mới được đặt.

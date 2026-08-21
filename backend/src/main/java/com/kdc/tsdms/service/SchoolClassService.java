@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
@@ -96,9 +97,9 @@ public class SchoolClassService {
     @Transactional(readOnly = true)
     public Page<SchoolClassResponse> search(
             String keyword, Integer schoolId, String status, String gradeLevel, Pageable pageable) {
-        String kw = escapeLike(blankToNull(keyword));
-        String st = blankToNull(status);
-        String gl = blankToNull(gradeLevel);
+        String kw = SearchText.escapeLike(SearchText.blankToNull(keyword));
+        String st = SearchText.blankToNull(status);
+        String gl = SearchText.blankToNull(gradeLevel);
         Page<SchoolClass> page = classRepo.search(kw, schoolId, st, gl, pageable);
         Map<Integer, String> schoolNames = loadSchoolNames(page.getContent().stream()
                 .map(SchoolClass::getSchoolId)
@@ -115,7 +116,7 @@ public class SchoolClassService {
 
     @Transactional
     public SchoolClassResponse create(SchoolClassRequest req) {
-        requireSchool(req.schoolId());
+        requireSchoolConHopTac(req.schoolId());
         ValidatedClassFields fields = validateBusiness(req, null);
         assertNoDuplicate(req.schoolId(), fields.name(), fields.year(), null);
         SchoolClass sc = new SchoolClass();
@@ -135,6 +136,9 @@ public class SchoolClassService {
         // — chặn giống luật chặn xóa lớp.
         boolean movingSchool = !Objects.equals(sc.getSchoolId(), req.schoolId());
         boolean changingYear = sc.getSchoolYear() != null && !sc.getSchoolYear().equalsIgnoreCase(fields.year());
+        if (movingSchool) {
+            requireSchoolConHopTac(req.schoolId());
+        }
         if (movingSchool || changingYear) {
             long students = enrollmentRepo.countByClassId(id);
             long assignments = assignmentRepo.countByClassIdAndDeletedFalse(id);
@@ -417,14 +421,6 @@ public class SchoolClassService {
                 .collect(Collectors.toMap(School::getId, School::getName, (a, b) -> a));
     }
 
-    private static String blankToNull(String s) {
-        if (s == null) {
-            return null;
-        }
-        String t = s.trim();
-        return t.isEmpty() ? null : t;
-    }
-
     private static String normalizeSpaces(String s) {
         if (s == null) {
             return null;
@@ -434,13 +430,22 @@ public class SchoolClassService {
     }
 
     /**
-     * Escape wildcard của SQL Server LIKE (%, _, [) bằng ký tự thoát '!' — khớp
-     * {@code ESCAPE '!'} trong query search. Không escape thì gõ '%' trả về tất cả.
+     * Trường phải còn hợp tác thì mới nhận LỚP MỚI — cùng luật với phân công (xem {@code
+     * School.conHopTac}). Mở lớp ở một trường đã hết hạn hợp đồng là bước đầu tiên của cả chuỗi
+     * lớp -> phân công -> lịch dạy -> chấm công -> lương cho nơi trung tâm không còn dạy.
+     *
+     * <p>Chỉ áp lúc TẠO lớp và lúc CHUYỂN lớp sang trường khác. Sửa tên/năm học của lớp cũ ở
+     * trường đã ngừng thì vẫn cho: chặn cả thao tác sửa là nhốt luôn dữ liệu cũ, gõ sai một chữ
+     * cũng không sửa được nữa.
      */
-    private static String escapeLike(String s) {
-        if (s == null) {
-            return null;
+    private School requireSchoolConHopTac(Integer schoolId) {
+        School s = requireSchool(schoolId);
+        if (!s.conHopTac(BusinessTime.today())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Trường " + s.getName()
+                            + " đã ngừng hợp tác hoặc hết hạn hợp đồng nên không mở thêm lớp mới được.");
         }
-        return s.replace("!", "!!").replace("%", "!%").replace("_", "!_").replace("[", "![");
+        return s;
     }
 }
