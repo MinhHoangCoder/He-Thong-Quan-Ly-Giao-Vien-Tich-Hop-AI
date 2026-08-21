@@ -16,6 +16,7 @@ import com.kdc.tsdms.repository.DashboardQueryRepository.ThongKeKy;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -31,6 +32,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>KHÔNG BỊA SỐ: chỗ chưa có dữ liệu trả null để FE hiện "—", không trả 0. "Chưa đo được" khác
  * "đo rồi và bằng 0" — nhầm hai cái đó trên số liệu lương là chuyện lớn.
+ *
+ * <p>Cùng lý do đó, {@code thayDoi} của một thẻ để null nghĩa là "không có gì để so", và giao
+ * diện bỏ hẳn mũi tên chứ không vẽ mũi tên 0%.
  */
 @Service
 public class DashboardService {
@@ -38,8 +42,10 @@ public class DashboardService {
     /** Ngưỡng báo hợp đồng lao động sắp hết hạn. */
     private static final int NGAY_BAO_HET_HAN = 60;
 
-    private static final int TOP_TRUONG = 10;
-    private static final int SO_BUOI_TRONG_NGAY = 12;
+    /** Bảng "Buổi dạy 7 ngày tới": nhìn xa 7 ngày, cắt ở 10 dòng cho vừa chiều cao khối bên cạnh. */
+    private static final int SO_NGAY_NHIN_TRUOC = 7;
+
+    private static final int SO_BUOI_SAP_TOI = 10;
     private static final int SO_PHAN_CONG_GAN_DAY = 6;
 
     private static final List<String> BANG_MAU =
@@ -47,8 +53,6 @@ public class DashboardService {
 
     private static final DateTimeFormatter GIO_PHUT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter NGAY_GIO = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
-    private static final DateTimeFormatter NGAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
-
     private static final List<String> TEN_THU =
             List.of("Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật");
 
@@ -76,7 +80,6 @@ public class DashboardService {
                 "Buổi dạy",
                 (double) nay.buoiDuyet(),
                 "so",
-                (double) truoc.buoiDuyet(),
                 phanTramThayDoi(nay.buoiDuyet(), truoc.buoiDuyet()),
                 nay.buoiTatCa() == 0
                         ? "Chưa xếp buổi nào"
@@ -85,26 +88,11 @@ public class DashboardService {
                 "/schedule"));
 
         chiSo.add(new Kpi(
-                "gioGiang",
-                "clock",
-                "Giờ giảng",
-                lamTron(nay.gioGiang()),
-                "gio",
-                lamTron(truoc.gioGiang()),
-                phanTramThayDoi(nay.gioGiang(), truoc.gioGiang()),
-                nay.gvCoLich() == 0
-                        ? "Chưa có giáo viên đứng lớp"
-                        : "TB " + soThapPhan(nay.gioGiang() / nay.gvCoLich()) + " giờ/giáo viên",
-                "#0ea5e9",
-                "/schedule"));
-
-        chiSo.add(new Kpi(
                 "chiPhi",
                 "payroll",
                 "Chi phí lương",
                 lamTron(nay.chiPhi()),
                 "tien",
-                lamTron(truoc.chiPhi()),
                 phanTramThayDoi(nay.chiPhi(), truoc.chiPhi()),
                 nay.buoiDuyet() == 0 ? "Chưa phát sinh" : tienGon(nay.chiPhi() / nay.buoiDuyet()) + "/buổi",
                 "#22c55e",
@@ -120,7 +108,6 @@ public class DashboardService {
                 "Tỉ lệ chuyên cần",
                 coChamCong ? lamTron(chuyenCan) : null,
                 "phanTram",
-                chuyenCanTruoc == null ? null : lamTron(chuyenCanTruoc),
                 coChamCong && chuyenCanTruoc != null ? lamTron(chuyenCan - chuyenCanTruoc) : null,
                 coChamCong
                         ? soThapPhan(nay.chamCongDungGio() * 100.0 / nay.chamCongTong()) + "% đúng giờ"
@@ -128,32 +115,33 @@ public class DashboardService {
                 "#8b5cf6",
                 "/attendance"));
 
+        // HAI THẺ DƯỚI ĐÂY KHÔNG PHỤ THUỘC KỲ, nên thayDoi = null: đem tổng giáo viên của kỳ
+        // này so với kỳ trước thì lúc nào cũng ra 0%, một con số đúng số học nhưng vô nghĩa và
+        // nhìn hệt như thẻ tính hỏng. Dòng phụ nói rõ phạm vi để người xem không đi tìm lý do
+        // vì sao đổi bộ lọc mà số không nhúc nhích.
         chiSo.add(new Kpi(
                 "giaoVien",
                 "teacher",
-                "Giáo viên có lịch dạy",
-                (double) nay.gvCoLich(),
+                "Giáo viên đang làm việc",
+                (double) gvHoatDong,
                 "so",
-                (double) truoc.gvCoLich(),
-                phanTramThayDoi(nay.gvCoLich(), truoc.gvCoLich()),
-                gvHoatDong == 0 ? "Chưa có giáo viên" : "Trên " + gvHoatDong + " giáo viên đang làm việc",
+                null,
+                "Toàn hệ thống — không theo kỳ",
                 "#2563eb",
                 "/dashboard/teacher"));
 
         chiSo.add(new Kpi(
                 "truong",
                 "school",
-                "Trường đang phục vụ",
-                (double) nay.truongCoLich(),
+                "Trường còn hợp đồng",
+                (double) truongHopDong,
                 "so",
-                (double) truoc.truongCoLich(),
-                phanTramThayDoi(nay.truongCoLich(), truoc.truongCoLich()),
-                truongHopDong == 0 ? "Chưa có hợp đồng" : "Trên " + truongHopDong + " trường còn hợp đồng",
+                null,
+                "Toàn hệ thống — không theo kỳ",
                 "#f59e0b",
                 "/admin/schools"));
 
-        return new DashboardSummaryResponse(
-                f.nhan(), f.kyTruoc().nhan(), BusinessTime.now().format(NGAY_GIO), chiSo);
+        return new DashboardSummaryResponse(BusinessTime.now().format(NGAY_GIO), chiSo);
     }
 
     /* ───────────── Biểu đồ + bảng chi tiết ───────────── */
@@ -162,10 +150,7 @@ public class DashboardService {
     public DashboardAnalyticsResponse analytics(DashboardFilter f) {
         return new DashboardAnalyticsResponse(
                 repo.theoThang(f),
-                repo.nhietDo(f),
-                repo.soTietToiDa(),
                 toMau(repo.coCauNhomMon(f)),
-                toMau(repo.topTruong(f, TOP_TRUONG)),
                 phanTich(f, Chieu.GIAO_VIEN),
                 phanTich(f, Chieu.TRUONG),
                 phanTich(f, Chieu.MON));
@@ -256,27 +241,11 @@ public class DashboardService {
                 "/dashboard/teacher");
 
         LocalDate homNay = BusinessTime.today();
-        List<Object[]> lich = repo.lichTrongNgay(homNay, SO_BUOI_TRONG_NGAY);
-        boolean laDuBao = false;
-        LocalDate ngayHienThi = homNay;
+        List<BuoiDay> lich = repo.lich7NgayToi(f, homNay, SO_NGAY_NHIN_TRUOC, SO_BUOI_SAP_TOI).stream()
+                .map(b -> toBuoiDay(b, homNay))
+                .toList();
 
-        // Hôm nay trống (hè, ngày nghỉ) thì nhảy sang ngày dạy gần nhất — ô rỗng không phân biệt
-        // được với hệ thống hỏng.
-        if (lich.isEmpty()) {
-            LocalDate keTiep = repo.ngayDayKeTiep(homNay);
-            if (keTiep != null) {
-                ngayHienThi = keTiep;
-                lich = repo.lichTrongNgay(keTiep, SO_BUOI_TRONG_NGAY);
-                laDuBao = true;
-            }
-        }
-
-        return new DashboardOperationsResponse(
-                canhBao,
-                nhanNgay(ngayHienThi, laDuBao),
-                laDuBao,
-                lich.stream().map(this::toBuoiDay).toList(),
-                repo.phanCongGanDay(SO_PHAN_CONG_GAN_DAY));
+        return new DashboardOperationsResponse(canhBao, lich, repo.phanCongGanDay(SO_PHAN_CONG_GAN_DAY));
     }
 
     /** Mục không có việc nào vẫn giữ lại, đổi mức thành "on" để FE đẩy xuống cuối. */
@@ -284,26 +253,40 @@ public class DashboardService {
         ds.add(new CanhBao(key, soLuong == 0 ? "on" : muc, nhan, soLuong, soLuong + " " + donVi, route));
     }
 
-    private String nhanNgay(LocalDate ngay, boolean laDuBao) {
-        String moTa = TEN_THU.get(ngay.getDayOfWeek().getValue() - 1) + ", " + ngay.format(NGAY);
-        return laDuBao ? "Buổi dạy gần nhất: " + moTa : "Lịch dạy hôm nay: " + moTa;
-    }
-
-    private BuoiDay toBuoiDay(Object[] r) {
-        LocalDateTime batDau = (LocalDateTime) r[1];
-        LocalDateTime ketThuc = (LocalDateTime) r[2];
+    /**
+     * Lắp nhãn hiển thị cho một buổi dạy sắp tới.
+     *
+     * <p>Nhãn nhóm ghi rõ "Hôm nay" / "Ngày mai" thay vì chỉ ngày tháng: bảng trải 7 ngày, đọc
+     * "Thứ Sáu 21/08" rồi vẫn phải nhẩm xem đó là hôm nay hay tuần sau.
+     */
+    private BuoiDay toBuoiDay(DashboardQueryRepository.BuoiDayTho b, LocalDate homNay) {
+        LocalDate ngay = b.batDau().toLocalDate();
         LocalDateTime bayGio = BusinessTime.now();
-        String trangThai = ketThuc.isBefore(bayGio) ? "daXong" : (batDau.isAfter(bayGio) ? "sapToi" : "dangDien");
+        String trangThai =
+                b.ketThuc().isBefore(bayGio) ? "daXong" : (b.batDau().isAfter(bayGio) ? "sapToi" : "dangDien");
+
+        String thu = TEN_THU.get(ngay.getDayOfWeek().getValue() - 1);
+        String nhomNgay = "%s · %s %02d/%02d"
+                .formatted(
+                        switch ((int) ChronoUnit.DAYS.between(homNay, ngay)) {
+                            case 0 -> "Hôm nay";
+                            case 1 -> "Ngày mai";
+                            default -> thu;
+                        },
+                        thu,
+                        ngay.getDayOfMonth(),
+                        ngay.getMonthValue());
+
         return new BuoiDay(
-                (Long) r[0],
-                batDau.format(GIO_PHUT),
-                ketThuc.format(GIO_PHUT),
-                (String) r[3],
-                (String) r[4],
-                (String) r[5],
-                r[6] == null ? "—" : (String) r[6],
-                trangThai,
-                BANG_MAU.get(batDau.getHour() % BANG_MAU.size()));
+                b.id(),
+                "%02d/%02d".formatted(ngay.getDayOfMonth(), ngay.getMonthValue()),
+                nhomNgay,
+                b.batDau().format(GIO_PHUT),
+                b.ketThuc().format(GIO_PHUT),
+                b.giaoVien(),
+                b.mon(),
+                b.truong(),
+                trangThai);
     }
 
     /* ───────────── Xuất CSV ───────────── */
