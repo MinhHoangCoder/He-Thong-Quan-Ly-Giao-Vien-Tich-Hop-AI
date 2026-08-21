@@ -1,8 +1,10 @@
 package com.kdc.tsdms.exception;
 
 import com.kdc.tsdms.dto.ErrorResponse;
+import java.sql.SQLException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -83,6 +85,46 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
         return build(HttpStatus.BAD_REQUEST, "Giá trị không hợp lệ cho tham số: " + ex.getName());
+    }
+
+    /**
+     * Vi phạm ràng buộc ở tầng DB (trùng khóa, sai khóa ngoại, thiếu cột NOT NULL,
+     * chuỗi quá dài...). Đây là lỗi DỮ LIỆU GỬI LÊN, không phải server hỏng — để rơi
+     * vào {@link #handleOther(Exception)} thì người dùng chỉ thấy "Lỗi hệ thống" và
+     * không biết phải sửa gì.
+     *
+     * <p>Phân loại theo MÃ LỖI của SQL Server chứ không đọc nội dung message: message
+     * gốc có tên bảng/cột/ràng buộc, trả thẳng cho client là lộ cấu trúc nội bộ. Mã lỗi
+     * đủ để nói cho người dùng biết thuộc nhóm nào; chi tiết nằm ở log server.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("Vi pham rang buoc du lieu o tang DB", ex);
+
+        return switch (sqlErrorCode(ex)) {
+            // 2627 = vi phạm UNIQUE/PRIMARY KEY, 2601 = vi phạm unique index
+            case 2627, 2601 -> build(HttpStatus.CONFLICT, "Dữ liệu bị trùng với một bản ghi đã có trong hệ thống");
+            // 547 = vi phạm FOREIGN KEY hoặc CHECK constraint
+            case 547 ->
+                build(
+                        HttpStatus.BAD_REQUEST,
+                        "Dữ liệu không hợp lệ: tham chiếu không tồn tại hoặc sai giá trị cho phép");
+            // 515 = chèn NULL vào cột NOT NULL
+            case 515 -> build(HttpStatus.BAD_REQUEST, "Thiếu thông tin bắt buộc");
+            // 8152 / 2628 = chuỗi dài hơn kích thước cột
+            case 8152, 2628 -> build(HttpStatus.BAD_REQUEST, "Một trong các trường nhập vượt quá độ dài cho phép");
+            default -> build(HttpStatus.BAD_REQUEST, "Dữ liệu không hợp lệ hoặc vi phạm ràng buộc của hệ thống");
+        };
+    }
+
+    /** Dò mã lỗi SQL Server trong chuỗi cause (Spring bọc SQLException qua nhiều lớp). */
+    private int sqlErrorCode(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof SQLException sqlEx) {
+                return sqlEx.getErrorCode();
+            }
+        }
+        return 0;
     }
 
     /**

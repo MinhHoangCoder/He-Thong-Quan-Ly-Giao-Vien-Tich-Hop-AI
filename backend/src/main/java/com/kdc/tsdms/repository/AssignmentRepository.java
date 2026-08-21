@@ -80,4 +80,12 @@ public interface AssignmentRepository extends JpaRepository<Assignment, Integer>
      * hạn".
      */
     List<Assignment> findByStatusAndConfirmDeadlineBeforeAndDeletedFalse(String status, LocalDateTime deadline);
+
+    /**
+     * Số GIÁO VIÊN khác nhau đang dạy tại một trường (theo trạng thái phiếu truyền vào) — dùng cho
+     * khối chi tiết trường.
+     */
+    @Query("SELECT COUNT(DISTINCT a.teacherId) FROM Assignment a WHERE a.schoolId = :schoolId"
+            + " AND a.deleted = false AND a.status IN :statuses")
+    long demGiaoVienDangDay(@Param("schoolId") Integer schoolId, @Param("statuses") Collection<String> statuses);
 }

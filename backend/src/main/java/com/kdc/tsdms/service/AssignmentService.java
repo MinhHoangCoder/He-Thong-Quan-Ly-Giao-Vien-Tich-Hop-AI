@@ -78,9 +78,6 @@ public class AssignmentService {
      */
     static final int CONFIRM_WINDOW_HOURS = 48;
 
-    /** Trường đang hợp tác — chỉ những trường này mới nhận được phân công mới. */
-    private static final String SCHOOL_ACTIVE = "ACTIVE";
-
     /** Giáo viên đang làm việc (khác RETIRED / SUSPENDED). */
     private static final String TEACHER_ACTIVE = "ACTIVE";
 
@@ -302,12 +299,14 @@ public class AssignmentService {
             }
         }
 
-        // CHỈ trường đang hợp tác (Status = ACTIVE). Trường hết hạn/ngừng hợp tác vẫn nằm
+        // CHỈ trường đang hợp tác — xem School.conHopTac (tính cả trường hết hạn hợp đồng theo
+        // NGÀY, không chỉ theo cột Status). Trường hết hạn/ngừng hợp tác vẫn nằm
         // trong hệ thống để giữ lịch sử hợp đồng, nhưng không được nhận phân công MỚI —
         // để lọt vào dropdown là mời người xếp lịch điều giáo viên tới một nơi trung tâm
         // không còn dạy nữa.
+        LocalDate homNay = BusinessTime.today();
         List<AssignmentFormOptions.SchoolOption> schools = schoolRepo.findAll().stream()
-                .filter(s -> !s.isDeleted() && SCHOOL_ACTIVE.equals(s.getStatus()))
+                .filter(s -> !s.isDeleted() && s.conHopTac(homNay))
                 .map(s -> {
                     List<SchoolClass> cls = classesBySchool.getOrDefault(s.getId(), List.of());
                     return new AssignmentFormOptions.SchoolOption(
@@ -626,10 +625,11 @@ public class AssignmentService {
      * hết hạn hợp đồng vẫn được giữ lại để tra cứu lịch sử, không phải để xếp lịch mới vào.
      */
     private static void assertSchoolActive(School s) {
-        if (!SCHOOL_ACTIVE.equals(s.getStatus())) {
+        LocalDate homNay = BusinessTime.today();
+        if (!s.conHopTac(homNay)) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
-                    "Trường " + s.getName() + " đang ở trạng thái " + statusLabelVi(s.getStatus())
+                    "Trường " + s.getName() + " đang ở trạng thái " + statusLabelVi(s.effectiveStatus(homNay))
                             + " nên không nhận phân công mới.");
         }
     }

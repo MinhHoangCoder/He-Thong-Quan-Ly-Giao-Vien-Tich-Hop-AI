@@ -3,6 +3,7 @@ package com.kdc.tsdms.repository;
 import com.kdc.tsdms.entity.ServiceContract;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,4 +24,7 @@ public interface ServiceContractRepository extends JpaRepository<ServiceContract
 
     /** Hợp đồng dịch vụ còn sống của một chi nhánh — chặn xóa chi nhánh còn hợp đồng. */
     long countByBranchIdAndDeletedFalse(Integer branchId);
+
+    /** Hợp đồng dịch vụ của một trường, hạn muộn nhất lên đầu — khối chỉ đọc ở màn Quản lý trường. */
+    List<ServiceContract> findBySchoolIdAndDeletedFalseOrderByEndDateDesc(Integer schoolId);
 }
