@@ -61,6 +61,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-19 | fullstack | ⭐ Bảng lịch nghỉ (V29) — hết buổi dạy "ma" ngày lễ bị trừ lương + seed toàn bộ luồng Phân công→Lịch dạy→Chấm công→Lương | [2026-08-19-fullstack-lich-nghi-va-seed-dieu-phoi.md](2026-08-19-fullstack-lich-nghi-va-seed-dieu-phoi.md) |
 | 2026-08-19 | fullstack | ⭐ Seed đánh giá / phòng học / HĐ dịch vụ / 234 bài giảng · màn Lịch nghỉ (V30) · **GỠ TÁC NHÂN NHÀ TRƯỜNG (V31)** + bẫy `mvn test` xanh giả khi server đang chạy | [2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md](2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md) |
 | 2026-08-21 | fullstack | ⭐ Viết lại Bảng điều khiển — thống kê bằng SQL aggregate, bộ lọc toàn trang, **chi phí phân bổ về từng buổi** (bẫy `TaughtHours` là SỐ TIẾT) + seed năm học 2025–2026 | [2026-08-21-fullstack-bang-dieu-khien-thong-ke.md](2026-08-21-fullstack-bang-dieu-khien-thong-ke.md) |
+| 2026-08-22 | fullstack | Quản lý trường — trạng thái hết hạn suy theo NGÀY, chặn mở lớp/phân công ở trường đã ngừng, thùng rác + khôi phục, chỉ mục UNIQUE tên trường theo chi nhánh (V36) | [2026-08-22-fullstack-quan-ly-truong.md](2026-08-22-fullstack-quan-ly-truong.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
