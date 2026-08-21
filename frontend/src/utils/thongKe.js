@@ -53,12 +53,6 @@ export function tienDay(v) {
   }).format(v)
 }
 
-/** Giờ giảng: 7735.4 → "7.735,4 giờ". */
-export function gio(v) {
-  if (v == null || Number.isNaN(v)) return '—'
-  return soLe(v, 1) + ' giờ'
-}
-
 /** Phần trăm: 94.87 → "94,9%". */
 export function phanTram(v, chuSo = 1) {
   if (v == null || Number.isNaN(v)) return '—'
@@ -77,8 +71,6 @@ export function theoMa(v, ma) {
   switch (ma) {
     case 'tien':
       return tien(v)
-    case 'gio':
-      return gio(v)
     case 'phanTram':
       return phanTram(v)
     default:
@@ -86,26 +78,25 @@ export function theoMa(v, ma) {
   }
 }
 
-/** Nhãn ngày dạng yyyy-mm-dd → dd/mm/yyyy, dùng cho ô chọn ngày. */
-export function ngayVN(iso) {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
-}
-
-/** Ngày hôm nay theo giờ máy, dạng yyyy-mm-dd (khớp với <input type="date">). */
-export function homNayISO() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+/**
+ * Lấy phần GIỜ của mốc thời gian backend gửi ("16:06 21/08/2026" → "16:06").
+ *
+ * Thanh lọc chỉ đủ chỗ cho "Cập nhật 16:06"; phần ngày tháng vẫn còn nguyên trong tooltip vì
+ * số liệu luôn chốt trong ngày, hiện thêm ngày ở đó là thừa.
+ */
+export function gioNgan(mocThoiGian) {
+  return String(mocThoiGian ?? '').split(' ')[0]
 }
 
 /**
  * Các kỳ dựng sẵn của thanh lọc.
  *
- * NĂM HỌC (01/9 → 31/8) đứng đầu vì đó là chu kỳ kinh doanh thật của trung tâm. Danh sách còn
- * kèm năm học LIỀN TRƯỚC: gần như mọi câu hỏi về số liệu đều kết thúc bằng "so với năm ngoái
- * thì sao", nên bắt người dùng tự gõ hai mốc ngày cho việc đó là bắt làm một việc thừa.
+ * NĂM HỌC (01/9 → 31/8) đứng đầu vì đó là chu kỳ kinh doanh thật của trung tâm.
+ *
+ * Kỳ thứ hai là năm học TỚI chứ không phải năm học liền trước. Phân công của học kỳ sau được
+ * lập từ trước khi năm học bắt đầu, nên năm tới đã có buổi dạy để xem và để đối chiếu; còn
+ * năm liền trước thì lùi quá xa mốc dữ liệu đầu tiên của hệ thống — chọn vào chỉ ra một màn
+ * hình trắng, và màn hình trắng thì không phân biệt được với hệ thống hỏng.
  */
 export function cacKyDungSan(homNay = new Date()) {
   const p = (n) => String(n).padStart(2, '0')
@@ -132,7 +123,7 @@ export function cacKyDungSan(homNay = new Date()) {
 
   return [
     namHoc(namHocBatDau),
-    namHoc(namHocBatDau - 1),
+    namHoc(namHocBatDau + 1),
     { ma: 'thang', nhan: 'Tháng này', from: iso(dauThang), to: iso(cuoiThang) },
     { ma: 'quy', nhan: 'Quý này', from: iso(dauQuy), to: iso(cuoiQuy) },
     { ma: 'tuan', nhan: 'Tuần này', from: iso(dauTuan), to: iso(cuoiTuan) },
