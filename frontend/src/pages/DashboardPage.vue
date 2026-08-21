@@ -6,13 +6,17 @@
  * dashboard vào tháng hè mà lấy "tháng này" thì cả trang ra số 0 trong khi năm học vừa
  * rồi có cả chục nghìn buổi dạy.
  *
- * Ba API gọi song song và hiện độc lập — thẻ số về nhanh, biểu đồ nặng hơn nên về sau.
+ * Các API gọi song song và hiện độc lập — thẻ số về nhanh, biểu đồ nặng hơn nên về sau.
  *
  * BỘ LỌC CHỜ BẤM "ÁP DỤNG": người dùng thường đổi kỳ rồi đổi tiếp trường rồi đổi nhóm môn.
  * Gọi ngay mỗi lần đổi là 9 request cho một lần lọc, mà 6 request đầu không ai kịp đọc. Ở đây
  * ô chọn ghi vào `nhap`, bấm Áp dụng mới chép sang `boLoc` và gọi API.
+ *
+ * DỮ LIỆU NẰM Ở STORE, KHÔNG Ở COMPONENT (`stores/dashboard.js`): rời trang là Vue huỷ component,
+ * quay lại là dựng mới — để state ở đây thì mỗi lần quay về phải tải lại từ đầu. Trang này giờ
+ * chỉ giữ BỘ LỌC (thứ gắn với URL) và lo phần vẽ.
  */
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import StatCard from '@/components/ui/StatCard.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
@@ -22,11 +26,12 @@ import AnalyticsTable from '@/components/dashboard/AnalyticsTable.vue'
 import BarLineChart from '@/components/charts/BarLineChart.vue'
 import PieChart from '@/components/charts/PieChart.vue'
 import { dashboardApi } from '@/api/dashboard'
-import { useLatestRequest } from '@/composables/useLatestRequest'
+import { useDashboardStore } from '@/stores/dashboard'
 import { cacKyDungSan, theoMa, gioNgan } from '@/utils/thongKe'
 
 const router = useRouter()
 const route = useRoute()
+const kho = useDashboardStore()
 const kyDungSan = cacKyDungSan()
 
 /** Bộ lọc đang có hiệu lực (số liệu trên màn hình đang nói về kỳ này). */
@@ -34,18 +39,10 @@ const boLoc = reactive(docUrl())
 /** Bộ lọc người dùng đang chọn dở, chưa bấm Áp dụng. */
 const nhap = reactive({ ...boLoc })
 
-const danhMuc = ref({ truong: [], nhomMon: [] })
-const tomTat = ref(null)
-const phanTich = ref(null)
-const dieuHanh = ref(null)
-/** Trạng thái tải RIÊNG cho từng khối — xem load(). */
-const tai = reactive({ tomTat: true, phanTich: true, dieuHanh: true })
-const loi = ref('')
-
-const dangTai = computed(() => tai.tomTat || tai.phanTich || tai.dieuHanh)
-// Chưa có gì để xem thì phủ kín; đã có số cũ trên màn thì chỉ làm mờ, đỡ chớp cả trang.
-const phuKin = computed(() => tai.tomTat && !tomTat.value)
-const lamMo = computed(() => dangTai.value && !phuKin.value)
+// Chưa có gì để xem thì phủ kín. Đã có số cũ NHƯNG của bộ lọc khác thì làm mờ. Còn quay lại
+// trang với đúng bộ lọc cũ thì không làm gì cả — số vẫn đúng, cứ hiện, lượt tải mới chạy ngầm.
+const phuKin = computed(() => kho.tai.tomTat && !kho.coDuLieu)
+const lamMo = computed(() => kho.dangTai && kho.coDuLieu && kho.lechLoc)
 
 /* ══════════════════ Bộ lọc ══════════════════ */
 
@@ -119,71 +116,47 @@ function xoaLoc() {
 }
 
 /** Danh mục trả về {id, ten}; SearchSelect cần {id, name}. */
-const truongChon = computed(() => danhMuc.value.truong.map((t) => ({ id: t.id, name: t.ten })))
-const nhomMonChon = computed(() => danhMuc.value.nhomMon.map((m) => ({ id: m.id, name: m.ten })))
+const truongChon = computed(() => kho.danhMuc.truong.map((t) => ({ id: t.id, name: t.ten })))
+const nhomMonChon = computed(() => kho.danhMuc.nhomMon.map((m) => ({ id: m.id, name: m.ten })))
 
 /* ══════════════════ Tải số liệu ══════════════════ */
 
-// Chống race, MỖI KHỐI MỘT BỘ ĐẾM RIÊNG: đổi bộ lọc hai lần liên tiếp thì lượt đầu có thể về
-// SAU lượt hai và ghi đè, màn hình hiện số của bộ lọc cũ mà không ai tái hiện được.
-const latest = {
-  tomTat: useLatestRequest(),
-  phanTich: useLatestRequest(),
-  dieuHanh: useLatestRequest(),
+function load() {
+  kho.nap({ ...boLoc })
+}
+
+/** Đổi tab bảng chi tiết — chiều nào chưa có trong bộ đệm thì mới gọi API. */
+function doiTab(chieu) {
+  kho.doiTab({ ...boLoc }, chieu)
 }
 
 /**
- * Ba khối tải ĐỘC LẬP, khối nào về trước hiện trước.
+ * Vị trí cuộn: tự khôi phục thay vì nhờ `scrollBehavior` của router.
  *
- * Bản trước gom vào một Promise.allSettled rồi mới gán state — nghĩa là thẻ chỉ số (truy vấn
- * quét một lượt, về gần như tức thì) phải nằm chờ /analytics gom theo ba chiều. Như vậy là vô
- * hiệu hoá đúng cái lý do người ta tách ba endpoint ngay từ đầu.
+ * Router chỉ khôi phục đúng khi trang đã cao trở lại như cũ, mà chiều cao ở đây phụ thuộc dữ
+ * liệu. Nhờ store giữ sẵn số cũ nên ngay sau `nextTick` trang đã đủ cao — khôi phục ở đây thì
+ * trúng, còn để router tự làm sẽ nhảy về đầu trang.
  *
- * Tách ra còn được thêm một điều: một khối lỗi thì hai khối kia vẫn hiện bình thường.
+ * BẮT BUỘC `behavior: 'instant'`: main.css đặt `html { scroll-behavior: smooth }`, nên một
+ * lời gọi cuộn thường sẽ CHẠY HOẠT ẢNH — vừa vào trang đã thấy nội dung tự trôi xuống, trông
+ * như lỗi. Khôi phục vị trí thì phải nhảy thẳng, không diễn.
  */
-function nap(khoa, goi, dat) {
-  tai[khoa] = true
-  latest[khoa](
-    goi,
-    ({ data }) => {
-      dat(data)
-      tai[khoa] = false
-    },
-    (e) => {
-      loi.value = e?.response?.data?.message || 'Không tải được số liệu.'
-      tai[khoa] = false
-    },
-  )
-}
-
-function load() {
-  loi.value = ''
-  const p = { ...boLoc }
-  nap(
-    'tomTat',
-    () => dashboardApi.summary(p),
-    (d) => (tomTat.value = d),
-  )
-  nap(
-    'phanTich',
-    () => dashboardApi.analytics(p),
-    (d) => (phanTich.value = d),
-  )
-  nap(
-    'dieuHanh',
-    () => dashboardApi.operations(p),
-    (d) => (dieuHanh.value = d),
-  )
+function nhoViTriCuon() {
+  kho.viTriCuon = window.scrollY
 }
 
 onMounted(async () => {
-  try {
-    danhMuc.value = (await dashboardApi.filters()).data
-  } catch {
-    // Không có danh mục thì chỉ mất mấy ô lọc, phần còn lại vẫn chạy
+  await kho.napDanhMuc()
+
+  // Có sẵn số cũ thì trang đã cao trở lại ngay -> khôi phục đúng chỗ người dùng đang đứng.
+  if (kho.coDuLieu && kho.viTriCuon) {
+    await nextTick()
+    window.scrollTo({ top: kho.viTriCuon, behavior: 'instant' })
   }
   load()
 })
+
+onBeforeUnmount(nhoViTriCuon)
 
 // Nút Back/Forward của trình duyệt đổi URL mà không dựng lại component -> phải tự đồng bộ.
 // So với boLoc trước khi tải: lượt push do chính apDung() gây ra đã khớp sẵn nên không tải hai lần.
@@ -200,25 +173,24 @@ watch(
 
 /* ══════════════════ Dữ liệu cho từng khối ══════════════════ */
 
-const chiSo = computed(() => tomTat.value?.chiSo ?? [])
-const capNhatLuc = computed(() => gioNgan(tomTat.value?.tinhDenLuc))
+const chiSo = computed(() => kho.tomTat?.chiSo ?? [])
+const capNhatLuc = computed(() => gioNgan(kho.tomTat?.tinhDenLuc))
 
-const nhanThang = computed(() => phanTich.value?.theoThang.map((m) => m.nhan) ?? [])
-const soBuoiThang = computed(() => phanTich.value?.theoThang.map((m) => m.buoiDay) ?? [])
-const chiPhiThang = computed(() => phanTich.value?.theoThang.map((m) => m.chiPhi) ?? [])
+const nhanThang = computed(() => kho.bieuDo?.theoThang.map((m) => m.nhan) ?? [])
+const soBuoiThang = computed(() => kho.bieuDo?.theoThang.map((m) => m.buoiDay) ?? [])
+const chiPhiThang = computed(() => kho.bieuDo?.theoThang.map((m) => m.chiPhi) ?? [])
 const coSoLieu = computed(() => soBuoiThang.value.some((v) => v > 0))
-const nhomMon = computed(() => phanTich.value?.coCauNhomMon ?? [])
+const nhomMon = computed(() => kho.bieuDo?.coCauNhomMon ?? [])
 
 /**
- * Khối biểu đồ / bảng chi tiết đang chờ lượt tải ĐẦU TIÊN của /analytics.
+ * Khối biểu đồ đang chờ lượt tải ĐẦU TIÊN.
  *
- * Phải phân biệt với "đã tải xong và rỗng": /analytics gom theo ba chiều nên mất khoảng 2,3
- * giây, gấp mười lần /summary. Trong quãng đó mà in "Kỳ này chưa có buổi dạy nào" thì màn hình
- * đang khẳng định một điều SAI, ngay cạnh cái thẻ ghi 11.557 buổi.
+ * Phải phân biệt với "đã tải xong và rỗng": trong lúc chờ mà in "Kỳ này chưa có buổi dạy nào"
+ * thì màn hình đang khẳng định một điều SAI, ngay cạnh cái thẻ ghi 11.557 buổi.
  *
  * Lần lọc lại đã có số liệu cũ nên giữ nguyên biểu đồ cũ và chỉ làm mờ (xem lamMo).
  */
-const dangTaiPhanTich = computed(() => tai.phanTich && !phanTich.value)
+const dangTaiBieuDo = computed(() => kho.tai.bieuDo && !kho.bieuDo)
 
 /**
  * Gom buổi dạy theo ngày để bảng có dòng tiêu đề "Hôm nay · Thứ Sáu 21/08".
@@ -227,7 +199,7 @@ const dangTaiPhanTich = computed(() => tai.phanTich && !phanTich.value)
  */
 const lichTheoNgay = computed(() => {
   const nhom = []
-  for (const b of dieuHanh.value?.lichSapToi ?? []) {
+  for (const b of kho.dieuHanh?.lichSapToi ?? []) {
     const cuoi = nhom[nhom.length - 1]
     if (cuoi?.nhan === b.nhomNgay) cuoi.buoi.push(b)
     else nhom.push({ nhan: b.nhomNgay, buoi: [b] })
@@ -304,17 +276,19 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
           Áp dụng
         </button>
         <button v-if="dangLoc" class="btn btn-outline btn-sm" @click="xoaLoc">Xoá lọc</button>
-        <button class="btn btn-outline btn-sm" :disabled="dangTai" @click="load">Làm mới</button>
+        <button class="btn btn-outline btn-sm" :disabled="kho.dangTai" @click="load">
+          Làm mới
+        </button>
 
-        <LoadingSpinner v-if="lamMo" bare :size="16" />
-        <span v-else-if="capNhatLuc" class="filters__stamp" :title="tomTat.tinhDenLuc">
+        <LoadingSpinner v-if="kho.dangTai" bare :size="16" />
+        <span v-else-if="capNhatLuc" class="filters__stamp" :title="kho.tomTat.tinhDenLuc">
           Cập nhật {{ capNhatLuc }}
         </span>
       </div>
     </div>
 
-    <div v-if="loi" class="alert-error">
-      {{ loi }}
+    <div v-if="kho.loi" class="alert-error">
+      {{ kho.loi }}
       <button class="btn btn-outline btn-sm" @click="load">Thử lại</button>
     </div>
 
@@ -342,7 +316,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
         <div class="card panel col-8">
           <h3 class="panel__title">Số buổi dạy và chi phí lương theo tháng</h3>
           <div class="panel__body">
-            <LoadingSpinner v-if="dangTaiPhanTich" bare :size="30" />
+            <LoadingSpinner v-if="dangTaiBieuDo" bare :size="30" />
             <BarLineChart
               v-else-if="coSoLieu"
               :nhan="nhanThang"
@@ -358,7 +332,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
         <div class="card panel col-4">
           <h3 class="panel__title">Buổi dạy theo nhóm môn</h3>
           <div class="panel__body">
-            <LoadingSpinner v-if="dangTaiPhanTich" bare :size="30" />
+            <LoadingSpinner v-if="dangTaiBieuDo" bare :size="30" />
             <PieChart
               v-else-if="nhomMon.length"
               :nhan="nhomMon.map((c) => c.nhan)"
@@ -371,7 +345,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
 
       <!-- Hàng 3 — việc cần xử lý + lịch sắp tới -->
       <div class="row">
-        <AlertPanel v-if="dieuHanh" class="col-4" :canh-bao="dieuHanh.canhBao" @mo="mo" />
+        <AlertPanel v-if="kho.dieuHanh" class="col-4" :canh-bao="kho.dieuHanh.canhBao" @mo="mo" />
 
         <div class="table-wrap col-8">
           <div class="panel-head">
@@ -403,7 +377,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
                 <td>{{ b.truong }}</td>
               </tr>
             </tbody>
-            <tbody v-if="dieuHanh && !lichTheoNgay.length">
+            <tbody v-if="kho.dieuHanh && !lichTheoNgay.length">
               <tr>
                 <td colspan="4" class="empty">Chưa có buổi dạy nào được xếp.</td>
               </tr>
@@ -415,15 +389,12 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
       <!-- Hàng 4 — bảng thống kê chi tiết -->
       <h3 class="section-title">Thống kê chi tiết</h3>
       <AnalyticsTable
-        v-if="phanTich"
-        :theo-giao-vien="phanTich.theoGiaoVien"
-        :theo-truong="phanTich.theoTruong"
-        :theo-mon="phanTich.theoMon"
+        :dong="kho.bang[kho.tab] ?? []"
+        :tab="kho.tab"
+        :dang-tai="kho.tai.bang"
+        @update:tab="doiTab"
         @xuat="xuat"
       />
-      <div v-else class="table-wrap bang-cho">
-        <LoadingSpinner bare :size="24" text="Đang tải…" />
-      </div>
 
       <!-- Hàng 5 — phân công gần đây -->
       <div class="table-wrap dash__last">
@@ -442,7 +413,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in dieuHanh?.phanCongGanDay ?? []" :key="r.id">
+            <tr v-for="r in kho.dieuHanh?.phanCongGanDay ?? []" :key="r.id">
               <td>{{ r.giaoVien }}</td>
               <td>{{ r.truong }}</td>
               <td>{{ r.mon }}</td>
@@ -451,7 +422,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
                 <span class="badge" :class="TONE[r.tone]">{{ r.nhanTrangThai }}</span>
               </td>
             </tr>
-            <tr v-if="dieuHanh && !dieuHanh.phanCongGanDay.length">
+            <tr v-if="kho.dieuHanh && !kho.dieuHanh.phanCongGanDay.length">
               <td colspan="5" class="empty">Chưa có phân công nào.</td>
             </tr>
           </tbody>
@@ -607,11 +578,6 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
   flex-direction: column;
   justify-content: center;
   min-height: 230px;
-}
-.bang-cho {
-  display: grid;
-  place-items: center;
-  padding: 2.2rem 1rem;
 }
 .section-title {
   margin: 1.1rem 0 0.6rem;

@@ -3,19 +3,26 @@
  * Bảng thống kê chi tiết, 3 tab: theo giáo viên / theo trường / theo môn.
  * Ba tab cùng bộ cột nên dùng chung một bảng, chỉ đổi nguồn dữ liệu.
  *
+ * CHỈ NHẬN MỘT CHIỀU: trang cha tải đúng chiều đang xem rồi truyền vào đây. Trước kia component
+ * nhận sẵn cả ba mảng, nghĩa là mỗi lần mở Bảng điều khiển server phải gom ba chiều trong khi
+ * người dùng chỉ nhìn một tab.
+ *
  * Sắp xếp - tìm kiếm - phân trang đều làm ở client vì API đã gom sẵn, mỗi tab chỉ
  * vài chục tới hơn trăm dòng.
  */
 import { computed, ref, watch } from 'vue'
 import Pagination from '@/components/ui/Pagination.vue'
+import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
 import { soNguyen, soLe, tienDay, phanTram } from '@/utils/thongKe'
 
 const props = defineProps({
-  theoGiaoVien: { type: Array, default: () => [] },
-  theoTruong: { type: Array, default: () => [] },
-  theoMon: { type: Array, default: () => [] },
+  /** Các dòng của chiều đang xem. */
+  dong: { type: Array, default: () => [] },
+  /** Chiều đang xem — do trang cha giữ để còn nhớ khi rời trang rồi quay lại. */
+  tab: { type: String, default: 'GIAO_VIEN' },
+  dangTai: { type: Boolean, default: false },
 })
-const emit = defineEmits(['xuat'])
+const emit = defineEmits(['xuat', 'update:tab'])
 
 const TABS = [
   { ma: 'GIAO_VIEN', nhan: 'Theo giáo viên', cot1: 'Giáo viên' },
@@ -24,17 +31,12 @@ const TABS = [
 ]
 const MOI_TRANG = 10
 
-const tab = ref('GIAO_VIEN')
 const tuKhoa = ref('')
 const sapXep = ref({ cot: 'buoiDay', giam: true })
 const page = ref(0)
 
-const nguon = computed(
-  () =>
-    ({ GIAO_VIEN: props.theoGiaoVien, TRUONG: props.theoTruong, MON: props.theoMon })[tab.value] ??
-    [],
-)
-const tabHienTai = computed(() => TABS.find((t) => t.ma === tab.value))
+const nguon = computed(() => props.dong)
+const tabHienTai = computed(() => TABS.find((t) => t.ma === props.tab) ?? TABS[0])
 
 const COT = computed(() =>
   [
@@ -44,7 +46,7 @@ const COT = computed(() =>
     { ma: 'tyLeDuyet', nhan: 'Tỉ lệ duyệt', kieu: 'pt' },
     { ma: 'chuyenCan', nhan: 'Chuyên cần', kieu: 'pt' },
     // Đánh giá là chấm điểm con người nên tab "Theo môn" không có cột này
-    tab.value !== 'MON' ? { ma: 'diemDanhGia', nhan: 'Đánh giá', kieu: 'diem' } : null,
+    props.tab !== 'MON' ? { ma: 'diemDanhGia', nhan: 'Đánh giá', kieu: 'diem' } : null,
     { ma: 'chiPhi', nhan: 'Chi phí', kieu: 'tien' },
   ].filter(Boolean),
 )
@@ -84,7 +86,7 @@ function doiCot(ma) {
   page.value = 0
 }
 
-watch([tab, tuKhoa], () => {
+watch([() => props.tab, tuKhoa], () => {
   page.value = 0
 })
 
@@ -106,7 +108,7 @@ function hienThi(v, kieu) {
         :key="t.ma"
         class="btn btn-sm"
         :class="tab === t.ma ? 'btn-primary' : 'btn-outline'"
-        @click="tab = t.ma"
+        @click="emit('update:tab', t.ma)"
       >
         {{ t.nhan }}
       </button>
@@ -142,7 +144,12 @@ function hienThi(v, kieu) {
               <template v-else>{{ hienThi(r[c.ma], c.kieu) }}</template>
             </td>
           </tr>
-          <tr v-if="!dongHienThi.length">
+          <tr v-if="dangTai && !nguon.length">
+            <td :colspan="COT.length" class="empty">
+              <LoadingSpinner bare :size="22" />
+            </td>
+          </tr>
+          <tr v-else-if="!dongHienThi.length">
             <td :colspan="COT.length" class="empty">Không có dữ liệu.</td>
           </tr>
         </tbody>
