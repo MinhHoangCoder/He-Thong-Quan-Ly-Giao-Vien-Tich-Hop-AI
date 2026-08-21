@@ -44,16 +44,14 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Nghiệp vụ Bảng lương (Payroll) — tính theo TIẾT (buổi dạy), đơn giá theo CẤP.
  *
- * <p>Trung tâm trả lương theo tiết: mỗi buổi chấm công (PRESENT/LATE) = 1 tiết. Đơn giá
- * phụ thuộc CẤP của lớp buổi đó: Tiểu học (khối 1–5) {@value #TH_RATE_STR}đ/tiết, THCS
- * (khối 6–9) {@value #THCS_RATE_STR}đ/tiết. Trung tâm CHỈ dạy khối 1–9 — không có cấp 3.
- * Cấp suy ra từ buổi → phân công → lớp → khối
- * ({@code Attendance.scheduleId → Schedule → Assignment → SchoolClass.gradeLevel}).
+ * <p>Mỗi buổi chấm công (PRESENT/LATE) = 1 tiết. Đơn giá theo CẤP của lớp buổi đó: khối 1–5
+ * {@value #TH_RATE_STR}đ/tiết, khối 6–9 {@value #THCS_RATE_STR}đ/tiết. Trung tâm chỉ dạy khối
+ * 1–9. Cấp suy ra qua {@code Attendance.scheduleId → Schedule → Assignment → SchoolClass
+ * .gradeLevel}.
  *
- * <p>Vì mỗi GV chỉ dạy 1 cấp (quy ước dữ liệu) nên toàn bộ tiết của một GV cùng một đơn
- * giá → lưu {@code TaughtHours} = SỐ TIẾT, {@code RatePerHour} = ĐƠN GIÁ/TIẾT. Cột computed
- * {@code NetAmount} của DB (= base + TaughtHours×RatePerHour + phụ cấp + thưởng − khấu trừ)
- * cho ra đúng tiền lương theo tiết mà không cần đổi schema.
+ * <p>Mỗi GV chỉ dạy 1 cấp (quy ước dữ liệu) nên mọi tiết của họ cùng đơn giá. TÊN CỘT GÂY
+ * NHẦM: {@code TaughtHours} lưu SỐ TIẾT, {@code RatePerHour} lưu ĐƠN GIÁ/TIẾT. Cột computed
+ * {@code NetAmount} = base + TaughtHours×RatePerHour + phụ cấp + thưởng − khấu trừ.
  */
 @Service
 public class PayrollService {
@@ -284,15 +282,14 @@ public class PayrollService {
     /* ──────────────── MỞ LẠI KỲ LƯƠNG ĐÃ CHỐT (V32) ──────────────── */
 
     /**
-     * Đưa một phiếu lương ĐÃ CHỐT về lại trạng thái nháp để sửa được.
+     * Đưa một phiếu lương ĐÃ CHỐT về lại nháp để sửa (V32).
      *
-     * <p>Vì sao cần: chốt lương khóa luôn chấm công của kỳ đó ({@code
-     * AttendanceService.assertPeriodOpen}). Trước V32 điều đó biến một lỗi dữ liệu hoàn toàn có
-     * thật — dòng VẮNG mà hệ thống ghi nhầm cho buổi "ma" ngày lễ — thành lỗi KHÔNG THỂ SỬA,
-     * mà người dùng không làm sai bước nào: họ chỉ chốt lương đúng hạn.
+     * <p>Cần có vì chốt lương khóa luôn chấm công của kỳ ({@code
+     * AttendanceService.assertPeriodOpen}) — trước V32, dòng VẮNG ghi nhầm cho buổi rơi vào ngày
+     * lễ là lỗi không thể sửa.
      *
-     * <p>CHỈ mở được phiếu "đã chốt", không mở phiếu "đã trả": tiền đã ra khỏi quỹ thì sửa số
-     * trên hệ thống mà không sửa được thực tế chỉ tạo ra lệch sổ sách.
+     * <p>CHỈ mở phiếu FINALIZED, KHÔNG mở phiếu PAID: tiền đã chi thì sửa số trên hệ thống chỉ
+     * làm lệch sổ sách.
      */
     @Transactional
     public PayrollResponse reopen(Integer id, String reason) {
@@ -323,11 +320,8 @@ public class PayrollService {
     }
 
     /**
-     * Mở lại MỌI phiếu đã chốt của một kỳ.
-     *
-     * <p>Có mặt vì lỗi lịch nghỉ hiếm khi chỉ dính một người: một ngày lễ khai muộn kéo theo cả
-     * chục giáo viên. Bắt bấm từng dòng, mỗi dòng nhập lại lý do, là cách chắc chắn để người ta
-     * bỏ dở giữa chừng.
+     * Mở lại MỌI phiếu đã chốt của một kỳ. Lỗi ngày lễ khai muộn thường dính cả chục giáo viên
+     * cùng lúc nên cần thao tác hàng loạt.
      *
      * @return số phiếu đã mở lại
      */
@@ -479,16 +473,11 @@ public class PayrollService {
     }
 
     /**
-     * Đơn giá 1 tiết theo số khối, hoặc {@code null} nếu khối không thuộc 1–9.
+     * Đơn giá 1 tiết theo số khối, {@code null} nếu khối ngoài 1–9.
      *
-     * <p>Tách hẳn ra thành hàm riêng vì trước đây đây là một biểu thức ba ngôi
-     * {@code grade <= 5 ? TH_RATE : THCS_RATE} nằm lọt giữa thân hàm: đọc lướt thì thấy "1–5
-     * tiểu học, còn lại THCS" rất hợp lý, nhưng nó nuốt gọn cả khối 10–12 vào đơn giá THCS.
-     * Hồi hệ thống còn trường cấp 3 thì đó là tính SAI TIỀN LƯƠNG mà không ai biết, vì không
-     * có nhánh nào báo lên.
-     *
-     * <p>Nay trung tâm chỉ dạy khối 1–9 nên khối ngoài phạm vi là dữ liệu hỏng — trả
-     * {@code null} để bên gọi rơi về đơn giá thấp nhất KÈM cảnh báo, thay vì đoán bừa.
+     * <p>KHÔNG viết gộp thành {@code grade <= 5 ? TH_RATE : THCS_RATE}: cách đó nuốt cả khối
+     * 10–12 vào đơn giá THCS, hồi còn trường cấp 3 là tính sai tiền lương mà không nhánh nào
+     * báo lên. Khối ngoài 1–9 là dữ liệu hỏng nên trả null để bên gọi ghi cảnh báo.
      */
     static BigDecimal rateForGrade(Integer grade) {
         if (grade == null || grade < 1 || grade > 9) {

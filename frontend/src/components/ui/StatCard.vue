@@ -10,7 +10,12 @@ const props = defineProps({
   hint: { type: String, default: '' },
   trend: { type: Number, default: null }, // % tăng/giảm; >0 xanh, <0 đỏ
   color: { type: String, default: '#f97316' }, // màu nhấn của icon
+  // Đảo màu cho chỉ số mà TĂNG là xấu (chi phí lương). Mặc định false để các thẻ cũ giữ nguyên.
+  invertTrend: { type: Boolean, default: false },
 })
+
+/** Diễn biến này là tốt hay xấu — quyết định màu chip, không phải dấu của phép trừ. */
+const trendTot = computed(() => props.trend >= 0 !== props.invertTrend)
 
 // ⭐ HIỆU ỨNG ĐẾM SỐ (count-up): số nhảy dần tới giá trị thật. Chuỗi (vd "4.5/5") hiển thị nguyên.
 // PHẢI theo dõi prop bằng watch: nhiều dashboard render thẻ TRƯỚC khi API về —
@@ -58,7 +63,7 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
       <p class="stat__label">{{ label }}</p>
       <p class="stat__value">{{ display }}</p>
       <p v-if="hint || trend !== null" class="stat__meta">
-        <span v-if="trend !== null" class="stat__trend" :class="trend >= 0 ? 'is-up' : 'is-down'">
+        <span v-if="trend !== null" class="stat__trend" :class="trendTot ? 'is-up' : 'is-down'">
           <SvgIcon :name="trend >= 0 ? 'up' : 'down'" :size="13" />
           {{ Math.abs(trend) }}%
         </span>

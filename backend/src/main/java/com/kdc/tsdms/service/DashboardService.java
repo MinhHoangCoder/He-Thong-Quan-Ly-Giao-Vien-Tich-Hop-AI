@@ -1,667 +1,392 @@
 package com.kdc.tsdms.service;
 
-import com.kdc.tsdms.dto.DashboardResponse;
-import com.kdc.tsdms.dto.DashboardResponse.AssignmentRow;
-import com.kdc.tsdms.dto.DashboardResponse.ChartData;
-import com.kdc.tsdms.dto.DashboardResponse.ChartSeries;
-import com.kdc.tsdms.dto.DashboardResponse.ScheduleRow;
-import com.kdc.tsdms.dto.DashboardResponse.SideStat;
-import com.kdc.tsdms.dto.DashboardResponse.StatCard;
-import com.kdc.tsdms.dto.DashboardResponse.TopTeacher;
-import com.kdc.tsdms.entity.Assignment;
-import com.kdc.tsdms.entity.Attendance;
-import com.kdc.tsdms.entity.Payroll;
-import com.kdc.tsdms.entity.Schedule;
-import com.kdc.tsdms.entity.School;
-import com.kdc.tsdms.entity.Subject;
-import com.kdc.tsdms.entity.SubjectCategory;
-import com.kdc.tsdms.entity.Teacher;
-import com.kdc.tsdms.entity.TeacherEvaluation;
-import com.kdc.tsdms.repository.AssignmentRepository;
-import com.kdc.tsdms.repository.AssignmentSlotRepository;
-import com.kdc.tsdms.repository.AttendanceRepository;
-import com.kdc.tsdms.repository.PayrollRepository;
-import com.kdc.tsdms.repository.ScheduleRepository;
-import com.kdc.tsdms.repository.SchoolRepository;
-import com.kdc.tsdms.repository.SubjectRepository;
-import com.kdc.tsdms.repository.TeacherEvaluationRepository;
-import com.kdc.tsdms.repository.TeacherRepository;
-import java.math.BigDecimal;
-import java.time.DayOfWeek;
+import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.dto.DashboardAnalyticsResponse;
+import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DongPhanTich;
+import com.kdc.tsdms.dto.DashboardAnalyticsResponse.LatCat;
+import com.kdc.tsdms.dto.DashboardFilter;
+import com.kdc.tsdms.dto.DashboardOperationsResponse;
+import com.kdc.tsdms.dto.DashboardOperationsResponse.BuoiDay;
+import com.kdc.tsdms.dto.DashboardOperationsResponse.CanhBao;
+import com.kdc.tsdms.dto.DashboardSummaryResponse;
+import com.kdc.tsdms.dto.DashboardSummaryResponse.Kpi;
+import com.kdc.tsdms.repository.DashboardQueryRepository;
+import com.kdc.tsdms.repository.DashboardQueryRepository.Chieu;
+import com.kdc.tsdms.repository.DashboardQueryRepository.ThongKeKy;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Tổng hợp số liệu cho Bảng điều khiển (admin) — TÍNH TRỰC TIẾP từ DB.
+ * Tổng hợp số liệu cho Bảng điều khiển (admin).
  *
- * <p>Nguyên tắc: chỉ đọc dữ liệu thật; chỗ nào chưa có dữ liệu thì trả 0 hoặc null
- * (FE hiển thị "—") thay vì bịa số. "Buổi dạy" = Schedule ở trạng thái APPROVED.
+ * <p>Truy vấn nằm hết ở {@link DashboardQueryRepository}; lớp này chỉ đặt nhãn, tính % so với kỳ
+ * trước và chọn màu.
+ *
+ * <p>KHÔNG BỊA SỐ: chỗ chưa có dữ liệu trả null để FE hiện "—", không trả 0. "Chưa đo được" khác
+ * "đo rồi và bằng 0" — nhầm hai cái đó trên số liệu lương là chuyện lớn.
  */
 @Service
 public class DashboardService {
 
-    /** Số tháng vẽ sparkline ở các thẻ chỉ số phụ. */
-    private static final int SPARK_MONTHS = 7;
+    /** Ngưỡng báo hợp đồng lao động sắp hết hạn. */
+    private static final int NGAY_BAO_HET_HAN = 60;
 
-    private static final String APPROVED = "APPROVED";
+    private static final int TOP_TRUONG = 10;
+    private static final int SO_BUOI_TRONG_NGAY = 12;
+    private static final int SO_PHAN_CONG_GAN_DAY = 6;
 
-    private static final DateTimeFormatter DAY_MONTH = DateTimeFormatter.ofPattern("dd/MM");
-    private static final DateTimeFormatter HOUR_MIN = DateTimeFormatter.ofPattern("HH:mm");
+    private static final List<String> BANG_MAU =
+            List.of("#f97316", "#0ea5e9", "#8b5cf6", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6", "#ef4444");
 
-    /** Bảng màu xoay vòng cho các nhóm môn / phần tử biểu đồ. */
-    private static final List<String> PALETTE =
-            List.of("#f97316", "#0ea5e9", "#2563eb", "#f59e0b", "#22c55e", "#8b5cf6");
+    private static final DateTimeFormatter GIO_PHUT = DateTimeFormatter.ofPattern("HH:mm");
+    private static final DateTimeFormatter NGAY_GIO = DateTimeFormatter.ofPattern("HH:mm dd/MM/yyyy");
+    private static final DateTimeFormatter NGAY = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    private final TeacherRepository teacherRepo;
-    private final SchoolRepository schoolRepo;
-    private final AssignmentRepository assignmentRepo;
-    private final AssignmentSlotRepository slotRepo;
-    private final ScheduleRepository scheduleRepo;
-    private final SubjectRepository subjectRepo;
-    private final AttendanceRepository attendanceRepo;
-    private final TeacherEvaluationRepository evaluationRepo;
-    private final PayrollRepository payrollRepo;
+    private static final List<String> TEN_THU =
+            List.of("Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật");
 
-    public DashboardService(
-            TeacherRepository teacherRepo,
-            SchoolRepository schoolRepo,
-            AssignmentRepository assignmentRepo,
-            AssignmentSlotRepository slotRepo,
-            ScheduleRepository scheduleRepo,
-            SubjectRepository subjectRepo,
-            AttendanceRepository attendanceRepo,
-            TeacherEvaluationRepository evaluationRepo,
-            PayrollRepository payrollRepo) {
-        this.teacherRepo = teacherRepo;
-        this.schoolRepo = schoolRepo;
-        this.assignmentRepo = assignmentRepo;
-        this.slotRepo = slotRepo;
-        this.scheduleRepo = scheduleRepo;
-        this.subjectRepo = subjectRepo;
-        this.attendanceRepo = attendanceRepo;
-        this.evaluationRepo = evaluationRepo;
-        this.payrollRepo = payrollRepo;
+    private final DashboardQueryRepository repo;
+
+    public DashboardService(DashboardQueryRepository repo) {
+        this.repo = repo;
     }
+
+    /* ───────────── Thẻ chỉ số ───────────── */
 
     @Transactional(readOnly = true)
-    public DashboardResponse summary(int months) {
-        int chartMonths = Math.max(1, Math.min(12, months));
+    public DashboardSummaryResponse summary(DashboardFilter f) {
+        ThongKeKy nay = repo.thongKeKy(f);
+        ThongKeKy truoc = repo.thongKeKy(f.kyTruoc());
 
-        LocalDate today = LocalDate.now();
-        LocalDateTime todayStart = today.atStartOfDay();
-        LocalDateTime tomorrowStart = today.plusDays(1).atStartOfDay();
-        LocalDateTime monthStart = today.withDayOfMonth(1).atStartOfDay();
-        LocalDateTime monthEnd = monthStart.plusMonths(1);
-        LocalDateTime lastMonthStart = monthStart.minusMonths(1);
-        LocalDateTime weekStart =
-                today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();
-        LocalDateTime weekEnd = weekStart.plusWeeks(1);
-        LocalDateTime lastWeekStart = weekStart.minusWeeks(1);
-        LocalDateTime chartStart = monthStart.minusMonths(chartMonths - 1);
-        LocalDateTime sparkStart = monthStart.minusMonths(SPARK_MONTHS - 1);
+        long gvHoatDong = repo.demGiaoVienHoatDong(f.branchId());
+        long truongHopDong = repo.demTruongDangHopDong(f.branchId());
 
-        // Một truy vấn duy nhất phủ mọi khoảng cần dùng → lọc lại trong bộ nhớ.
-        LocalDateTime from = min(chartStart, min(sparkStart, min(lastWeekStart, lastMonthStart)));
-        LocalDateTime to = max(monthEnd, max(weekEnd, tomorrowStart));
-        List<Schedule> schedules = scheduleRepo.findByStartTimeBetweenAndDeletedFalse(from, to);
+        List<Kpi> chiSo = new ArrayList<>();
 
-        // Bảng tra cứu tên/nhóm môn (nạp 1 lần, tránh N+1).
-        Map<Integer, Assignment> assignmentById =
-                assignmentRepo.findAll().stream().collect(Collectors.toMap(Assignment::getId, a -> a, (a, b) -> a));
-        Map<Integer, Subject> subjectById =
-                subjectRepo.findAll().stream().collect(Collectors.toMap(Subject::getId, s -> s, (a, b) -> a));
-        Map<Integer, School> schoolById =
-                schoolRepo.findAll().stream().collect(Collectors.toMap(School::getId, s -> s, (a, b) -> a));
-        Map<Integer, Teacher> teacherById =
-                teacherRepo.findAll().stream().collect(Collectors.toMap(Teacher::getId, t -> t, (a, b) -> a));
+        chiSo.add(new Kpi(
+                "buoiDay",
+                "schedule",
+                "Buổi dạy",
+                (double) nay.buoiDuyet(),
+                "so",
+                (double) truoc.buoiDuyet(),
+                phanTramThayDoi(nay.buoiDuyet(), truoc.buoiDuyet()),
+                nay.buoiTatCa() == 0
+                        ? "Chưa xếp buổi nào"
+                        : soThapPhan(nay.buoiDuyet() * 100.0 / nay.buoiTatCa()) + "% đã duyệt",
+                "#f97316",
+                "/schedule"));
 
-        List<Attendance> attendance =
-                attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from.toLocalDate(), to.toLocalDate());
-        List<TeacherEvaluation> evaluations = evaluationRepo.findByDeletedFalse();
-        List<Payroll> payrolls = payrollRepo.findAll();
+        chiSo.add(new Kpi(
+                "gioGiang",
+                "clock",
+                "Giờ giảng",
+                lamTron(nay.gioGiang()),
+                "gio",
+                lamTron(truoc.gioGiang()),
+                phanTramThayDoi(nay.gioGiang(), truoc.gioGiang()),
+                nay.gvCoLich() == 0
+                        ? "Chưa có giáo viên đứng lớp"
+                        : "TB " + soThapPhan(nay.gioGiang() / nay.gvCoLich()) + " giờ/giáo viên",
+                "#0ea5e9",
+                "/schedule"));
 
-        return new DashboardResponse(
-                buildStats(schedules, teacherById, weekStart, weekEnd, lastWeekStart),
-                buildChart(schedules, assignmentById, subjectById, monthStart, chartMonths),
-                buildSideStats(schedules, attendance, evaluations, payrolls, monthStart, lastMonthStart),
-                buildRecentAssignments(assignmentById, schoolById, subjectById, teacherById, today),
-                buildToday(schedules, assignmentById, subjectById, schoolById, teacherById, todayStart, tomorrowStart),
-                buildTopTeachers(schedules, assignmentById, subjectById, teacherById, monthStart, monthEnd));
-    }
-
-    /* ─────────────────────────── STAT CARDS ─────────────────────────── */
-
-    private List<StatCard> buildStats(
-            List<Schedule> schedules,
-            Map<Integer, Teacher> teacherById,
-            LocalDateTime weekStart,
-            LocalDateTime weekEnd,
-            LocalDateTime lastWeekStart) {
-        long activeTeachers = teacherById.values().stream()
-                .filter(t -> !t.isDeleted() && "ACTIVE".equals(t.getStatus()))
-                .count();
-        long clientSchools =
-                schoolRepo.findAll().stream().filter(s -> !s.isDeleted()).count();
-        long runningAssignments = assignmentRepo.findByDeletedFalseOrderByIdDesc().stream()
-                .filter(a -> "ACTIVE".equals(a.getStatus()))
-                .count();
-
-        long lessonsThisWeek = countApproved(schedules, weekStart, weekEnd);
-        long lessonsLastWeek = countApproved(schedules, lastWeekStart, weekStart);
-
-        return List.of(
-                new StatCard(
-                        "teachers",
-                        "teacher",
-                        "Giáo viên đang dạy",
-                        activeTeachers,
-                        "so với tháng trước",
-                        null,
-                        "#f97316"),
-                new StatCard(
-                        "schools", "school", "Trường khách hàng", clientSchools, "so với tháng trước", null, "#2563eb"),
-                new StatCard(
-                        "assignments",
-                        "assignment",
-                        "Phân công đang chạy",
-                        runningAssignments,
-                        "so với tháng trước",
-                        null,
-                        "#f59e0b"),
-                new StatCard(
-                        "lessons",
-                        "schedule",
-                        "Buổi dạy tuần này",
-                        lessonsThisWeek,
-                        "so với tuần trước",
-                        percentChange(lessonsThisWeek, lessonsLastWeek),
-                        "#0ea5e9"));
-    }
-
-    /* ─────────────────────────── CHART ─────────────────────────── */
-
-    private ChartData buildChart(
-            List<Schedule> schedules,
-            Map<Integer, Assignment> assignmentById,
-            Map<Integer, Subject> subjectById,
-            LocalDateTime monthStart,
-            int chartMonths) {
-        // Nhãn tháng T1..Tn theo thứ tự thời gian.
-        List<String> labels = new ArrayList<>();
-        List<LocalDateTime> bucketStarts = new ArrayList<>();
-        for (int i = chartMonths - 1; i >= 0; i--) {
-            LocalDateTime b = monthStart.minusMonths(i);
-            bucketStarts.add(b);
-            labels.add("T" + b.getMonthValue());
-        }
-
-        // category -> mảng đếm theo tháng.
-        Map<String, long[]> byCategory = new LinkedHashMap<>();
-        for (Schedule s : schedules) {
-            if (!APPROVED.equals(s.getStatus())) {
-                continue;
-            }
-            int idx = monthIndex(s.getStartTime(), bucketStarts);
-            if (idx < 0) {
-                continue;
-            }
-            String category = categoryOf(s, assignmentById, subjectById);
-            byCategory.computeIfAbsent(category, k -> new long[chartMonths])[idx]++;
-        }
-
-        // Chỉ giữ nhóm có ít nhất 1 buổi; xếp theo tổng giảm dần cho biểu đồ gọn.
-        List<ChartSeries> series = new ArrayList<>();
-        List<Map.Entry<String, long[]>> entries = new ArrayList<>(byCategory.entrySet());
-        entries.sort(Comparator.comparingLong((Map.Entry<String, long[]> e) -> sum(e.getValue()))
-                .reversed());
-        int c = 0;
-        for (Map.Entry<String, long[]> e : entries) {
-            if (sum(e.getValue()) == 0) {
-                continue;
-            }
-            List<Long> data = new ArrayList<>();
-            for (long v : e.getValue()) {
-                data.add(v);
-            }
-            series.add(new ChartSeries(e.getKey(), PALETTE.get(c % PALETTE.size()), data));
-            c++;
-        }
-        return new ChartData(labels, series);
-    }
-
-    /* ─────────────────────────── SIDE STATS ─────────────────────────── */
-
-    private List<SideStat> buildSideStats(
-            List<Schedule> schedules,
-            List<Attendance> attendance,
-            List<TeacherEvaluation> evaluations,
-            List<Payroll> payrolls,
-            LocalDateTime monthStart,
-            LocalDateTime lastMonthStart) {
-        // 1) Số TIẾT dạy tháng này (mỗi buổi APPROVED = 1 tiết). Bỏ tính theo giờ.
-        long tietThisMonth = countApproved(schedules, monthStart, monthStart.plusMonths(1));
-        long tietLastMonth = countApproved(schedules, lastMonthStart, monthStart);
-        List<Long> tietSpark = monthlySeries(monthStart, (from, toEx) -> countApproved(schedules, from, toEx));
-        SideStat tiet = new SideStat(
-                "hours",
-                "Số tiết dạy tháng này",
-                formatInt(tietThisMonth),
-                percentChange(tietThisMonth, tietLastMonth),
-                tietSpark,
-                "#f97316");
-
-        // 2) Tỉ lệ chấm công đúng giờ (PRESENT / (PRESENT+LATE)) trong tháng.
-        double rateThis = onTimeRate(
-                attendance, monthStart.toLocalDate(), monthStart.plusMonths(1).toLocalDate());
-        double rateLast = onTimeRate(attendance, lastMonthStart.toLocalDate(), monthStart.toLocalDate());
-        boolean hasAttendance = countAttendance(
-                        attendance,
-                        monthStart.toLocalDate(),
-                        monthStart.plusMonths(1).toLocalDate())
-                > 0;
-        List<Long> rateSpark = monthlySeries(
-                monthStart, (from, toEx) -> (long) countPresent(attendance, from.toLocalDate(), toEx.toLocalDate()));
-        SideStat onTime = new SideStat(
-                "ontime",
-                "Tỉ lệ chấm công đúng giờ",
-                hasAttendance ? Math.round(rateThis) + "%" : "—",
-                hasAttendance && rateLast > 0 ? round1(rateThis - rateLast) : null,
-                rateSpark,
-                "#2563eb");
-
-        // 3) Điểm đánh giá trung bình.
-        double avg = evaluations.stream()
-                .filter(e -> e.getScore() != null)
-                .mapToInt(e -> e.getScore().intValue())
-                .average()
-                .orElse(0);
-        boolean hasRating = evaluations.stream().anyMatch(e -> e.getScore() != null);
-        List<Long> ratingSpark = monthlySeries(monthStart, (from, toEx) -> evaluations.stream()
-                .filter(e -> e.getCreatedAt() != null)
-                .filter(e -> {
-                    LocalDateTime at = LocalDateTime.ofInstant(e.getCreatedAt(), java.time.ZoneOffset.UTC);
-                    return !at.isBefore(from) && at.isBefore(toEx);
-                })
-                .count());
-        SideStat rating = new SideStat(
-                "rating",
-                "Điểm đánh giá trung bình",
-                hasRating ? round1(avg) + "/5" : "—",
-                null,
-                ratingSpark,
-                "#0ea5e9");
-
-        // 4) Chi phí lương tháng này = tổng NetAmount các dòng Payroll của kỳ hiện tại
-        //    (NetAmount do DB tính sẵn). Chưa "Tạo bảng lương" cho tháng này → hiển thị "—".
-        short curYear = (short) monthStart.getYear();
-        short curMonth = (short) monthStart.getMonthValue();
-
-        BigDecimal payThis = sumNet(payrolls, curYear, curMonth);
-        boolean hasPayroll = payrolls.stream()
-                .filter(p -> p.getPeriodYear() != null && p.getPeriodMonth() != null)
-                .anyMatch(p -> p.getPeriodYear().shortValue() == curYear
-                        && p.getPeriodMonth().shortValue() == curMonth);
-
-        // Sparkline: tổng lương từng tháng trong SPARK_MONTHS tháng gần nhất (cũ → mới).
-        List<Long> paySpark = new ArrayList<>();
-        for (int i = SPARK_MONTHS - 1; i >= 0; i--) {
-            LocalDateTime b = monthStart.minusMonths(i);
-            paySpark.add(sumNet(payrolls, (short) b.getYear(), (short) b.getMonthValue())
-                    .longValue());
-        }
-
-        // Không hiển thị % thay đổi cho thẻ chi phí lương: tháng trước thường có
-        // mẫu số rất nhỏ nên % biến động bị "phóng đại" (vd 1801.6%), gây hiểu nhầm.
-        SideStat payroll = new SideStat(
+        chiSo.add(new Kpi(
+                "chiPhi",
                 "payroll",
-                "Chi phí lương tháng này",
-                hasPayroll ? formatMoney(payThis) : "—",
-                null,
-                paySpark,
-                "#22c55e");
+                "Chi phí lương",
+                lamTron(nay.chiPhi()),
+                "tien",
+                lamTron(truoc.chiPhi()),
+                phanTramThayDoi(nay.chiPhi(), truoc.chiPhi()),
+                nay.buoiDuyet() == 0 ? "Chưa phát sinh" : tienGon(nay.chiPhi() / nay.buoiDuyet()) + "/buổi",
+                "#22c55e",
+                "/payroll"));
 
-        return List.of(tiet, onTime, rating, payroll);
+        // Chưa chấm công buổi nào thì chuyên cần là CHƯA ĐO ĐƯỢC, không phải 0%
+        boolean coChamCong = nay.chamCongTong() > 0;
+        double chuyenCan = coChamCong ? nay.chamCongCoMat() * 100.0 / nay.chamCongTong() : 0;
+        Double chuyenCanTruoc = truoc.chamCongTong() > 0 ? truoc.chamCongCoMat() * 100.0 / truoc.chamCongTong() : null;
+        chiSo.add(new Kpi(
+                "chuyenCan",
+                "check",
+                "Tỉ lệ chuyên cần",
+                coChamCong ? lamTron(chuyenCan) : null,
+                "phanTram",
+                chuyenCanTruoc == null ? null : lamTron(chuyenCanTruoc),
+                coChamCong && chuyenCanTruoc != null ? lamTron(chuyenCan - chuyenCanTruoc) : null,
+                coChamCong
+                        ? soThapPhan(nay.chamCongDungGio() * 100.0 / nay.chamCongTong()) + "% đúng giờ"
+                        : "Chưa có dữ liệu chấm công",
+                "#8b5cf6",
+                "/attendance"));
+
+        chiSo.add(new Kpi(
+                "giaoVien",
+                "teacher",
+                "Giáo viên có lịch dạy",
+                (double) nay.gvCoLich(),
+                "so",
+                (double) truoc.gvCoLich(),
+                phanTramThayDoi(nay.gvCoLich(), truoc.gvCoLich()),
+                gvHoatDong == 0 ? "Chưa có giáo viên" : "Trên " + gvHoatDong + " giáo viên đang làm việc",
+                "#2563eb",
+                "/dashboard/teacher"));
+
+        chiSo.add(new Kpi(
+                "truong",
+                "school",
+                "Trường đang phục vụ",
+                (double) nay.truongCoLich(),
+                "so",
+                (double) truoc.truongCoLich(),
+                phanTramThayDoi(nay.truongCoLich(), truoc.truongCoLich()),
+                truongHopDong == 0 ? "Chưa có hợp đồng" : "Trên " + truongHopDong + " trường còn hợp đồng",
+                "#f59e0b",
+                "/admin/schools"));
+
+        return new DashboardSummaryResponse(
+                f.nhan(), f.kyTruoc().nhan(), BusinessTime.now().format(NGAY_GIO), chiSo);
     }
 
-    /** Tổng NetAmount (lương thực nhận, DB tính) của mọi dòng Payroll thuộc kỳ year/month. */
-    private static BigDecimal sumNet(List<Payroll> payrolls, short year, short month) {
-        return payrolls.stream()
-                .filter(p -> p.getPeriodYear() != null && p.getPeriodMonth() != null)
-                .filter(p -> p.getPeriodYear().shortValue() == year
-                        && p.getPeriodMonth().shortValue() == month)
-                .map(Payroll::getNetAmount)
-                .filter(v -> v != null)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
+    /* ───────────── Biểu đồ + bảng chi tiết ───────────── */
 
-    /* ─────────────────────────── RECENT ASSIGNMENTS ─────────────────────────── */
-
-    private List<AssignmentRow> buildRecentAssignments(
-            Map<Integer, Assignment> assignmentById,
-            Map<Integer, School> schoolById,
-            Map<Integer, Subject> subjectById,
-            Map<Integer, Teacher> teacherById,
-            LocalDate today) {
-        return assignmentRepo.findByDeletedFalseOrderByIdDesc().stream()
-                .limit(6)
-                .map(a -> {
-                    String[] status = assignmentStatus(a, today);
-                    return new AssignmentRow(
-                            a.getId(),
-                            teacherName(teacherById.get(a.getTeacherId())),
-                            schoolLabelOf(a, schoolById),
-                            name(subjectById.get(a.getSubjectId()), Subject::getName, "Môn"),
-                            a.getStartDate() == null ? "" : a.getStartDate().format(DAY_MONTH),
-                            status[1],
-                            status[0]);
-                })
-                .toList();
-    }
-
-    /**
-     * Nhãn trường của một phiếu: từ V27 một phiếu trải được nhiều trường, nên nối các trường
-     * KHÁC NHAU của các tiết. Quá hai trường thì rút gọn "TH Dư Hàng +2" — dòng tóm tắt trên
-     * bảng điều khiển chỉ rộng chừng đó, liệt kê đủ sẽ tràn ô.
-     */
-    private String schoolLabelOf(Assignment a, Map<Integer, School> schoolById) {
-        LinkedHashSet<Integer> ids = new LinkedHashSet<>();
-        for (var slot : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId())) {
-            if (slot.getSchoolId() != null) {
-                ids.add(slot.getSchoolId());
-            }
-        }
-        if (ids.isEmpty()) {
-            ids.add(a.getSchoolId()); // dữ liệu cũ chưa gắn trường ở tiết
-        }
-        List<String> names = ids.stream()
-                .map(id -> name(schoolById.get(id), School::getName, "Trường"))
-                .toList();
-        if (names.size() <= 2) {
-            return String.join(", ", names);
-        }
-        return names.get(0) + " +" + (names.size() - 1);
-    }
-
-    /** Trường của MỘT BUỔI: ô lịch gốc trước (V27), trường cấp phân công sau. */
-    private Integer schoolIdOfSchedule(Schedule s, Assignment a) {
-        if (s.getSourceSlotId() != null) {
-            var slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
-            if (slot != null && slot.getSchoolId() != null) {
-                return slot.getSchoolId();
-            }
-        }
-        return a.getSchoolId();
-    }
-
-    /* ─────────────────────────── TODAY SCHEDULE ─────────────────────────── */
-
-    private List<ScheduleRow> buildToday(
-            List<Schedule> schedules,
-            Map<Integer, Assignment> assignmentById,
-            Map<Integer, Subject> subjectById,
-            Map<Integer, School> schoolById,
-            Map<Integer, Teacher> teacherById,
-            LocalDateTime todayStart,
-            LocalDateTime tomorrowStart) {
-        return schedules.stream()
-                .filter(s -> APPROVED.equals(s.getStatus()))
-                .filter(s -> !s.getStartTime().isBefore(todayStart)
-                        && s.getStartTime().isBefore(tomorrowStart))
-                .sorted(Comparator.comparing(Schedule::getStartTime))
-                .limit(6)
-                .map(s -> {
-                    Assignment a = assignmentById.get(s.getAssignmentId());
-                    Subject subject = a == null ? null : subjectById.get(a.getSubjectId());
-                    // Trường của BUỔI (V27), không phải trường chính của phiếu — lịch hôm nay mà
-                    // ghi sai trường thì giáo viên tới nhầm nơi.
-                    Integer schoolId = a == null ? null : schoolIdOfSchedule(s, a);
-                    School school = schoolId == null ? null : schoolById.get(schoolId);
-                    return new ScheduleRow(
-                            s.getId(),
-                            s.getStartTime().format(HOUR_MIN),
-                            teacherName(teacherById.get(s.getTeacherId())),
-                            subject == null ? "Buổi dạy" : subject.getName(),
-                            school == null ? "" : school.getName(),
-                            categoryColor(subject));
-                })
-                .toList();
-    }
-
-    /* ─────────────────────────── TOP TEACHERS ─────────────────────────── */
-
-    private List<TopTeacher> buildTopTeachers(
-            List<Schedule> schedules,
-            Map<Integer, Assignment> assignmentById,
-            Map<Integer, Subject> subjectById,
-            Map<Integer, Teacher> teacherById,
-            LocalDateTime monthStart,
-            LocalDateTime monthEnd) {
-        // Đếm SỐ TIẾT mỗi GV trong tháng (mỗi buổi APPROVED = 1 tiết) thay cho cộng giờ.
-        Map<Integer, Long> tietByTeacher = new LinkedHashMap<>();
-        Map<Integer, Map<String, Long>> subjectByTeacher = new LinkedHashMap<>();
-        for (Schedule s : schedules) {
-            if (!APPROVED.equals(s.getStatus())
-                    || s.getStartTime().isBefore(monthStart)
-                    || !s.getStartTime().isBefore(monthEnd)) {
-                continue;
-            }
-            tietByTeacher.merge(s.getTeacherId(), 1L, Long::sum);
-            Assignment a = assignmentById.get(s.getAssignmentId());
-            Subject subject = a == null ? null : subjectById.get(a.getSubjectId());
-            if (subject != null) {
-                subjectByTeacher
-                        .computeIfAbsent(s.getTeacherId(), k -> new LinkedHashMap<>())
-                        .merge(subject.getName(), 1L, Long::sum);
-            }
-        }
-        return tietByTeacher.entrySet().stream()
-                .sorted(Map.Entry.<Integer, Long>comparingByValue().reversed())
-                .limit(4)
-                .map(e -> {
-                    Teacher t = teacherById.get(e.getKey());
-                    String subject = subjectByTeacher.getOrDefault(e.getKey(), Map.of()).entrySet().stream()
-                            .max(Map.Entry.comparingByValue())
-                            .map(Map.Entry::getKey)
-                            .orElse("—");
-                    return new TopTeacher(e.getKey(), teacherName(t), subject, e.getValue(), initials(t));
-                })
-                .toList();
-    }
-
-    /* ─────────────────────────── HELPERS ─────────────────────────── */
-
-    private long countApproved(List<Schedule> schedules, LocalDateTime from, LocalDateTime toEx) {
-        return schedules.stream()
-                .filter(s -> APPROVED.equals(s.getStatus()))
-                .filter(s ->
-                        !s.getStartTime().isBefore(from) && s.getStartTime().isBefore(toEx))
-                .count();
-    }
-
-    private int monthIndex(LocalDateTime when, List<LocalDateTime> bucketStarts) {
-        for (int i = bucketStarts.size() - 1; i >= 0; i--) {
-            if (!when.isBefore(bucketStarts.get(i))) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /** Sinh mảng số liệu SPARK_MONTHS tháng gần nhất (cũ → mới) từ một hàm đếm theo khoảng. */
-    private List<Long> monthlySeries(
-            LocalDateTime monthStart, java.util.function.BiFunction<LocalDateTime, LocalDateTime, Long> counter) {
-        List<Long> out = new ArrayList<>();
-        for (int i = SPARK_MONTHS - 1; i >= 0; i--) {
-            LocalDateTime b = monthStart.minusMonths(i);
-            out.add(counter.apply(b, b.plusMonths(1)));
-        }
-        return out;
-    }
-
-    private String categoryOf(Schedule s, Map<Integer, Assignment> assignmentById, Map<Integer, Subject> subjectById) {
-        Assignment a = assignmentById.get(s.getAssignmentId());
-        if (a == null) {
-            return "Khác";
-        }
-        Subject subject = subjectById.get(a.getSubjectId());
-        if (subject == null || subject.getCategory() == null) {
-            return "Khác";
-        }
-        return subject.getCategory().getName();
-    }
-
-    private String categoryColor(Subject subject) {
-        if (subject == null || subject.getCategory() == null) {
-            return PALETTE.get(0);
-        }
-        SubjectCategory cat = subject.getCategory();
-        int idx = Math.floorMod(cat.getId() == null ? 0 : cat.getId(), PALETTE.size());
-        return PALETTE.get(idx);
-    }
-
-    private long countAttendance(List<Attendance> att, LocalDate from, LocalDate toEx) {
-        return att.stream()
-                .filter(a -> !a.getWorkDate().isBefore(from) && a.getWorkDate().isBefore(toEx))
-                .count();
-    }
-
-    private long countPresent(List<Attendance> att, LocalDate from, LocalDate toEx) {
-        return att.stream()
-                .filter(a -> !a.getWorkDate().isBefore(from) && a.getWorkDate().isBefore(toEx))
-                .filter(a -> "PRESENT".equals(a.getStatus()))
-                .count();
-    }
-
-    private double onTimeRate(List<Attendance> att, LocalDate from, LocalDate toEx) {
-        long present = 0;
-        long counted = 0;
-        for (Attendance a : att) {
-            if (a.getWorkDate().isBefore(from) || !a.getWorkDate().isBefore(toEx)) {
-                continue;
-            }
-            if ("PRESENT".equals(a.getStatus())) {
-                present++;
-                counted++;
-            } else if ("LATE".equals(a.getStatus())) {
-                counted++;
-            }
-        }
-        return counted == 0 ? 0 : (present * 100.0) / counted;
-    }
-
-    /** Trả [tone, label]: ok=Đang dạy, wait=Sắp bắt đầu, no=Đã hủy, done=Hoàn thành. */
-    private String[] assignmentStatus(Assignment a, LocalDate today) {
-        if ("CANCELLED".equals(a.getStatus())) {
-            return new String[] {"no", "Đã hủy"};
-        }
-        if ("COMPLETED".equals(a.getStatus())) {
-            return new String[] {"done", "Hoàn thành"};
-        }
-        if (a.getStartDate() != null && a.getStartDate().isAfter(today)) {
-            return new String[] {"wait", "Sắp bắt đầu"};
-        }
-        return new String[] {"ok", "Đang dạy"};
-    }
-
-    private String teacherName(Teacher t) {
-        if (t == null) {
-            return "(GV)";
-        }
-        return (safe(t.getLastName()) + " " + safe(t.getFirstName())).trim();
-    }
-
-    private String initials(Teacher t) {
-        if (t == null) {
-            return "GV";
-        }
-        String a = firstChar(t.getLastName());
-        String b = firstChar(t.getFirstName());
-        String s = (a + b).trim();
-        return s.isEmpty() ? "GV" : s.toUpperCase(Locale.ROOT);
-    }
-
-    private static String firstChar(String s) {
-        return s == null || s.isBlank() ? "" : s.trim().substring(0, 1);
-    }
-
-    private static String safe(String s) {
-        return s == null ? "" : s;
-    }
-
-    private static <T> String name(T obj, Function<T, String> getter, String fallback) {
-        return obj == null ? "(" + fallback + ")" : getter.apply(obj);
-    }
-
-    /** % thay đổi so với kỳ trước; null nếu kỳ trước = 0 (không so sánh được). */
-    private static Double percentChange(long current, long previous) {
-        if (previous == 0) {
-            return null;
-        }
-        return round1((current - previous) * 100.0 / previous);
-    }
-
-    private static Double round1(double v) {
-        return Math.round(v * 10.0) / 10.0;
-    }
-
-    private static long sum(long[] arr) {
-        long total = 0;
-        for (long v : arr) {
-            total += v;
-        }
-        return total;
-    }
-
-    /** Định dạng số nguyên có phân tách hàng nghìn bằng dấu chấm (kiểu VN): 4820 → 4.820. */
-    private static String formatInt(long v) {
-        return String.format(Locale.US, "%,d", v).replace(',', '.');
+    @Transactional(readOnly = true)
+    public DashboardAnalyticsResponse analytics(DashboardFilter f) {
+        return new DashboardAnalyticsResponse(
+                repo.theoThang(f),
+                repo.nhietDo(f),
+                repo.soTietToiDa(),
+                toMau(repo.coCauNhomMon(f)),
+                toMau(repo.topTruong(f, TOP_TRUONG)),
+                phanTich(f, Chieu.GIAO_VIEN),
+                phanTich(f, Chieu.TRUONG),
+                phanTich(f, Chieu.MON));
     }
 
     /**
-     * Định dạng tiền VND gọn cho thẻ nhỏ trên dashboard: ≥1 tỷ → "1,2 tỷ ₫",
-     * ≥1 triệu → "12,3 tr ₫", còn lại → số đầy đủ "123.000 ₫".
+     * Ghép điểm đánh giá vào bảng chi tiết.
+     *
+     * <p>Điểm đánh giá lấy bằng truy vấn riêng vì nó không gắn với buổi dạy — nối chung trong SQL
+     * sẽ nhân bản mỗi buổi lên bằng số lượt đánh giá và làm sai mọi phép cộng khác.
      */
-    private static String formatMoney(BigDecimal amount) {
-        if (amount == null || amount.signum() == 0) {
-            return "0 ₫";
+    private List<DongPhanTich> phanTich(DashboardFilter f, Chieu chieu) {
+        List<DongPhanTich> dong = repo.phanTich(f, chieu);
+        Map<Integer, Double> diem = repo.diemDanhGiaTheo(f, chieu);
+        if (diem.isEmpty()) {
+            return dong;
         }
-        double v = amount.doubleValue();
-        if (v >= 1_000_000_000d) {
-            return trimDec(v / 1_000_000_000d) + " tỷ ₫";
-        }
-        if (v >= 1_000_000d) {
-            return trimDec(v / 1_000_000d) + " tr ₫";
-        }
-        return formatInt(amount.longValue()) + " ₫";
+        return dong.stream()
+                .map(d -> new DongPhanTich(
+                        d.id(),
+                        d.ten(),
+                        d.phu(),
+                        d.buoiDay(),
+                        d.gioGiang(),
+                        d.tyLeDuyet(),
+                        d.chuyenCan(),
+                        diem.get(d.id()),
+                        d.chiPhi()))
+                .toList();
     }
 
-    /** Làm tròn 1 chữ số thập phân, dùng dấu phẩy kiểu VN và bỏ ",0" thừa: 5,0 → "5"; 12,34 → "12,3". */
-    private static String trimDec(double v) {
-        double r = Math.round(v * 10.0) / 10.0;
-        if (r == Math.floor(r)) {
-            return String.valueOf((long) r);
+    private List<LatCat> toMau(List<LatCat> lat) {
+        List<LatCat> ketQua = new ArrayList<>(lat.size());
+        for (int i = 0; i < lat.size(); i++) {
+            LatCat l = lat.get(i);
+            ketQua.add(new LatCat(l.id(), l.nhan(), l.giaTri(), BANG_MAU.get(i % BANG_MAU.size())));
         }
-        return String.format(Locale.US, "%.1f", r).replace('.', ',');
+        return ketQua;
     }
 
-    private static LocalDateTime min(LocalDateTime a, LocalDateTime b) {
-        return a.isBefore(b) ? a : b;
+    /* ───────────── Việc cần xử lý + lịch ───────────── */
+
+    @Transactional(readOnly = true)
+    public DashboardOperationsResponse operations(DashboardFilter f) {
+        List<CanhBao> canhBao = new ArrayList<>();
+
+        them(canhBao, "lichChoDuyet", "khan", "Lịch dạy chờ duyệt", repo.demLichChoDuyet(), "buổi", "/schedule");
+        them(
+                canhBao,
+                "hopDongSapHetHan",
+                "khan",
+                "Hợp đồng giáo viên hết hạn trong " + NGAY_BAO_HET_HAN + " ngày",
+                repo.demHopDongSapHetHan(NGAY_BAO_HET_HAN),
+                "hợp đồng",
+                "/dashboard/teacher");
+        them(
+                canhBao,
+                "hopDongDichVu",
+                "khan",
+                "Hợp đồng dịch vụ đã quá hạn",
+                repo.demHopDongDichVuHetHan(),
+                "trường",
+                "/admin/schools");
+        them(
+                canhBao,
+                "chuaChamCong",
+                "luuY",
+                "Buổi đã dạy chưa chấm công (30 ngày)",
+                repo.demBuoiChuaChamCong(),
+                "buổi",
+                "/attendance");
+        them(canhBao, "luongChuaChot", "luuY", "Kỳ lương chưa chốt", repo.demKyLuongChuaChot(), "kỳ", "/payroll");
+        them(
+                canhBao,
+                "truongKhongPhatSinh",
+                "luuY",
+                "Trường còn hợp đồng nhưng không có buổi dạy",
+                repo.demTruongKhongPhatSinh(f),
+                "trường",
+                "/admin/schools");
+        them(
+                canhBao,
+                "giaoVienRanh",
+                "tin",
+                "Giáo viên chưa có lịch trong kỳ",
+                repo.demGiaoVienKhongCoLich(f),
+                "giáo viên",
+                "/dashboard/teacher");
+
+        LocalDate homNay = BusinessTime.today();
+        List<Object[]> lich = repo.lichTrongNgay(homNay, SO_BUOI_TRONG_NGAY);
+        boolean laDuBao = false;
+        LocalDate ngayHienThi = homNay;
+
+        // Hôm nay trống (hè, ngày nghỉ) thì nhảy sang ngày dạy gần nhất — ô rỗng không phân biệt
+        // được với hệ thống hỏng.
+        if (lich.isEmpty()) {
+            LocalDate keTiep = repo.ngayDayKeTiep(homNay);
+            if (keTiep != null) {
+                ngayHienThi = keTiep;
+                lich = repo.lichTrongNgay(keTiep, SO_BUOI_TRONG_NGAY);
+                laDuBao = true;
+            }
+        }
+
+        return new DashboardOperationsResponse(
+                canhBao,
+                nhanNgay(ngayHienThi, laDuBao),
+                laDuBao,
+                lich.stream().map(this::toBuoiDay).toList(),
+                repo.phanCongGanDay(SO_PHAN_CONG_GAN_DAY));
     }
 
-    private static LocalDateTime max(LocalDateTime a, LocalDateTime b) {
-        return a.isAfter(b) ? a : b;
+    /** Mục không có việc nào vẫn giữ lại, đổi mức thành "on" để FE đẩy xuống cuối. */
+    private void them(List<CanhBao> ds, String key, String muc, String nhan, long soLuong, String donVi, String route) {
+        ds.add(new CanhBao(key, soLuong == 0 ? "on" : muc, nhan, soLuong, soLuong + " " + donVi, route));
+    }
+
+    private String nhanNgay(LocalDate ngay, boolean laDuBao) {
+        String moTa = TEN_THU.get(ngay.getDayOfWeek().getValue() - 1) + ", " + ngay.format(NGAY);
+        return laDuBao ? "Buổi dạy gần nhất: " + moTa : "Lịch dạy hôm nay: " + moTa;
+    }
+
+    private BuoiDay toBuoiDay(Object[] r) {
+        LocalDateTime batDau = (LocalDateTime) r[1];
+        LocalDateTime ketThuc = (LocalDateTime) r[2];
+        LocalDateTime bayGio = BusinessTime.now();
+        String trangThai = ketThuc.isBefore(bayGio) ? "daXong" : (batDau.isAfter(bayGio) ? "sapToi" : "dangDien");
+        return new BuoiDay(
+                (Long) r[0],
+                batDau.format(GIO_PHUT),
+                ketThuc.format(GIO_PHUT),
+                (String) r[3],
+                (String) r[4],
+                (String) r[5],
+                r[6] == null ? "—" : (String) r[6],
+                trangThai,
+                BANG_MAU.get(batDau.getHour() % BANG_MAU.size()));
+    }
+
+    /* ───────────── Xuất CSV ───────────── */
+
+    /**
+     * Xuất bảng chi tiết ra CSV cho Excel.
+     *
+     * <p>Phân cách bằng DẤU CHẤM PHẨY: Excel bản tiếng Việt hiểu dấu phẩy là dấu thập phân, dùng
+     * phẩy ngăn cột thì mọi số tiền vỡ sang ô bên cạnh. BOM UTF-8 do controller ghi thêm.
+     */
+    @Transactional(readOnly = true)
+    public String xuatCsv(DashboardFilter f, Chieu chieu) {
+        String tenCot =
+                switch (chieu) {
+                    case GIAO_VIEN -> "Giáo viên";
+                    case TRUONG -> "Trường";
+                    case MON -> "Môn học";
+                };
+        StringBuilder sb = new StringBuilder();
+        sb.append("Thống kê Bảng điều khiển — ").append(f.nhan()).append('\n');
+        sb.append("Kết xuất lúc;").append(BusinessTime.now().format(NGAY_GIO)).append('\n');
+        sb.append('\n');
+        sb.append(tenCot)
+                .append(";Ghi chú;Số buổi dạy;Giờ giảng;Tỉ lệ duyệt (%);Chuyên cần (%);Điểm đánh giá;Chi phí (VND)\n");
+
+        for (DongPhanTich d : phanTich(f, chieu)) {
+            sb.append(oCsv(d.ten()))
+                    .append(';')
+                    .append(oCsv(d.phu()))
+                    .append(';')
+                    .append(d.buoiDay())
+                    .append(';')
+                    .append(soCsv(d.gioGiang()))
+                    .append(';')
+                    .append(soCsv(d.tyLeDuyet()))
+                    .append(';')
+                    .append(d.chuyenCan() == null ? "" : soCsv(d.chuyenCan()))
+                    .append(';')
+                    .append(d.diemDanhGia() == null ? "" : soCsv(d.diemDanhGia()))
+                    .append(';')
+                    .append(Math.round(d.chiPhi()))
+                    .append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** Bọc ô CSV theo RFC 4180: nhân đôi dấu nháy kép rồi bao ngoài. */
+    private static String oCsv(String s) {
+        return s == null ? "" : '"' + s.replace("\"", "\"\"") + '"';
+    }
+
+    private static String soCsv(double v) {
+        return String.format(Locale.GERMANY, "%.2f", v);
+    }
+
+    /* ───────────── Tiện ích ───────────── */
+
+    /**
+     * % thay đổi so với kỳ trước; null khi kỳ trước bằng 0.
+     *
+     * <p>Bản dashboard cũ từng hiện "+1801,6%": tăng từ 1 lên 19 đúng là tăng 1800% nhưng con số
+     * đó chỉ nói mẫu số quá nhỏ, đặt cạnh mũi tên xanh thì thành khoe sai sự thật.
+     */
+    private static Double phanTramThayDoi(double nay, double truoc) {
+        return truoc <= 0 ? null : lamTron((nay - truoc) / truoc * 100);
+    }
+
+    private static double lamTron(double v) {
+        return Math.round(v * 10) / 10.0;
+    }
+
+    private static String soThapPhan(double v) {
+        return String.format(Locale.forLanguageTag("vi-VN"), "%,.1f", v);
+    }
+
+    /** Tiền rút gọn cho dòng phụ của thẻ: 1234567 → "1,23 tr". */
+    private static String tienGon(double v) {
+        if (v >= 1_000_000_000) {
+            return String.format(Locale.forLanguageTag("vi-VN"), "%,.2f tỉ", v / 1_000_000_000);
+        }
+        if (v >= 1_000_000) {
+            return String.format(Locale.forLanguageTag("vi-VN"), "%,.2f tr", v / 1_000_000);
+        }
+        return String.format(Locale.forLanguageTag("vi-VN"), "%,.0f đ", v);
     }
 }
