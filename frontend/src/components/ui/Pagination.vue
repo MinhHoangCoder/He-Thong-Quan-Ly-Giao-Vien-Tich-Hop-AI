@@ -3,18 +3,25 @@
  * Cụm phân trang dùng chung: « ‹ 1 2 3 4 5 › »
  * Dùng cho các trang có bảng dữ liệu tải sẵn rồi cắt trang phía client
  * (Phân công / Chấm công / Bảng lương). Bám theo phong cách phân trang của trang
- * Kho bài giảng, nhưng BỎ ô nhập "Trang" và nút "Đi".
+ * Kho bài giảng.
  *
  * Dùng: <Pagination v-model="page" :total-pages="totalPages" />
  * (page là chỉ số trang 0-based)
+ *
+ * show-jump: hiện thêm ô nhập số trang + nút "Đi" (trang Quản lý trường dùng, vì
+ * danh sách trường dài và nhảy thẳng tới trang nhanh hơn bấm từng số). Mặc định
+ * tắt để 6 trang đang dùng sẵn không đổi giao diện.
  */
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
 const props = defineProps({
   modelValue: { type: Number, required: true }, // trang hiện tại (0-based)
   totalPages: { type: Number, required: true },
+  showJump: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:modelValue'])
+
+const pageInput = ref('')
 
 // Cửa sổ tối đa 5 số trang, canh quanh trang hiện tại (giống trang Bài giảng).
 const visiblePages = computed(() => {
@@ -41,6 +48,12 @@ function goPage(index) {
   if (index < 0 || index >= props.totalPages) return
   if (index === props.modelValue) return
   emit('update:modelValue', index)
+}
+
+function jumpPage() {
+  const p = Number(pageInput.value)
+  if (!Number.isInteger(p) || p < 1 || p > props.totalPages) return
+  goPage(p - 1)
 }
 </script>
 
@@ -73,6 +86,20 @@ function goPage(index) {
     >
       »
     </button>
+
+    <template v-if="showJump">
+      <input
+        v-model="pageInput"
+        class="page-input"
+        type="number"
+        min="1"
+        :max="totalPages"
+        placeholder="Trang"
+        aria-label="Số trang muốn tới"
+        @keyup.enter="jumpPage"
+      />
+      <button class="pg-btn" @click="jumpPage">Đi</button>
+    </template>
   </div>
 </template>
 
@@ -110,5 +137,15 @@ function goPage(index) {
 .pg-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.page-input {
+  width: 78px;
+  height: 38px;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  background: var(--c-surface);
+  color: var(--c-text);
+  padding: 0 10px;
+  text-align: center;
 }
 </style>

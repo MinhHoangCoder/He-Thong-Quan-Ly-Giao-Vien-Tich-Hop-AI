@@ -1,28 +1,43 @@
 <!-- src/pages/SchoolListPage.vue -->
 <script setup>
 /**
- * Trang "Quản lý trường": CRUD School (trường khách hàng).
- * Đồng bộ giao diện với SubjectCategoryListPage.vue / LessonListPage.vue —
- * cùng bố cục page__head/filter-bar/table-wrap/pagination, cùng token màu & badge.
+ * Trang "Quản lý trường": CRUD School (trường khách hàng) + thùng rác.
+ * Cùng bố cục page__head/filter-bar/table-wrap với SchoolClassListPage.vue và
+ * SubjectCategoryListPage.vue; phân trang dùng chung components/ui/Pagination.vue.
  */
 import { ref, reactive, computed, onMounted } from 'vue'
 import { schoolApi } from '@/api/schools'
 import { branchApi } from '@/api/branches'
+import { periodApi } from '@/api/periods'
+import { formatCurrency, formatDate } from '@/utils/format'
 import DateField from '@/components/ui/DateField.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 
 /* ── State: danh sách trường ── */
 const loading = ref(false)
+const loadError = ref('')
 const items = ref([])
 const total = ref(0)
 const keyword = ref('')
 const branchFilter = ref('')
 const statusFilter = ref('')
+/** '' = mọi hợp đồng | '30' = còn hạn nhưng kết thúc trong 30 ngày tới. */
+const expiringFilter = ref('')
 const page = ref(0)
 const pageSize = 10
-const pageInput = ref('')
+
+/** 'list' = danh sách chính | 'trash' = thùng rác (giống trang Lớp học). */
+const viewMode = ref('list')
+const trashItems = ref([])
+const trashLoading = ref(false)
 
 /** Danh sách chi nhánh — dùng cho dropdown lọc + form thêm/sửa. */
 const branches = ref([])
+
+/** Dòng đang mở chi tiết + số liệu của nó (nạp riêng, xem SchoolDetailResponse). */
+const expandedId = ref(null)
+const detail = ref(null)
+const detailLoading = ref(false)
 
 const emptyForm = () => ({
   branchId: '',
@@ -35,7 +50,7 @@ const emptyForm = () => ({
   contractEndDate: '',
   status: 'ACTIVE',
   // Chỉ dùng lúc THÊM MỚI: quyết định bộ khung tiết sinh sẵn cho trường.
-  // Để trống thì backend tự đoán theo tên trường. Không gửi khi SỬA.
+  // Không gửi khi SỬA — backend suy cấp học từ chính tên trường.
   educationLevel: '',
 })
 
@@ -50,66 +65,67 @@ const modal = reactive({
 })
 
 const deleteTarget = ref(null)
+const restoreTarget = ref(null)
+const purgeTarget = ref(null)
+const trashBusy = ref(false)
+const trashError = ref('')
 
-/* =========================
-   Pagination
-========================= */
+const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt động', EXPIRED: 'Hết hạn' }
+
+/** Trạng thái hợp đồng dịch vụ (bảng ServiceContract) — bộ mã khác với trạng thái trường. */
+const CONTRACT_STATUS_LABEL = {
+  DRAFT: 'Nháp',
+  ACTIVE: 'Đang hiệu lực',
+  EXPIRED: 'Hết hạn',
+  TERMINATED: 'Đã chấm dứt',
+}
+
+/** Còn dưới ngần này ngày thì hiện cảnh báo hạn hợp đồng. Khớp bộ lọc "Sắp hết hạn". */
+const NGUONG_SAP_HET_HAN = 30
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize))
-
-const visiblePages = computed(() => {
-  const totalP = totalPages.value
-  const current = page.value + 1
-
-  let start = Math.max(1, current - 2)
-  let end = Math.min(totalP, current + 2)
-
-  if (end - start < 4) {
-    if (start === 1) {
-      end = Math.min(5, totalP)
-    } else if (end === totalP) {
-      start = Math.max(1, totalP - 4)
-    }
-  }
-
-  const arr = []
-  for (let i = start; i <= end; i++) {
-    arr.push(i)
-  }
-  return arr
-})
-
-function goPage(index) {
-  if (index < 0 || index >= totalPages.value) return
-  page.value = index
-  load()
-}
-
-function jumpPage() {
-  const p = Number(pageInput.value)
-  if (isNaN(p)) return
-  if (p < 1) return
-  if (p > totalPages.value) return
-  goPage(p - 1)
-}
 
 /* ── Load danh sách trường ── */
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await schoolApi.list({
       keyword: keyword.value || undefined,
       branchId: branchFilter.value || undefined,
       status: statusFilter.value || undefined,
+      expiringInDays: expiringFilter.value || undefined,
       page: page.value,
       size: pageSize,
     })
     items.value = res.data.content
     total.value = res.data.totalElements
-  } catch {
-    // handle error
+    // Trang mới có thể không còn dòng đang mở -> đóng luôn cho khỏi treo panel rỗng.
+    if (expandedId.value && !items.value.some((i) => i.id === expandedId.value)) {
+      expandedId.value = null
+    }
+  } catch (e) {
+    // Nuốt lỗi ở đây là nói dối: backend chết mà bảng vẫn hiện "Không có dữ liệu",
+    // người dùng tưởng chưa có trường nào và đi tạo lại từ đầu.
+    items.value = []
+    total.value = 0
+    loadError.value = e.response?.data?.message ?? 'Không tải được danh sách trường'
   } finally {
     loading.value = false
+  }
+}
+
+async function loadTrash() {
+  trashLoading.value = true
+  trashError.value = ''
+  try {
+    const { data } = await schoolApi.trash()
+    trashItems.value = data
+  } catch (e) {
+    trashItems.value = []
+    trashError.value = e.response?.data?.message ?? 'Không tải được thùng rác'
+  } finally {
+    trashLoading.value = false
   }
 }
 
@@ -118,7 +134,7 @@ async function loadBranches() {
     const { data } = await branchApi.list()
     branches.value = data
   } catch {
-    // dropdown lỗi không block trang
+    // Dropdown lỗi không chặn trang; tên chi nhánh vẫn có sẵn trong từng dòng (branchName).
   }
 }
 
@@ -126,6 +142,13 @@ onMounted(() => {
   load()
   loadBranches()
 })
+
+function switchView(mode) {
+  viewMode.value = mode
+  expandedId.value = null
+  if (mode === 'trash') loadTrash()
+  else load()
+}
 
 function onSearch() {
   page.value = 0
@@ -136,12 +159,54 @@ function clearSearch() {
   keyword.value = ''
   branchFilter.value = ''
   statusFilter.value = ''
+  expiringFilter.value = ''
   page.value = 0
   load()
 }
 
-function branchName(branchId) {
-  return branches.value.find((b) => b.id === branchId)?.name ?? '-'
+function goPage(index) {
+  page.value = index
+  load()
+}
+
+function branchName(item) {
+  return item.branchName ?? branches.value.find((b) => b.id === item.branchId)?.name ?? '-'
+}
+
+/* ── Chi tiết một trường (mở rộng dòng) ── */
+async function toggleExpand(item) {
+  if (expandedId.value === item.id) {
+    expandedId.value = null
+    return
+  }
+  expandedId.value = item.id
+  detail.value = null
+  detailLoading.value = true
+  try {
+    const { data } = await schoolApi.summary(item.id)
+    detail.value = data
+  } catch {
+    detail.value = null
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+/** Trường chưa có khung tiết thì không xếp phân công được — cho áp khung ngay tại dòng. */
+const applyingFrameId = ref(null)
+async function applyStandardFrame(item) {
+  applyingFrameId.value = item.id
+  try {
+    const { data } = await periodApi.applyStandard(item.id)
+    // Kèm cấp học vừa suy ra: backend đoán cấp từ khối lớp cao nhất, đoán sai thì cả
+    // trường chạy sai giờ — người dùng phải thấy để bắt được ngay tại đây.
+    alert(`Đã tạo ${data.created} tiết (${data.level}) cho ${item.name}.`)
+    load()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Áp khung tiết thất bại')
+  } finally {
+    applyingFrameId.value = null
+  }
 }
 
 /* ── Validate (mirror SchoolRequest phía backend) ── */
@@ -151,59 +216,18 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 /**
  * Suy cấp học từ TÊN trường: 'TH' | 'THCS' | '' (không đoán được).
  *
- * BẢN SAO của PeriodService#suyCapTuTen bên backend — sửa quy tắc một bên thì
- * phải sửa cả hai, nếu không form sẽ cho qua rồi backend mới trả lỗi.
+ * Bản rút gọn của PeriodService#suyCapTuTen bên backend, chỉ để chọn sẵn ô Cấp học
+ * cho người dùng đỡ một thao tác. Tên lưu vào DB do backend ghép, nên hai bên lệch
+ * nhau cũng không sinh dữ liệu sai — cùng lắm là ô Cấp học chọn sẵn chưa đúng.
  *
- * Bỏ dấu trước khi so để "Tiểu học" và "Tieu hoc" cho cùng kết quả. Phải xét
- * THCS TRƯỚC TH vì "THCS" cũng bắt đầu bằng "TH".
+ * Xét THCS TRƯỚC TH vì "THCS" cũng bắt đầu bằng "TH".
  */
 function suyCapTuTen(name) {
   if (!name) return ''
-  const s = boDau(name.trim().toLowerCase())
+  const s = name.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd')
   if (s.startsWith('thcs ') || s.includes(' thcs ') || s.includes('trung hoc co so')) return 'THCS'
   if (s.startsWith('th ') || s.includes(' th ') || s.includes('tieu hoc')) return 'TH'
   return ''
-}
-
-function boDau(s) {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/đ/g, 'd')
-}
-
-/**
- * Cụm chỉ cấp học có thể đứng đầu tên trường (không dấu, tách token), dài trước ngắn sau.
- * BẢN SAO của SchoolService#TIEN_TO_CAP bên backend — sửa một bên phải sửa cả hai.
- */
-const TIEN_TO_CAP = [
-  ['truong', 'trung', 'hoc', 'co', 'so'],
-  ['trung', 'hoc', 'co', 'so'],
-  ['truong', 'tieu', 'hoc'],
-  ['tieu', 'hoc'],
-  ['truong', 'thcs'],
-  ['truong', 'th'],
-  ['thcs'],
-  ['th'],
-]
-
-/**
- * Ghép tên hiển thị = tiền tố cấp học + tên riêng, giống hệt SchoolService#ghepTenTheoCap.
- * Dùng cho dòng xem trước dưới ô Tên trường, để người dùng thấy trước tên sẽ lưu.
- */
-function ghepTenTheoCap(name, cap) {
-  const ten = (name || '').trim().replace(/\s+/g, ' ')
-  if (!cap || !ten) return ten
-  let token = ten.split(' ')
-  const khongDau = token.map((t) => boDau(t.toLowerCase()))
-  for (const cum of TIEN_TO_CAP) {
-    if (token.length > cum.length && cum.every((w, i) => w === khongDau[i])) {
-      token = token.slice(cum.length)
-      break
-    }
-  }
-  const tenRieng = token.join(' ')
-  return tenRieng ? `${cap} ${tenRieng}` : ten
 }
 
 function validateForm(form, isCreate) {
@@ -260,6 +284,9 @@ function openEdit(item) {
       contactPerson: item.contactPerson ?? '',
       contractStartDate: item.contractStartDate ?? '',
       contractEndDate: item.contractEndDate ?? '',
+      // Nạp trạng thái ĐANG LƯU, không phải trạng thái hiển thị: một trường ACTIVE
+      // đang hiện "Hết hạn" vì quá ngày mà nạp nhầm là bấm Lưu xong nó thành
+      // INACTIVE/EXPIRED thật, gia hạn hợp đồng cũng không sống lại được.
       status: item.status,
     },
     errors: {},
@@ -273,24 +300,10 @@ function clearFieldError(field) {
 }
 
 /**
- * Tên đầy đủ sẽ được lưu — hiện ngay khi THÊM MỚI có đủ tên + cấp học.
- *
- * Cố tình hiện cả khi kết quả trùng đúng chuỗi người dùng vừa gõ (gõ sẵn
- * "THCS Ban Mai" rồi chọn THCS): dòng này là câu trả lời cho "rốt cuộc bảng
- * sẽ hiện tên gì", ẩn đi lúc trùng thì đúng lúc cần trấn an lại không có gì.
- */
-const tenSeLuu = computed(() => {
-  if (modal.mode !== 'create') return ''
-  if (!modal.form.name.trim() || !modal.form.educationLevel) return ''
-  return ghepTenTheoCap(modal.form.name, modal.form.educationLevel)
-})
-
-/**
  * Gõ tên trường thì tự chọn luôn cấp học tương ứng (chỉ khi THÊM MỚI).
  *
- * Người dùng gần như luôn đặt tên có sẵn cấp ("THCS Ban Mai"), nên để họ tự
- * chọn lại là thừa một thao tác và là chỗ để chọn nhầm. Vẫn cho đổi tay sau
- * đó — nhưng nếu đổi thành cấp chỏi với tên thì validateForm sẽ chặn.
+ * Người dùng gần như luôn đặt tên có sẵn cấp ("THCS Ban Mai"), nên để họ tự chọn
+ * lại là thừa một thao tác và là chỗ để chọn nhầm. Vẫn cho đổi tay sau đó.
  */
 function onNameInput() {
   clearFieldError('name')
@@ -342,7 +355,7 @@ async function saveModal() {
   }
 }
 
-/* ── Xóa trường ── */
+/* ── Xóa mềm / khôi phục / xóa vĩnh viễn ── */
 async function confirmDelete() {
   if (!deleteTarget.value) return
   try {
@@ -355,157 +368,331 @@ async function confirmDelete() {
   }
 }
 
-const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt động', EXPIRED: 'Hết hạn' }
+async function confirmRestore() {
+  if (!restoreTarget.value) return
+  trashBusy.value = true
+  try {
+    await schoolApi.restore(restoreTarget.value.id)
+    restoreTarget.value = null
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Khôi phục thất bại')
+  } finally {
+    trashBusy.value = false
+  }
+}
+
+async function confirmPurge() {
+  if (!purgeTarget.value) return
+  trashBusy.value = true
+  try {
+    await schoolApi.purge(purgeTarget.value.id)
+    purgeTarget.value = null
+    loadTrash()
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
+  } finally {
+    trashBusy.value = false
+  }
+}
 </script>
 
 <template>
   <div class="page">
     <!-- ================= HEADER ================= -->
     <div class="page__head">
-      <div>
-        <h1 class="page__title">Quản lý trường</h1>
-        <p class="page__sub">Danh sách trường khách hàng đang hợp tác</p>
-      </div>
+      <h1 class="page__title">Quản lý trường</h1>
 
-      <button class="btn" @click="openCreate">+ Thêm trường</button>
-    </div>
-
-    <!-- ================= FILTER ================= -->
-    <div class="filter-bar">
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input
-          v-model="keyword"
-          placeholder="Tên trường, địa chỉ, người liên hệ, SĐT..."
-          @keyup.enter="onSearch"
-        />
-      </label>
-
-      <label class="field">
-        <span>Chi nhánh</span>
-        <select v-model="branchFilter">
-          <option value="">Tất cả chi nhánh</option>
-          <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Trạng thái</span>
-        <select v-model="statusFilter">
-          <option value="">Tất cả trạng thái</option>
-          <option value="ACTIVE">Hoạt động</option>
-          <option value="INACTIVE">Ngừng hoạt động</option>
-          <option value="EXPIRED">Hết hạn</option>
-        </select>
-      </label>
-
-      <div class="filter-actions">
-        <button class="btn" @click="onSearch">Lọc</button>
-        <button class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+      <div class="page__head-actions">
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'list' }"
+          @click="switchView('list')"
+        >
+          Danh sách
+        </button>
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'trash' }"
+          @click="switchView('trash')"
+        >
+          Thùng rác
+        </button>
+        <button v-if="viewMode === 'list'" class="btn" @click="openCreate">+ Thêm trường</button>
       </div>
     </div>
 
-    <!-- ================= INFO ================= -->
-    <p v-if="!loading" class="total">
-      Tổng cộng <strong>{{ total }}</strong> trường
-    </p>
+    <!-- ================= VIEW: DANH SÁCH ================= -->
+    <template v-if="viewMode === 'list'">
+      <div class="filter-bar">
+        <label class="field field--wide">
+          <span>Tìm kiếm</span>
+          <input
+            v-model="keyword"
+            placeholder="Tên trường, địa chỉ, người liên hệ, SĐT..."
+            @keyup.enter="onSearch"
+          />
+        </label>
 
-    <!-- ================= TABLE ================= -->
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Tên trường</th>
-            <th>Liên hệ</th>
-            <th>Chi nhánh</th>
-            <th>Hợp đồng</th>
-            <th>Trạng thái</th>
-            <th width="120">Thao tác</th>
-          </tr>
-        </thead>
+        <label class="field">
+          <span>Chi nhánh</span>
+          <select v-model="branchFilter" @change="onSearch">
+            <option value="">Tất cả chi nhánh</option>
+            <option v-for="b in branches" :key="b.id" :value="b.id">{{ b.name }}</option>
+          </select>
+        </label>
 
-        <tbody>
-          <tr v-if="loading">
-            <td colspan="6" class="empty">Đang tải...</td>
-          </tr>
+        <label class="field">
+          <span>Trạng thái</span>
+          <select v-model="statusFilter" @change="onSearch">
+            <option value="">Tất cả trạng thái</option>
+            <option value="ACTIVE">Hoạt động</option>
+            <option value="INACTIVE">Ngừng hoạt động</option>
+            <option value="EXPIRED">Hết hạn</option>
+          </select>
+        </label>
 
-          <tr v-else-if="items.length === 0">
-            <td colspan="6" class="empty">Không có dữ liệu</td>
-          </tr>
+        <label class="field">
+          <span>Hợp đồng</span>
+          <select v-model="expiringFilter" @change="onSearch">
+            <option value="">Tất cả</option>
+            <option :value="String(NGUONG_SAP_HET_HAN)">
+              Sắp hết hạn ({{ NGUONG_SAP_HET_HAN }} ngày)
+            </option>
+          </select>
+        </label>
 
-          <tr v-for="item in items" :key="item.id" class="row-clickable" @click="openEdit(item)">
-            <td class="col-title">
-              <div class="title-text">{{ item.name }}</div>
-              <div v-if="item.address" class="desc-text">{{ item.address }}</div>
-            </td>
+        <div class="filter-actions">
+          <button class="btn" @click="onSearch">Lọc</button>
+          <button class="btn btn--ghost" @click="clearSearch">Xóa lọc</button>
+        </div>
+      </div>
 
-            <td>
-              <div v-if="item.contactPerson" class="title-text">{{ item.contactPerson }}</div>
-              <div v-if="item.phone" class="desc-text">SĐT: {{ item.phone }}</div>
-              <div v-if="item.email" class="desc-text">{{ item.email }}</div>
-              <span v-if="!item.contactPerson && !item.phone && !item.email">-</span>
-            </td>
+      <p v-if="!loading && !loadError" class="total">
+        Tổng cộng <strong>{{ total }}</strong> trường
+      </p>
 
-            <td>
-              <span class="cat-badge">{{ item.branchName ?? branchName(item.branchId) }}</span>
-            </td>
+      <!-- ================= TABLE ================= -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="expand-cell"></th>
+              <th>Tên trường</th>
+              <th>Liên hệ</th>
+              <th>Chi nhánh</th>
+              <th>Hợp đồng</th>
+              <th>Khung tiết</th>
+              <th>Trạng thái</th>
+              <th width="120">Thao tác</th>
+            </tr>
+          </thead>
 
-            <td>
-              <span v-if="item.contractStartDate || item.contractEndDate" class="desc-text">
-                {{ item.contractStartDate ?? '?' }} → {{ item.contractEndDate ?? '?' }}
-              </span>
-              <span v-else>-</span>
-            </td>
+          <tbody>
+            <tr v-if="loading">
+              <td colspan="8" class="empty">Đang tải...</td>
+            </tr>
 
-            <td>
-              <span class="badge" :class="item.status === 'ACTIVE' ? 'badge--pub' : 'badge--draft'">
-                {{ STATUS_LABEL[item.status] ?? item.status }}
-              </span>
-            </td>
+            <tr v-else-if="loadError">
+              <td colspan="8" class="empty">
+                {{ loadError }}
+                <button class="btn btn--ghost btn--sm" @click="load">Thử lại</button>
+              </td>
+            </tr>
 
-            <td class="col-actions" @click.stop>
-              <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
-              <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
-                Xóa
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            <tr v-else-if="items.length === 0">
+              <td colspan="8" class="empty">Không có dữ liệu</td>
+            </tr>
 
-    <!-- ================= PAGINATION ================= -->
-    <div v-if="totalPages > 1" class="pagination">
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+            <template v-for="item in items" :key="item.id">
+              <tr class="row-clickable" @click="toggleExpand(item)">
+                <td class="expand-cell">
+                  <span class="chevron" :class="{ open: expandedId === item.id }">›</span>
+                </td>
 
-      <button
-        v-for="p in visiblePages"
-        :key="p"
-        class="pg-btn"
-        :class="{ 'pg-btn--active': page === p - 1 }"
-        @click="goPage(p - 1)"
-      >
-        {{ p }}
-      </button>
+                <td class="col-title">
+                  <div class="title-text">{{ item.name }}</div>
+                  <div v-if="item.address" class="desc-text">{{ item.address }}</div>
+                </td>
 
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
-        ›
-      </button>
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
-        »
-      </button>
+                <td>
+                  <div v-if="item.contactPerson" class="title-text">{{ item.contactPerson }}</div>
+                  <div v-if="item.phone" class="desc-text">SĐT: {{ item.phone }}</div>
+                  <div v-if="item.email" class="desc-text">{{ item.email }}</div>
+                  <span v-if="!item.contactPerson && !item.phone && !item.email">-</span>
+                </td>
 
-      <input
-        v-model="pageInput"
-        class="page-input"
-        type="number"
-        min="1"
-        :max="totalPages"
-        placeholder="Trang"
+                <td>
+                  <span class="cat-badge">{{ branchName(item) }}</span>
+                </td>
+
+                <td>
+                  <span v-if="item.contractStartDate || item.contractEndDate" class="desc-text">
+                    {{ formatDate(item.contractStartDate) || '?' }} →
+                    {{ formatDate(item.contractEndDate) || '?' }}
+                  </span>
+                  <span v-else>-</span>
+                  <!-- Cảnh báo chỉ hiện khi hợp đồng CÒN hạn: đã quá hạn thì cột Trạng
+                       thái bên cạnh đã ghi "Hết hạn", nhắc thêm ở đây là thừa. -->
+                  <div
+                    v-if="
+                      item.daysLeft != null &&
+                      item.daysLeft >= 0 &&
+                      item.daysLeft <= NGUONG_SAP_HET_HAN
+                    "
+                    class="badge badge--warn"
+                  >
+                    Còn {{ item.daysLeft }} ngày
+                  </div>
+                </td>
+
+                <td @click.stop>
+                  <span v-if="item.periodCount > 0" class="desc-text">
+                    {{ item.periodCount }} tiết
+                  </span>
+                  <button
+                    v-else
+                    class="act-btn"
+                    :disabled="applyingFrameId === item.id"
+                    title="Trường chưa có khung tiết nên chưa xếp phân công được"
+                    @click="applyStandardFrame(item)"
+                  >
+                    {{ applyingFrameId === item.id ? 'Đang tạo...' : 'Áp khung tiết' }}
+                  </button>
+                </td>
+
+                <td>
+                  <span
+                    class="badge"
+                    :class="{
+                      'badge--pub': item.effectiveStatus === 'ACTIVE',
+                      'badge--expired': item.effectiveStatus === 'EXPIRED',
+                      'badge--draft': item.effectiveStatus === 'INACTIVE',
+                    }"
+                  >
+                    {{ STATUS_LABEL[item.effectiveStatus] ?? item.effectiveStatus }}
+                  </span>
+                </td>
+
+                <td class="col-actions" @click.stop>
+                  <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
+                  <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
+                    Xóa
+                  </button>
+                </td>
+              </tr>
+
+              <!-- Dòng mở rộng: quy mô trường + hợp đồng dịch vụ -->
+              <tr v-if="expandedId === item.id" class="row-expanded">
+                <td colspan="8">
+                  <p v-if="detailLoading" class="empty empty--inline">Đang tải chi tiết...</p>
+
+                  <div v-else-if="detail" class="detail">
+                    <div class="detail__stats">
+                      <div>
+                        <span class="num">{{ detail.classCount }}</span> lớp đang mở
+                      </div>
+                      <div>
+                        <span class="num">{{ detail.teacherCount }}</span> giáo viên đang dạy
+                      </div>
+                      <div>
+                        <span class="num">{{ detail.studentCount }}</span> học sinh
+                      </div>
+                      <div>
+                        <span class="num">{{ detail.periodCount }}</span> tiết
+                        <template v-if="detail.periodCount">
+                          ({{ detail.morningPeriodCount }} sáng /
+                          {{ detail.periodCount - detail.morningPeriodCount }} chiều)
+                        </template>
+                      </div>
+                    </div>
+
+                    <h4>Hợp đồng dịch vụ</h4>
+                    <table v-if="detail.contracts.length" class="sub-table">
+                      <thead>
+                        <tr>
+                          <th>Mã hợp đồng</th>
+                          <th>Hiệu lực</th>
+                          <th>Giá trị</th>
+                          <th>Trạng thái</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="c in detail.contracts" :key="c.contractCode">
+                          <td>{{ c.contractCode }}</td>
+                          <td>{{ formatDate(c.startDate) }} → {{ formatDate(c.endDate) }}</td>
+                          <td>{{ formatCurrency(c.value) }}</td>
+                          <td>{{ CONTRACT_STATUS_LABEL[c.status] ?? c.status }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                    <p v-else class="desc-text">Chưa có hợp đồng dịch vụ nào.</p>
+                  </div>
+
+                  <p v-else class="empty empty--inline">Không tải được chi tiết trường.</p>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <Pagination
+        :model-value="page"
+        :total-pages="totalPages"
+        show-jump
+        @update:model-value="goPage"
       />
-      <button class="pg-btn" @click="jumpPage">Đi</button>
-    </div>
+    </template>
+
+    <!-- ================= VIEW: THÙNG RÁC ================= -->
+    <template v-else>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tên trường</th>
+              <th>Chi nhánh</th>
+              <th>Người liên hệ</th>
+              <th width="220">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="trashLoading">
+              <td colspan="4" class="empty">Đang tải...</td>
+            </tr>
+            <tr v-else-if="trashError">
+              <td colspan="4" class="empty">
+                {{ trashError }}
+                <button class="btn btn--ghost btn--sm" @click="loadTrash">Thử lại</button>
+              </td>
+            </tr>
+            <tr v-else-if="trashItems.length === 0">
+              <td colspan="4" class="empty">Thùng rác trống</td>
+            </tr>
+
+            <tr v-for="item in trashItems" :key="item.id">
+              <td class="col-title">
+                <div class="title-text">{{ item.name }}</div>
+                <div v-if="item.address" class="desc-text">{{ item.address }}</div>
+              </td>
+              <td>
+                <span class="cat-badge">{{ branchName(item) }}</span>
+              </td>
+              <td>{{ item.contactPerson || '-' }}</td>
+              <td class="col-actions">
+                <button class="act-btn" @click="restoreTarget = item">Khôi phục</button>
+                <button class="act-btn act-btn--del" @click="purgeTarget = item">
+                  Xóa vĩnh viễn
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
 
     <!-- ================= MODAL: tạo/sửa trường ================= -->
     <div v-if="modal.open" class="overlay" @click.self="modal.open = false">
@@ -536,11 +723,6 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             @input="onNameInput"
           />
           <small v-if="modal.errors.name" class="field-error">{{ modal.errors.name }}</small>
-          <!-- Xem trước tên sẽ lưu: ô trên chỉ nhận TÊN RIÊNG, tiền tố cấp học do
-               ô Cấp học sinh ra. Cho thấy trước để không ai bất ngờ khi mở bảng. -->
-          <small v-if="tenSeLuu" class="name-preview">
-            Lưu vào hệ thống: <strong>{{ tenSeLuu }}</strong>
-          </small>
         </div>
 
         <!-- Cấp học: CHỈ hiện khi thêm mới. Nó không phải thuộc tính lưu trong bảng
@@ -558,8 +740,6 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
                  (người dùng chỉ thấy đúng 2 lựa chọn), nhưng vẫn giữ ô ở trạng thái
                  "chưa chọn" lúc mở form. Bỏ nó đi thì trình duyệt tự chọn mục đầu
                  tiên, và một trường THCS sẽ âm thầm nhận khung tiểu học 35 phút. -->
-            <!-- Nhãn để đúng "TH"/"THCS" trùng với tiền tố sẽ ghép vào tên trường,
-                 để cái người dùng chọn và cái hiện ra ở bảng là một. -->
             <option value="" disabled hidden>-- Chọn cấp học --</option>
             <option value="TH">TH</option>
             <option value="THCS">THCS</option>
@@ -643,6 +823,7 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
             <option value="INACTIVE">Ngừng hoạt động</option>
             <option value="EXPIRED">Hết hạn</option>
           </select>
+          <small>Trường không hoạt động sẽ không nhận lớp mới và phân công mới.</small>
         </div>
 
         <p v-if="modal.error" class="msg msg--error">{{ modal.error }}</p>
@@ -656,18 +837,54 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
       </div>
     </div>
 
-    <!-- ================= MODAL: xác nhận xóa ================= -->
+    <!-- ================= MODAL: xác nhận xóa mềm ================= -->
     <div v-if="deleteTarget" class="overlay" @click.self="deleteTarget = null">
       <div class="modal">
         <h3>Xác nhận xóa</h3>
         <p>
           Bạn có chắc muốn xóa trường <strong>{{ deleteTarget.name }}</strong
-          >?
+          >? Trường sẽ nằm trong thùng rác và khôi phục lại được.
         </p>
 
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
           <button class="btn btn--danger" @click="confirmDelete">Xóa</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: khôi phục ================= -->
+    <div v-if="restoreTarget" class="overlay" @click.self="restoreTarget = null">
+      <div class="modal">
+        <h3>Khôi phục trường</h3>
+        <p>
+          Khôi phục <strong>{{ restoreTarget.name }}</strong> về danh sách? Trạng thái vẫn là "Ngừng
+          hoạt động" cho tới khi bạn bật lại.
+        </p>
+
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="restoreTarget = null">Hủy</button>
+          <button class="btn" :disabled="trashBusy" @click="confirmRestore">
+            {{ trashBusy ? 'Đang xử lý...' : 'Khôi phục' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: xóa vĩnh viễn ================= -->
+    <div v-if="purgeTarget" class="overlay" @click.self="purgeTarget = null">
+      <div class="modal">
+        <h3>Xóa vĩnh viễn</h3>
+        <p>
+          Xóa hẳn <strong>{{ purgeTarget.name }}</strong> khỏi hệ thống? Khung tiết và phòng học của
+          trường bị xóa theo. Thao tác này không hoàn tác được.
+        </p>
+
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="purgeTarget = null">Hủy</button>
+          <button class="btn btn--danger" :disabled="trashBusy" @click="confirmPurge">
+            {{ trashBusy ? 'Đang xử lý...' : 'Xóa vĩnh viễn' }}
+          </button>
         </div>
       </div>
     </div>
@@ -695,10 +912,33 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
   color: var(--c-text);
 }
 
-.page__sub {
-  margin-top: 6px;
-  color: var(--c-text-muted);
-  font-size: 14px;
+.page__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-tab {
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.btn-tab:hover {
+  border-color: #fb923c;
+}
+
+.btn-tab--active {
+  background: #f97316;
+  border-color: #f97316;
+  color: #fff;
 }
 
 /* ================= Filter ================= */
@@ -782,6 +1022,12 @@ const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt độ
   background: #ef4444;
 }
 
+.btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  margin-left: 10px;
+}
+
 /* ================= Table ================= */
 .table-wrap {
   overflow-x: auto;
@@ -823,6 +1069,10 @@ tbody tr:hover {
   padding: 35px;
 }
 
+.empty--inline {
+  padding: 14px;
+}
+
 .title-text {
   font-weight: 600;
 }
@@ -845,6 +1095,56 @@ tbody tr:hover {
 
 :root[data-theme='dark'] .cat-badge {
   color: #93c5fd;
+}
+
+/* ================= Dòng mở rộng ================= */
+.row-clickable {
+  cursor: pointer;
+}
+
+.expand-cell {
+  width: 28px;
+}
+
+.chevron {
+  display: inline-block;
+  transition: transform 0.15s;
+  color: var(--c-text-muted);
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.detail__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 26px;
+  margin-bottom: 16px;
+  color: var(--c-text-muted);
+  font-size: 13px;
+}
+
+.num {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--c-text);
+}
+
+.detail h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.sub-table {
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+}
+
+.sub-table th,
+.sub-table td {
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 /* ================= Status ================= */
@@ -870,6 +1170,25 @@ tbody tr:hover {
   color: #4ade80;
 }
 
+.badge--expired {
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+}
+
+:root[data-theme='dark'] .badge--expired {
+  color: #f87171;
+}
+
+.badge--warn {
+  margin-top: 4px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #b45309;
+}
+
+:root[data-theme='dark'] .badge--warn {
+  color: #fbbf24;
+}
+
 /* ================= Action ================= */
 .col-actions {
   white-space: nowrap;
@@ -881,7 +1200,8 @@ tbody tr:hover {
   cursor: pointer;
   padding: 6px;
   border-radius: 6px;
-  font-size: 16px;
+  font-size: 13px;
+  color: var(--c-text);
   transition: 0.2s;
 }
 
@@ -889,51 +1209,13 @@ tbody tr:hover {
   background: var(--c-surface-2);
 }
 
-.act-btn--del:hover {
-  background: rgba(239, 68, 68, 0.12);
-}
-
-/* ================= Pagination ================= */
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 24px;
-  flex-wrap: wrap;
-}
-
-.pg-btn {
-  min-width: 38px;
-  height: 38px;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  background: var(--c-surface);
-  cursor: pointer;
-  transition: 0.2s;
-}
-
-.pg-btn:hover:not(:disabled) {
-  background: #f97316;
-  color: white;
-}
-
-.pg-btn--active {
-  background: #f97316;
-  color: white;
-}
-
-.pg-btn:disabled {
-  opacity: 0.45;
+.act-btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
-.page-input {
-  width: 70px;
-  height: 38px;
-  border: 1px solid var(--c-input-border);
-  border-radius: 8px;
-  text-align: center;
+.act-btn--del:hover {
+  background: rgba(239, 68, 68, 0.12);
 }
 
 /* ================= Modal ================= */
@@ -1026,14 +1308,6 @@ tbody tr:hover {
   color: #dc2626 !important;
 }
 
-/* Dòng xem trước tên trường sẽ lưu (tiền tố cấp học + tên riêng). */
-.name-preview {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--c-text-muted);
-}
-
 /* ================= Message ================= */
 .msg {
   padding: 12px;
@@ -1056,30 +1330,28 @@ tbody tr:hover {
   color: var(--c-text-muted);
 }
 
-.page__head {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 15px;
-}
+@media (max-width: 900px) {
+  .page__head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
 
-.filter-bar {
-  flex-direction: column;
-}
+  .filter-bar {
+    flex-direction: column;
+  }
 
-.field {
-  width: 100%;
-}
+  .field {
+    width: 100%;
+  }
 
-.filter-actions {
-  width: 100%;
-}
+  .filter-actions {
+    width: 100%;
+  }
 
-.btn {
-  width: 100%;
-}
-
-.form-row {
-  flex-direction: column;
-  gap: 0;
+  .form-row {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 </style>

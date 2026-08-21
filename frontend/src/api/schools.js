@@ -14,6 +14,11 @@ export const schoolApi = {
     return http.get(`/schools/${id}`)
   },
 
+  /** Số lớp / giáo viên / học sinh / khung tiết / hợp đồng dịch vụ của một trường. */
+  summary(id) {
+    return http.get(`/schools/${id}/summary`)
+  },
+
   create(body) {
     return http.post('/schools', body)
   },
@@ -22,7 +27,22 @@ export const schoolApi = {
     return http.put(`/schools/${id}`, body)
   },
 
+  /** Xóa mềm — trường rơi vào thùng rác, còn khôi phục được. */
   remove(id) {
     return http.delete(`/schools/${id}`)
+  },
+
+  /** Thùng rác: trường đã xóa mềm (không phân trang). */
+  trash() {
+    return http.get('/schools/trash')
+  },
+
+  restore(id) {
+    return http.post(`/schools/${id}/restore`)
+  },
+
+  /** Xóa vĩnh viễn — chỉ được khi trường chưa phát sinh dữ liệu nghiệp vụ nào. */
+  purge(id) {
+    return http.delete(`/schools/${id}/permanent`)
   },
 }
