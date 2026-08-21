@@ -3,11 +3,11 @@ package com.kdc.tsdms.repository;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DiemThang;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DongPhanTich;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.LatCat;
-import com.kdc.tsdms.dto.DashboardAnalyticsResponse.ODoNhiet;
 import com.kdc.tsdms.dto.DashboardFilter;
 import com.kdc.tsdms.dto.DashboardOperationsResponse.DongPhanCong;
 import java.sql.Types;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,32 +38,49 @@ public class DashboardQueryRepository {
     }
 
     /**
-     * Khối FROM dùng chung. LEFT JOIN AssignmentSlot phải đứng TRƯỚC JOIN School vì trường của
-     * buổi suy ra từ ô lịch. Nối Attendance an toàn cho các phép COUNT vì có ràng buộc duy nhất
-     * UX_Attendance_ScheduleId (mỗi buổi tối đa 1 dòng chấm công).
+     * Năm bảng cần có để biết một buổi dạy thuộc giáo viên / môn / trường nào. Tách riêng vì
+     * truy vấn lịch sắp tới cũng cần đúng chỗ này nhưng KHÔNG cần chấm công và bảng lương.
+     *
+     * <p>LEFT JOIN AssignmentSlot phải đứng TRƯỚC JOIN School vì trường của buổi suy ra từ ô lịch.
      */
-    private static final String FROM_BUOI_DAY = """
+    private static final String FROM_BUOI_DAY_GON = """
             FROM Schedule sch
             JOIN Assignment a            ON a.Id = sch.AssignmentId
             LEFT JOIN AssignmentSlot slot ON slot.Id = sch.SourceSlotId
             JOIN Subject sj              ON sj.Id = a.SubjectId
             JOIN Teacher t               ON t.Id = sch.TeacherId
             JOIN School scl              ON scl.Id = COALESCE(slot.SchoolId, a.SchoolId)
+            """;
+
+    /**
+     * Khối FROM cho các truy vấn thống kê: thêm chấm công và bảng lương. Nối Attendance an toàn
+     * cho các phép COUNT vì có ràng buộc duy nhất UX_Attendance_ScheduleId (mỗi buổi tối đa 1
+     * dòng chấm công).
+     */
+    private static final String FROM_BUOI_DAY = FROM_BUOI_DAY_GON + """
             LEFT JOIN Attendance att     ON att.ScheduleId = sch.Id
             LEFT JOIN Payroll pr         ON pr.TeacherId = sch.TeacherId
                                         AND pr.PeriodYear = YEAR(sch.StartTime)
                                         AND pr.PeriodMonth = MONTH(sch.StartTime)
             """;
 
-    /** Điều kiện lọc dùng chung. Tham số NULL nghĩa là "không lọc theo tiêu chí đó". */
-    private static final String WHERE_LOC = """
-            WHERE sch.IsDeleted = 0
-              AND sch.StartTime >= :tuNgay
-              AND sch.StartTime <  :denNgay
+    /**
+     * Lọc PHẠM VI (chi nhánh / trường / nhóm môn). Tham số NULL nghĩa là "không lọc theo tiêu
+     * chí đó". Tách khỏi khoảng thời gian vì bảng "Buổi dạy sắp tới" cần đúng phần này nhưng
+     * mốc thời gian của nó là "từ hôm nay trở đi", không có giới hạn trên.
+     */
+    private static final String LOC_PHAM_VI = """
               AND (:branchId   IS NULL OR scl.BranchId  = :branchId)
               AND (:schoolId   IS NULL OR scl.Id        = :schoolId)
               AND (:categoryId IS NULL OR sj.CategoryId = :categoryId)
             """;
+
+    /** Điều kiện lọc dùng chung cho các truy vấn thống kê: khoảng kỳ + phạm vi. */
+    private static final String WHERE_LOC = """
+            WHERE sch.IsDeleted = 0
+              AND sch.StartTime >= :tuNgay
+              AND sch.StartTime <  :denNgay
+            """ + LOC_PHAM_VI;
 
     /** Thời lượng một buổi, quy ra giờ. */
     private static final String GIO = "(DATEDIFF(MINUTE, sch.StartTime, sch.EndTime) / 60.0)";
@@ -80,9 +97,6 @@ public class DashboardQueryRepository {
     private static final String CHI_PHI = """
             (CASE WHEN att.Status IN ('PRESENT','LATE') AND ISNULL(pr.TaughtHours, 0) > 0
                   THEN pr.NetAmount / pr.TaughtHours ELSE 0 END)""";
-
-    /** 1 = Thứ Hai … 7 = Chủ Nhật, không phụ thuộc SET DATEFIRST của phiên kết nối. */
-    private static final String THU_TRONG_TUAN = "(((DATEPART(WEEKDAY, sch.StartTime) + @@DATEFIRST - 2) % 7) + 1)";
 
     private final NamedParameterJdbcTemplate jdbc;
 
@@ -114,16 +128,13 @@ public class DashboardQueryRepository {
                 SELECT
                     buoiDuyet     = COUNT(CASE WHEN sch.Status = 'APPROVED' THEN 1 END),
                     buoiTatCa     = COUNT(*),
-                    gioGiang      = ISNULL(SUM(CASE WHEN sch.Status = 'APPROVED' THEN %s END), 0),
                     chiPhi        = ISNULL(SUM(CASE WHEN sch.Status = 'APPROVED' THEN %s END), 0),
-                    gvCoLich      = COUNT(DISTINCT CASE WHEN sch.Status = 'APPROVED' THEN sch.TeacherId END),
-                    truongCoLich  = COUNT(DISTINCT CASE WHEN sch.Status = 'APPROVED' THEN scl.Id END),
                     ccTong        = COUNT(att.Id),
                     ccCoMat       = COUNT(CASE WHEN att.Status IN ('PRESENT','LATE') THEN 1 END),
                     ccDungGio     = COUNT(CASE WHEN att.Status = 'PRESENT' THEN 1 END)
                 %s
                 %s
-                """.formatted(GIO, CHI_PHI, FROM_BUOI_DAY, WHERE_LOC);
+                """.formatted(CHI_PHI, FROM_BUOI_DAY, WHERE_LOC);
 
         return jdbc.queryForObject(
                 sql,
@@ -131,10 +142,7 @@ public class DashboardQueryRepository {
                 (rs, i) -> new ThongKeKy(
                         rs.getLong("buoiDuyet"),
                         rs.getLong("buoiTatCa"),
-                        rs.getDouble("gioGiang"),
                         rs.getDouble("chiPhi"),
-                        rs.getLong("gvCoLich"),
-                        rs.getLong("truongCoLich"),
                         rs.getLong("ccTong"),
                         rs.getLong("ccCoMat"),
                         rs.getLong("ccDungGio")));
@@ -195,36 +203,6 @@ public class DashboardQueryRepository {
                         rs.getDouble("chiPhi")));
     }
 
-    /**
-     * Mật độ buổi dạy theo (thứ × tiết). Buổi chưa gắn tiết (PeriodId rỗng, dữ liệu trước V9)
-     * thì bỏ qua chứ không dồn vào "tiết 0".
-     */
-    public List<ODoNhiet> nhietDo(DashboardFilter f) {
-        String sql = """
-                SELECT
-                    thu    = %s,
-                    tiet   = p.PeriodNumber,
-                    soBuoi = COUNT(*)
-                %s
-                JOIN Period p ON p.Id = sch.PeriodId
-                %s
-                  AND sch.Status = 'APPROVED'
-                GROUP BY %s, p.PeriodNumber
-                """.formatted(THU_TRONG_TUAN, FROM_BUOI_DAY, WHERE_LOC, THU_TRONG_TUAN);
-
-        return jdbc.query(
-                sql, thamSo(f), (rs, i) -> new ODoNhiet(rs.getInt("thu"), rs.getInt("tiet"), rs.getLong("soBuoi")));
-    }
-
-    /** Số tiết nhiều nhất mà một trường xếp trong ngày — dựng trục dọc cho bản đồ nhiệt. */
-    public int soTietToiDa() {
-        Integer n = jdbc.queryForObject(
-                "SELECT ISNULL(MAX(PeriodNumber), 0) FROM Period WHERE IsDeleted = 0",
-                new MapSqlParameterSource(),
-                Integer.class);
-        return n == null ? 0 : n;
-    }
-
     /** Cơ cấu buổi dạy theo nhóm môn (biểu đồ tròn khuyết). */
     public List<LatCat> coCauNhomMon(DashboardFilter f) {
         String sql = """
@@ -244,26 +222,6 @@ public class DashboardQueryRepository {
                 sql,
                 thamSo(f),
                 (rs, i) -> new LatCat((Integer) rs.getObject("id"), rs.getString("nhan"), rs.getLong("giaTri"), null));
-    }
-
-    /** Xếp hạng trường theo số buổi dạy (biểu đồ thanh ngang). */
-    public List<LatCat> topTruong(DashboardFilter f, int soLuong) {
-        String sql = """
-                SELECT TOP (:soLuong)
-                    id     = scl.Id,
-                    nhan   = scl.Name,
-                    giaTri = COUNT(*)
-                %s
-                %s
-                  AND sch.Status = 'APPROVED'
-                GROUP BY scl.Id, scl.Name
-                ORDER BY COUNT(*) DESC, scl.Name
-                """.formatted(FROM_BUOI_DAY, WHERE_LOC);
-
-        return jdbc.query(
-                sql,
-                thamSo(f).addValue("soLuong", soLuong),
-                (rs, i) -> new LatCat(rs.getInt("id"), rs.getString("nhan"), rs.getLong("giaTri"), null));
     }
 
     /* ═════════════════════════ BẢNG PHÂN TÍCH ═════════════════════════ */
@@ -462,53 +420,43 @@ public class DashboardQueryRepository {
 
     /* ═════════════════════════ KHU ĐIỀU HÀNH ═════════════════════════ */
 
-    /** Ngày dạy gần nhất kể từ tuNgay, dùng khi hôm nay không có buổi nào (hè, ngày nghỉ). */
-    public LocalDate ngayDayKeTiep(LocalDate tuNgay) {
-        return jdbc.queryForObject(
-                """
-                SELECT TOP 1 CAST(sch.StartTime AS DATE)
-                FROM Schedule sch
-                WHERE sch.IsDeleted = 0 AND sch.Status = 'APPROVED' AND sch.StartTime >= :tuNgay
-                ORDER BY sch.StartTime
-                """, new MapSqlParameterSource("tuNgay", tuNgay.atStartOfDay()), (rs, i) -> rs.getDate(1)
-                        .toLocalDate());
-    }
-
-    /** Các buổi dạy của một ngày, kèm tên giáo viên / môn / trường / phòng. */
-    public List<Object[]> lichTrongNgay(LocalDate ngay, int gioiHan) {
+    /**
+     * {@code gioiHan} buổi dạy kế tiếp kể từ {@code tuNgay}, KHÔNG chặn giới hạn trên.
+     *
+     * <p>Bản đầu chặn ở "7 ngày tới" và trả về rỗng suốt kỳ nghỉ hè: buổi cuối của năm học là
+     * 29/05, buổi đầu của năm sau là 07/09, ở giữa là hơn ba tháng trống. Một khối trống giữa
+     * màn hình thì không phân biệt được với hệ thống hỏng.
+     *
+     * <p>Dùng lại {@link #LOC_PHAM_VI} nên khối này CÓ chịu bộ lọc trường / nhóm môn — lọc
+     * "THCS Chu Văn An" mà bảng lịch vẫn liệt kê buổi của trường khác thì nhìn như hỏng.
+     */
+    public List<BuoiDayTho> lichSapToi(DashboardFilter f, LocalDate tuNgay, int gioiHan) {
         String sql = """
                 SELECT TOP (:gioiHan)
                     sch.Id, sch.StartTime, sch.EndTime,
                     giaoVien = t.LastName + N' ' + t.FirstName,
                     mon      = sj.Name,
-                    truong   = scl.Name,
-                    phong    = r.Name
-                FROM Schedule sch
-                JOIN Assignment a            ON a.Id = sch.AssignmentId
-                LEFT JOIN AssignmentSlot slot ON slot.Id = sch.SourceSlotId
-                JOIN Subject sj              ON sj.Id = a.SubjectId
-                JOIN Teacher t               ON t.Id = sch.TeacherId
-                JOIN School scl              ON scl.Id = COALESCE(slot.SchoolId, a.SchoolId)
-                LEFT JOIN Room r             ON r.Id = sch.RoomId
-                WHERE sch.IsDeleted = 0 AND sch.Status = 'APPROVED'
-                  AND sch.StartTime >= :tuNgay AND sch.StartTime < :denNgay
+                    truong   = scl.Name
+                %s
+                WHERE sch.IsDeleted = 0
+                  AND sch.Status = 'APPROVED'
+                  AND sch.StartTime >= :tuNgay
+                %s
                 ORDER BY sch.StartTime, scl.Name
-                """;
+                """.formatted(FROM_BUOI_DAY_GON, LOC_PHAM_VI);
+
         return jdbc.query(
                 sql,
-                new MapSqlParameterSource()
-                        .addValue("tuNgay", ngay.atStartOfDay())
-                        .addValue("denNgay", ngay.plusDays(1).atStartOfDay())
-                        .addValue("gioiHan", gioiHan),
-                (rs, i) -> new Object[] {
-                    rs.getLong("Id"),
-                    rs.getTimestamp("StartTime").toLocalDateTime(),
-                    rs.getTimestamp("EndTime").toLocalDateTime(),
-                    rs.getString("giaoVien"),
-                    rs.getString("mon"),
-                    rs.getString("truong"),
-                    rs.getString("phong")
-                });
+                // Đè tuNgay của kỳ đang xem — bảng này luôn nhìn về phía trước. denNgay thừa lại
+                // trong map cũng vô hại: JDBC chỉ bind những tham số thực sự có trong câu lệnh.
+                thamSo(f).addValue("tuNgay", tuNgay.atStartOfDay()).addValue("gioiHan", gioiHan),
+                (rs, i) -> new BuoiDayTho(
+                        rs.getLong("Id"),
+                        rs.getTimestamp("StartTime").toLocalDateTime(),
+                        rs.getTimestamp("EndTime").toLocalDateTime(),
+                        rs.getString("giaoVien"),
+                        rs.getString("mon"),
+                        rs.getString("truong")));
     }
 
     /**
@@ -522,8 +470,6 @@ public class DashboardQueryRepository {
                     giaoVien = t.LastName + N' ' + t.FirstName,
                     mon      = sj.Name,
                     a.StartDate, a.EndDate, a.Status,
-                    soTiet   = (SELECT COUNT(*) FROM AssignmentSlot s2
-                                WHERE s2.AssignmentId = a.Id AND s2.IsDeleted = 0),
                     truong   = STUFF((
                                 SELECT DISTINCT N', ' + sc3.Name
                                 FROM AssignmentSlot s3
@@ -553,7 +499,6 @@ public class DashboardQueryRepository {
                     rutGon(truong),
                     rs.getString("mon"),
                     "%02d/%02d/%d".formatted(batDau.getDayOfMonth(), batDau.getMonthValue(), batDau.getYear()),
-                    rs.getInt("soTiet"),
                     trangThai[1],
                     trangThai[0]);
         });
@@ -593,11 +538,6 @@ public class DashboardQueryRepository {
      * dùng không lọc ra màn hình trống.
      */
     public DanhMucLoc danhMucLoc() {
-        List<MucLoc> chiNhanh = jdbc.query(
-                "SELECT Id, Name FROM Branch ORDER BY Name",
-                new MapSqlParameterSource(),
-                (rs, i) -> new MucLoc(rs.getInt("Id"), rs.getString("Name")));
-
         List<MucLoc> truong = jdbc.query(
                 """
                 SELECT DISTINCT scl.Id, scl.Name
@@ -612,14 +552,18 @@ public class DashboardQueryRepository {
                 new MapSqlParameterSource(),
                 (rs, i) -> new MucLoc(rs.getInt("Id"), rs.getString("Name")));
 
-        return new DanhMucLoc(chiNhanh, truong, nhomMon);
+        return new DanhMucLoc(truong, nhomMon);
     }
 
     /** Một lựa chọn trong ô chọn của thanh lọc. */
     public record MucLoc(Integer id, String ten) {}
 
-    /** Ba danh mục của thanh lọc. */
-    public record DanhMucLoc(List<MucLoc> chiNhanh, List<MucLoc> truong, List<MucLoc> nhomMon) {}
+    /** Hai danh mục của thanh lọc. */
+    public record DanhMucLoc(List<MucLoc> truong, List<MucLoc> nhomMon) {}
+
+    /** Một buổi dạy đọc thẳng từ CSDL, chưa định dạng để hiển thị. */
+    public record BuoiDayTho(
+            long id, LocalDateTime batDau, LocalDateTime ketThuc, String giaoVien, String mon, String truong) {}
 
     /* ═════════════════════════ KIỂU TRẢ VỀ NỘI BỘ ═════════════════════════ */
 
@@ -627,10 +571,7 @@ public class DashboardQueryRepository {
     public record ThongKeKy(
             long buoiDuyet,
             long buoiTatCa,
-            double gioGiang,
             double chiPhi,
-            long gvCoLich,
-            long truongCoLich,
             long chamCongTong,
             long chamCongCoMat,
             long chamCongDungGio) {}

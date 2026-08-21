@@ -2,17 +2,9 @@ package com.kdc.tsdms.dto;
 
 import java.util.List;
 
-/**
- * Việc cần xử lý, lịch dạy trong ngày và phân công gần đây.
- *
- * @param lichLaDuBao true khi hôm nay không có buổi nào và đang hiển thị ngày dạy kế tiếp
- */
+/** Việc cần xử lý, buổi dạy sắp tới và phân công gần đây. */
 public record DashboardOperationsResponse(
-        List<CanhBao> canhBao,
-        String lichNhan,
-        boolean lichLaDuBao,
-        List<BuoiDay> lich,
-        List<DongPhanCong> phanCongGanDay) {
+        List<CanhBao> canhBao, List<BuoiDay> lichSapToi, List<DongPhanCong> phanCongGanDay) {
 
     /**
      * Một việc cần xử lý.
@@ -21,17 +13,22 @@ public record DashboardOperationsResponse(
      */
     public record CanhBao(String key, String muc, String nhan, long soLuong, String moTa, String route) {}
 
-    /** Một buổi dạy. trangThaiThoiGian: daXong | dangDien | sapToi. */
+    /**
+     * Một buổi dạy trong bảng "Buổi dạy sắp tới".
+     *
+     * @param nhomNgay nhãn nhóm, vd "Hôm nay · Thứ Sáu 21/08"; các buổi cùng ngày dùng chung.
+     *     Bảng trải nhiều ngày nên chỉ có giờ thì không biết là hôm nào.
+     * @param trangThaiThoiGian daXong | dangDien | sapToi
+     */
     public record BuoiDay(
             Long id,
+            String nhomNgay,
             String batDau,
             String ketThuc,
             String giaoVien,
             String mon,
             String truong,
-            String phong,
-            String trangThaiThoiGian,
-            String mau) {}
+            String trangThaiThoiGian) {}
 
     /**
      * Một dòng bảng "Phân công gần đây".
@@ -40,12 +37,5 @@ public record DashboardOperationsResponse(
      * @param tone ok | wait | done | no
      */
     public record DongPhanCong(
-            Integer id,
-            String giaoVien,
-            String truong,
-            String mon,
-            String ngay,
-            int soTiet,
-            String nhanTrangThai,
-            String tone) {}
+            Integer id, String giaoVien, String truong, String mon, String ngay, String nhanTrangThai, String tone) {}
 }

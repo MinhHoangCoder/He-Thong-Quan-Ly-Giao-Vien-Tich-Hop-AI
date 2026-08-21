@@ -71,6 +71,13 @@ const ui = useUiStore() // nút mặt trời/mặt trăng trên topbar đảo th
 const onLogout = useLogout()
 const roleLabel = computed(() => ROLE_LABELS[auth.primaryRole] || 'Người dùng')
 
+/**
+ * Đích của logo trên sidebar. Dùng roleHome() chứ KHÔNG gắn cứng /dashboard: khung này dùng
+ * chung cho cả quản trị lẫn giáo viên, mà giáo viên bấm vào /dashboard sẽ bị route guard đá
+ * ngược ra — nhìn hệt như logo bị hỏng.
+ */
+const trangChu = computed(() => roleHome(auth.roles))
+
 /* ══════════════════ TÌM KIẾM CHUNG ══════════════════ */
 const searchQuery = ref('')
 function onSearch() {
@@ -338,10 +345,10 @@ function switchTo(acc) {
   <div class="admin" :class="{ 'is-collapsed': collapsed, 'is-mobile-open': mobileOpen }">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sidebar__brand">
+      <RouterLink :to="trangChu" class="sidebar__brand" title="Về trang chủ">
         <BrandLogo :size="34" :show-text="false" />
         <span class="sidebar__name">KDC EduOps</span>
-      </div>
+      </RouterLink>
 
       <nav class="sidebar__nav">
         <!-- Bỏ qua nhóm rỗng: khi tất cả mục trong nhóm bị ẩn (vd nhóm "Hệ thống"
@@ -640,6 +647,11 @@ function switchTo(acc) {
   font-size: 1.05rem;
   color: #fff;
   letter-spacing: 0.3px;
+  text-decoration: none;
+  transition: opacity var(--t-fast);
+}
+.sidebar__brand:hover {
+  opacity: 0.85;
 }
 .sidebar__nav {
   padding: 0.5rem 0.75rem 1.5rem;

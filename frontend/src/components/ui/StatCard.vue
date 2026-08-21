@@ -8,7 +8,10 @@ const props = defineProps({
   label: { type: String, required: true },
   value: { type: [String, Number], required: true },
   hint: { type: String, default: '' },
-  trend: { type: Number, default: null }, // % tăng/giảm; >0 xanh, <0 đỏ
+  // % tăng/giảm so với kỳ liền trước; >0 xanh, <0 đỏ.
+  // null = KHÔNG có gì để so (kỳ trước rỗng, hoặc chỉ số không phụ thuộc kỳ) -> giấu hẳn chip,
+  // không vẽ mũi tên 0%.
+  trend: { type: Number, default: null },
   color: { type: String, default: '#f97316' }, // màu nhấn của icon
   // Đảo màu cho chỉ số mà TĂNG là xấu (chi phí lương). Mặc định false để các thẻ cũ giữ nguyên.
   invertTrend: { type: Boolean, default: false },
@@ -63,7 +66,12 @@ const iconStyle = computed(() => ({ background: props.color + '1a', color: props
       <p class="stat__label">{{ label }}</p>
       <p class="stat__value">{{ display }}</p>
       <p v-if="hint || trend !== null" class="stat__meta">
-        <span v-if="trend !== null" class="stat__trend" :class="trendTot ? 'is-up' : 'is-down'">
+        <span
+          v-if="trend !== null"
+          class="stat__trend"
+          :class="trendTot ? 'is-up' : 'is-down'"
+          title="So với kỳ liền trước, dài bằng đúng kỳ đang xem"
+        >
           <SvgIcon :name="trend >= 0 ? 'up' : 'down'" :size="13" />
           {{ Math.abs(trend) }}%
         </span>
