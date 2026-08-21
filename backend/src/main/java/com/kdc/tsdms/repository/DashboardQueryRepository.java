@@ -1,8 +1,8 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DiemThang;
-import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DongPhanTich;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.LatCat;
+import com.kdc.tsdms.dto.DashboardBreakdownRow;
 import com.kdc.tsdms.dto.DashboardFilter;
 import com.kdc.tsdms.dto.DashboardOperationsResponse.DongPhanCong;
 import java.sql.Types;
@@ -230,7 +230,7 @@ public class DashboardQueryRepository {
      * Bảng thống kê chi tiết theo một trong ba chiều. Cột nhóm lấy từ hằng số trong enum, KHÔNG
      * ghép từ chuỗi client gửi lên — đây là chỗ duy nhất trong lớp có mảnh SQL thay đổi được.
      */
-    public List<DongPhanTich> phanTich(DashboardFilter f, Chieu chieu) {
+    public List<DashboardBreakdownRow> phanTich(DashboardFilter f, Chieu chieu) {
         String cotId =
                 switch (chieu) {
                     case GIAO_VIEN -> "t.Id";
@@ -277,7 +277,7 @@ public class DashboardQueryRepository {
             long buoiDay = rs.getLong("buoiDay");
             long buoiTatCa = rs.getLong("buoiTatCa");
             long ccTong = rs.getLong("ccTong");
-            return new DongPhanTich(
+            return new DashboardBreakdownRow(
                     (Integer) rs.getObject("id"),
                     rs.getString("ten"),
                     rs.getString("phu"),

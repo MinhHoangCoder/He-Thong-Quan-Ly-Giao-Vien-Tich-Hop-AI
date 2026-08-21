@@ -2,8 +2,8 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse;
-import com.kdc.tsdms.dto.DashboardAnalyticsResponse.DongPhanTich;
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse.LatCat;
+import com.kdc.tsdms.dto.DashboardBreakdownRow;
 import com.kdc.tsdms.dto.DashboardFilter;
 import com.kdc.tsdms.dto.DashboardOperationsResponse;
 import com.kdc.tsdms.dto.DashboardOperationsResponse.BuoiDay;
@@ -145,14 +145,22 @@ public class DashboardService {
 
     /* ───────────── Biểu đồ + bảng chi tiết ───────────── */
 
+    /** Chỉ hai biểu đồ — hai truy vấn, về nhanh. */
     @Transactional(readOnly = true)
     public DashboardAnalyticsResponse analytics(DashboardFilter f) {
-        return new DashboardAnalyticsResponse(
-                repo.theoThang(f),
-                toMau(repo.coCauNhomMon(f)),
-                phanTich(f, Chieu.GIAO_VIEN),
-                phanTich(f, Chieu.TRUONG),
-                phanTich(f, Chieu.MON));
+        return new DashboardAnalyticsResponse(repo.theoThang(f), toMau(repo.coCauNhomMon(f)));
+    }
+
+    /**
+     * Bảng thống kê chi tiết theo MỘT chiều.
+     *
+     * <p>Bản trước gom cả ba chiều vào {@code /analytics}: mỗi lần mở trang chạy 7 truy vấn, mà
+     * giao diện chỉ hiện một tab. Tách ra thì lượt đầu chỉ còn 2 truy vấn cho chiều đang xem,
+     * hai chiều kia chỉ tải khi người dùng thật sự bấm sang.
+     */
+    @Transactional(readOnly = true)
+    public List<DashboardBreakdownRow> breakdown(DashboardFilter f, Chieu chieu) {
+        return phanTich(f, chieu);
     }
 
     /**
@@ -161,14 +169,14 @@ public class DashboardService {
      * <p>Điểm đánh giá lấy bằng truy vấn riêng vì nó không gắn với buổi dạy — nối chung trong SQL
      * sẽ nhân bản mỗi buổi lên bằng số lượt đánh giá và làm sai mọi phép cộng khác.
      */
-    private List<DongPhanTich> phanTich(DashboardFilter f, Chieu chieu) {
-        List<DongPhanTich> dong = repo.phanTich(f, chieu);
+    private List<DashboardBreakdownRow> phanTich(DashboardFilter f, Chieu chieu) {
+        List<DashboardBreakdownRow> dong = repo.phanTich(f, chieu);
         Map<Integer, Double> diem = repo.diemDanhGiaTheo(f, chieu);
         if (diem.isEmpty()) {
             return dong;
         }
         return dong.stream()
-                .map(d -> new DongPhanTich(
+                .map(d -> new DashboardBreakdownRow(
                         d.id(),
                         d.ten(),
                         d.phu(),
@@ -308,7 +316,7 @@ public class DashboardService {
         sb.append(tenCot)
                 .append(";Ghi chú;Số buổi dạy;Giờ giảng;Tỉ lệ duyệt (%);Chuyên cần (%);Điểm đánh giá;Chi phí (VND)\n");
 
-        for (DongPhanTich d : phanTich(f, chieu)) {
+        for (DashboardBreakdownRow d : phanTich(f, chieu)) {
             sb.append(oCsv(d.ten()))
                     .append(';')
                     .append(oCsv(d.phu()))

@@ -3,10 +3,12 @@ import http from './http'
 /**
  * API Bảng điều khiển (admin) — base `/api/v1/dashboard`.
  *
- * Ba endpoint tách theo CHI PHÍ TRUY VẤN, không theo khối giao diện. `summary` chỉ quét một lượt
- * nên về gần như tức thì và sáu thẻ chỉ số hiện ngay; `analytics` nặng hơn nhiều (gom theo ba
- * chiều cộng bản đồ nhiệt) nên về sau. Gộp làm một thì cả trang phải đứng chờ truy vấn chậm nhất,
- * và bất kỳ truy vấn nào hỏng cũng xoá trắng toàn bộ màn hình.
+ * Các endpoint tách theo CHI PHÍ TRUY VẤN, không theo khối giao diện. `summary` chỉ quét một lượt
+ * nên về gần như tức thì và các thẻ chỉ số hiện ngay. Gộp làm một thì cả trang phải đứng chờ truy
+ * vấn chậm nhất, và bất kỳ truy vấn nào hỏng cũng xoá trắng toàn bộ màn hình.
+ *
+ * `breakdown` tách riêng khỏi `analytics` vì bảng chi tiết có ba chiều mà màn hình chỉ hiện một
+ * tab — gom sẵn cả ba là làm thừa hai phần ba công việc ở mọi lần mở trang.
  */
 
 /** Bỏ các khoá rỗng để URL không lủng củng `&schoolId=` — backend hiểu "thiếu" là "không lọc". */
@@ -19,17 +21,22 @@ function thamSo(boLoc) {
 }
 
 export const dashboardApi = {
-  /** Sáu thẻ chỉ số kèm đối chiếu kỳ trước. */
+  /** Các thẻ chỉ số kèm đối chiếu kỳ trước. */
   summary(boLoc) {
     return http.get('/dashboard/summary', { params: thamSo(boLoc) })
   },
 
-  /** Bốn biểu đồ và bảng phân tích ba tab. */
+  /** Hai biểu đồ: số buổi/chi phí theo tháng và cơ cấu nhóm môn. */
   analytics(boLoc) {
     return http.get('/dashboard/analytics', { params: thamSo(boLoc) })
   },
 
-  /** Việc cần xử lý, lịch dạy trong ngày, phân công gần đây. */
+  /** Bảng thống kê chi tiết theo MỘT chiều: GIAO_VIEN | TRUONG | MON. */
+  breakdown(boLoc, chieu) {
+    return http.get('/dashboard/breakdown', { params: { ...thamSo(boLoc), chieu } })
+  },
+
+  /** Việc cần xử lý, buổi dạy sắp tới, phân công gần đây. */
   operations(boLoc) {
     return http.get('/dashboard/operations', { params: thamSo(boLoc) })
   },

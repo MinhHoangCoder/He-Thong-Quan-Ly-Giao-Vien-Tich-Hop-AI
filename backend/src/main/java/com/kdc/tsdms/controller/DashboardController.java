@@ -1,6 +1,7 @@
 package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.dto.DashboardAnalyticsResponse;
+import com.kdc.tsdms.dto.DashboardBreakdownRow;
 import com.kdc.tsdms.dto.DashboardFilter;
 import com.kdc.tsdms.dto.DashboardOperationsResponse;
 import com.kdc.tsdms.dto.DashboardSummaryResponse;
@@ -11,6 +12,7 @@ import com.kdc.tsdms.service.DashboardService;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
@@ -25,9 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * REST API Bảng điều khiển (admin) — /api/v1/dashboard. Chỉ ADMIN.
  *
- * <p>Tách 3 endpoint đọc số liệu vì chi phí truy vấn chênh nhau nhiều: /summary quét một lượt
- * nên về gần như tức thì, /analytics gom theo ba chiều nên nặng hơn hẳn. Gộp một cục thì cả
- * trang phải chờ truy vấn chậm nhất, và một truy vấn hỏng là xoá trắng màn hình.
+ * <p>Tách các endpoint đọc số liệu theo CHI PHÍ TRUY VẤN: /summary quét một lượt nên về gần như
+ * tức thì. Gộp một cục thì cả trang phải chờ truy vấn chậm nhất, và một truy vấn hỏng là xoá
+ * trắng màn hình.
+ *
+ * <p>/breakdown tách khỏi /analytics vì bảng chi tiết có ba chiều mà giao diện chỉ hiện một tab:
+ * gom sẵn cả ba là làm thừa hai phần ba công việc ở mọi lần mở trang.
  */
 @RestController
 @RequestMapping("/api/v1/dashboard")
@@ -55,7 +60,7 @@ public class DashboardController {
         return service.summary(boLoc(from, to, branchId, schoolId, categoryId));
     }
 
-    /** Bốn biểu đồ và bảng phân tích ba tab. */
+    /** Hai biểu đồ (theo tháng, theo nhóm môn). */
     @GetMapping("/analytics")
     public DashboardAnalyticsResponse analytics(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
@@ -66,7 +71,19 @@ public class DashboardController {
         return service.analytics(boLoc(from, to, branchId, schoolId, categoryId));
     }
 
-    /** Việc cần xử lý, lịch dạy trong ngày, phân công gần đây. */
+    /** Bảng thống kê chi tiết theo MỘT chiều — chiều nào thì tải chiều đó. */
+    @GetMapping("/breakdown")
+    public List<DashboardBreakdownRow> breakdown(
+            @RequestParam(defaultValue = "GIAO_VIEN") Chieu chieu,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Integer branchId,
+            @RequestParam(required = false) Integer schoolId,
+            @RequestParam(required = false) Integer categoryId) {
+        return service.breakdown(boLoc(from, to, branchId, schoolId, categoryId), chieu);
+    }
+
+    /** Việc cần xử lý, buổi dạy sắp tới, phân công gần đây. */
     @GetMapping("/operations")
     public DashboardOperationsResponse operations(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
