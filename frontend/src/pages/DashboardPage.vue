@@ -319,7 +319,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
     </div>
 
     <div class="dash__body" :class="{ 'is-first': phuKin, 'is-refresh': lamMo }">
-      <LoadingSpinner v-if="phuKin" overlay text="Đang tải số liệu…" />
+      <LoadingSpinner v-if="phuKin" overlay text="Đang tải…" />
 
       <!-- Hàng 1 — thẻ chỉ số -->
       <div class="stat-grid">
@@ -422,7 +422,7 @@ const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: '
         @xuat="xuat"
       />
       <div v-else class="table-wrap bang-cho">
-        <LoadingSpinner bare :size="24" text="Đang gom số liệu ba chiều…" />
+        <LoadingSpinner bare :size="24" text="Đang tải…" />
       </div>
 
       <!-- Hàng 5 — phân công gần đây -->
