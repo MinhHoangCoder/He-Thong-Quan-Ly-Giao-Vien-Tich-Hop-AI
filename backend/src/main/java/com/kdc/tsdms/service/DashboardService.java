@@ -42,10 +42,9 @@ public class DashboardService {
     /** Ngưỡng báo hợp đồng lao động sắp hết hạn. */
     private static final int NGAY_BAO_HET_HAN = 60;
 
-    /** Bảng "Buổi dạy 7 ngày tới": nhìn xa 7 ngày, cắt ở 10 dòng cho vừa chiều cao khối bên cạnh. */
-    private static final int SO_NGAY_NHIN_TRUOC = 7;
-
+    /** Bảng "Buổi dạy sắp tới": 10 dòng cho vừa chiều cao khối "Việc cần xử lý" bên cạnh. */
     private static final int SO_BUOI_SAP_TOI = 10;
+
     private static final int SO_PHAN_CONG_GAN_DAY = 6;
 
     private static final List<String> BANG_MAU =
@@ -241,7 +240,7 @@ public class DashboardService {
                 "/dashboard/teacher");
 
         LocalDate homNay = BusinessTime.today();
-        List<BuoiDay> lich = repo.lich7NgayToi(f, homNay, SO_NGAY_NHIN_TRUOC, SO_BUOI_SAP_TOI).stream()
+        List<BuoiDay> lich = repo.lichSapToi(f, homNay, SO_BUOI_SAP_TOI).stream()
                 .map(b -> toBuoiDay(b, homNay))
                 .toList();
 
@@ -256,8 +255,9 @@ public class DashboardService {
     /**
      * Lắp nhãn hiển thị cho một buổi dạy sắp tới.
      *
-     * <p>Nhãn nhóm ghi rõ "Hôm nay" / "Ngày mai" thay vì chỉ ngày tháng: bảng trải 7 ngày, đọc
-     * "Thứ Sáu 21/08" rồi vẫn phải nhẩm xem đó là hôm nay hay tuần sau.
+     * <p>Nhãn nhóm ghi rõ "Hôm nay" / "Ngày mai" thay vì chỉ ngày tháng: bảng trải nhiều ngày,
+     * đọc "Thứ Sáu 21/08" rồi vẫn phải nhẩm xem đó là hôm nay hay tuần sau. Các ngày xa hơn thì
+     * chỉ ghi thứ và ngày — không nhét thêm chữ nào, kẻo thành "Thứ Hai · Thứ Hai 07/09".
      */
     private BuoiDay toBuoiDay(DashboardQueryRepository.BuoiDayTho b, LocalDate homNay) {
         LocalDate ngay = b.batDau().toLocalDate();
@@ -266,20 +266,16 @@ public class DashboardService {
                 b.ketThuc().isBefore(bayGio) ? "daXong" : (b.batDau().isAfter(bayGio) ? "sapToi" : "dangDien");
 
         String thu = TEN_THU.get(ngay.getDayOfWeek().getValue() - 1);
-        String nhomNgay = "%s · %s %02d/%02d"
-                .formatted(
-                        switch ((int) ChronoUnit.DAYS.between(homNay, ngay)) {
-                            case 0 -> "Hôm nay";
-                            case 1 -> "Ngày mai";
-                            default -> thu;
-                        },
-                        thu,
-                        ngay.getDayOfMonth(),
-                        ngay.getMonthValue());
+        String dau =
+                switch ((int) Math.min(2, ChronoUnit.DAYS.between(homNay, ngay))) {
+                    case 0 -> "Hôm nay · " + thu;
+                    case 1 -> "Ngày mai · " + thu;
+                    default -> thu;
+                };
+        String nhomNgay = "%s %02d/%02d".formatted(dau, ngay.getDayOfMonth(), ngay.getMonthValue());
 
         return new BuoiDay(
                 b.id(),
-                "%02d/%02d".formatted(ngay.getDayOfMonth(), ngay.getMonthValue()),
                 nhomNgay,
                 b.batDau().format(GIO_PHUT),
                 b.ketThuc().format(GIO_PHUT),

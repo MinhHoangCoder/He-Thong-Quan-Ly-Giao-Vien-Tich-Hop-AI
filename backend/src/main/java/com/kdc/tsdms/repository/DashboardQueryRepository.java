@@ -64,15 +64,23 @@ public class DashboardQueryRepository {
                                         AND pr.PeriodMonth = MONTH(sch.StartTime)
             """;
 
-    /** Điều kiện lọc dùng chung. Tham số NULL nghĩa là "không lọc theo tiêu chí đó". */
-    private static final String WHERE_LOC = """
-            WHERE sch.IsDeleted = 0
-              AND sch.StartTime >= :tuNgay
-              AND sch.StartTime <  :denNgay
+    /**
+     * Lọc PHẠM VI (chi nhánh / trường / nhóm môn). Tham số NULL nghĩa là "không lọc theo tiêu
+     * chí đó". Tách khỏi khoảng thời gian vì bảng "Buổi dạy sắp tới" cần đúng phần này nhưng
+     * mốc thời gian của nó là "từ hôm nay trở đi", không có giới hạn trên.
+     */
+    private static final String LOC_PHAM_VI = """
               AND (:branchId   IS NULL OR scl.BranchId  = :branchId)
               AND (:schoolId   IS NULL OR scl.Id        = :schoolId)
               AND (:categoryId IS NULL OR sj.CategoryId = :categoryId)
             """;
+
+    /** Điều kiện lọc dùng chung cho các truy vấn thống kê: khoảng kỳ + phạm vi. */
+    private static final String WHERE_LOC = """
+            WHERE sch.IsDeleted = 0
+              AND sch.StartTime >= :tuNgay
+              AND sch.StartTime <  :denNgay
+            """ + LOC_PHAM_VI;
 
     /** Thời lượng một buổi, quy ra giờ. */
     private static final String GIO = "(DATEDIFF(MINUTE, sch.StartTime, sch.EndTime) / 60.0)";
@@ -413,13 +421,16 @@ public class DashboardQueryRepository {
     /* ═════════════════════════ KHU ĐIỀU HÀNH ═════════════════════════ */
 
     /**
-     * Các buổi dạy sắp diễn ra, tính từ {@code tuNgay}.
+     * {@code gioiHan} buổi dạy kế tiếp kể từ {@code tuNgay}, KHÔNG chặn giới hạn trên.
      *
-     * <p>Dùng lại {@link #WHERE_LOC} nên khối này CÓ chịu bộ lọc chi nhánh / trường / nhóm môn —
-     * lọc "THCS Chu Văn An" mà bảng lịch vẫn liệt kê buổi của trường khác thì nhìn như hỏng. Chỉ
-     * riêng khoảng thời gian là của riêng nó ("7 ngày tới"), không lấy theo kỳ đang xem.
+     * <p>Bản đầu chặn ở "7 ngày tới" và trả về rỗng suốt kỳ nghỉ hè: buổi cuối của năm học là
+     * 29/05, buổi đầu của năm sau là 07/09, ở giữa là hơn ba tháng trống. Một khối trống giữa
+     * màn hình thì không phân biệt được với hệ thống hỏng.
+     *
+     * <p>Dùng lại {@link #LOC_PHAM_VI} nên khối này CÓ chịu bộ lọc trường / nhóm môn — lọc
+     * "THCS Chu Văn An" mà bảng lịch vẫn liệt kê buổi của trường khác thì nhìn như hỏng.
      */
-    public List<BuoiDayTho> lich7NgayToi(DashboardFilter f, LocalDate tuNgay, int soNgay, int gioiHan) {
+    public List<BuoiDayTho> lichSapToi(DashboardFilter f, LocalDate tuNgay, int gioiHan) {
         String sql = """
                 SELECT TOP (:gioiHan)
                     sch.Id, sch.StartTime, sch.EndTime,
@@ -427,18 +438,18 @@ public class DashboardQueryRepository {
                     mon      = sj.Name,
                     truong   = scl.Name
                 %s
-                %s
+                WHERE sch.IsDeleted = 0
                   AND sch.Status = 'APPROVED'
+                  AND sch.StartTime >= :tuNgay
+                %s
                 ORDER BY sch.StartTime, scl.Name
-                """.formatted(FROM_BUOI_DAY_GON, WHERE_LOC);
+                """.formatted(FROM_BUOI_DAY_GON, LOC_PHAM_VI);
 
         return jdbc.query(
                 sql,
-                // Đè lại tuNgay/denNgay của kỳ đang xem — bảng này luôn nhìn về phía trước.
-                thamSo(f)
-                        .addValue("tuNgay", tuNgay.atStartOfDay())
-                        .addValue("denNgay", tuNgay.plusDays(soNgay).atStartOfDay())
-                        .addValue("gioiHan", gioiHan),
+                // Đè tuNgay của kỳ đang xem — bảng này luôn nhìn về phía trước. denNgay thừa lại
+                // trong map cũng vô hại: JDBC chỉ bind những tham số thực sự có trong câu lệnh.
+                thamSo(f).addValue("tuNgay", tuNgay.atStartOfDay()).addValue("gioiHan", gioiHan),
                 (rs, i) -> new BuoiDayTho(
                         rs.getLong("Id"),
                         rs.getTimestamp("StartTime").toLocalDateTime(),

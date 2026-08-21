@@ -14,15 +14,14 @@ public record DashboardOperationsResponse(
     public record CanhBao(String key, String muc, String nhan, long soLuong, String moTa, String route) {}
 
     /**
-     * Một buổi dạy trong bảng "Buổi dạy 7 ngày tới".
+     * Một buổi dạy trong bảng "Buổi dạy sắp tới".
      *
-     * @param ngay dd/MM — bảng trải 7 ngày nên chỉ có giờ thì không biết là hôm nào
-     * @param nhomNgay nhãn nhóm, vd "Hôm nay · Thứ Sáu 21/08"; các buổi cùng ngày dùng chung
+     * @param nhomNgay nhãn nhóm, vd "Hôm nay · Thứ Sáu 21/08"; các buổi cùng ngày dùng chung.
+     *     Bảng trải nhiều ngày nên chỉ có giờ thì không biết là hôm nào.
      * @param trangThaiThoiGian daXong | dangDien | sapToi
      */
     public record BuoiDay(
             Long id,
-            String ngay,
             String nhomNgay,
             String batDau,
             String ketThuc,
