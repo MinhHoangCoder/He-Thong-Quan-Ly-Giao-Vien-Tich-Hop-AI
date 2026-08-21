@@ -6,6 +6,7 @@ import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import DateField from '@/components/ui/DateField.vue'
+import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
 import { teacherApi } from '@/api/teacher'
 import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
@@ -1109,7 +1110,7 @@ function formatDate(d) {
 
       <!-- ── Trạng thái loading ────────────────────── -->
       <div v-if="loading" class="tl__loading">
-        <span class="spinner" />
+        <LoadingSpinner bare :size="20" />
         <span>Đang tải danh sách…</span>
       </div>
 
@@ -1264,7 +1265,10 @@ function formatDate(d) {
         </div>
       </div>
 
-      <div v-if="trashLoading" class="tl__loading"><span class="spinner" /> Đang tải…</div>
+      <div v-if="trashLoading" class="tl__loading">
+        <LoadingSpinner bare :size="20" />
+        <span>Đang tải…</span>
+      </div>
 
       <div v-else-if="trashItems.length" class="table-wrap">
         <table class="teacher-table">
@@ -1626,7 +1630,7 @@ function formatDate(d) {
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="createModal.open = false">Hủy</button>
               <button class="btn btn--primary" :disabled="createModal.saving" @click="submitCreate">
-                <span v-if="createModal.saving" class="spinner spinner--sm" />
+                <LoadingSpinner v-if="createModal.saving" bare :size="14" />
                 {{ createModal.saving ? 'Đang tạo…' : 'Tạo giáo viên' }}
               </button>
             </div>
@@ -2019,7 +2023,7 @@ function formatDate(d) {
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="editModal.open = false">Hủy</button>
               <button class="btn btn--primary" :disabled="editModal.saving" @click="saveEdit">
-                <span v-if="editModal.saving" class="spinner spinner--sm" />
+                <LoadingSpinner v-if="editModal.saving" bare :size="14" />
                 {{ editModal.saving ? 'Đang lưu…' : 'Lưu thay đổi' }}
               </button>
             </div>
@@ -2243,26 +2247,6 @@ function formatDate(d) {
   color: var(--a-text-muted);
   opacity: 0.55;
   text-align: center;
-}
-
-/* ── Spinner ── */
-.spinner {
-  display: inline-block;
-  width: 20px;
-  height: 20px;
-  border: 2.5px solid var(--a-border);
-  border-top-color: var(--c-primary);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-.spinner--sm {
-  width: 14px;
-  height: 14px;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 /* ── Bảng danh sách giáo viên ── */
