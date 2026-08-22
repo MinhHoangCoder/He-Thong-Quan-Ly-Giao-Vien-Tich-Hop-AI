@@ -1,7 +1,6 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
-import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
@@ -1212,41 +1211,6 @@ public class AssignmentService {
             return reactivate(id);
         }
         return toResponse(a, false);
-    }
-
-    /**
-     * Xóa VĨNH VIỄN khỏi DB (chỉ khi phân công đang ở thùng rác). Xóa theo đúng thứ tự khóa
-     * ngoại: nhật ký trạng thái &amp; chấm công (→ Schedule) → buổi → slot → phân công.
-     *
-     * <p><b>Chặn theo tiền:</b> cấm nếu chấm công của phiếu đã vào kỳ lương FINALIZED hoặc PAID.
-     * Đây là chỗ DUY NHẤT trong dự án xóa cứng {@code Attendance}, mà chấm công là nguồn duy
-     * nhất sinh số trên phiếu lương; xóa rồi thì {@code generate()} cũng không dựng lại được vì
-     * nó chỉ ghi đè dòng DRAFT.
-     *
-     * <p>Hai vế khác nhau, câu hướng dẫn phải nói đúng cả hai: kỳ FINALIZED gỡ được (V32 cho mở
-     * lại với quyền {@code PAYROLL_REOPEN}, trong 3 tháng gần nhất) nên phải mở lại kỳ lương rồi
-     * mới xóa; kỳ PAID thì {@code PayrollService.assertReopenable} từ chối thẳng, ở đó là khóa
-     * cứng.
-     */
-    @Transactional
-    public void purge(Integer id) {
-        Assignment a = assignmentRepo
-                .findByIdAndDeletedTrue(id)
-                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy phân công trong thùng rác."));
-        List<String> kyLuongDaChot = payrollRepo.findKyLuongDaChotTheoPhanCong(id);
-        DeleteGuard.of("vĩnh viễn phân công này")
-                .blockWhen(
-                        !kyLuongDaChot.isEmpty(),
-                        "chấm công thuộc kỳ lương đã chốt/đã trả (" + String.join(", ", kyLuongDaChot) + ")")
-                .huongDan("Phiếu lương phải giữ nguyên bằng chứng chấm công. Kỳ ĐÃ CHỐT thì mở lại "
-                        + "kỳ lương đó (cần quyền mở lại bảng lương) rồi xóa; kỳ ĐÃ TRẢ thì tiền đã ra "
-                        + "khỏi quỹ nên phân công buộc phải nằm lại trong thùng rác.")
-                .check();
-        scheduleRepo.deleteStatusLogsByAssignmentId(id);
-        scheduleRepo.deleteAttendanceByAssignmentId(id);
-        scheduleRepo.deleteByAssignmentId(id);
-        slotRepo.deleteByAssignmentId(id);
-        assignmentRepo.delete(a);
     }
 
     /* ─────────────────────────── HELPERS ─────────────────────────── */

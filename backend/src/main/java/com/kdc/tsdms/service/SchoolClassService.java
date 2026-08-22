@@ -210,41 +210,6 @@ public class SchoolClassService {
         return ids.stream().filter(Objects::nonNull).map(this::restore).toList();
     }
 
-    /** Xóa vĩnh viễn nhiều lớp — 1 request, dừng ngay nếu 1 id lỗi (rollback cả lô). */
-    @Transactional
-    public void purgeMany(List<Integer> ids) {
-        if (ids == null || ids.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Danh sách id rỗng");
-        }
-        for (Integer id : ids) {
-            if (id == null) continue;
-            purge(id);
-        }
-    }
-
-    /**
-     * Xóa vĩnh viễn (chỉ khi đang ở thùng rác). Chặn nếu còn enrollment / assignment trỏ
-     * ClassId.
-     */
-    @Transactional
-    public void purge(Integer id) {
-        SchoolClass sc = classRepo
-                .findByIdAndDeletedTrue(id)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy lớp trong thùng rác id=" + id));
-        long students = enrollmentRepo.countByClassId(id);
-        if (students > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: lớp còn " + students + " học sinh ghi danh");
-        }
-        long anyAsg = assignmentRepo.countByClassId(id);
-        if (anyAsg > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT, "Không xóa vĩnh viễn được: còn " + anyAsg + " phân công gắn lớp này");
-        }
-        classRepo.delete(sc);
-    }
-
     private void softDelete(SchoolClass sc) {
         Integer id = sc.getId();
         long students = enrollmentRepo.countByClassId(id);

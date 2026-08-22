@@ -101,9 +101,4 @@ export const assignmentApi = {
   restore(id) {
     return http.post(`/assignments/${id}/restore`)
   },
-
-  /** Xóa vĩnh viễn phân công khỏi hệ thống. */
-  purge(id) {
-    return http.delete(`/assignments/${id}/permanent`)
-  },
 }

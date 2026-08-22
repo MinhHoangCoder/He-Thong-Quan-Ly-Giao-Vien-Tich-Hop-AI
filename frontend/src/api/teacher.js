@@ -29,9 +29,6 @@ export const teacherApi = {
   delete(id) {
     return http.delete(`/teacher/${id}`)
   },
-  deleteTrue(id) {
-    return http.delete(`/teacher/trash/${id}`)
-  },
 
   /** Xóa mềm nhiều GV cùng lúc — gọi tuần tự từng id. */
   deleteMany(ids) {

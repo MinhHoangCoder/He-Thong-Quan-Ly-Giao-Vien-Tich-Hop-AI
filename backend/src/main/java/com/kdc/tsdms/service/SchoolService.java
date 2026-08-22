@@ -251,36 +251,6 @@ public class SchoolService {
         return toResponse(saved, tenChiNhanhCua(List.of(saved)), soTietCua(List.of(saved)), BusinessTime.today());
     }
 
-    /**
-     * Xóa VĨNH VIỄN một trường đang nằm trong thùng rác.
-     *
-     * <p>Chặn nếu còn bất kỳ dòng con nào ở 7 bảng nghiệp vụ — kể cả dòng đã xóa mềm, vì khóa
-     * ngoại chặn theo sự tồn tại của dòng chứ không nhìn cờ xóa. Hệ quả cố ý: trường đã từng chạy
-     * thật thì gần như không xóa cứng được, nó nằm lại thùng rác và khôi phục được. Chỉ trường
-     * tạo nhầm mới xóa hẳn — đúng thứ nút này cần phục vụ.
-     *
-     * <p>Khung tiết và phòng học thì XÓA KÈM: chúng là cấu hình của riêng trường, giữ lại chỉ để
-     * lại rác trỏ vào một trường không còn tồn tại. Phải xóa TRƯỚC dòng School vì khóa ngoại của
-     * chúng trỏ vào đây.
-     */
-    @Transactional
-    public void purge(Integer id) {
-        School s = sRepo.findByIdAndDeletedTrue(id)
-                .orElseThrow(
-                        () -> new ApiException(HttpStatus.NOT_FOUND, "Không tìm thấy trường trong thùng rác id=" + id));
-        DeleteGuard.of("vĩnh viễn trường " + s.getName())
-                .blockAll(moTaDuLieuCon(sRepo.countChildRowsBySchoolId(id)))
-                .huongDan("Lớp, phân công, hợp đồng và hồ sơ học sinh là dữ liệu nghiệp vụ đã phát sinh — không "
-                        + "xóa kèm để dọn đường. Trường vẫn nằm trong thùng rác và khôi phục lại được.")
-                .check();
-        periodRepo.xoaCungTheoTruong(id);
-        roomRepo.xoaCungTheoTruong(id);
-        sRepo.delete(s);
-        // flush để lỗi khóa ngoại (nếu còn bảng nào chưa kể trong câu đếm) nổ NGAY tại đây thay vì
-        // lúc commit — khi đó stack trace không còn chỉ về hàm này nữa.
-        sRepo.flush();
-    }
-
     /* ── PRIVATE ── */
 
     /**

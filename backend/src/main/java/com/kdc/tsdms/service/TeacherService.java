@@ -336,53 +336,6 @@ public class TeacherService {
     }
 
     /**
-     * Xóa VĨNH VIỄN khỏi DB — CHỈ áp dụng cho GV đang nằm trong thùng rác (deleted=true).
-     * Không thể hoàn tác.
-     *
-     * <p>Trước đây hàm này XÓA CỨNG toàn bộ chứng chỉ + hợp đồng để dọn đường cho câu
-     * {@code DELETE Teacher}, rồi bọc tất cả trong một {@code catch DataIntegrityViolationException}
-     * trả về đúng một câu "Không thể xóa vĩnh viễn: giáo viên id=7". Hai cái sai chồng nhau:
-     *
-     * <ul>
-     *   <li><b>Sai về nghiệp vụ:</b> hợp đồng lao động và bằng cấp là hồ sơ pháp lý — chúng bị
-     *       hủy như hiệu ứng phụ của một thao tác dọn dẹp, và vì là xóa cứng nên không có
-     *       thùng rác nào giữ lại.
-     *   <li><b>Sai về thông tin:</b> khi khóa ngoại chặn thật (còn phân công, chấm công, phiếu
-     *       lương...) thì người dùng chỉ nhận được một câu không nói gì — không biết vướng ở
-     *       đâu, không biết phải làm gì, và đằng sau lưng thì chứng chỉ + hợp đồng ĐÃ bị xóa
-     *       mất rồi vì transaction cũng rollback nhưng bản thân người dùng không hề hay biết
-     *       thao tác đã đi xa tới đâu.
-     * </ul>
-     *
-     * <p>Nay: hỏi thẳng DB xem còn dòng con nào ở cả 11 bảng, kể tên đầy đủ, và KHÔNG xóa hộ
-     * thứ gì cả. Hệ quả cố ý là giáo viên đã từng làm việc thật thì gần như không bao giờ xóa
-     * cứng được — họ nằm lại trong thùng rác, khôi phục được. Chỉ hồ sơ tạo nhầm (chưa gắn dữ
-     * liệu nào) mới xóa hẳn, đúng thứ tính năng này thực sự cần phục vụ.
-     */
-    @Transactional
-    public void deleteTrueTeacher(Integer id) {
-        Teacher t = teacherRepo
-                .findByIdAndDeletedTrue(id)
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND, "Giáo viên id=" + id + " không có trong thùng rác => không thể xóa "));
-        DeleteGuard.of("vĩnh viễn giáo viên " + fullName(t.getLastName(), t.getFirstName()))
-                .blockAll(moTaDuLieuCon(teacherRepo.countChildRowsByTeacherId(id)))
-                .huongDan("Hợp đồng và bằng cấp là hồ sơ pháp lý, chấm công và phiếu lương là chứng từ tiền "
-                        + "lương — không xóa được để dọn đường. Giáo viên vẫn nằm trong thùng rác và khôi "
-                        + "phục lại được bất cứ lúc nào.")
-                .check();
-        // Xóa hồ sơ mà bỏ lại tài khoản là đẻ ra một TÀI KHOẢN MỒ CÔI: vẫn đăng nhập được,
-        // vẫn mang role TEACHER, nhưng không còn hồ sơ nào phía sau — mọi màn hình của nó ném
-        // 403. Xóa MỀM AppUser (chứ không DELETE) vì AppUser đang bị 13 bảng khác trỏ vào;
-        // xóa cứng là hẹn giờ lỗi khóa ngoại. Xóa mềm vẫn chặn được đăng nhập
-        // (AuthService.login lọc findByUsernameAndDeletedFalse) và nhả lại username cho người
-        // sau dùng lại (existsByUsernameAndDeletedFalseAndIdNot).
-        khoaTaiKhoanDangNhap(t.getAppUserId(), true);
-        teacherRepo.delete(t);
-        teacherRepo.flush();
-    }
-
-    /**
      * Khóa tài khoản đăng nhập gắn với một hồ sơ giáo viên vừa bị xóa.
      *
      * <p>Vì sao phải thu hồi refresh token: đổi {@code Status} chỉ chặn LẦN ĐĂNG NHẬP SAU.

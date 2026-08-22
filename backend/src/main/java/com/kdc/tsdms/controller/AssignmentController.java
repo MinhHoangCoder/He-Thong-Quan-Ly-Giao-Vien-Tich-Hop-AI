@@ -190,12 +190,4 @@ public class AssignmentController {
     public AssignmentResponse restore(@PathVariable Integer id) {
         return service.restore(id);
     }
-
-    /** Xóa VĨNH VIỄN phân công khỏi hệ thống (chỉ khi đang ở thùng rác). */
-    @DeleteMapping("/{id}/permanent")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
-    public ResponseEntity<Void> purge(@PathVariable Integer id) {
-        service.purge(id);
-        return ResponseEntity.noContent().build();
-    }
 }

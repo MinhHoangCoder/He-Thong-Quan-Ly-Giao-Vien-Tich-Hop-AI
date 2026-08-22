@@ -96,12 +96,4 @@ public class SchoolController {
     public SchoolResponse restore(@PathVariable Integer id) {
         return sService.restore(id);
     }
-
-    /** Xóa VĨNH VIỄN khỏi thùng rác — chặn nếu trường đã từng phát sinh dữ liệu nghiệp vụ. */
-    @DeleteMapping("/{id}/permanent")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SCHOOL_MANAGE')")
-    public ResponseEntity<Void> purge(@PathVariable Integer id) {
-        sService.purge(id);
-        return ResponseEntity.noContent().build();
-    }
 }

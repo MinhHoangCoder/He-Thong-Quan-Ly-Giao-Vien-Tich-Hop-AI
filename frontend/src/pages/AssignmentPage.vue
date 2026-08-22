@@ -78,7 +78,6 @@ const pagedItems = computed(() => {
 })
 
 const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
-const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 
 async function load() {
   loading.value = true
@@ -278,19 +277,6 @@ async function restoreItem(a) {
     loadTrash()
   } catch (e) {
     alert(e.response?.data?.message ?? 'Khôi phục thất bại')
-  }
-}
-
-/* Xóa vĩnh viễn khỏi hệ thống (không thể hoàn tác). */
-async function confirmPurge() {
-  if (!purgeTarget.value) return
-  try {
-    await assignmentApi.purge(purgeTarget.value.id)
-    purgeTarget.value = null
-    loadTrash()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
-    purgeTarget.value = null
   }
 }
 </script>
@@ -501,9 +487,6 @@ async function confirmPurge() {
               </template>
               <template v-else>
                 <button class="btn btn-sm btn-outline" @click="restoreItem(a)">Khôi phục</button>
-                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">
-                  Xóa vĩnh viễn
-                </button>
               </template>
             </td>
           </tr>
@@ -549,23 +532,6 @@ async function confirmPurge() {
         <div class="modal-actions">
           <button class="btn btn-outline" @click="cancelTarget = null">Không</button>
           <button class="btn btn-danger" @click="confirmCancel">Hủy phân công</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Confirm xóa vĩnh viễn -->
-    <div v-if="purgeTarget" class="modal-overlay" @click.self="purgeTarget = null">
-      <div class="modal-box modal-sm">
-        <h3>Xóa vĩnh viễn</h3>
-        <p>
-          Xóa <strong>vĩnh viễn</strong> phân công của
-          <strong>{{ purgeTarget.teacherName }}</strong> tại {{ purgeTarget.schoolName }} khỏi hệ
-          thống? Hành động này <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên
-          quan.
-        </p>
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="purgeTarget = null">Không</button>
-          <button class="btn btn-danger" @click="confirmPurge">Xóa vĩnh viễn</button>
         </div>
       </div>
     </div>

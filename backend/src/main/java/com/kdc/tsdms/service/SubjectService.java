@@ -1,13 +1,12 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.SubjectRequest;
 import com.kdc.tsdms.dto.SubjectResponse;
-import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
-import com.kdc.tsdms.repository.LessonFileRepository;
 import com.kdc.tsdms.repository.LessonRepository;
 import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
@@ -39,7 +38,6 @@ public class SubjectService {
     private final SubjectRepository subjectRepo;
     private final SubjectCategoryRepository categoryRepo;
     private final LessonRepository lessonRepo;
-    private final LessonFileRepository lessonFileRepo;
     private final TeacherSubjectRepository teacherSubjectRepo;
     private final AssignmentRepository assignmentRepo;
 
@@ -47,13 +45,11 @@ public class SubjectService {
             SubjectRepository subjectRepo,
             SubjectCategoryRepository categoryRepo,
             LessonRepository lessonRepo,
-            LessonFileRepository lessonFileRepo,
             TeacherSubjectRepository teacherSubjectRepo,
             AssignmentRepository assignmentRepo) {
         this.subjectRepo = subjectRepo;
         this.categoryRepo = categoryRepo;
         this.lessonRepo = lessonRepo;
-        this.lessonFileRepo = lessonFileRepo;
         this.teacherSubjectRepo = teacherSubjectRepo;
         this.assignmentRepo = assignmentRepo;
     }
@@ -115,18 +111,16 @@ public class SubjectService {
     }
 
     /**
-     * FIX (2026-08-07): XÓA VĨNH VIỄN (hard delete) thay vì xóa mềm như trước —
-     * môn học đã xóa biến mất hẳn khỏi CSDL, không còn giữ lại bản ghi
-     * IsDeleted = 1. Quy tắc:
-     * <p>
-     * - status = ACTIVE -> LUÔN chặn xóa (như cũ), phải tắt hoạt động trước.
-     * - status = DISABLED -> cho phép xóa, với 2 bước an toàn:
-     * 1) CHẶN nếu môn từng có Assignment (phân công giảng dạy) — đây là dữ
-     * liệu LỊCH SỬ, không được xóa cùng môn học kẻo mất dấu vết ai từng dạy
-     * môn gì.
-     * 2) Nếu qua được bước 1: xóa vĩnh viễn toàn bộ bài giảng (Lesson +
-     * LessonFile) và liên kết GV-môn (TeacherSubject) thuộc môn này trước,
-     * để không vướng khóa ngoại SubjectId, rồi mới xóa hẳn dòng Subject.
+     * Xóa MỀM môn học (2026-08-22 — trả lại xóa mềm, bỏ bản hard delete của 2026-08-07).
+     *
+     * <p>Bản cũ xóa hẳn dòng Subject và xóa kèm toàn bộ Lesson + LessonFile + TeacherSubject.
+     * Hai chỗ sai: bài giảng là công sức soạn của giáo viên chứ không phải phụ kiện của môn
+     * học, và một khi dòng Subject biến mất thì mọi bản ghi cũ trỏ vào nó chỉ còn lại con số
+     * SubjectId không tra được ra tên.
+     *
+     * <p>Rào chắn giữ nguyên: môn đang hoạt động thì phải tắt trước, và môn còn dữ liệu con
+     * (phân công, bài giảng, giáo viên phụ trách) thì chặn — {@link DeleteGuard} kể hết lý do
+     * trong một lần thay vì bắt người dùng bấm lại nhiều vòng.
      */
     @Transactional
     public void delete(Integer id) {
@@ -136,24 +130,16 @@ public class SubjectService {
                     HttpStatus.CONFLICT,
                     "Không thể xóa: môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
         }
+        DeleteGuard.of("môn học " + s.getName())
+                .blockIf(assignmentRepo.countBySubjectId(id), "phân công giảng dạy")
+                .blockIf(lessonRepo.countBySubjectIdAndDeletedFalse(id), "bài giảng")
+                .blockIf(teacherSubjectRepo.countBySubjectId(id), "giáo viên đang phụ trách môn")
+                .check();
 
-        long assigned = assignmentRepo.countBySubjectId(id);
-        if (assigned > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Không thể xóa vĩnh viễn: môn học đã từng có " + assigned
-                            + " phân công giảng dạy (Assignment) — đây là dữ liệu lịch sử nên không thể xóa cùng môn học.");
-        }
-
-        List<Lesson> lessons = lessonRepo.findBySubjectId(id);
-        if (!lessons.isEmpty()) {
-            List<Integer> lessonIds = lessons.stream().map(Lesson::getId).toList();
-            lessonFileRepo.deleteByLessonIdIn(lessonIds);
-            lessonRepo.deleteAll(lessons);
-        }
-        teacherSubjectRepo.deleteBySubjectId(id);
-
-        subjectRepo.delete(s);
+        s.setDeleted(true);
+        s.setDeletedAt(Instant.now());
+        s.setDeletedBy(SecurityUtils.currentUserId());
+        subjectRepo.save(s);
     }
 
     /* ── PRIVATE ── */

@@ -104,7 +104,6 @@ const trashLoading = ref(false)
 const confirmDelete = reactive({ open: false })
 
 // Confirm xóa VĨNH VIỄN (từ thùng rác) — cần gõ lại tên để chắc chắn không bấm nhầm.
-const confirmPurge = reactive({ open: false, id: null, name: '', typedName: '', purging: false })
 
 // Notification toast
 const toast = reactive({ show: false, msg: '', type: 'success' })
@@ -956,47 +955,6 @@ async function restore(id) {
   }
 }
 
-//  XÓA VĨNH VIỄN (chỉ ADMIN) — CHỈ áp dụng cho GV đang trong thùng rác.
-
-const isAdmin = computed(() => auth.roles.includes('ADMIN'))
-
-function requestPurge(item) {
-  if (!isAdmin.value) return
-  confirmPurge.open = true
-  confirmPurge.id = item.id
-  confirmPurge.name = item.fullName
-  confirmPurge.phone = item.phone || ''
-  confirmPurge.typedName = ''
-  confirmPurge.purging = false
-}
-
-function closePurge() {
-  confirmPurge.open = false
-}
-
-const purgeConfirmValid = computed(() => {
-  if (confirmPurge.phone) {
-    return confirmPurge.typedName.trim() === confirmPurge.phone.trim()
-  }
-  return confirmPurge.typedName.trim().toLowerCase() === confirmPurge.name.trim().toLowerCase()
-})
-
-async function confirmDoPurge() {
-  if (!purgeConfirmValid.value || confirmPurge.purging) return
-  confirmPurge.purging = true
-  try {
-    await teacherApi.deleteTrue(confirmPurge.id)
-    showToast(`Đã xóa vĩnh viễn "${confirmPurge.name}" khỏi hệ thống`)
-    confirmPurge.open = false
-    await loadTrash()
-  } catch (e) {
-    const msg = e?.response?.data?.message || 'Xóa vĩnh viễn thất bại'
-    showToast(msg, 'error')
-  } finally {
-    confirmPurge.purging = false
-  }
-}
-
 /* ══════════════════════════════════════════════════════════
    HELPERS
 ══════════════════════════════════════════════════════════ */
@@ -1308,9 +1266,6 @@ function formatDate(d) {
                 <div class="trash-actions">
                   <button class="btn-restore" @click="restore(item.id)">
                     <SvgIcon name="restore" :size="14" /> Khôi phục
-                  </button>
-                  <button v-if="isAdmin" class="btn-purge" @click="requestPurge(item)">
-                    <SvgIcon name="trash" :size="14" /> Xóa
                   </button>
                 </div>
               </td>
@@ -1655,41 +1610,6 @@ function formatDate(d) {
             <div class="modal__footer">
               <button class="btn btn--ghost" @click="confirmDelete.open = false">Không</button>
               <button class="btn btn--danger" @click="confirmDoDelete">Có</button>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <!-- ═══════════════════════════════════════════════
-         MODAL: XÁC NHẬN XÓA VĨNH VIỄN (từ thùng rác)
-    ═══════════════════════════════════════════════ -->
-    <Teleport to="body">
-      <Transition name="modal">
-        <div v-if="confirmPurge.open" class="overlay" @click.self="closePurge">
-          <div class="modal modal--sm">
-            <div class="modal__icon modal__icon--warn">⚠️</div>
-            <h3 class="modal__title">Xóa vĩnh viễn giáo viên "{{ confirmPurge.name }}"?</h3>
-            <p class="modal__body">Are you <strong> SURE ?</strong></p>
-            <p class="modal__body">
-              Gõ lại số điện thoại <strong>"{{ confirmPurge.phone }}"</strong> để xác nhận:
-            </p>
-            <input
-              v-model="confirmPurge.typedName"
-              type="text"
-              class="form-input"
-              :placeholder="confirmPurge.phone"
-              @keyup.enter="confirmDoPurge"
-            />
-            <div class="modal__footer">
-              <button class="btn btn--ghost" @click="closePurge">Hủy</button>
-              <button
-                class="btn btn--danger"
-                :disabled="!purgeConfirmValid || confirmPurge.purging"
-                @click="confirmDoPurge"
-              >
-                {{ confirmPurge.purging ? 'Đang xóa…' : 'Xóa vĩnh viễn' }}
-              </button>
             </div>
           </div>
         </div>
@@ -2537,24 +2457,6 @@ function formatDate(d) {
   align-items: center;
   gap: 0.5rem;
 }
-.btn-purge {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
-  border-radius: 7px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.btn-purge:hover {
-  background: #fee2e2;
-}
-
 /* ── Modal ── */
 .overlay {
   position: fixed;

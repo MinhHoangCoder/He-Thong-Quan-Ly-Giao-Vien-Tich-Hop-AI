@@ -112,25 +112,10 @@ public class SchoolClassController {
         return service.restore(id);
     }
 
-    @DeleteMapping("/trash/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public ResponseEntity<Void> purge(@PathVariable Integer id) {
-        service.purge(id);
-        return ResponseEntity.noContent().build();
-    }
-
     /** Khôi phục nhiều lớp từ thùng rác trong 1 request. Body: [1, 2, 3]. */
     @PostMapping("/trash/batch-restore")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
     public List<SchoolClassResponse> batchRestore(@RequestBody List<Integer> ids) {
         return service.restoreMany(ids);
-    }
-
-    /** Xóa vĩnh viễn nhiều lớp trong thùng rác trong 1 request. Body: [1, 2, 3]. */
-    @PostMapping("/trash/batch-purge")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public ResponseEntity<Void> batchPurge(@RequestBody List<Integer> ids) {
-        service.purgeMany(ids);
-        return ResponseEntity.noContent().build();
     }
 }

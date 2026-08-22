@@ -61,14 +61,4 @@ export const classApi = {
   restoreMany(ids) {
     return http.post('/classes/trash/batch-restore', ids)
   },
-
-  /** Xóa vĩnh viễn (chỉ khi đang ở thùng rác). */
-  purge(id) {
-    return http.delete(`/classes/trash/${id}`)
-  },
-
-  /** Xóa vĩnh viễn nhiều — 1 request, BE chạy trong 1 transaction. */
-  purgeMany(ids) {
-    return http.post('/classes/trash/batch-purge', ids)
-  },
 }
