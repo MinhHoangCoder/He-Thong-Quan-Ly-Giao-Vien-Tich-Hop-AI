@@ -12,8 +12,9 @@ import { branchApi } from '@/api/branches'
 import { authApi } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 import { isStrongPassword, PASSWORD_HINT } from '@/utils/password'
+import { PAGE_SIZE } from '@/utils/pagination'
 /* ══════════════════════════════════════════════════════════
-   PHÂN QUYỀN THEO VAI TRÒjdnjdnvjdnsdjnvd
+   PHÂN QUYỀN THEO VAI TRÒ
    ADMIN: đầy đủ chức năng (xem, sửa, xóa mềm, lịch sử).
    TEACHER: chỉ xem + sửa — KHÔNG có nút "Xóa" và tab "Lịch sử".
 ══════════════════════════════════════════════════════════ */
@@ -41,7 +42,6 @@ const viewMode = ref('list') // 'list' | 'trash'
 /* ══════════════════════════════════════════════════════════
    PHÂN TRANG (client-side, dựa trên danh sách đã lọc)
 ══════════════════════════════════════════════════════════ */
-const PAGE_SIZE = 6
 const page = ref(0)
 const pageInput = ref('')
 

@@ -429,17 +429,19 @@ const teachersForSubject = computed(() => {
   )
 })
 
-/** Số người bị ẩn vì không dạy được môn đang chọn — nói ra để không ai tưởng mất dữ liệu. */
-const teachersHidden = computed(() => options.teachers.length - teachersForSubject.value.length)
-
 /**
- * Trường chưa có khung tiết VÀ chưa có lớp nào thì KHÓA hẳn: không suy được cấp học nên cũng
- * không áp được khung chuẩn, chọn vào chỉ là ngõ cụt. Trường thiếu mỗi khung tiết thì vẫn cho
- * chọn — vào trong có nút áp khung tiết chuẩn để gỡ tại chỗ.
+ * Lý do một trường không chọn được — trả chuỗi rỗng nghĩa là chọn được.
+ *
+ * Trường chưa có lớp ĐANG HOẠT ĐỘNG thì khóa: không có lớp thì không xếp tiết vào đâu được.
+ * Vẫn để trường hiện trong danh sách (xám + ghi lý do) chứ không ẩn đi — ẩn thì người dùng
+ * tưởng trường bị mất và đi tìm lung tung. Backend chặn lần nữa ở assertSchoolHasClass.
+ *
+ * Trường thiếu MỖI khung tiết thì vẫn cho chọn: vào trong có nút áp khung tiết chuẩn để gỡ
+ * tại chỗ, không phải quay ra màn khác.
  */
 function schoolBlockReason(s) {
-  if (s.periodCount === 0 && s.classCount === 0) {
-    return 'Chưa có lớp và chưa có khung tiết — hãy thêm lớp cho trường trước'
+  if (s.classCount === 0) {
+    return 'Chưa có lớp học nào đang hoạt động — hãy thêm lớp cho trường này trước'
   }
   return ''
 }
@@ -488,14 +490,37 @@ const startDateInvalid = computed(
   () => !!form.startDate && form.startDate < minStartDate.value,
 )
 
-const step1Valid = computed(
-  () => form.teacherId && form.subjectId && form.startDate && !startDateInvalid.value,
-)
-const step2Valid = computed(() => form.slots.length > 0)
+/**
+ * Ngày muộn nhất được chọn làm ngày kết thúc — khớp hằng số MAX_MONTHS (12) ở backend.
+ *
+ * Trần này chặn cú gõ nhầm năm: "31/12/2099" trải slot thành hàng trăm nghìn buổi dạy, treo
+ * request và bơm phồng bảng lịch trước khi ai kịp nhận ra.
+ */
+const maxEndDate = computed(() => {
+  if (!form.startDate) return ''
+  const d = new Date(form.startDate)
+  d.setMonth(d.getMonth() + 12)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})
 
 const dateRangeInvalid = computed(
   () => !!form.endDate && !!form.startDate && form.endDate < form.startDate,
 )
+const dateTooLong = computed(
+  () => !!form.endDate && !!maxEndDate.value && form.endDate > maxEndDate.value,
+)
+
+const step1Valid = computed(
+  () =>
+    form.teacherId &&
+    form.subjectId &&
+    form.startDate &&
+    form.endDate &&
+    !startDateInvalid.value &&
+    !dateRangeInvalid.value &&
+    !dateTooLong.value,
+)
+const step2Valid = computed(() => form.slots.length > 0)
 
 function goStep(n) {
   error.value = ''
@@ -508,8 +533,12 @@ function goStep(n) {
     error.value = 'Ngày kết thúc phải sau ngày bắt đầu.'
     return
   }
+  if (n >= 2 && dateTooLong.value) {
+    error.value = 'Một phân công không kéo dài quá 12 tháng. Cần dạy lâu hơn thì tạo phiếu mới.'
+    return
+  }
   if (n >= 2 && !step1Valid.value) {
-    error.value = 'Hãy chọn giáo viên, môn học và ngày bắt đầu.'
+    error.value = 'Hãy chọn giáo viên, môn học, ngày bắt đầu và ngày kết thúc.'
     return
   }
   if (n >= 3 && !step2Valid.value) {
@@ -668,9 +697,6 @@ function cancel() {
               </div>
             </template>
           </SearchSelect>
-          <small v-if="form.subjectId && teachersHidden > 0" class="afp__hint">
-            Đang lọc theo môn đã chọn — ẩn {{ teachersHidden }} giáo viên không dạy môn này.
-          </small>
         </div>
 
         <div class="form-group">
@@ -682,12 +708,19 @@ function cancel() {
         </div>
 
         <div class="form-group">
-          <label>Ngày kết thúc</label>
-          <DateField v-model="form.endDate" :min="form.startDate" :invalid="dateRangeInvalid" />
+          <label>Ngày kết thúc *</label>
+          <DateField
+            v-model="form.endDate"
+            :min="form.startDate"
+            :max="maxEndDate"
+            :invalid="dateRangeInvalid || dateTooLong"
+          />
           <small v-if="dateRangeInvalid" class="afp__fielderr">
             Ngày kết thúc phải sau ngày bắt đầu.
           </small>
-          <small v-else>Bỏ trống = sinh lịch 8 tuần kể từ ngày bắt đầu.</small>
+          <small v-else-if="dateTooLong" class="afp__fielderr">
+            Một phân công không kéo dài quá 12 tháng.
+          </small>
         </div>
       </div>
 

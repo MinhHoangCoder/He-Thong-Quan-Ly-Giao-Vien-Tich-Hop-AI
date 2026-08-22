@@ -11,8 +11,10 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -46,6 +48,11 @@ public class TeacherService {
     private final RefreshTokenRepository refreshTokenRepo;
     private final AssignmentRepository assignmentRepo;
     private final ScheduleRepository scheduleRepo;
+    private final AttendanceRepository attendanceRepo;
+    private final PayrollRepository payrollRepo;
+
+    /** Phiếu lương trung tâm CÒN NỢ giáo viên: đã tính ra tiền nhưng chưa xác nhận đã chi. */
+    private static final List<String> LUONG_CHUA_CHI = List.of("DRAFT", "FINALIZED");
 
     /** Trạng thái phân công / buổi dạy còn hiệu lực — vẫn sinh công và vẫn vào lương. */
     private static final List<String> PHAN_CONG_CON_HIEU_LUC =
@@ -83,7 +90,9 @@ public class TeacherService {
             PasswordEncoder passwordEncoder,
             RefreshTokenRepository refreshTokenRepo,
             AssignmentRepository assignmentRepo,
-            ScheduleRepository scheduleRepo) {
+            ScheduleRepository scheduleRepo,
+            AttendanceRepository attendanceRepo,
+            PayrollRepository payrollRepo) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
@@ -92,6 +101,8 @@ public class TeacherService {
         this.refreshTokenRepo = refreshTokenRepo;
         this.assignmentRepo = assignmentRepo;
         this.scheduleRepo = scheduleRepo;
+        this.attendanceRepo = attendanceRepo;
+        this.payrollRepo = payrollRepo;
     }
 
     // DANH SÁCH  ======================================
@@ -289,6 +300,12 @@ public class TeacherService {
                         scheduleRepo.countByTeacherIdAndStartTimeAfterAndStatusInAndDeletedFalse(
                                 id, BusinessTime.now(), BUOI_CON_HIEU_LUC),
                         "buổi dạy sắp tới")
+                // Còn nợ tiền thì chưa được xóa. Xóa xong phiếu lương vẫn nằm đó nhưng hồ sơ
+                // đứng sau nó đã biến khỏi mọi danh sách — người cầm tiền hết đường tra ra
+                // phải trả cho ai.
+                .blockIf(payrollRepo.countByTeacherIdAndStatusIn(id, LUONG_CHUA_CHI), "phiếu lương chưa chi")
+                // Đang đứng lớp (đã check-in, chưa check-out) thì buổi đó chưa khép được.
+                .blockWhen(attendanceRepo.countDangDayDoTheoGiaoVien(id) > 0, "một buổi dạy đang dở chưa kết thúc")
                 .check();
         t.setDeleted(true);
         t.setDeletedAt(Instant.now());

@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.SchoolDetailResponse;
 import com.kdc.tsdms.dto.SchoolRequest;
 import com.kdc.tsdms.dto.SchoolResponse;
@@ -7,7 +8,6 @@ import com.kdc.tsdms.service.SchoolService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -46,8 +46,7 @@ public class SchoolController {
             @RequestParam(required = false) Integer expiringInDays,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0), Math.max(size, 1), Sort.by("name").ascending());
+        Pageable pageable = Paging.of(page, size, Sort.by("name").ascending());
         return sService.search(keyword, branchId, status, expiringInDays, pageable);
     }
 

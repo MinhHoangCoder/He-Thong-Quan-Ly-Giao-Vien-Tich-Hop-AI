@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.MyScheduleFilters;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.ScheduleEventResponse;
@@ -119,10 +120,19 @@ public class ScheduleService {
      * @param status trạng thái cần xem; null/rỗng = {@value #APPROVED}. Điều phối viên cần
      *     nhìn được cả buổi PENDING ("tuần sau còn 12 buổi chưa ai xác nhận") ngay trên lịch,
      *     nhưng mặc định vẫn chỉ hiện buổi đã duyệt — lịch là thứ đã chốt.
+     * @param keyword lọc theo tên GV / trường / lớp / môn, bỏ dấu vẫn khớp. Lọc Ở ĐÂY chứ
+     *     không để trình duyệt tự lọc sau khi tải: một tháng của trung tâm là vài nghìn buổi,
+     *     gửi hết về rồi giấu đi 99% là trả giá đường truyền cho thứ người dùng không nhìn.
      */
     @Transactional(readOnly = true)
     public List<ScheduleEventResponse> list(
-            LocalDate from, LocalDate to, Integer teacherId, Integer schoolId, Integer classId, String status) {
+            LocalDate from,
+            LocalDate to,
+            Integer teacherId,
+            Integer schoolId,
+            Integer classId,
+            String status,
+            String keyword) {
         Integer effectiveTeacher = scopedTeacherId(teacherId);
         String wanted =
                 status == null || status.isBlank() ? APPROVED : status.trim().toUpperCase();
@@ -132,7 +142,14 @@ public class ScheduleService {
                         effectiveTeacher, wanted, from.atStartOfDay(), to.atTime(LocalTime.MAX))
                 : scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
                         from.atStartOfDay(), to.atTime(LocalTime.MAX), wanted);
-        return buildEvents(schedules, schoolId, classId);
+        List<ScheduleEventResponse> events = buildEvents(schedules, schoolId, classId);
+        String kw = SearchText.normalize(keyword);
+        if (kw.isEmpty()) {
+            return events;
+        }
+        return events.stream()
+                .filter(e -> SearchText.matchesAny(kw, e.teacherName, e.schoolName, e.className, e.subjectName))
+                .toList();
     }
 
     /**

@@ -17,6 +17,15 @@ public interface PayrollRepository extends JpaRepository<Payroll, Integer> {
     Optional<Payroll> findByTeacherIdAndPeriodYearAndPeriodMonth(
             Integer teacherId, Short periodYear, Short periodMonth);
 
+    /**
+     * Phiếu lương của một GV còn ở trạng thái CHƯA CHI (nháp hoặc đã chốt nhưng chưa trả tiền).
+     *
+     * <p>Chặn xóa hồ sơ giáo viên khi trung tâm còn nợ họ tiền: xóa xong thì phiếu vẫn nằm đó
+     * nhưng hồ sơ đứng sau nó đã biến khỏi mọi danh sách, và người cầm tiền không còn đường nào
+     * tra ra phải trả cho ai.
+     */
+    long countByTeacherIdAndStatusIn(Integer teacherId, java.util.Collection<String> statuses);
+
     /** Các phiếu lương của một GV trong một năm (mới nhất trước) — cho trang "Phiếu lương của tôi". */
     List<Payroll> findByTeacherIdAndPeriodYearOrderByPeriodMonthDesc(Integer teacherId, Short periodYear);
 

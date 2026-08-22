@@ -21,7 +21,9 @@ import { useRoute } from 'vue-router'
 import { holidayApi } from '@/api/holidays'
 import { schoolApi } from '@/api/schools'
 import DateField from '@/components/ui/DateField.vue'
+import { PAGE_SIZE } from '@/utils/pagination'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
 import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
@@ -42,7 +44,7 @@ const error = ref('')
 const items = ref([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = 20
+const pageSize = PAGE_SIZE
 
 const schools = ref([])
 
@@ -392,11 +394,6 @@ onMounted(async () => {
     <div class="page__head">
       <div>
         <h1 class="page__title">Lịch nghỉ</h1>
-        <p class="page__desc">
-          Những ngày hệ thống <strong>không xếp buổi dạy</strong>: lễ theo luật, nghỉ hè, nghỉ
-          riêng của một trường. Thiếu một ngày ở đây thì lịch vẫn đẻ ra buổi dạy vào hôm trường
-          đóng cửa, hệ thống ghi giáo viên VẮNG và trừ tiền buổi đó.
-        </p>
       </div>
       <button v-if="tab === 'active'" class="btn" @click="openCreate">+ Thêm kỳ nghỉ</button>
     </div>
@@ -406,7 +403,13 @@ onMounted(async () => {
       <button :class="{ on: tab === 'trash' }" @click="switchTab('trash')">Thùng rác</button>
     </div>
 
-    <div class="filter-bar">
+    <FilterBar
+      v-model="filter.keyword"
+      placeholder="Tên kỳ nghỉ…"
+      aria-label="Tìm kỳ nghỉ theo tên"
+      @apply="applyFilter"
+      @clear="clearFilter"
+    >
       <template v-if="tab === 'active'">
         <label class="field">
           <span>Loại</span>
@@ -419,7 +422,7 @@ onMounted(async () => {
         <label class="field">
           <span>Phạm vi</span>
           <select v-model="filter.schoolId" @change="applyFilter">
-            <option value="">Toàn hệ thống + mọi trường</option>
+            <option value="">Toàn hệ thống</option>
             <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </label>
@@ -434,17 +437,7 @@ onMounted(async () => {
           <DateField v-model="filter.to" @update:model-value="applyFilter" />
         </label>
       </template>
-
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input v-model="filter.keyword" placeholder="Tên kỳ nghỉ..." @keyup.enter="applyFilter" />
-      </label>
-
-      <div class="filter-actions">
-        <button class="btn" @click="applyFilter">Lọc</button>
-        <button class="btn btn--ghost" @click="clearFilter">Xóa lọc</button>
-      </div>
-    </div>
+    </FilterBar>
 
     <p v-if="error" class="msg msg--error">{{ error }}</p>
 
@@ -777,52 +770,6 @@ onMounted(async () => {
 .tabs button.on {
   background: var(--grad-primary);
   color: #fff;
-}
-
-/* ================= Filter ================= */
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-  background: var(--c-surface);
-  border-radius: 14px;
-  border: 1px solid var(--c-border);
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 170px;
-}
-.field--wide {
-  flex: 1;
-}
-.field span {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text);
-}
-.field input,
-.field select {
-  height: 40px;
-  border: 1px solid var(--c-input-border);
-  border-radius: 8px;
-  padding: 0 12px;
-  font-size: 14px;
-  background: var(--c-surface);
-  color: var(--c-text);
-}
-.field input:focus,
-.field select:focus {
-  outline: none;
-  border-color: var(--c-primary);
-}
-.filter-actions {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
 }
 
 /* ================= Buttons ================= */

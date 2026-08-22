@@ -152,6 +152,10 @@ class AssignmentHolidaySkipTest {
         c.setSchoolId(SCHOOL_ID);
         c.setName("5A1");
         when(classRepo.findById(CLASS_ID)).thenReturn(Optional.of(c));
+        // Trường phải có lớp đang hoạt động, nếu không chốt chặn "chưa có lớp" chặn trước khi
+        // tới được phần đang thử ở đây.
+        when(classRepo.countBySchoolIdAndDeletedFalseAndStatus(SCHOOL_ID, "ACTIVE"))
+                .thenReturn(1L);
 
         // Phiếu "đã sinh được buổi": chốt chặn phiếu rỗng và hạn xác nhận đều đọc qua đây.
         Schedule daSinh = new Schedule();

@@ -66,4 +66,13 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
 
     /** Lớp còn sống của một trường — chặn xóa trường khi còn lớp. */
     long countBySchoolIdAndDeletedFalse(Integer schoolId);
+
+    /**
+     * Lớp ĐANG HOẠT ĐỘNG của một trường — chặn phân công vào trường chưa có lớp nào để dạy.
+     *
+     * <p>Đếm riêng theo Status chứ không dùng lại {@link #countBySchoolIdAndDeletedFalse}: một
+     * trường có 26 lớp đã đóng (INACTIVE) thì con số kia trả về 26 trong khi thực tế không có
+     * chỗ nào xếp tiết vào được.
+     */
+    long countBySchoolIdAndDeletedFalseAndStatus(Integer schoolId, String status);
 }

@@ -1,12 +1,12 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.EvaluationRequest;
 import com.kdc.tsdms.dto.EvaluationResponse;
 import com.kdc.tsdms.service.EvaluationService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -85,7 +85,8 @@ public class EvaluationController {
             @RequestParam(required = false) Boolean onlyUnevaluated,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return evaluationService.teacherOptions(periodNote, keyword, schoolId, branchId, onlyUnevaluated, page, size);
+        return evaluationService.teacherOptions(
+                periodNote, keyword, schoolId, branchId, onlyUnevaluated, Paging.safePage(page), Paging.safeSize(size));
     }
 
     /** Dropdown lọc: danh sách trường + chi nhánh. */
@@ -148,8 +149,7 @@ public class EvaluationController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        Pageable pageable =
-                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Direction.DESC, "id"));
+        Pageable pageable = Paging.of(page, size, Sort.by(Sort.Direction.DESC, "id"));
         return evaluationService.search(teacherId, schoolId, score, periodNote, source, keyword, pageable);
     }
 

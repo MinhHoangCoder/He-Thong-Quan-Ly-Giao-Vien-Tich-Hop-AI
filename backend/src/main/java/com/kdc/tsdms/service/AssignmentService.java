@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
@@ -29,6 +30,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.HolidayRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
@@ -39,7 +41,6 @@ import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.repository.TeacherSubjectRepository;
 import com.kdc.tsdms.security.SecurityUtils;
-import java.text.Normalizer;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -68,8 +69,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AssignmentService {
 
-    /** Số tuần sinh lịch mặc định khi phân công không có ngày kết thúc. */
-    private static final int DEFAULT_WEEKS = 8;
+    /**
+     * Độ dài tối đa của MỘT phiếu phân công, tính bằng tháng.
+     *
+     * <p>Mười hai tháng = trọn một năm học. Trần này không phải để làm khó người xếp lịch mà
+     * để chặn cú gõ nhầm năm: "31/12/2099" trong ô ngày kết thúc sẽ trải slot thành hàng trăm
+     * nghìn buổi dạy, treo request và bơm phồng bảng Schedule trước khi ai kịp nhận ra.
+     */
+    private static final int MAX_MONTHS = 12;
 
     /**
      * Cửa sổ thời gian giáo viên phải trả lời lời mời dạy. 48 giờ theo thông lệ mời nhận ca
@@ -90,6 +97,7 @@ public class AssignmentService {
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
     private final PayrollRepository payrollRepo;
+    private final AttendanceRepository attendanceRepo;
     private final AppUserRepository userRepo;
     private final AssignmentApprovalService approvalService;
     private final TeacherTimeConflictChecker conflictChecker;
@@ -107,6 +115,7 @@ public class AssignmentService {
             SubjectRepository subjectRepo,
             PeriodRepository periodRepo,
             PayrollRepository payrollRepo,
+            AttendanceRepository attendanceRepo,
             AppUserRepository userRepo,
             AssignmentApprovalService approvalService,
             TeacherTimeConflictChecker conflictChecker,
@@ -122,6 +131,7 @@ public class AssignmentService {
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
         this.payrollRepo = payrollRepo;
+        this.attendanceRepo = attendanceRepo;
         this.userRepo = userRepo;
         this.approvalService = approvalService;
         this.conflictChecker = conflictChecker;
@@ -165,28 +175,16 @@ public class AssignmentService {
         List<AssignmentResponse> responses =
                 items.stream().map(this::toResponse).toList();
 
-        String kw = normalizeSearch(keyword);
+        String kw = SearchText.normalize(keyword);
         if (kw.isEmpty()) {
             return responses;
         }
         return responses.stream().filter(r -> matchesKeyword(r, kw)).toList();
     }
 
-    /** Chuẩn hóa chuỗi để so khớp tìm kiếm: bỏ dấu tiếng Việt + thường hóa + trim. */
-    private static String normalizeSearch(String s) {
-        if (s == null) {
-            return "";
-        }
-        String noMark = Normalizer.normalize(s, Normalizer.Form.NFD).replaceAll("\\p{M}+", "");
-        return noMark.replace('đ', 'd').replace('Đ', 'D').toLowerCase().trim();
-    }
-
     /** Một dòng phân công có khớp từ khóa (tên GV / trường / lớp / môn) không. */
     private static boolean matchesKeyword(AssignmentResponse r, String normKeyword) {
-        return normalizeSearch(r.teacherName).contains(normKeyword)
-                || normalizeSearch(r.schoolName).contains(normKeyword)
-                || normalizeSearch(r.className).contains(normKeyword)
-                || normalizeSearch(r.subjectName).contains(normKeyword);
+        return SearchText.matchesAny(normKeyword, r.teacherName, r.schoolName, r.className, r.subjectName);
     }
 
     @Transactional(readOnly = true)
@@ -283,9 +281,13 @@ public class AssignmentService {
                 .toList();
 
         // Lớp + khung tiết gom theo trường để tính cấp học / số lớp / số tiết một lượt.
+        // CHỈ lớp ACTIVE: con số này là thứ frontend dùng để làm mờ ô chọn trường, nên nó phải
+        // đếm đúng cái mà assertSchoolHasClass() chặn ở dưới. Đếm cả lớp đã đóng thì màn hình
+        // cho chọn một trường mà server sẽ từ chối — người dùng xếp xong cả thời khóa biểu
+        // mới biết mình đi nhầm đường.
         Map<Integer, List<SchoolClass>> classesBySchool = new HashMap<>();
         for (SchoolClass c : classRepo.findAll()) {
-            if (!c.isDeleted()) {
+            if (!c.isDeleted() && "ACTIVE".equals(c.getStatus())) {
                 classesBySchool
                         .computeIfAbsent(c.getSchoolId(), k -> new ArrayList<>())
                         .add(c);
@@ -496,9 +498,7 @@ public class AssignmentService {
         Subject subject = subjectRepo
                 .findByIdAndDeletedFalse(req.subjectId())
                 .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy môn học đã chọn."));
-        if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
-        }
+        assertPeriodValid(req.startDate(), req.endDate());
         // Phiếu MỚI không được bắt đầu trong quá khứ: sinh buổi cho những ngày đã trôi qua thì
         // giáo viên không thể chấm công cho chúng, mà chúng vẫn nằm trong lịch và bị đếm là
         // "vắng". Sửa phiếu cũ thì KHÔNG áp luật này — xem update().
@@ -512,13 +512,7 @@ public class AssignmentService {
 
         Integer userId = SecurityUtils.currentUserId();
 
-        // Bỏ trống ngày kết thúc thì CHỐT LUÔN thành ngày sinh lịch cuối cùng, không lưu null.
-        // Lưu null là nói dối hai lần: màn hình ghi "không giới hạn" trong khi buổi dạy dừng ở
-        // tuần thứ 8, và luật chống trùng coi giai đoạn là VÔ HẠN nên khung giờ đó bị giữ mãi
-        // dù chẳng còn buổi nào — giáo viên vĩnh viễn không xếp được lịch khác vào chỗ trống.
-        LocalDate effectiveEnd =
-                req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
-
+        LocalDate effectiveEnd = req.endDate();
         HolidayCalendar holidays = loadHolidays(req.startDate(), effectiveEnd);
 
         Assignment a = new Assignment();
@@ -633,6 +627,46 @@ public class AssignmentService {
         }
     }
 
+    /**
+     * Trường phải có ít nhất một lớp ĐANG HOẠT ĐỘNG.
+     *
+     * <p>Không có lớp thì không có chỗ nào để xếp tiết vào — phiếu tạo ra sẽ trỏ vào khoảng
+     * không. Trước đây luật này chỉ tồn tại ở frontend dưới dạng làm mờ ô chọn, tức là gọi
+     * thẳng API là đi vòng qua được.
+     *
+     * <p>Đếm theo Status ACTIVE chứ không phải "còn tồn tại": lớp đã đóng vẫn nằm trong bảng
+     * nhưng không nhận được buổi dạy mới.
+     */
+    private void assertSchoolHasClass(School s) {
+        if (classRepo.countBySchoolIdAndDeletedFalseAndStatus(s.getId(), "ACTIVE") == 0) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Trường " + s.getName() + " chưa có lớp học nào đang hoạt động nên chưa nhận được phân công. "
+                            + "Vui lòng thêm lớp cho trường này trước.");
+        }
+    }
+
+    /**
+     * Giai đoạn của phiếu: phải có ngày kết thúc, phải sau ngày bắt đầu, và không dài quá
+     * {@link #MAX_MONTHS} tháng.
+     *
+     * <p>Gọi ở CẢ create lẫn update để hai đường vào không lệch luật nhau.
+     */
+    static void assertPeriodValid(LocalDate startDate, LocalDate endDate) {
+        if (endDate == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập ngày kết thúc.");
+        }
+        if (endDate.isBefore(startDate)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
+        }
+        if (endDate.isAfter(startDate.plusMonths(MAX_MONTHS))) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Một phân công không kéo dài quá " + MAX_MONTHS + " tháng. "
+                            + "Cần dạy lâu hơn thì tạo phiếu mới cho giai đoạn tiếp theo.");
+        }
+    }
+
     private static String statusLabelVi(String status) {
         if (status == null) {
             return "không xác định";
@@ -719,6 +753,7 @@ public class AssignmentService {
             // của nó, nên kiểm tra mỗi trường "chính" của phiếu là bỏ lọt các trường phụ. Đặt
             // trong validateSlots thì cả tạo mới lẫn sửa phiếu đều đi qua cùng một luật.
             assertSchoolActive(school);
+            assertSchoolHasClass(school);
 
             Period p = periodRepo
                     .findById(slot.periodId())
@@ -923,9 +958,7 @@ public class AssignmentService {
                     "Chỉ sửa được phân công đang chờ xác nhận, bị từ chối hoặc đã hết hạn. "
                             + "Phân công đã có hiệu lực cần được hủy và tạo lại.");
         }
-        if (req.endDate() != null && req.endDate().isBefore(req.startDate())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
-        }
+        assertPeriodValid(req.startDate(), req.endDate());
         // Sửa phiếu: chỉ chặn khi ĐỔI sang một ngày quá khứ KHÁC. Giữ nguyên ngày cũ (dù đã qua)
         // phải cho phép — nếu không thì phiếu tạo hôm qua sẽ không bao giờ đổi được giáo viên
         // nữa, mà thay người dạy gấp lại đúng là lúc cần sửa nhất.
@@ -961,9 +994,7 @@ public class AssignmentService {
         a.setSchoolId(resolved.get(0).schoolId());
         a.setClassId(resolved.get(0).classId());
         a.setStartDate(req.startDate());
-        // Như create(): chốt luôn ngày kết thúc THẬT, không lưu null (xem giải thích ở create).
-        LocalDate effectiveEnd =
-                req.endDate() != null ? req.endDate() : req.startDate().plusWeeks(DEFAULT_WEEKS);
+        LocalDate effectiveEnd = req.endDate();
         a.setEndDate(effectiveEnd);
         HolidayCalendar holidays = loadHolidays(req.startDate(), effectiveEnd);
         a.setStatus(AssignmentStatus.PENDING);
@@ -1051,6 +1082,16 @@ public class AssignmentService {
     @Transactional
     public AssignmentResponse cancel(Integer id) {
         Assignment a = getOrThrow(id);
+        // Giáo viên đang đứng lớp thì KHÔNG hủy. Hủy giữa tiết để lại một dòng chấm công không
+        // bao giờ khép được: người dạy bấm check-out thì buổi đã bị đánh CANCELLED nên hệ thống
+        // từ chối, và cuối tháng buổi ấy biến mất khỏi phiếu lương của người đã dạy thật. Đợi
+        // hết tiết rồi hủy thì buổi đó khép sổ bình thường, các buổi còn lại vẫn hủy được.
+        if (attendanceRepo.countDangDayDoTheoPhanCong(id) > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Giáo viên đang trong tiết dạy của phân công này (đã điểm danh vào, chưa điểm danh ra). "
+                            + "Vui lòng đợi buổi dạy kết thúc rồi hủy.");
+        }
         Integer userId = SecurityUtils.currentUserId();
         // Phiếu CHƯA từng được xác nhận thì không buổi nào có hiệu lực → hủy sạch, kể cả buổi
         // quá khứ. Chỉ phiếu đã chạy mới phải giữ buổi đã dạy để không mất chấm công/lương.

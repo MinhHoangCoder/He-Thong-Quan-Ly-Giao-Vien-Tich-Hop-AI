@@ -36,8 +36,9 @@ public class ScheduleController {
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(required = false) Integer classId,
-            @RequestParam(required = false) String status) {
-        return service.list(from, to, teacherId, schoolId, classId, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        return service.list(from, to, teacherId, schoolId, classId, status, keyword);
     }
 
     /** Ngày nghỉ chạm vào khoảng đang xem — để lịch tô màu và ghi tên kỳ nghỉ. */

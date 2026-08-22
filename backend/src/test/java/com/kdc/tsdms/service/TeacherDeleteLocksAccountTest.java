@@ -12,8 +12,10 @@ import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -76,6 +78,12 @@ class TeacherDeleteLocksAccountTest {
 
     @Mock
     private ScheduleRepository scheduleRepo;
+
+    @Mock
+    private AttendanceRepository attendanceRepo;
+
+    @Mock
+    private PayrollRepository payrollRepo;
 
     @InjectMocks
     private TeacherService service;

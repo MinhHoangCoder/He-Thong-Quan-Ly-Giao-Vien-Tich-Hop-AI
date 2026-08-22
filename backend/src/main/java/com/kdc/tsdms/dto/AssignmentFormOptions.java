@@ -34,7 +34,8 @@ public record AssignmentFormOptions(
     /**
      * @param level "Tiểu học" | "THCS" — SUY từ khối lớp cao nhất của trường (1–5 là tiểu học),
      *     không hardcode theo SchoolId. null khi trường chưa có lớp nào.
-     * @param classCount số lớp đang hoạt động
+     * @param classCount số lớp ĐANG HOẠT ĐỘNG (Status = ACTIVE). 0 nghĩa là trường chưa nhận
+     *     được phân công — form phải làm mờ ô chọn kèm lý do, và server chặn lần nữa
      * @param periodCount số tiết/ngày trong khung tiết của trường — 0 nghĩa là trường CHƯA có
      *     khung tiết, form phải báo rõ thay vì hiện một lưới trống không giải thích
      */

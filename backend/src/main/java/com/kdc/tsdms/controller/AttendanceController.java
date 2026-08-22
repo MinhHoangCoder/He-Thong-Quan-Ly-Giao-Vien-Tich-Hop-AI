@@ -1,6 +1,7 @@
 package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
@@ -12,7 +13,6 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -55,7 +55,7 @@ public class AttendanceController {
         LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
-        return service.list(teacherId, f, t, status, keyword, PageRequest.of(Math.max(page, 0), Math.max(size, 1)));
+        return service.list(teacherId, f, t, status, keyword, Paging.of(page, size));
     }
 
     /** Ba thẻ tổng quan cho ĐÚNG bộ lọc đang dùng — tính trên cả kỳ, không riêng trang đang xem. */

@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.HolidayAbsenceResponse;
 import com.kdc.tsdms.dto.HolidayDeleteImpactResponse;
 import com.kdc.tsdms.dto.HolidayFixAbsencesRequest;
@@ -11,7 +12,6 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.Map;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -75,8 +75,7 @@ public class HolidayController {
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0), Math.max(size, 1), Sort.by("fromDate").descending());
+        Pageable pageable = Paging.of(page, size, Sort.by("fromDate").descending());
         return service.search(keyword, kind, from, to, schoolId, pageable);
     }
 
@@ -87,8 +86,7 @@ public class HolidayController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0), Math.max(size, 1), Sort.by("deletedAt").descending());
+        Pageable pageable = Paging.of(page, size, Sort.by("deletedAt").descending());
         return service.trash(keyword, pageable);
     }
 

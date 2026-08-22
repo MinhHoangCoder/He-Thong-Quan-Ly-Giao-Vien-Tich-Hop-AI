@@ -1,12 +1,12 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.SubjectCategoryRequest;
 import com.kdc.tsdms.dto.SubjectCategoryResponse;
 import com.kdc.tsdms.service.SubjectCategoryService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -46,8 +46,7 @@ public class SubjectCategoryController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0), Math.max(size, 1), Sort.by("name").ascending());
+        Pageable pageable = Paging.of(page, size, Sort.by("name").ascending());
         return service.search(keyword, pageable);
     }
 

@@ -3,10 +3,10 @@
  * Trang Lịch dạy (chỉ xem): buổi dạy của giáo viên ở các trường/lớp/tiết theo từng ngày.
  * Hai chế độ: Lịch THÁNG (bấm ngày → chi tiết) và Thời khóa biểu TUẦN (Thứ × Tiết).
  *
- * Tìm kiếm có HAI tầng, cố ý:
- *   · Dropdown Giáo viên/Trường/Lớp gọi lại server — đổi bộ lọc là đổi hẳn tập dữ liệu.
- *   · Ô "Tìm nhanh" lọc tại chỗ trên khoảng đang xem, không gọi server (xem filteredEvents).
- * Với 101 giáo viên thì thẻ <select> thường bắt cuộn tìm bằng mắt, nên ba dropdown đều
+ * MỌI bộ lọc — kể cả ô tìm tự do — đều gọi lại server. Bản cũ lọc ô tìm ngay trên trình
+ * duyệt, nghĩa là một tháng vài nghìn buổi vẫn phải tải hết về rồi giấu đi 99%; đó là trả
+ * giá đường truyền cho thứ người dùng không nhìn thấy.
+ * Với hơn trăm giáo viên thì thẻ <select> thường bắt cuộn tìm bằng mắt, nên ba dropdown đều
  * dùng SearchSelect (gõ được, bỏ dấu vẫn khớp).
  *
  * Ngày nghỉ được TÔ RIÊNG kèm tên kỳ nghỉ: ô trống không phân biệt được "trường đóng cửa"
@@ -18,6 +18,7 @@ import { scheduleApi } from '@/api/schedules'
 import { tietLabel, periodRows } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
 
 const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] // index 0 = Thứ 2, cuối là Chủ nhật
 
@@ -45,7 +46,7 @@ const route = useRoute()
 const view = ref(route.query.view === 'week' ? 'week' : 'month') // 'month' | 'week'
 const anchor = ref(new Date())
 const filters = reactive({ teacherId: '', schoolId: '', classId: '', status: 'APPROVED' })
-/** Ô tìm tự do — lọc trên dữ liệu đã tải, xem ghi chú ở filteredEvents. */
+/** Ô tìm tự do — gửi thẳng cho server cùng khoảng ngày đang xem. */
 const keyword = ref('')
 const teachers = ref([])
 const schools = ref([])
@@ -83,6 +84,7 @@ async function load() {
         schoolId: filters.schoolId,
         classId: filters.classId,
         status: filters.status,
+        keyword: keyword.value,
       }),
       scheduleApi.holidays({ from, to, schoolId: filters.schoolId }),
     ])
@@ -96,30 +98,10 @@ async function load() {
   }
 }
 
-/* ── Ô tìm tự do ──
-   Lọc Ở ĐÂY chứ không gọi lại server: lịch tháng vốn phải tải trọn khoảng ngày đang xem
-   (không thể phân trang một cái lịch), nên dữ liệu đã nằm sẵn trong tay — gọi server thêm
-   một vòng chỉ làm chậm và nhấp nháy. Gõ tới đâu lọc tới đó, không độ trễ. */
-const norm = (s) =>
-  String(s ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'D')
-    .toLowerCase()
-
-const filteredEvents = computed(() => {
-  const q = norm(keyword.value.trim())
-  if (!q) return events.value
-  return events.value.filter((e) =>
-    norm(`${e.teacherName} ${e.schoolName} ${e.className} ${e.subjectName}`).includes(q),
-  )
-})
-
 /* ── Gom sự kiện theo ngày ── */
 const eventsByDate = computed(() => {
   const m = {}
-  for (const e of filteredEvents.value) (m[e.date] ??= []).push(e)
+  for (const e of events.value) (m[e.date] ??= []).push(e)
   for (const k in m) m[k].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
   return m
 })
@@ -140,7 +122,7 @@ const countSchools = (list) => new Set(list.map((e) => e.schoolId ?? e.schoolNam
 
 // Tổng số GIÁO VIÊN khác nhau trong khoảng đang xem (thay cho tổng số buổi ở thanh công cụ).
 const teacherCount = computed(
-  () => new Set(filteredEvents.value.map((e) => e.teacherId ?? e.teacherName)).size,
+  () => new Set(events.value.map((e) => e.teacherId ?? e.teacherName)).size,
 )
 
 /* ── Lưới tháng (6 tuần × 7) ── */
@@ -187,7 +169,7 @@ function cellEvents(period, dayIso) {
   return (eventsByDate.value[dayIso] || []).filter((e) => e.periodNumber === period)
 }
 // Dòng của lưới tuần bám khung tiết THẬT trong dữ liệu (tiểu học 10 tiết, THCS 9).
-const weekPeriodRows = computed(() => periodRows(filteredEvents.value))
+const weekPeriodRows = computed(() => periodRows(events.value))
 
 /* ── Chi tiết ngày (chế độ tháng) ── */
 const selectedEvents = computed(() => eventsByDate.value[selectedIso.value] || [])
@@ -275,6 +257,7 @@ async function onSchoolChange() {
   }
   load()
 }
+/** Dọn sạch MỌI bộ lọc (nút "Xóa lọc" của FilterBar gọi vào đây). */
 function resetFilters() {
   filters.teacherId = ''
   filters.schoolId = ''
@@ -305,7 +288,7 @@ const CSV_BOM = '﻿' // Excel cần BOM mới đọc đúng tiếng Việt tron
 function exportCsv() {
   const header = ['Ngày', 'Thứ', 'Tiết', 'Giờ', 'Trường', 'Lớp', 'Môn', 'Giáo viên', 'Trạng thái']
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
-  const rows = [...filteredEvents.value]
+  const rows = [...events.value]
     .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''))
     .map((e) =>
       [
@@ -351,55 +334,60 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Bộ lọc -->
-    <div class="toolbar no-print">
-      <label>Giáo viên</label>
-      <SearchSelect
-        v-model="filters.teacherId"
-        :options="teachers"
-        class="ss"
-        placeholder="Tất cả"
-        search-placeholder="Gõ tên giáo viên…"
-        clearable
-        @change="load"
-      />
-      <label>Trường</label>
-      <SearchSelect
-        v-model="filters.schoolId"
-        :options="schools"
-        class="ss"
-        placeholder="Tất cả"
-        search-placeholder="Gõ tên trường…"
-        clearable
-        @change="onSchoolChange"
-      />
-      <label>Lớp</label>
-      <SearchSelect
-        v-model="filters.classId"
-        :options="classes"
-        class="ss ss--sm"
-        :disabled="!classes.length"
-        :placeholder="classes.length ? 'Tất cả' : 'Chọn trường'"
-        search-placeholder="Gõ tên lớp…"
-        clearable
-        @change="load"
-      />
-      <label>Trạng thái</label>
-      <select v-model="filters.status" @change="load">
-        <option v-for="s in STATUSES" :key="s.code" :value="s.code">{{ s.label }}</option>
-      </select>
-      <button class="btn btn-outline btn-sm" @click="resetFilters">Xóa lọc</button>
-    </div>
+    <!-- Bộ lọc — cùng dáng với màn Phân công và Lịch nghỉ -->
+    <FilterBar
+      v-model="keyword"
+      class="no-print"
+      placeholder="Tên giáo viên, trường, lớp, môn…"
+      aria-label="Tìm buổi dạy theo giáo viên, trường, lớp, môn"
+      @apply="load"
+      @clear="resetFilters"
+    >
+      <label class="field">
+        <span>Giáo viên</span>
+        <SearchSelect
+          v-model="filters.teacherId"
+          :options="teachers"
+          placeholder="Tất cả"
+          search-placeholder="Gõ tên giáo viên…"
+          clearable
+          @change="load"
+        />
+      </label>
+      <label class="field">
+        <span>Trường</span>
+        <SearchSelect
+          v-model="filters.schoolId"
+          :options="schools"
+          placeholder="Tất cả"
+          search-placeholder="Gõ tên trường…"
+          clearable
+          @change="onSchoolChange"
+        />
+      </label>
+      <label class="field">
+        <span>Lớp</span>
+        <SearchSelect
+          v-model="filters.classId"
+          :options="classes"
+          :disabled="!classes.length"
+          :placeholder="classes.length ? 'Tất cả' : 'Chọn trường'"
+          search-placeholder="Gõ tên lớp…"
+          clearable
+          @change="load"
+        />
+      </label>
+      <label class="field">
+        <span>Trạng thái</span>
+        <select v-model="filters.status" @change="load">
+          <option v-for="s in STATUSES" :key="s.code" :value="s.code">{{ s.label }}</option>
+        </select>
+      </label>
+    </FilterBar>
 
     <div class="toolbar no-print">
-      <input
-        v-model="keyword"
-        class="search-input"
-        type="search"
-        placeholder="Tìm nhanh trong khoảng đang xem: tên giáo viên, trường, lớp, môn…"
-      />
-      <span class="spacer" />
       <span class="count-info">{{ teacherCount }} giáo viên</span>
+      <span class="spacer" />
       <button class="btn btn-outline btn-sm" @click="exportCsv">Xuất CSV</button>
       <button class="btn btn-outline btn-sm" @click="doPrint">In</button>
     </div>

@@ -9,7 +9,7 @@ export const scheduleApi = {
    * Buổi dạy trong [from, to] (yyyy-MM-dd), lọc GV/trường/lớp/trạng thái tùy chọn.
    * Bỏ trống status = chỉ buổi ĐÃ DUYỆT.
    */
-  list({ from, to, teacherId, schoolId, classId, status } = {}) {
+  list({ from, to, teacherId, schoolId, classId, status, keyword } = {}) {
     return http.get('/schedules', {
       params: {
         from,
@@ -18,6 +18,7 @@ export const scheduleApi = {
         schoolId: schoolId || undefined,
         classId: classId || undefined,
         status: status || undefined,
+        keyword: keyword?.trim() || undefined,
       },
     })
   },

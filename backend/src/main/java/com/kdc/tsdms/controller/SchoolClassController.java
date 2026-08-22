@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
@@ -7,7 +8,6 @@ import com.kdc.tsdms.service.SchoolClassService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -67,9 +67,7 @@ public class SchoolClassController {
             @RequestParam(required = false) String gradeLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        // Kẹp size 1..100 — không có cận trên thì client gửi size=1000000 kéo cả bảng.
-        Pageable pageable =
-                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Order.desc("id")));
+        Pageable pageable = Paging.of(page, size, Sort.by(Sort.Order.desc("id")));
         return service.search(keyword, schoolId, status, gradeLevel, pageable);
     }
 

@@ -8,11 +8,12 @@
  * Một phiếu nay trải được NHIỀU TRƯỜNG (V27) nên cột "Trường" và "Lớp" đều là tập hợp —
  * quá hai cái thì rút gọn "TH Dư Hàng +2" để dòng không tràn.
  */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { assignmentApi } from '@/api/assignments'
 import { tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
 
 const router = useRouter()
 
@@ -48,24 +49,8 @@ const selectedIds = ref([])
 const view = ref('list')
 const inTrash = computed(() => view.value === 'trash')
 
-/* ── Tìm kiếm (chỉ ở danh sách đang hoạt động) — lọc phía server ──
-   "Lọc ngay khi gõ" nhưng debounce 300ms để không gọi API dồn dập theo từng phím. */
+/* Tìm kiếm phía server; nhịp gõ và hai nút Lọc/Xóa lọc do FilterBar lo. */
 const search = ref('')
-let searchTimer = null
-function onSearchInput() {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(load, 300)
-}
-function applySearch() {
-  clearTimeout(searchTimer)
-  load()
-}
-function clearSearch() {
-  if (!search.value) return
-  search.value = ''
-  clearTimeout(searchTimer)
-  load()
-}
 
 /* ── Phân trang phía client (áp cho danh sách đang xem) ── */
 const PAGE_SIZE = 10
@@ -137,7 +122,6 @@ function showList() {
 }
 
 onMounted(load)
-onBeforeUnmount(() => clearTimeout(searchTimer))
 
 /* ── Điều hướng sang trang tạo/sửa ── */
 function openCreate() {
@@ -299,22 +283,14 @@ async function restoreItem(a) {
     </div>
 
     <!-- Tìm kiếm phân công theo GV/trường/lớp/môn (chỉ ở danh sách đang hoạt động) -->
-    <div v-if="view === 'list'" class="filter-bar">
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input
-          v-model="search"
-          type="search"
-          aria-label="Tìm phân công theo giáo viên, trường, lớp, môn"
-          @input="onSearchInput"
-          @keyup.enter="applySearch"
-        />
-      </label>
-      <div class="filter-actions">
-        <button class="btn btn-primary" @click="applySearch">Lọc</button>
-        <button class="btn btn-outline" @click="clearSearch">Xóa lọc</button>
-      </div>
-    </div>
+    <FilterBar
+      v-if="view === 'list'"
+      v-model="search"
+      placeholder="Tên giáo viên, trường, lớp, môn…"
+      aria-label="Tìm phân công theo giáo viên, trường, lớp, môn"
+      @apply="load"
+      @clear="load"
+    />
 
     <!-- Tab trạng thái: việc cần xử lý (Chờ xác nhận / Hết hạn / Bị từ chối) đứng trước -->
     <div v-if="view === 'list'" class="status-tabs">
@@ -550,52 +526,6 @@ async function restoreItem(a) {
   gap: 0.5rem;
   align-items: center;
 }
-/* Ô tìm kiếm phân công — khung bo viền + nhãn + nút Lọc/Xóa lọc */
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: 14px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-}
-.field--wide {
-  flex: 1;
-}
-.field span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.field input {
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: var(--c-surface);
-  color: var(--c-text);
-}
-.field input:focus {
-  outline: none;
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
-}
-.filter-actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
-}
-
 /* ── Tab trạng thái ── */
 .status-tabs {
   display: flex;

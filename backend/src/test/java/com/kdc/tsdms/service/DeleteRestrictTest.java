@@ -24,6 +24,7 @@ import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ClassEnrollmentRepository;
@@ -33,6 +34,7 @@ import com.kdc.tsdms.repository.EmployeeScheduleRepository;
 import com.kdc.tsdms.repository.LessonFileRepository;
 import com.kdc.tsdms.repository.LessonRepository;
 import com.kdc.tsdms.repository.PartTimeShiftRequestRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.RoomRepository;
@@ -185,6 +187,12 @@ class DeleteRestrictTest {
 
         @Mock
         private ScheduleRepository scheduleRepo;
+
+        @Mock
+        private AttendanceRepository attendanceRepo;
+
+        @Mock
+        private PayrollRepository payrollRepo;
 
         @InjectMocks
         private TeacherService service;
