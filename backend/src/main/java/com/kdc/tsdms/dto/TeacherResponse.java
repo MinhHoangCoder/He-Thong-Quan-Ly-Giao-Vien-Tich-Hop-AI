@@ -212,7 +212,14 @@ public class TeacherResponse {
 
         // Chỉ có khi xem CHI TIẾT 1 GV
         private List<CertificateDTO> certificates;
-        private ContractDTO contract; // null nếu GV chưa có hợp đồng
+        private ContractDTO contract;
+
+        /**
+         * Các phiên bản hợp đồng ĐÃ BỊ THAY THẾ, mới nhất trước. Rỗng nếu chưa từng sửa.
+         * Tách khỏi {@link #contract} (bản đang hiệu lực) để màn hồ sơ không phải tự đoán
+         * đâu là bản hiện tại.
+         */
+        private List<ContractDTO> contractHistory; // null nếu GV chưa có hợp đồng
     }
 
     // HISTORY — GV nằm trong "thùng rác" (đã xóa mềm)======================================================
