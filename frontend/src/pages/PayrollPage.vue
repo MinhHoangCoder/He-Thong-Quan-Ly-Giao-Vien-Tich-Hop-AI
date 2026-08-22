@@ -297,6 +297,27 @@ async function openRates() {
   }
 }
 
+/**
+ * Một mức giá CHƯA tới ngày áp dụng thì còn xóa được — đó là mức vừa gõ nhầm.
+ *
+ * Mức ĐÃ có hiệu lực thì không: nó là căn cứ của những phiếu lương đã trả, xóa đi thì tính
+ * lại kỳ cũ ra số khác và không ai giải thích được chênh lệch. Backend chặn lần nữa, ở đây chỉ
+ * là không bày ra cái nút mà bấm vào chắc chắn báo lỗi.
+ */
+const todayIso = new Date().toISOString().slice(0, 10)
+const coTheXoaMuc = (r) => canManageRate.value && r.effectiveFrom > todayIso
+
+async function removeRate(r) {
+  rateModal.error = ''
+  try {
+    await payRateApi.remove(r.id)
+    showToast(`Đã xóa mức giá khối ${r.gradeFrom}–${r.gradeTo} áp dụng từ ${r.effectiveFrom}.`)
+    await openRates()
+  } catch (e) {
+    rateModal.error = e.response?.data?.message ?? 'Không xóa được mức giá'
+  }
+}
+
 async function saveRate() {
   if (!rateForm.amount || !rateForm.effectiveFrom) {
     rateModal.error = 'Vui lòng nhập đơn giá và ngày bắt đầu áp dụng.'
@@ -719,6 +740,7 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
           thắng bảng này.
         </p>
 
+        <p v-if="rateModal.error" class="msg msg--error">{{ rateModal.error }}</p>
         <p v-if="rateModal.loading" class="text-muted small">Đang tải…</p>
         <table v-else class="table">
           <thead>
@@ -728,6 +750,7 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
               <th>Áp dụng từ</th>
               <th>Đến</th>
               <th>Ghi chú</th>
+              <th v-if="canManageRate" width="70"></th>
             </tr>
           </thead>
           <tbody>
@@ -737,6 +760,19 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
               <td class="mono">{{ r.effectiveFrom }}</td>
               <td class="mono">{{ r.effectiveTo ?? 'còn hiệu lực' }}</td>
               <td class="small text-muted">{{ r.note ?? '—' }}</td>
+              <td v-if="canManageRate">
+                <button
+                  v-if="coTheXoaMuc(r)"
+                  class="link link--danger"
+                  title="Mức này chưa tới ngày áp dụng nên còn xóa được"
+                  @click="removeRate(r)"
+                >
+                  Xóa
+                </button>
+                <span v-else class="small text-muted" title="Mức đã áp dụng là căn cứ của phiếu lương đã tính">
+                  đã áp dụng
+                </span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -780,6 +816,24 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
 </template>
 
 <style scoped>
+/* Nút chữ trong bảng đơn giá + dòng báo lỗi của hộp thoại. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--c-primary);
+  font-size: 0.84rem;
+}
+.link--danger {
+  color: var(--c-danger, #ef4444);
+}
+.msg--error {
+  color: var(--c-danger, #ef4444);
+  font-size: 0.86rem;
+  margin: 8px 0;
+}
+
 /* ===== Cảnh báo ngày nghỉ ===== */
 .alert-holiday {
   display: flex;

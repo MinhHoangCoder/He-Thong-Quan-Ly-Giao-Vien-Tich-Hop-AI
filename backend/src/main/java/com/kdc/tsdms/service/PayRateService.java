@@ -81,11 +81,20 @@ public class PayRateService {
     }
 
     /**
-     * Xóa một mức giá.
+     * Xóa một mức giá và MỞ LẠI mức mà nó đã đóng.
      *
      * <p>CHỈ xóa được mức CHƯA có hiệu lực. Mức đã từng áp dụng là căn cứ của những phiếu
      * lương đã trả — xóa nó đi thì tính lại kỳ cũ sẽ ra số khác, và không ai giải thích được
      * chênh lệch.
+     *
+     * <p>PHẢI MỞ LẠI MỨC CŨ, nếu không sẽ để lại một LỖ THỦNG trong bảng giá. {@link #create}
+     * đóng mức cũ ở ngày liền trước mức mới; xóa mức mới mà không đảo ngược bước đó thì từ
+     * ngày ấy trở đi khoảng khối này không còn mức nào phủ.
+     *
+     * <p>Hậu quả không hề ồn ào: {@code PayrollService.resolveRate} trả {@code null},
+     * {@code generate} ghi một dòng cảnh báo vào log rồi <b>bỏ qua tiết đó</b>. Phiếu lương
+     * vẫn sinh ra bình thường, chỉ là thiếu tiền — và người duy nhất phát hiện là giáo viên bị
+     * hụt, sau khi đã nhận lương.
      */
     @Transactional
     public void delete(Integer id) {
@@ -97,6 +106,29 @@ public class PayRateService {
                     "Mức giá này đã có hiệu lực từ " + r.getEffectiveFrom()
                             + " nên là căn cứ của các phiếu lương đã tính. Muốn dừng áp dụng thì khai mức mới.");
         }
+        moLaiMucBiDongBoi(r);
         repo.delete(r);
+    }
+
+    /**
+     * Mức nào bị {@code r} đóng lại thì mở ra: cùng khoảng khối và có {@code EffectiveTo} đúng
+     * bằng ngày liền trước {@code r.EffectiveFrom}.
+     *
+     * <p>So khớp theo ngày chứ không lưu con trỏ "mức trước là ai": ngày là dữ liệu đã có sẵn
+     * và luôn đúng, còn một cột con trỏ là thêm một thứ có thể lệch.
+     */
+    private void moLaiMucBiDongBoi(PayRate r) {
+        LocalDate ngayDaDong = r.getEffectiveFrom().minusDays(1);
+        for (PayRate cu : repo.findAllByOrderByEffectiveFromDescGradeFromAsc()) {
+            boolean cungKhoi = cu.getGradeFrom().equals(r.getGradeFrom())
+                    && cu.getGradeTo().equals(r.getGradeTo());
+            if (cungKhoi && !cu.getId().equals(r.getId()) && ngayDaDong.equals(cu.getEffectiveTo())) {
+                cu.setEffectiveTo(null);
+                cu.setUpdatedAt(Instant.now());
+                cu.setUpdatedBy(SecurityUtils.currentUserId());
+                repo.save(cu);
+                return;
+            }
+        }
     }
 }

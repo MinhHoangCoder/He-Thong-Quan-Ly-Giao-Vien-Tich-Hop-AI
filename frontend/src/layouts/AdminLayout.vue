@@ -40,12 +40,6 @@ const nav = [
       { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
     ],
   },
-  // Nhóm "Hệ thống" TẠM ẨN cho đợt bảo vệ (demo chỉ dùng admin + teacher).
-  // Trang /settings/roles vẫn hoạt động — mở lại bằng cách bỏ comment khối dưới.
-  // {
-  //   title: 'Hệ thống',
-  //   items: [{ label: 'Ma trận quyền', icon: 'eye', to: '/settings/roles' }],
-  // },
 ]
 // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>

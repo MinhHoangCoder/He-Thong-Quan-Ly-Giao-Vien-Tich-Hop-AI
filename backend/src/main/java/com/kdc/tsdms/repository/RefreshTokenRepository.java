@@ -38,4 +38,17 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     @Modifying
     @Query("update RefreshToken rt set rt.revokedAt = :now " + "where rt.appUserId = :userId and rt.revokedAt is null")
     int revokeAllActiveByAppUserId(@Param("userId") Integer userId, @Param("now") Instant now);
+
+    /**
+     * Xóa token đã CHẾT (hết hạn hoặc bị thu hồi) từ trước mốc {@code nguong}.
+     *
+     * <p>Chỉ đụng vào token đã chết. Token còn sống không bao giờ nằm trong điều kiện này, nên
+     * job dọn không thể đá ai ra khỏi phiên đang dùng — điều kiện thời gian là lưới an toàn thứ
+     * hai bên cạnh việc chỉ chọn dòng đã chết.
+     */
+    @Modifying
+    @Query("delete from RefreshToken rt "
+            + "where (rt.revokedAt is not null and rt.revokedAt < :nguong) "
+            + "   or (rt.expiresAt < :nguong)")
+    int deleteChetTruoc(@Param("nguong") Instant nguong);
 }
