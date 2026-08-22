@@ -40,6 +40,15 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     List<AssignmentSlot> findByDeletedFalse();
 
     /**
+     * Ô lịch của NHIỀU phiếu trong một câu — chống N+1 ở màn danh sách phân công.
+     *
+     * <p>Bản cũ gọi findByAssignmentId cho từng phiếu: 444 phiếu là 444 câu, chưa kể mỗi ô
+     * lại tra tiếp tiết/lớp/trường. Trả về cả ô ĐÃ XÓA MỀM để thùng rác dùng chung được câu
+     * này; bên gọi tự lọc theo cờ.
+     */
+    List<AssignmentSlot> findByAssignmentIdIn(List<Integer> assignmentIds);
+
+    /**
      * Mọi ô lịch còn hiệu lực của một TRƯỜNG (V27) — nguồn cho lưới xếp lịch khóa sẵn những ô
      * đã có giáo viên khác dạy. Hỏi theo trường chứ không theo từng lớp vì lưới hiện cả trường
      * một lúc: hỏi lẻ từng lớp là 20+ lượt gọi cho một lần mở form.

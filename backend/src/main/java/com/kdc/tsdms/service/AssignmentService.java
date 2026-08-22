@@ -1,5 +1,6 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BatchIn;
 import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
@@ -55,6 +56,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.context.ApplicationContext;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -141,23 +145,20 @@ public class AssignmentService {
 
     /* ─────────────────────────── QUERY ─────────────────────────── */
 
-    @Transactional(readOnly = true)
-    public List<AssignmentResponse> list(Integer teacherId) {
-        return list(teacherId, null, null);
-    }
-
-    @Transactional(readOnly = true)
-    public List<AssignmentResponse> list(Integer teacherId, String keyword) {
-        return list(teacherId, keyword, null);
-    }
-
     /**
-     * Danh sách phân công còn hoạt động. {@code keyword} tùy chọn: lọc KHÔNG phân biệt
-     * hoa/thường và DẤU tiếng Việt trên tên GV / trường / lớp / môn. So khớp trên các tên
-     * đã build sẵn trong response (không phụ thuộc collation của DB).
+     * Danh sách phân công còn hoạt động, PHÂN TRANG PHÍA SERVER.
+     *
+     * <p>{@code keyword} tùy chọn: lọc KHÔNG phân biệt hoa/thường và DẤU tiếng Việt trên tên
+     * GV / trường / lớp / môn. So khớp trên các tên đã dựng sẵn (không phụ thuộc collation
+     * của DB), nên phải dựng tên TRƯỚC khi cắt trang.
+     *
+     * <p>Vì sao trả {@link Page} chứ không phải {@code List}: bản cũ trả cả 444 phiếu kèm
+     * toàn bộ ô lịch của chúng — 1,5 MB JSON và 4,8 giây cho một màn hình chỉ hiện 10 dòng.
+     * Trình duyệt tải hết về rồi cắt trang bằng JavaScript, tức là 97% dữ liệu truyền đi chỉ
+     * để bị giấu đi.
      */
     @Transactional(readOnly = true)
-    public List<AssignmentResponse> list(Integer teacherId, String keyword, String status) {
+    public Page<AssignmentResponse> list(Integer teacherId, String keyword, String status, Pageable pageable) {
         // CHỐNG IDOR: GV (có ASSIGNMENT_VIEW nhưng không phải staff) chỉ được xem
         // phân công của CHÍNH MÌNH — ép teacherId về hồ sơ của người gọi, bỏ qua
         // teacherId client gửi lên.
@@ -172,19 +173,30 @@ public class AssignmentService {
                     .filter(a -> status.equals(effectiveStatus(a)))
                     .toList();
         }
-        List<AssignmentResponse> responses =
-                items.stream().map(this::toResponse).toList();
 
+        TenGoi ten = napTenGoi(items);
         String kw = SearchText.normalize(keyword);
-        if (kw.isEmpty()) {
-            return responses;
-        }
-        return responses.stream().filter(r -> matchesKeyword(r, kw)).toList();
+        List<Assignment> khop = kw.isEmpty()
+                ? items
+                : items.stream().filter(a -> matchesKeyword(a, ten, kw)).toList();
+
+        // Cắt trang SAU khi lọc, rồi mới dựng response — chỉ 10 dòng phải dựng đầy đủ.
+        int from = (int) Math.min(pageable.getOffset(), khop.size());
+        int to = Math.min(from + pageable.getPageSize(), khop.size());
+        List<AssignmentResponse> trang = khop.subList(from, to).stream()
+                .map(a -> toResponse(a, ten, false))
+                .toList();
+        return new PageImpl<>(trang, pageable, khop.size());
     }
 
-    /** Một dòng phân công có khớp từ khóa (tên GV / trường / lớp / môn) không. */
-    private static boolean matchesKeyword(AssignmentResponse r, String normKeyword) {
-        return SearchText.matchesAny(normKeyword, r.teacherName, r.schoolName, r.className, r.subjectName);
+    /** Một phiếu có khớp từ khóa (tên GV / trường / lớp / môn) không. */
+    private static boolean matchesKeyword(Assignment a, TenGoi ten, String normKeyword) {
+        return SearchText.matchesAny(
+                normKeyword,
+                ten.teacher.get(a.getTeacherId()),
+                ten.tenTruongCua(a),
+                ten.tenLopCua(a),
+                ten.subject.get(a.getSubjectId()));
     }
 
     @Transactional(readOnly = true)
@@ -1207,9 +1219,9 @@ public class AssignmentService {
     /** Danh sách phân công trong thùng rác (đã xóa mềm). */
     @Transactional(readOnly = true)
     public List<AssignmentResponse> listTrash() {
-        return assignmentRepo.findByDeletedTrueOrderByIdDesc().stream()
-                .map(a -> toResponse(a, true))
-                .toList();
+        List<Assignment> items = assignmentRepo.findByDeletedTrueOrderByIdDesc();
+        TenGoi ten = napTenGoi(items);
+        return items.stream().map(a -> toResponse(a, ten, true)).toList();
     }
 
     /**
@@ -1251,7 +1263,7 @@ public class AssignmentService {
         if ("CANCELLED".equals(a.getStatus())) {
             return reactivate(id);
         }
-        return toResponse(a, false);
+        return toResponse(a);
     }
 
     /* ─────────────────────────── HELPERS ─────────────────────────── */
@@ -1320,80 +1332,165 @@ public class AssignmentService {
                 slots);
     }
 
-    private AssignmentResponse toResponse(Assignment a) {
-        return toResponse(a, false);
+    /**
+     * TÚI TÊN: mọi tên cần cho một danh sách phân công, nạp SẴN bằng vài câu SQL.
+     *
+     * <p>Bản cũ tra tên ngay trong vòng lặp dựng response: mỗi phiếu hỏi giáo viên, môn, ô
+     * lịch, rồi mỗi ô lại hỏi tiết + lớp + trường. Cache có, nhưng nằm BÊN TRONG vòng lặp nên
+     * reset theo từng phiếu. Đo trên dữ liệu thật (444 phiếu, 4.749 ô): khoảng 15.000 câu SQL
+     * và 4,8 giây cho một lần mở màn Phân công.
+     *
+     * <p>Nạp cả bảng là chấp nhận được vì đây đều là bảng TRA CỨU nhỏ và ổn định: 150 giáo
+     * viên, 23 môn, 31 trường, 864 lớp, 294 tiết — cộng lại chưa tới 1.400 dòng, rẻ hơn nhiều
+     * so với hàng nghìn câu lẻ.
+     */
+    private final class TenGoi {
+        final Map<Integer, String> teacher = new HashMap<>();
+        final Map<Integer, String> subject = new HashMap<>();
+        final Map<Integer, String> school = new HashMap<>();
+        final Map<Integer, String> clazz = new HashMap<>();
+        final Map<Integer, Period> period = new HashMap<>();
+        final Map<Integer, List<AssignmentSlot>> slotsByAssignment = new HashMap<>();
+        final PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
+
+        /** Ô lịch của một phiếu, đã lọc theo cờ xóa mềm. */
+        List<AssignmentSlot> slotsCua(Assignment a, boolean includeDeleted) {
+            List<AssignmentSlot> all = slotsByAssignment.getOrDefault(a.getId(), List.of());
+            return includeDeleted
+                    ? all
+                    : all.stream().filter(s -> !s.isDeleted()).toList();
+        }
+
+        String tenTruong(Integer id) {
+            return id == null ? null : school.getOrDefault(id, "(Trường #" + id + ")");
+        }
+
+        /**
+         * Tên trường của MỘT TIẾT: trường của ô lịch (V27) trước, trường cấp phiếu sau.
+         *
+         * <p>Trường ở đây có thể ĐÃ BỊ XÓA MỀM — vẫn phải trả tên ra: phiếu đang chạy trỏ tới
+         * một trường đã đóng, giấu tên đi thì cả cột "Trường" của dòng đó thành trống.
+         */
+        String tenTruongCuaO(AssignmentSlot slot, Assignment a) {
+            return tenTruong(slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId());
+        }
+
+        /** Tập hợp tên trường của cả phiếu — ô tìm kiếm dùng, không phải dựng response. */
+        String tenTruongCua(Assignment a) {
+            Set<String> ten = new LinkedHashSet<>();
+            for (AssignmentSlot s : slotsCua(a, false)) {
+                String t = tenTruongCuaO(s, a);
+                if (t != null) {
+                    ten.add(t);
+                }
+            }
+            if (ten.isEmpty() && a.getSchoolId() != null) {
+                ten.add(tenTruong(a.getSchoolId()));
+            }
+            return String.join(", ", ten);
+        }
+
+        /** Tập hợp tên lớp của cả phiếu. */
+        String tenLopCua(Assignment a) {
+            Set<String> ten = new LinkedHashSet<>();
+            for (AssignmentSlot s : slotsCua(a, false)) {
+                Integer id = s.getClassId() != null ? s.getClassId() : a.getClassId();
+                if (id != null && clazz.get(id) != null) {
+                    ten.add(clazz.get(id));
+                }
+            }
+            if (ten.isEmpty() && a.getClassId() != null && clazz.get(a.getClassId()) != null) {
+                ten.add(clazz.get(a.getClassId()));
+            }
+            return String.join(", ", ten);
+        }
     }
 
     /**
-     * @param includeDeletedSlots true = lấy cả slot đã xóa mềm (dùng cho thùng rác, nơi
-     *     Assignment và slot đều đã bị gắn cờ deleted nhưng vẫn cần hiển thị các tiết/tuần).
+     * Tên trường theo Id — đường lẻ, chỉ dùng cho màn CHI TIẾT một phiếu (lời mời).
+     *
+     * <p>Danh sách thì đi qua {@link TenGoi}; ở đây một phiếu một lần nên tra lẻ là đủ.
+     * Trường có thể ĐÃ BỊ XÓA MỀM — vẫn trả tên ra, giấu đi thì cột "Trường" thành trống.
      */
-    private AssignmentResponse toResponse(Assignment a, boolean includeDeletedSlots) {
-        String teacherName = teacherRepo
-                .findById(a.getTeacherId())
-                .map(AssignmentService::fullName)
-                .orElse("(GV #" + a.getTeacherId() + ")");
-        String subjectName =
-                subjectRepo.findById(a.getSubjectId()).map(Subject::getName).orElse("(Môn #" + a.getSubjectId() + ")");
-
-        List<AssignmentSlot> slotEntities = includeDeletedSlots
-                ? slotRepo.findByAssignmentId(a.getId())
-                : slotRepo.findByAssignmentIdAndDeletedFalse(a.getId());
-        Map<Integer, String> classNameCache = new HashMap<>();
-        Map<Integer, String> schoolNameCache = new HashMap<>();
-        // Một phân công nay trải nhiều lớp (mỗi tiết một lớp) → cột "Lớp" ở danh sách là
-        // tập hợp các lớp KHÁC NHAU của các tiết, giữ thứ tự xuất hiện. LinkedHashSet vừa
-        // khử trùng vừa giữ thứ tự.
-        Set<String> classNames = new LinkedHashSet<>();
-        // Y hệt cho TRƯỜNG (V27): một phiếu trải nhiều trường thì cột "Trường" phải kể đủ,
-        // nếu chỉ hiện trường chính thì người xem tưởng giáo viên chỉ dạy một nơi.
-        Set<String> schoolNames = new LinkedHashSet<>();
-        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
-        List<AssignmentSlotResponse> slots = new ArrayList<>();
-        for (AssignmentSlot slot : slotEntities) {
-            Period p = periodRepo.findById(slot.getPeriodId()).orElse(null);
-            Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
-            String slotClassName = classId == null
-                    ? null
-                    : classNameCache.computeIfAbsent(classId, id -> classRepo
-                            .findById(id)
-                            .map(SchoolClass::getName)
-                            .orElse(null));
-            if (slotClassName != null) {
-                classNames.add(slotClassName);
-            }
-            String slotSchoolName = schoolNameOfSlot(slot, a, schoolNameCache);
-            if (slotSchoolName != null) {
-                schoolNames.add(slotSchoolName);
-            }
-            slots.add(AssignmentSlotResponse.fromEntity(slot, p, slotClassName, slotSchoolName, sessionIndex.of(p)));
-        }
-        String className = classNames.isEmpty()
-                ? (a.getClassId() == null
-                        ? null
-                        : classRepo
-                                .findById(a.getClassId())
-                                .map(SchoolClass::getName)
-                                .orElse(null))
-                : String.join(", ", classNames);
-        String schoolName = schoolNames.isEmpty() ? schoolNameById(a.getSchoolId()) : String.join(", ", schoolNames);
-        return AssignmentResponse.fromEntity(
-                a, teacherName, schoolName, subjectName, className, slots, effectiveStatus(a));
-    }
-
     private String schoolNameById(Integer id) {
         return id == null ? null : schoolRepo.findById(id).map(School::getName).orElse("(Trường #" + id + ")");
     }
 
-    /**
-     * Tên trường của MỘT TIẾT: trường của ô lịch (V27) trước, trường cấp phiếu sau.
-     *
-     * <p>Trường ở đây có thể ĐÃ BỊ XÓA MỀM — vẫn phải trả tên ra: 8 phiếu đang chạy trỏ tới một
-     * trường đã đóng, giấu tên đi thì cả cột "Trường" của những dòng đó thành trống.
-     */
+    /** Tên trường của MỘT TIẾT: trường của ô lịch (V27) trước, trường cấp phiếu sau. */
     private String schoolNameOfSlot(AssignmentSlot slot, Assignment a, Map<Integer, String> cache) {
         Integer schoolId = slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId();
         return schoolId == null ? null : cache.computeIfAbsent(schoolId, this::schoolNameById);
+    }
+
+    /** Nạp túi tên cho một danh sách phiếu. */
+    private TenGoi napTenGoi(List<Assignment> items) {
+        TenGoi t = new TenGoi();
+        for (Teacher x : teacherRepo.findAll()) {
+            t.teacher.put(x.getId(), fullName(x));
+        }
+        for (Subject x : subjectRepo.findAll()) {
+            t.subject.put(x.getId(), x.getName());
+        }
+        for (School x : schoolRepo.findAll()) {
+            t.school.put(x.getId(), x.getName());
+        }
+        for (SchoolClass x : classRepo.findAll()) {
+            t.clazz.put(x.getId(), x.getName());
+        }
+        for (Period x : periodRepo.findAll()) {
+            t.period.put(x.getId(), x);
+        }
+        t.sessionIndex.napTruoc(t.period.values());
+        if (!items.isEmpty()) {
+            List<Integer> ids = items.stream().map(Assignment::getId).toList();
+            for (AssignmentSlot s : BatchIn.theoLo(ids, slotRepo::findByAssignmentIdIn)) {
+                t.slotsByAssignment
+                        .computeIfAbsent(s.getAssignmentId(), k -> new ArrayList<>())
+                        .add(s);
+            }
+        }
+        return t;
+    }
+
+    /** Dựng response cho MỘT phiếu lẻ (chi tiết, tạo, sửa, duyệt...). */
+    private AssignmentResponse toResponse(Assignment a) {
+        return toResponse(a, napTenGoi(List.of(a)), false);
+    }
+
+    /**
+     * @param includeDeletedSlots true = lấy cả ô lịch đã xóa mềm (dùng cho thùng rác, nơi
+     *     Assignment và ô lịch đều đã bị gắn cờ deleted nhưng vẫn cần hiển thị các tiết/tuần).
+     */
+    private AssignmentResponse toResponse(Assignment a, TenGoi ten, boolean includeDeletedSlots) {
+        String teacherName = ten.teacher.getOrDefault(a.getTeacherId(), "(GV #" + a.getTeacherId() + ")");
+        String subjectName = ten.subject.getOrDefault(a.getSubjectId(), "(Môn #" + a.getSubjectId() + ")");
+
+        // Một phân công nay trải nhiều lớp (mỗi tiết một lớp) → cột "Lớp" ở danh sách là tập
+        // hợp các lớp KHÁC NHAU của các tiết, giữ thứ tự xuất hiện. LinkedHashSet vừa khử
+        // trùng vừa giữ thứ tự. Y hệt cho TRƯỜNG (V27).
+        Set<String> classNames = new LinkedHashSet<>();
+        Set<String> schoolNames = new LinkedHashSet<>();
+        List<AssignmentSlotResponse> slots = new ArrayList<>();
+        for (AssignmentSlot slot : ten.slotsCua(a, includeDeletedSlots)) {
+            Period p = ten.period.get(slot.getPeriodId());
+            Integer classId = slot.getClassId() != null ? slot.getClassId() : a.getClassId();
+            String slotClassName = classId == null ? null : ten.clazz.get(classId);
+            if (slotClassName != null) {
+                classNames.add(slotClassName);
+            }
+            String slotSchoolName = ten.tenTruongCuaO(slot, a);
+            if (slotSchoolName != null) {
+                schoolNames.add(slotSchoolName);
+            }
+            slots.add(
+                    AssignmentSlotResponse.fromEntity(slot, p, slotClassName, slotSchoolName, ten.sessionIndex.of(p)));
+        }
+        String className = classNames.isEmpty()
+                ? (a.getClassId() == null ? null : ten.clazz.get(a.getClassId()))
+                : String.join(", ", classNames);
+        String schoolName = schoolNames.isEmpty() ? ten.tenTruong(a.getSchoolId()) : String.join(", ", schoolNames);
+        return AssignmentResponse.fromEntity(
+                a, teacherName, schoolName, subjectName, className, slots, effectiveStatus(a));
     }
 
     private static String fullName(Teacher t) {

@@ -8,12 +8,13 @@
  * Một phiếu nay trải được NHIỀU TRƯỜNG (V27) nên cột "Trường" và "Lớp" đều là tập hợp —
  * quá hai cái thì rút gọn "TH Dư Hàng +2" để dòng không tràn.
  */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { assignmentApi } from '@/api/assignments'
 import { tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
 import FilterBar from '@/components/ui/FilterBar.vue'
+import { PAGE_SIZE } from '@/utils/pagination'
 
 const router = useRouter()
 
@@ -52,35 +53,54 @@ const inTrash = computed(() => view.value === 'trash')
 /* Tìm kiếm phía server; nhịp gõ và hai nút Lọc/Xóa lọc do FilterBar lo. */
 const search = ref('')
 
-/* ── Phân trang phía client (áp cho danh sách đang xem) ── */
-const PAGE_SIZE = 10
+/* ── Phân trang ──
+   Danh sách chính cắt trang Ở SERVER: 444 phiếu kèm ô lịch là 1,5 MB JSON cho một màn
+   chỉ hiện 10 dòng. Thùng rác vẫn cắt ở client vì nó hiếm khi quá vài chục phiếu. */
 const page = ref(0)
-const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
-const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
+const totalItems = ref(0)
+const totalPages = computed(() =>
+  inTrash.value
+    ? Math.ceil(trashItems.value.length / PAGE_SIZE)
+    : Math.max(1, Math.ceil(totalItems.value / PAGE_SIZE)),
+)
 const pagedItems = computed(() => {
+  if (!inTrash.value) return items.value
   const start = page.value * PAGE_SIZE
-  return currentList.value.slice(start, start + PAGE_SIZE)
+  return trashItems.value.slice(start, start + PAGE_SIZE)
 })
 
 const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
 
-async function load() {
+/**
+   * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
+   *   đầu (đổi bộ lọc / từ khóa — kết quả mới thì số trang cũ không còn nghĩa gì).
+   */
+async function load(giuTrang = false) {
   loading.value = true
-  page.value = 0
+  if (!giuTrang) page.value = 0
   selectedIds.value = []
   try {
     const { data } = await assignmentApi.list({
       keyword: search.value,
       status: statusFilter.value,
+      page: page.value,
+      size: PAGE_SIZE,
     })
-    items.value = data
+    items.value = data.content ?? []
+    totalItems.value = data.totalElements ?? 0
   } catch {
     items.value = []
+    totalItems.value = 0
   } finally {
     loading.value = false
   }
   loadCounts()
 }
+
+/* Đổi trang: tải lại đúng trang đó từ server. */
+watch(page, () => {
+  if (!inTrash.value) load(true)
+})
 
 /** Số phiếu từng trạng thái cho badge trên tab — tải kèm mỗi lần làm mới danh sách. */
 async function loadCounts() {
@@ -363,7 +383,7 @@ async function restoreItem(a) {
           <tr v-if="loading">
             <td colspan="9" class="text-center text-muted">Đang tải…</td>
           </tr>
-          <tr v-else-if="!currentList.length">
+          <tr v-else-if="!pagedItems.length">
             <td colspan="9" class="text-center text-muted">
               {{
                 inTrash
