@@ -62,6 +62,10 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-19 | fullstack | ⭐ Seed đánh giá / phòng học / HĐ dịch vụ / 234 bài giảng · màn Lịch nghỉ (V30) · **GỠ TÁC NHÂN NHÀ TRƯỜNG (V31)** + bẫy `mvn test` xanh giả khi server đang chạy | [2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md](2026-08-19-fullstack-du-lieu-bo-sung-va-bo-tac-nhan-truong.md) |
 | 2026-08-21 | fullstack | ⭐ Viết lại Bảng điều khiển — thống kê bằng SQL aggregate, bộ lọc toàn trang, **chi phí phân bổ về từng buổi** (bẫy `TaughtHours` là SỐ TIẾT) + seed năm học 2025–2026 | [2026-08-21-fullstack-bang-dieu-khien-thong-ke.md](2026-08-21-fullstack-bang-dieu-khien-thong-ke.md) |
 | 2026-08-22 | fullstack | Quản lý trường — trạng thái hết hạn suy theo NGÀY, chặn mở lớp/phân công ở trường đã ngừng, thùng rác + khôi phục, chỉ mục UNIQUE tên trường theo chi nhánh (V36) | [2026-08-22-fullstack-quan-ly-truong.md](2026-08-22-fullstack-quan-ly-truong.md) |
+| 2026-08-22 | fullstack | ⭐ Bỏ TOÀN BỘ xóa cứng (5 chỗ, kể cả nút Xóa chính của Môn học) + ConfirmDialog & toast dùng chung | [2026-08-22-fullstack-bo-xoa-cung.md](2026-08-22-fullstack-bo-xoa-cung.md) |
+| 2026-08-22 | fullstack | Lịch dạy: tìm kiếm hai tầng, lọc trạng thái, tô ngày nghỉ, in + xuất CSV · Lịch nghỉ: thùng rác + cảnh báo trước khi xóa | [2026-08-22-fullstack-lich-day-lich-nghi.md](2026-08-22-fullstack-lich-day-lich-nghi.md) |
+| 2026-08-22 | fullstack | Chấm công: thêm cột Buổi dạy (admin thấy ít hơn giáo viên), tìm kiếm + phân trang server, duyệt Nghỉ phép | [2026-08-22-fullstack-cham-cong-tim-kiem.md](2026-08-22-fullstack-cham-cong-tim-kiem.md) |
+| 2026-08-22 | fullstack | ⭐ Bảng lương: khép vòng đời phiếu (PAID từng là trạng thái chết), đơn giá ra khỏi code có hiệu lực theo ngày, gộp ~3.000 câu SQL thành 1 JOIN (V37) | [2026-08-22-fullstack-bang-luong-don-gia.md](2026-08-22-fullstack-bang-luong-don-gia.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
