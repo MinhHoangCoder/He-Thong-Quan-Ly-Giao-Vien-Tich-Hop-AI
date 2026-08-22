@@ -22,6 +22,7 @@ import { onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { refreshSession } from '@/api/http'
 import { useUiStore } from '@/stores/ui'
+import ToastHost from '@/components/ui/ToastHost.vue'
 
 const route = useRoute() // route đang đứng → đọc được route.meta.layout
 
@@ -67,4 +68,8 @@ onMounted(async () => {
   <component :is="layout">
     <RouterView />
   </component>
+
+  <!-- Đặt Ở ĐÂY chứ không trong từng layout: toast phải sống sót khi đổi trang
+       (báo "Đã xóa" rồi router chuyển trang thì toast trong layout bị dựng lại). -->
+  <ToastHost />
 </template>
