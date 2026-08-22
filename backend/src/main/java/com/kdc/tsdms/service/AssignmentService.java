@@ -102,6 +102,7 @@ public class AssignmentService {
     private final PeriodRepository periodRepo;
     private final PayrollRepository payrollRepo;
     private final AttendanceRepository attendanceRepo;
+    private final AuditService auditService;
     private final AppUserRepository userRepo;
     private final AssignmentApprovalService approvalService;
     private final TeacherTimeConflictChecker conflictChecker;
@@ -120,6 +121,7 @@ public class AssignmentService {
             PeriodRepository periodRepo,
             PayrollRepository payrollRepo,
             AttendanceRepository attendanceRepo,
+            AuditService auditService,
             AppUserRepository userRepo,
             AssignmentApprovalService approvalService,
             TeacherTimeConflictChecker conflictChecker,
@@ -136,6 +138,7 @@ public class AssignmentService {
         this.periodRepo = periodRepo;
         this.payrollRepo = payrollRepo;
         this.attendanceRepo = attendanceRepo;
+        this.auditService = auditService;
         this.userRepo = userRepo;
         this.approvalService = approvalService;
         this.conflictChecker = conflictChecker;
@@ -1126,6 +1129,14 @@ public class AssignmentService {
         // xong giáo viên VẪN thấy nút "Xác nhận" cho một phân công không còn tồn tại — bấm vào
         // chỉ nhận lỗi, và tệ hơn là họ tưởng mình vẫn phải đi dạy buổi đó.
         approvalService.closeOpenInvites(id, "CANCELLED");
+        auditService.ghi(
+                "HUY_PHAN_CONG",
+                "Assignment",
+                id,
+                "Trạng thái trước: " + a.getStatus(),
+                neverConfirmed
+                        ? "Hủy sạch (phiếu chưa từng được xác nhận)"
+                        : "Hủy các buổi TƯƠNG LAI, giữ buổi đã dạy");
         return toResponse(a);
     }
 

@@ -40,6 +40,10 @@ const nav = [
       { label: 'Bảng lương', icon: 'payroll', to: '/payroll' },
     ],
   },
+  {
+    title: 'Hệ thống',
+    items: [{ label: 'Nhật ký & rà soát', icon: 'eye', to: '/admin/system' }],
+  },
 ]
 // "Cài đặt" không nằm trong sidebar: vào qua dropdown avatar trên topbar (PortalShell).
 </script>

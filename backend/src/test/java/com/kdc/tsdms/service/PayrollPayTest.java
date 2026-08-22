@@ -86,6 +86,9 @@ class PayrollPayTest {
     @Mock
     private NotificationService notificationService;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private PayrollService service;
 

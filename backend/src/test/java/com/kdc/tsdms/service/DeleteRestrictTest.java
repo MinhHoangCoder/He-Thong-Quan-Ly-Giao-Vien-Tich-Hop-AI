@@ -105,6 +105,9 @@ class DeleteRestrictTest {
         @Mock
         private AssignmentSlotRepository slotRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private SchoolService service;
 
@@ -213,6 +216,9 @@ class DeleteRestrictTest {
         @Mock
         private PayrollRepository payrollRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private TeacherService service;
 
@@ -281,6 +287,9 @@ class DeleteRestrictTest {
         @Mock
         private SubjectCategoryRepository subjectCategoryRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private LessonService service;
 
@@ -334,6 +343,9 @@ class DeleteRestrictTest {
         @Mock
         private ScheduleRepository scheduleRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private TeacherService service;
 
@@ -382,6 +394,9 @@ class DeleteRestrictTest {
 
         @Mock
         private ServiceContractRepository serviceContractRepo;
+
+        @Mock
+        private AuditService auditService;
 
         @InjectMocks
         private BranchService service;
@@ -442,6 +457,9 @@ class DeleteRestrictTest {
         @Mock
         private PartTimeShiftRequestRepository shiftRequestRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private EmployeeService service;
 
@@ -495,6 +513,9 @@ class DeleteRestrictTest {
         @Mock
         private AssignmentSlotRepository slotRepo;
 
+        @Mock
+        private AuditService auditService;
+
         @InjectMocks
         private RoomService service;
 
@@ -543,6 +564,9 @@ class DeleteRestrictTest {
 
         @Mock
         private ClassEnrollmentRepository enrollmentRepo;
+
+        @Mock
+        private AuditService auditService;
 
         @InjectMocks
         private StudentService service;
@@ -597,6 +621,9 @@ class DeleteRestrictTest {
 
         @Mock
         private ScheduleRepository scheduleRepo;
+
+        @Mock
+        private AuditService auditService;
 
         @InjectMocks
         private PeriodService service;
@@ -659,6 +686,9 @@ class DeleteRestrictTest {
 
         @Mock
         private AssignmentRepository assignmentRepo;
+
+        @Mock
+        private AuditService auditService;
 
         @InjectMocks
         private SubjectService service;

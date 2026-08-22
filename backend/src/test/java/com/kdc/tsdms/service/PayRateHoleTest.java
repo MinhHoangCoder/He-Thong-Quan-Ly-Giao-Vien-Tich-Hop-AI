@@ -47,6 +47,9 @@ class PayRateHoleTest {
     @Mock
     private PayRateRepository repo;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private PayRateService service;
 

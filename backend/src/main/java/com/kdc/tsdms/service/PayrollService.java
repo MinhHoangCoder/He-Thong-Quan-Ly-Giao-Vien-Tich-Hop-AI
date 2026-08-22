@@ -85,6 +85,7 @@ public class PayrollService {
     private final HolidayService holidayService;
     private final EntityManager em;
     private final NotificationService notificationService;
+    private final AuditService auditService;
 
     public PayrollService(
             PayrollRepository payrollRepo,
@@ -97,7 +98,8 @@ public class PayrollService {
             DisplayNameResolver displayNameResolver,
             HolidayService holidayService,
             EntityManager em,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            AuditService auditService) {
         this.payrollRepo = payrollRepo;
         this.attendanceRepo = attendanceRepo;
         this.teacherRepo = teacherRepo;
@@ -109,6 +111,7 @@ public class PayrollService {
         this.holidayService = holidayService;
         this.em = em;
         this.notificationService = notificationService;
+        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -299,6 +302,7 @@ public class PayrollService {
         payrollRepo.saveAndFlush(p);
         em.refresh(p);
         writeLog(p, "FINALIZE", null, "DRAFT", "FINALIZED", null, p.getNetAmount());
+        auditService.ghi("CHOT_LUONG", "Payroll", p.getId(), moTaPhieu(p));
         // Bảng lương đã chốt → giáo viên xem được: báo cho GV.
         notificationService.publishToTeacher(
                 p.getTeacherId(),
@@ -342,6 +346,7 @@ public class PayrollService {
         payrollRepo.saveAndFlush(p);
         em.refresh(p);
         writeLog(p, "PAY", null, "FINALIZED", "PAID", p.getNetAmount(), p.getNetAmount());
+        auditService.ghi("TRA_LUONG", "Payroll", p.getId(), moTaPhieu(p));
 
         notificationService.publishToTeacher(
                 p.getTeacherId(),
@@ -401,6 +406,7 @@ public class PayrollService {
         payrollRepo.saveAndFlush(p);
         em.refresh(p);
         writeLog(p, "REOPEN", reason, "FINALIZED", "DRAFT", before, null);
+        auditService.ghi("MO_LAI_LUONG", "Payroll", p.getId(), moTaPhieu(p), "Lý do: " + reason);
 
         // Phiếu về nháp là GV mất quyền xem (TEACHER_VISIBLE_STATUS). Phiếu tự biến mất mà
         // không một lời nào là thứ chắc chắn sinh ra thắc mắc — nói trước thì không.
@@ -487,6 +493,12 @@ public class PayrollService {
                             + " tháng nên không mở lại được (sớm nhất: " + oldest.getMonthValue() + "/"
                             + oldest.getYear() + "). Điều chỉnh chênh lệch vào kỳ lương kế tiếp.");
         }
+    }
+
+    /** "Kỳ 8/2026 · 16.533.500đ" — đủ để đọc nhật ký mà không phải mở lại phiếu. */
+    private static String moTaPhieu(Payroll p) {
+        return "Kỳ " + p.getPeriodMonth() + "/" + p.getPeriodYear() + " · "
+                + (p.getNetAmount() == null ? "?" : p.getNetAmount().toPlainString()) + "đ";
     }
 
     private void writeLog(

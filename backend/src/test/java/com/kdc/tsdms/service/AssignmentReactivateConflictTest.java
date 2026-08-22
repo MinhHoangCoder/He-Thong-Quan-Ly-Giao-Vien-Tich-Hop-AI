@@ -94,6 +94,9 @@ class AssignmentReactivateConflictTest {
     @Mock
     private ApplicationContext applicationContext;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private AssignmentService service;
 

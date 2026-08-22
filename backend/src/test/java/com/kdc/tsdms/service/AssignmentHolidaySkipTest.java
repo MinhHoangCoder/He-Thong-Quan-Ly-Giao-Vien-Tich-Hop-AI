@@ -120,6 +120,9 @@ class AssignmentHolidaySkipTest {
     @Mock
     private ApplicationContext applicationContext;
 
+    @Mock
+    private AuditService auditService;
+
     @InjectMocks
     private AssignmentService service;
 
