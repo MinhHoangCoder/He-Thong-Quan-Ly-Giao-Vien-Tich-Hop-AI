@@ -51,4 +51,29 @@ public interface HolidayRepository extends JpaRepository<Holiday, Integer> {
             Pageable pageable);
 
     long countBySchoolIdAndDeletedFalse(Integer schoolId);
+
+    /** Kỳ nghỉ trong thùng rác — cùng bộ lọc từ khóa với danh sách chính. */
+    @Query("""
+            SELECT h FROM Holiday h
+            WHERE h.deleted = true
+              AND (:keyword IS NULL OR LOWER(h.name) LIKE LOWER(CONCAT('%', :keyword, '%')))
+            """)
+    Page<Holiday> searchTrash(@Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * Buổi dạy ĐÃ HỦY nằm trong khoảng ngày — dùng để ước lượng hậu quả trước khi xóa kỳ nghỉ.
+     *
+     * <p>Là ƯỚC LƯỢNG chứ không phải con số chính xác: buổi bị hủy không lưu lại nó bị hủy vì
+     * kỳ nghỉ nào. Nhưng đủ để người dùng biết thao tác này đang đụng tới cái gì, và câu chữ
+     * trên giao diện nói rõ đây là số buổi hủy trong khoảng ngày đó.
+     */
+    @Query("""
+            SELECT COUNT(s) FROM Schedule s
+            WHERE s.deleted = false
+              AND s.status = 'CANCELLED'
+              AND s.startTime >= :from
+              AND s.startTime < :to
+            """)
+    long countCancelledSessionsInRange(
+            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
 }

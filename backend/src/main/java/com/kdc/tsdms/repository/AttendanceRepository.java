@@ -39,4 +39,7 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
             ORDER BY a.workDate ASC, a.teacherId ASC
             """)
     List<Attendance> findSystemAbsencesBetween(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /** Số dòng đã chuyển sang NGHỈ PHÉP trong khoảng — hậu quả đã ghi của một kỳ nghỉ. */
+    long countByStatusAndWorkDateBetween(String status, LocalDate from, LocalDate to);
 }
