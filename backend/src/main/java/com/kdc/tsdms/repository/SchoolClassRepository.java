@@ -29,6 +29,9 @@ public interface SchoolClassRepository extends JpaRepository<SchoolClass, Intege
 
     List<SchoolClass> findBySchoolIdAndDeletedFalseAndStatusOrderByName(Integer schoolId, String status);
 
+    /** Mọi lớp còn sống của một trường (không lọc status) — dropdown lọc ở trang Lịch dạy. */
+    List<SchoolClass> findBySchoolIdAndDeletedFalseOrderByName(Integer schoolId);
+
     /**
      * Keyword do service escape sẵn (escapeLike) với ký tự thoát '!': %, _, [ của
      * SQL Server LIKE là wildcard — không escape thì gõ '%' sẽ khớp tất cả.

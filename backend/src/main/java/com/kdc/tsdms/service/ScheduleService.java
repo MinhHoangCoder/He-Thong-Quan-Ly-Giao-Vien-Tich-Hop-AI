@@ -6,6 +6,7 @@ import com.kdc.tsdms.dto.ScheduleEventResponse;
 import com.kdc.tsdms.dto.ScheduleFilterOptions;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
+import com.kdc.tsdms.entity.Holiday;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -15,6 +16,7 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.HolidayRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -55,6 +57,7 @@ public class ScheduleService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final HolidayRepository holidayRepo;
 
     public ScheduleService(
             ScheduleRepository scheduleRepo,
@@ -64,7 +67,8 @@ public class ScheduleService {
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
-            PeriodRepository periodRepo) {
+            PeriodRepository periodRepo,
+            HolidayRepository holidayRepo) {
         this.scheduleRepo = scheduleRepo;
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
@@ -73,6 +77,7 @@ public class ScheduleService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.holidayRepo = holidayRepo;
     }
 
     /**
@@ -108,16 +113,25 @@ public class ScheduleService {
         return a.getSchoolId();
     }
 
+    /**
+     * Buổi dạy trong khoảng ngày.
+     *
+     * @param status trạng thái cần xem; null/rỗng = {@value #APPROVED}. Điều phối viên cần
+     *     nhìn được cả buổi PENDING ("tuần sau còn 12 buổi chưa ai xác nhận") ngay trên lịch,
+     *     nhưng mặc định vẫn chỉ hiện buổi đã duyệt — lịch là thứ đã chốt.
+     */
     @Transactional(readOnly = true)
     public List<ScheduleEventResponse> list(
-            LocalDate from, LocalDate to, Integer teacherId, Integer schoolId, Integer classId) {
+            LocalDate from, LocalDate to, Integer teacherId, Integer schoolId, Integer classId, String status) {
         Integer effectiveTeacher = scopedTeacherId(teacherId);
+        String wanted =
+                status == null || status.isBlank() ? APPROVED : status.trim().toUpperCase();
 
         List<Schedule> schedules = effectiveTeacher != null
                 ? scheduleRepo.findByTeacherIdAndStatusAndStartTimeBetweenAndDeletedFalseOrderByStartTime(
-                        effectiveTeacher, APPROVED, from.atStartOfDay(), to.atTime(LocalTime.MAX))
+                        effectiveTeacher, wanted, from.atStartOfDay(), to.atTime(LocalTime.MAX))
                 : scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
-                        from.atStartOfDay(), to.atTime(LocalTime.MAX), APPROVED);
+                        from.atStartOfDay(), to.atTime(LocalTime.MAX), wanted);
         return buildEvents(schedules, schoolId, classId);
     }
 
@@ -211,21 +225,48 @@ public class ScheduleService {
         List<OptionItem> teachers = teacherRepo.findByDeletedFalse().stream()
                 .map(t -> new OptionItem(t.getId(), fullName(t)))
                 .toList();
-        List<OptionItem> schools = schoolRepo.findAll().stream()
-                .filter(s -> !s.isDeleted())
+        List<OptionItem> schools = schoolRepo.findByDeletedFalseOrderByNameAsc().stream()
                 .map(s -> new OptionItem(s.getId(), s.getName()))
                 .toList();
         return new ScheduleFilterOptions(teachers, schools);
     }
 
-    /** Lớp của một trường (dropdown lọc cấp 2). */
+    /**
+     * Lớp của một trường (dropdown lọc cấp 2).
+     *
+     * <p>Lọc bằng câu WHERE chứ không {@code findAll()} rồi lọc trong Java: bản cũ nạp cả
+     * gần 400 lớp của mọi trường về bộ nhớ mỗi lần người dùng đổi dropdown, để lấy ra hơn
+     * chục dòng.
+     */
     @Transactional(readOnly = true)
     public List<OptionItem> classesOf(Integer schoolId) {
-        return classRepo.findAll().stream()
-                .filter(c -> !c.isDeleted() && c.getSchoolId().equals(schoolId))
+        return classRepo.findBySchoolIdAndDeletedFalseOrderByName(schoolId).stream()
                 .map(c -> new OptionItem(c.getId(), c.getName()))
                 .toList();
     }
+
+    /**
+     * Ngày nghỉ chạm vào khoảng đang xem, để lịch tô màu và ghi tên kỳ nghỉ.
+     *
+     * <p>Không có nó thì ngày 2/9 trên lịch trông y hệt một ngày bị quên xếp lịch — người
+     * dùng không phân biệt được "trường đóng cửa" với "ai đó làm thiếu việc".
+     */
+    @Transactional(readOnly = true)
+    public List<HolidayMark> holidaysIn(LocalDate from, LocalDate to, Integer schoolId) {
+        List<HolidayMark> out = new ArrayList<>();
+        for (Holiday h : holidayRepo.findOverlapping(from, to)) {
+            // schoolId null = nghỉ toàn hệ thống, luôn tính. Có giá trị = chỉ trường đó nghỉ,
+            // nên chỉ đánh dấu khi người dùng đang xem đúng trường ấy (hoặc xem tất cả).
+            if (h.getSchoolId() != null && schoolId != null && !h.getSchoolId().equals(schoolId)) {
+                continue;
+            }
+            out.add(new HolidayMark(h.getId(), h.getFromDate(), h.getToDate(), h.getName(), h.getKind()));
+        }
+        return out;
+    }
+
+    /** Một khoảng ngày nghỉ, đủ để frontend tô lịch. */
+    public record HolidayMark(Integer id, LocalDate fromDate, LocalDate toDate, String name, String kind) {}
 
     /**
      * Options lọc cho trang "Lịch dạy của tôi": chỉ TRƯỜNG + LỚP mà chính giáo viên đang đăng

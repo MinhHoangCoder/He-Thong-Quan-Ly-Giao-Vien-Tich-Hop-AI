@@ -278,3 +278,42 @@
 .mono {
   font-variant-numeric: tabular-nums;
 }
+
+/* ── IN GIẤY ──
+   Trang nghiệp vụ nào cũng có lúc phải in ra (thời khóa biểu dán phòng hội đồng, bảng
+   lương đưa kế toán ký). Khai Ở ĐÂY chứ không trong style scoped của từng trang: sidebar
+   và topbar thuộc PortalShell, style scoped của trang con không với tới được.
+
+   Trang nào cần in thì gắn class .no-print lên phần điều khiển của mình (bộ lọc, nút bấm).
+*/
+@media print {
+  .sidebar,
+  .topbar,
+  .no-print {
+    display: none !important;
+  }
+  .content {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .page {
+    max-width: none;
+  }
+  /* Nền tối in ra là một trang đen tốn mực — ép về giấy trắng chữ đen. */
+  :root,
+  body,
+  .card,
+  .table-wrap {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .table-wrap {
+    overflow: visible !important;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+}

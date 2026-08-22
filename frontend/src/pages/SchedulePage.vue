@@ -1,14 +1,23 @@
 <script setup>
 /**
- * Trang Lịch dạy (chỉ xem): xem buổi dạy ĐÃ DUYỆT của giáo viên ở các trường/lớp/tiết
- * theo từng ngày. Hai chế độ: Lịch THÁNG (bấm ngày → chi tiết) và Thời khóa biểu TUẦN
- * (Thứ × Tiết). Lọc linh hoạt theo Giáo viên / Trường / Lớp.
+ * Trang Lịch dạy (chỉ xem): buổi dạy của giáo viên ở các trường/lớp/tiết theo từng ngày.
+ * Hai chế độ: Lịch THÁNG (bấm ngày → chi tiết) và Thời khóa biểu TUẦN (Thứ × Tiết).
+ *
+ * Tìm kiếm có HAI tầng, cố ý:
+ *   · Dropdown Giáo viên/Trường/Lớp gọi lại server — đổi bộ lọc là đổi hẳn tập dữ liệu.
+ *   · Ô "Tìm nhanh" lọc tại chỗ trên khoảng đang xem, không gọi server (xem filteredEvents).
+ * Với 101 giáo viên thì thẻ <select> thường bắt cuộn tìm bằng mắt, nên ba dropdown đều
+ * dùng SearchSelect (gõ được, bỏ dấu vẫn khớp).
+ *
+ * Ngày nghỉ được TÔ RIÊNG kèm tên kỳ nghỉ: ô trống không phân biệt được "trường đóng cửa"
+ * với "quên xếp lịch", mà hai thứ đó cần hai hành động khác hẳn nhau.
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { scheduleApi } from '@/api/schedules'
 import { tietLabel, periodRows } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import SearchSelect from '@/components/ui/SearchSelect.vue'
 
 const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] // index 0 = Thứ 2, cuối là Chủ nhật
 
@@ -35,13 +44,22 @@ const route = useRoute()
 // Chế độ ban đầu: cho phép mở thẳng Thời khóa biểu TUẦN qua query ?view=week (VD: từ Dashboard).
 const view = ref(route.query.view === 'week' ? 'week' : 'month') // 'month' | 'week'
 const anchor = ref(new Date())
-const filters = reactive({ teacherId: '', schoolId: '', classId: '' })
+const filters = reactive({ teacherId: '', schoolId: '', classId: '', status: 'APPROVED' })
+/** Ô tìm tự do — lọc trên dữ liệu đã tải, xem ghi chú ở filteredEvents. */
+const keyword = ref('')
 const teachers = ref([])
 const schools = ref([])
 const classes = ref([])
 const events = ref([])
+const holidays = ref([])
 const loading = ref(false)
 const selectedIso = ref(TODAY_ISO)
+
+const STATUSES = [
+  { code: 'APPROVED', label: 'Đã duyệt' },
+  { code: 'PENDING', label: 'Chờ xác nhận' },
+  { code: 'CANCELLED', label: 'Đã hủy' },
+]
 
 /* ── Range theo chế độ ── */
 function rangeIso() {
@@ -57,26 +75,63 @@ async function load() {
   loading.value = true
   try {
     const { from, to } = rangeIso()
-    const { data } = await scheduleApi.list({
-      from,
-      to,
-      teacherId: filters.teacherId,
-      schoolId: filters.schoolId,
-      classId: filters.classId,
-    })
-    events.value = data
+    const [ev, hol] = await Promise.all([
+      scheduleApi.list({
+        from,
+        to,
+        teacherId: filters.teacherId,
+        schoolId: filters.schoolId,
+        classId: filters.classId,
+        status: filters.status,
+      }),
+      scheduleApi.holidays({ from, to, schoolId: filters.schoolId }),
+    ])
+    events.value = ev.data
+    holidays.value = hol.data
   } catch {
     events.value = []
+    holidays.value = []
   } finally {
     loading.value = false
   }
 }
 
+/* ── Ô tìm tự do ──
+   Lọc Ở ĐÂY chứ không gọi lại server: lịch tháng vốn phải tải trọn khoảng ngày đang xem
+   (không thể phân trang một cái lịch), nên dữ liệu đã nằm sẵn trong tay — gọi server thêm
+   một vòng chỉ làm chậm và nhấp nháy. Gõ tới đâu lọc tới đó, không độ trễ. */
+const norm = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+
+const filteredEvents = computed(() => {
+  const q = norm(keyword.value.trim())
+  if (!q) return events.value
+  return events.value.filter((e) =>
+    norm(`${e.teacherName} ${e.schoolName} ${e.className} ${e.subjectName}`).includes(q),
+  )
+})
+
 /* ── Gom sự kiện theo ngày ── */
 const eventsByDate = computed(() => {
   const m = {}
-  for (const e of events.value) (m[e.date] ??= []).push(e)
+  for (const e of filteredEvents.value) (m[e.date] ??= []).push(e)
   for (const k in m) m[k].sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''))
+  return m
+})
+
+/** iso ngày → tên kỳ nghỉ phủ nó. Kỳ nghỉ lưu theo KHOẢNG nên phải trải ra từng ngày. */
+const holidayByDate = computed(() => {
+  const m = {}
+  for (const h of holidays.value) {
+    for (let d = new Date(h.fromDate); iso(d) <= h.toDate; d = addDays(d, 1)) {
+      m[iso(d)] = h.name
+    }
+  }
   return m
 })
 
@@ -85,7 +140,7 @@ const countSchools = (list) => new Set(list.map((e) => e.schoolId ?? e.schoolNam
 
 // Tổng số GIÁO VIÊN khác nhau trong khoảng đang xem (thay cho tổng số buổi ở thanh công cụ).
 const teacherCount = computed(
-  () => new Set(events.value.map((e) => e.teacherId ?? e.teacherName)).size,
+  () => new Set(filteredEvents.value.map((e) => e.teacherId ?? e.teacherName)).size,
 )
 
 /* ── Lưới tháng (6 tuần × 7) ── */
@@ -103,6 +158,7 @@ const monthCells = computed(() => {
       isToday: k === TODAY_ISO,
       count: dayEvents.length,
       schoolCount: countSchools(dayEvents),
+      holiday: holidayByDate.value[k] ?? null,
     })
   }
   return cells
@@ -122,6 +178,7 @@ const weekDays = computed(() => {
       label: DOW_LABELS[i],
       dnum: d.getDate(),
       isToday: iso(d) === TODAY_ISO,
+      holiday: holidayByDate.value[iso(d)] ?? null,
     })
   }
   return arr
@@ -130,7 +187,7 @@ function cellEvents(period, dayIso) {
   return (eventsByDate.value[dayIso] || []).filter((e) => e.periodNumber === period)
 }
 // Dòng của lưới tuần bám khung tiết THẬT trong dữ liệu (tiểu học 10 tiết, THCS 9).
-const weekPeriodRows = computed(() => periodRows(events.value))
+const weekPeriodRows = computed(() => periodRows(filteredEvents.value))
 
 /* ── Chi tiết ngày (chế độ tháng) ── */
 const selectedEvents = computed(() => eventsByDate.value[selectedIso.value] || [])
@@ -222,8 +279,58 @@ function resetFilters() {
   filters.teacherId = ''
   filters.schoolId = ''
   filters.classId = ''
+  filters.status = 'APPROVED'
+  keyword.value = ''
   classes.value = []
   load()
+}
+
+/* ── Mang lịch ra khỏi màn hình ── */
+
+/** In khoảng đang xem. CSS @media print bên dưới ẩn sidebar/toolbar, chỉ chừa cái lịch. */
+function doPrint() {
+  window.print()
+}
+
+
+/**
+ * Xuất CSV khoảng ngày đang xem. Tự ghép chuỗi thay vì thêm thư viện: dữ liệu ở đây là bảng
+ * phẳng, một hàm 15 dòng làm đủ việc.
+ *
+ * Ký tự BOM ở đầu file là bắt buộc — thiếu nó thì Excel đọc CSV theo bảng mã hệ thống và
+ * mọi tên tiếng Việt thành ký tự lạ.
+ */
+const CSV_BOM = '﻿' // Excel cần BOM mới đọc đúng tiếng Việt trong CSV
+
+function exportCsv() {
+  const header = ['Ngày', 'Thứ', 'Tiết', 'Giờ', 'Trường', 'Lớp', 'Môn', 'Giáo viên', 'Trạng thái']
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
+  const rows = [...filteredEvents.value]
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''))
+    .map((e) =>
+      [
+        e.date,
+        DOW_LABELS[(new Date(e.date).getDay() + 6) % 7],
+        tietLabel(e.periodNumber, e.sessionType, e.indexInSession),
+        `${(e.startTime || '').slice(0, 5)}-${(e.endTime || '').slice(0, 5)}`,
+        e.schoolName,
+        e.className,
+        e.subjectName,
+        e.teacherName,
+        STATUSES.find((s) => s.code === e.status)?.label ?? e.status,
+      ]
+        .map(esc)
+        .join(','),
+    )
+  const blob = new Blob([CSV_BOM + [header.map(esc).join(','), ...rows].join('\r\n')], {
+    type: 'text/csv;charset=utf-8',
+  })
+  const { from, to } = rangeIso()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `lich-day_${from}_${to}.csv`
+  a.click()
+  URL.revokeObjectURL(a.href)
 }
 
 onMounted(() => {
@@ -245,25 +352,56 @@ onMounted(() => {
     </div>
 
     <!-- Bộ lọc -->
-    <div class="toolbar">
+    <div class="toolbar no-print">
       <label>Giáo viên</label>
-      <select v-model="filters.teacherId" @change="load">
-        <option value="">Tất cả</option>
-        <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.name }}</option>
-      </select>
+      <SearchSelect
+        v-model="filters.teacherId"
+        :options="teachers"
+        class="ss"
+        placeholder="Tất cả"
+        search-placeholder="Gõ tên giáo viên…"
+        clearable
+        @change="load"
+      />
       <label>Trường</label>
-      <select v-model="filters.schoolId" @change="onSchoolChange">
-        <option value="">Tất cả</option>
-        <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
+      <SearchSelect
+        v-model="filters.schoolId"
+        :options="schools"
+        class="ss"
+        placeholder="Tất cả"
+        search-placeholder="Gõ tên trường…"
+        clearable
+        @change="onSchoolChange"
+      />
       <label>Lớp</label>
-      <select v-model="filters.classId" :disabled="!classes.length" @change="load">
-        <option value="">{{ classes.length ? 'Tất cả' : 'Chọn trường' }}</option>
-        <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+      <SearchSelect
+        v-model="filters.classId"
+        :options="classes"
+        class="ss ss--sm"
+        :disabled="!classes.length"
+        :placeholder="classes.length ? 'Tất cả' : 'Chọn trường'"
+        search-placeholder="Gõ tên lớp…"
+        clearable
+        @change="load"
+      />
+      <label>Trạng thái</label>
+      <select v-model="filters.status" @change="load">
+        <option v-for="s in STATUSES" :key="s.code" :value="s.code">{{ s.label }}</option>
       </select>
       <button class="btn btn-outline btn-sm" @click="resetFilters">Xóa lọc</button>
+    </div>
+
+    <div class="toolbar no-print">
+      <input
+        v-model="keyword"
+        class="search-input"
+        type="search"
+        placeholder="Tìm nhanh trong khoảng đang xem: tên giáo viên, trường, lớp, môn…"
+      />
       <span class="spacer" />
       <span class="count-info">{{ teacherCount }} giáo viên</span>
+      <button class="btn btn-outline btn-sm" @click="exportCsv">Xuất CSV</button>
+      <button class="btn btn-outline btn-sm" @click="doPrint">In</button>
     </div>
 
     <!-- Thanh điều hướng -->
@@ -286,11 +424,15 @@ onMounted(() => {
             v-for="c in monthCells"
             :key="c.iso"
             class="daycell"
-            :class="{ out: !c.inMonth, today: c.isToday, sel: c.iso === selectedIso }"
+            :class="{ out: !c.inMonth, today: c.isToday, sel: c.iso === selectedIso, off: !!c.holiday }"
+            :title="c.holiday || ''"
             @click="selectedIso = c.iso"
           >
             <span class="daycell__num">{{ c.day }}</span>
-            <span v-if="c.schoolCount" class="daycell__pill">{{ c.schoolCount }} trường</span>
+            <!-- Ngày nghỉ phải NÓI RA: ô trống không phân biệt được "trường đóng cửa"
+                 với "quên xếp lịch", mà hai thứ đó cần hai hành động khác hẳn nhau. -->
+            <span v-if="c.holiday" class="daycell__off">{{ c.holiday }}</span>
+            <span v-else-if="c.schoolCount" class="daycell__pill">{{ c.schoolCount }} trường</span>
           </button>
         </div>
       </div>
@@ -343,9 +485,10 @@ onMounted(() => {
         <thead>
           <tr>
             <th class="wcorner">Buổi · Tiết</th>
-            <th v-for="d in weekDays" :key="d.iso" :class="{ today: d.isToday }">
+            <th v-for="d in weekDays" :key="d.iso" :class="{ today: d.isToday, off: !!d.holiday }">
               <div class="wday">{{ d.label }}</div>
               <div class="wdnum">{{ d.dnum }}</div>
+              <div v-if="d.holiday" class="woff" :title="d.holiday">{{ d.holiday }}</div>
             </th>
           </tr>
         </thead>
@@ -727,6 +870,70 @@ onMounted(() => {
   }
   .evhead {
     display: none;
+  }
+}
+
+/* ── Ô tìm + dropdown có tìm kiếm ── */
+.search-input {
+  flex: 1;
+  min-width: 260px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: var(--c-surface);
+  color: var(--c-text);
+}
+.ss {
+  min-width: 190px;
+}
+.ss--sm {
+  min-width: 150px;
+}
+
+/* ── Ngày nghỉ ── */
+.daycell.off {
+  background: var(--c-bg);
+}
+.daycell__off {
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--c-text-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+th.off .wday,
+th.off .wdnum {
+  color: var(--c-text-muted);
+}
+.woff {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── In thời khóa biểu ──
+   Trường thật vẫn cần bản giấy dán phòng hội đồng. Không thêm thư viện nào: ẩn phần
+   điều khiển, bỏ nền tối, cho bảng bám khổ giấy. Chỉ dùng @page landscape cho lưới tuần
+   vì nó rộng theo chiều ngang. */
+@media print {
+  .no-print,
+  .viewtoggle {
+    display: none !important;
+  }
+  .card {
+    box-shadow: none;
+    border: 1px solid #999;
+  }
+  .wchip,
+  .daycell {
+    break-inside: avoid;
   }
 }
 </style>

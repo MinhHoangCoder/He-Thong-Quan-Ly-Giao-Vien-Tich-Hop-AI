@@ -24,7 +24,10 @@ public class ScheduleController {
         this.service = service;
     }
 
-    /** Buổi dạy đã duyệt trong [from, to], lọc theo GV / trường / lớp (tùy chọn). */
+    /**
+     * Buổi dạy trong [from, to], lọc theo GV / trường / lớp / trạng thái (đều tùy chọn).
+     * Không truyền status thì chỉ trả buổi ĐÃ DUYỆT như trước.
+     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('SCHEDULE_VIEW')")
     public List<ScheduleEventResponse> list(
@@ -32,8 +35,19 @@ public class ScheduleController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) Integer schoolId,
-            @RequestParam(required = false) Integer classId) {
-        return service.list(from, to, teacherId, schoolId, classId);
+            @RequestParam(required = false) Integer classId,
+            @RequestParam(required = false) String status) {
+        return service.list(from, to, teacherId, schoolId, classId, status);
+    }
+
+    /** Ngày nghỉ chạm vào khoảng đang xem — để lịch tô màu và ghi tên kỳ nghỉ. */
+    @GetMapping("/holidays")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('SCHEDULE_VIEW') or hasRole('TEACHER')")
+    public List<ScheduleService.HolidayMark> holidays(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) Integer schoolId) {
+        return service.holidaysIn(from, to, schoolId);
     }
 
     /**
