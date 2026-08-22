@@ -36,6 +36,14 @@ export const payrollApi = {
    * Cảnh báo trước khi chốt: kỳ này còn dòng Vắng nào rơi vào ngày nghỉ.
    * Chốt lương khóa luôn chấm công của kỳ — chốt khi còn Vắng giả là khóa lỗi vào trong.
    */
+  /**
+   * Kiểm tra sức khỏe dữ liệu của kỳ trước khi chốt — gộp bảy phép đếm.
+   * Trả { year, month, sanSangChot, vanDe: [{ ma, mucDo, tieuDe, moTa, soLuong, duongDan }] }.
+   */
+  health(year, month) {
+    return http.get('/payroll/health', { params: { year, month } })
+  },
+
   holidayIssues(year, month) {
     return http.get('/payroll/holiday-issues', { params: { year, month } })
   },

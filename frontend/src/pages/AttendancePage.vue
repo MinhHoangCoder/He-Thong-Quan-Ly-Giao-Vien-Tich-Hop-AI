@@ -20,8 +20,39 @@ import DateField from '@/components/ui/DateField.vue'
 import { tietLabel } from '@/utils/period'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 import { useToast } from '@/composables/useToast'
+import { taiFile, loiTaiFile } from '@/utils/download'
 
 const { showToast } = useToast()
+
+/**
+ * Xuất theo ĐÚNG bộ lọc đang dùng, lấy trọn khoảng ngày chứ không lấy trang đang xem.
+ *
+ * Màn này phân trang ở server 10 dòng một trang; dựng file từ đó ra được đúng 10 dòng — một
+ * cái file trông có vẻ đúng mà thiếu gần hết dữ liệu. Server vì thế tự lấy trọn khoảng, và
+ * chặn lại nếu khoảng quá rộng thay vì im lặng cắt bớt.
+ */
+const dangXuat = ref(false)
+
+async function xuatExcel() {
+  dangXuat.value = true
+  try {
+    await taiFile(
+      '/attendance/export',
+      {
+        teacherId: filter.teacherId || undefined,
+        from: filter.from,
+        to: filter.to,
+        status: filter.status || undefined,
+        keyword: filter.keyword.trim() || undefined,
+      },
+      `cham-cong_${filter.from}_${filter.to}.xlsx`,
+    )
+  } catch (e) {
+    showToast(await loiTaiFile(e, 'Không xuất được bảng chấm công'), 'error')
+  } finally {
+    dangXuat.value = false
+  }
+}
 
 const STATUSES = [
   { code: 'PRESENT', label: 'Có mặt', cls: 'badge-green' },
@@ -447,6 +478,9 @@ async function loadSummary() {
           @keyup.enter="applyFilter"
         />
         <button class="btn btn-outline btn-sm" @click="applyFilter">Lọc</button>
+        <button class="btn btn-outline btn-sm" :disabled="dangXuat" @click="xuatExcel">
+          {{ dangXuat ? 'Đang xuất…' : 'Xuất Excel' }}
+        </button>
         <span v-if="info" class="info-text">{{ info }}</span>
       </div>
 

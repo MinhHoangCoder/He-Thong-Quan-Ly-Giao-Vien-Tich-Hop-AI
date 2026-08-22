@@ -1,18 +1,22 @@
 package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.ExcelWriter;
 import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
 import com.kdc.tsdms.dto.AttendanceSummaryResponse;
 import com.kdc.tsdms.dto.AttendanceTodayResponse;
+import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.service.AttendanceDailyService;
 import com.kdc.tsdms.service.AttendanceService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +31,13 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/attendance")
 public class AttendanceController {
+
+    /**
+     * Trần số dòng cho một lần xuất Excel. Một tháng của trung tâm là khoảng 5.000 dòng; gõ
+     * nhầm thành hai năm là 55.000 — đủ để dựng file mất vài chục giây và ngốn hàng trăm
+     * megabyte bộ nhớ server.
+     */
+    private static final int SO_DONG_XUAT_TOI_DA = 20000;
 
     private final AttendanceService service;
     private final AttendanceDailyService dailyService;
@@ -56,6 +67,92 @@ public class AttendanceController {
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
         return service.list(teacherId, f, t, status, keyword, Paging.of(page, size));
+    }
+
+    /**
+     * Xuất bảng chấm công ra .xlsx theo ĐÚNG bộ lọc đang dùng.
+     *
+     * <p>Lấy trọn khoảng ngày chứ không lấy trang đang xem: màn hình phân trang 10 dòng, xuất
+     * từ đó ra thì được một cái file trông có vẻ đúng nhưng thiếu gần hết dữ liệu.
+     *
+     * <p>Trần {@value #SO_DONG_XUAT_TOI_DA} dòng: một tháng của trung tâm là ~5.000 dòng, còn
+     * ai đó gõ khoảng hai năm thì thành 55.000 — đủ để dựng file mất vài chục giây và ngốn
+     * hàng trăm megabyte bộ nhớ server. Vượt trần thì báo rõ và bảo thu hẹp, không im lặng cắt
+     * bớt: một file thiếu dữ liệu mà không nói gì còn tệ hơn không có file.
+     */
+    @GetMapping("/export")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_VIEW')")
+    public ResponseEntity<ByteArrayResource> export(
+            @RequestParam(required = false) Integer teacherId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        LocalDate today = BusinessTime.today();
+        LocalDate f = from != null ? from : today.withDayOfMonth(1);
+        LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
+
+        Page<AttendanceResponse> trang =
+                service.list(teacherId, f, t, status, keyword, PageRequest.of(0, SO_DONG_XUAT_TOI_DA));
+        if (trang.getTotalElements() > SO_DONG_XUAT_TOI_DA) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Khoảng đang chọn có " + trang.getTotalElements() + " dòng, vượt mức " + SO_DONG_XUAT_TOI_DA
+                            + " dòng cho một lần xuất. Hãy thu hẹp khoảng ngày hoặc lọc thêm.");
+        }
+
+        return ExcelWriter.xuat(
+                "cham-cong_" + f + "_" + t,
+                List.of(
+                        "Ngày",
+                        "Giáo viên",
+                        "Trường",
+                        "Lớp",
+                        "Môn",
+                        "Tiết",
+                        "Vào",
+                        "Ra",
+                        "Số giờ",
+                        "Trạng thái",
+                        "Hình thức",
+                        "Ghi chú"),
+                trang.getContent(),
+                a -> new Object[] {
+                    a.workDate,
+                    a.teacherName,
+                    a.schoolName,
+                    a.className,
+                    a.subjectName,
+                    a.periodNumber,
+                    a.checkIn,
+                    a.checkOut,
+                    a.hours,
+                    nhanTrangThai(a.status),
+                    nhanHinhThuc(a.checkInMethod),
+                    a.note
+                });
+    }
+
+    /** Nhãn tiếng Việt cho file xuất ra — người nhận file không đọc mã trạng thái. */
+    private static String nhanTrangThai(String ma) {
+        return switch (ma == null ? "" : ma) {
+            case "PRESENT" -> "Có mặt";
+            case "LATE" -> "Đi muộn";
+            case "ABSENT" -> "Vắng";
+            case "LEAVE" -> "Nghỉ phép";
+            default -> ma;
+        };
+    }
+
+    private static String nhanHinhThuc(String ma) {
+        return switch (ma == null ? "" : ma) {
+            case "SELF" -> "Giáo viên tự điểm danh";
+            case "SCHOOL" -> "Trường xác nhận";
+            case "EMPLOYEE" -> "Nhân viên ghi";
+            case "DEVICE" -> "Máy chấm công";
+            case "SYSTEM" -> "Hệ thống tự ghi";
+            default -> ma;
+        };
     }
 
     /** Ba thẻ tổng quan cho ĐÚNG bộ lọc đang dùng — tính trên cả kỳ, không riêng trang đang xem. */
