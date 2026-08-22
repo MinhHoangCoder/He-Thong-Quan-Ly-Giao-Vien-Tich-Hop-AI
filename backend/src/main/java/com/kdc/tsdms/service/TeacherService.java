@@ -18,6 +18,7 @@ import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -25,6 +26,7 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -594,22 +596,79 @@ public class TeacherService {
         return toContractDTO(saveContract(teacherId, req));
     }
 
+    /**
+     * Lưu hợp đồng theo kiểu ĐÓNG BẢN CŨ — MỞ BẢN MỚI, không ghi đè.
+     *
+     * <p>Bản cũ tìm hợp đồng hiện tại rồi set thẳng các trường lên chính dòng đó. Sửa mức
+     * lương xong là con số cũ biến mất: không thùng rác, không nhật ký, không cách nào biết
+     * trước đó ghi bao nhiêu. Với một tờ hợp đồng lao động thì đây còn tệ hơn xóa cứng — xóa
+     * thì ít ra còn biết là đã mất, ghi đè thì dòng vẫn nằm đó trông như thật, chỉ là nội dung
+     * đã khác. Nó cũng mâu thuẫn thẳng với luật đã chốt ở Đợt 2 (hợp đồng là hồ sơ pháp lý,
+     * chỉ được xóa mềm): cấm xóa cứng mà vẫn cho ghi đè thì mới bịt được một nửa.
+     *
+     * <p>Bản cũ được đóng bằng {@code Status = TERMINATED} (nói VÌ SAO nó không còn hiệu lực)
+     * kèm {@code IsDeleted = 1}. Cờ xóa mềm ở đây KHÔNG mang nghĩa "đã hủy" mà là "đã bị thay
+     * thế" — đặt nó vì mọi đường đọc hợp đồng trong dự án đều dựa vào bất biến "mỗi giáo viên
+     * tối đa MỘT hợp đồng chưa xóa" ({@code findByTeacherIdAndDeletedFalse} trả {@code Optional},
+     * hai dòng sống là nổ). Giữ bất biến đó thì không phải sửa lại toàn bộ đường đọc.
+     */
     private Contract saveContract(Integer teacherId, TeacherResponse.ContractRequest req) {
-        Contract contract = contractRepo
-                .findByTeacherIdAndDeletedFalse(teacherId)
-                .orElseGet(() -> {
-                    Contract c = new Contract();
-                    c.setTeacherId(teacherId);
-                    return c;
-                });
-        contract.setContractNo(req.getContractNo());
-        contract.setStartDate(req.getStartDate());
-        contract.setEndDate(req.getEndDate());
-        contract.setBaseSalary(req.getBaseSalary());
-        contract.setAllowance(req.getAllowance());
-        contract.setFileUrl(req.getFileUrl());
-        contract.setStatus("ACTIVE");
-        return contractRepo.save(contract);
+        Contract hienTai =
+                contractRepo.findByTeacherIdAndDeletedFalse(teacherId).orElse(null);
+
+        if (hienTai != null) {
+            // Bấm Lưu mà không sửa gì thì không đẻ ra phiên bản mới — lịch sử đầy bản trùng
+            // nhau cũng vô dụng ngang không có lịch sử.
+            if (giongHetBanHienTai(hienTai, req)) {
+                return hienTai;
+            }
+            Integer nguoiSua = SecurityUtils.currentUserId();
+            hienTai.setStatus("TERMINATED");
+            hienTai.setDeleted(true);
+            hienTai.setDeletedAt(Instant.now());
+            hienTai.setDeletedBy(nguoiSua);
+            hienTai.setUpdatedAt(Instant.now());
+            hienTai.setUpdatedBy(nguoiSua);
+            // PHẢI flush ngay: Hibernate xếp INSERT trước UPDATE trong hàng đợi, nên nếu để nó
+            // tự quyết thì dòng mới được chèn TRƯỚC khi dòng cũ kịp mang cờ IsDeleted = 1 —
+            // và chỉ mục UX_Contract_No_Active (V37) sẽ thấy hai hợp đồng sống trùng số.
+            contractRepo.saveAndFlush(hienTai);
+        }
+
+        Contract moi = new Contract();
+        moi.setTeacherId(teacherId);
+        moi.setContractNo(req.getContractNo());
+        moi.setStartDate(req.getStartDate());
+        moi.setEndDate(req.getEndDate());
+        moi.setBaseSalary(req.getBaseSalary());
+        moi.setAllowance(req.getAllowance());
+        moi.setFileUrl(req.getFileUrl());
+        moi.setStatus("ACTIVE");
+        moi.setCreatedBy(SecurityUtils.currentUserId());
+        return contractRepo.save(moi);
+    }
+
+    /** Nội dung gửi lên có y hệt hợp đồng đang hiệu lực không. */
+    private static boolean giongHetBanHienTai(Contract c, TeacherResponse.ContractRequest req) {
+        return Objects.equals(c.getContractNo(), req.getContractNo())
+                && Objects.equals(c.getStartDate(), req.getStartDate())
+                && Objects.equals(c.getEndDate(), req.getEndDate())
+                && cungGiaTri(c.getBaseSalary(), req.getBaseSalary())
+                && cungGiaTri(c.getAllowance(), req.getAllowance())
+                && Objects.equals(c.getFileUrl(), req.getFileUrl());
+    }
+
+    /**
+     * So tiền bằng {@code compareTo}, KHÔNG dùng {@code equals}. {@code BigDecimal.equals} so
+     * cả phần thập phân dư: DB khai {@code DECIMAL(18,2)} nên đọc lên là {@code 5000000.00},
+     * còn form gửi lên thường là {@code 5000000} — {@code equals} bảo hai số đó khác nhau, và
+     * mỗi lần bấm Lưu sẽ đẻ thêm một phiên bản hợp đồng y hệt bản trước.
+     */
+    private static boolean cungGiaTri(BigDecimal a, BigDecimal b) {
+        if (a == null || b == null) {
+            return a == b;
+        }
+        return a.compareTo(b) == 0;
     }
 
     /** "Họ và tên đệm" + "Tên" — đúng thứ tự đọc tiếng Việt. */
@@ -651,6 +710,7 @@ public class TeacherService {
     private TeacherResponse.Response toResponse(Teacher t, boolean loadDetail) {
         List<TeacherResponse.CertificateDTO> certs = Collections.emptyList();
         TeacherResponse.ContractDTO contract = null;
+        List<TeacherResponse.ContractDTO> contractHistory = Collections.emptyList();
 
         if (loadDetail) {
             certs = ceRepo.findByTeacherIdAndDeletedFalse(t.getId()).stream()
@@ -660,6 +720,9 @@ public class TeacherService {
                     .findByTeacherIdAndDeletedFalse(t.getId())
                     .map(this::toContractDTO)
                     .orElse(null);
+            contractHistory = contractRepo.findByTeacherIdAndDeletedTrueOrderByIdDesc(t.getId()).stream()
+                    .map(this::toContractDTO)
+                    .toList();
         }
 
         AppUser user = appUserRepository.findById(t.getAppUserId()).orElse(null);
@@ -682,7 +745,8 @@ public class TeacherService {
                 .teachingExperience(t.getTeachingExperience())
                 .status(t.getStatus())
                 .certificates(certs)
-                .contract(contract);
+                .contract(contract)
+                .contractHistory(contractHistory);
 
         return builder.build();
     }
