@@ -3,6 +3,8 @@ package com.kdc.tsdms.repository;
 import com.kdc.tsdms.entity.Attendance;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -42,4 +44,87 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
 
     /** Số dòng đã chuyển sang NGHỈ PHÉP trong khoảng — hậu quả đã ghi của một kỳ nghỉ. */
     long countByStatusAndWorkDateBetween(String status, LocalDate from, LocalDate to);
+
+    /**
+     * Bảng chấm công có PHÂN TRANG cho màn quản lý.
+     *
+     * <p>Vì sao phân trang ở DB chứ không cắt trang ở trình duyệt như trước: một tháng của
+     * 101 giáo viên là hơn nghìn dòng, tải hết về rồi mới hiện 10 dòng đầu là chở cả tấn hàng
+     * để lấy một hộp.
+     *
+     * <p>Từ khóa tìm theo TÊN GIÁO VIÊN, join thẳng sang bảng Teacher. Cố ý không tìm theo tên
+     * trường/lớp: hai thứ đó phải đi vòng Attendance → Schedule → AssignmentSlot →
+     * SchoolClass, một câu join bốn tầng chỉ để phục vụ ô tìm — trong khi trường và lớp đã có
+     * dropdown lọc riêng.
+     *
+     * <p>Keyword do service escape sẵn ({@code SearchText.escapeLike}) nên câu này khai
+     * {@code ESCAPE '!'}.
+     */
+    @Query(value = """
+            SELECT a FROM Attendance a
+            WHERE a.workDate BETWEEN :from AND :to
+              AND (:teacherId IS NULL OR a.teacherId = :teacherId)
+              AND (:status IS NULL OR a.status = :status)
+              AND (:keyword IS NULL OR EXISTS (
+                    SELECT 1 FROM Teacher t
+                    WHERE t.id = a.teacherId
+                      AND LOWER(CONCAT(t.lastName, ' ', t.firstName)) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!'
+              ))
+            ORDER BY a.workDate DESC, a.id DESC
+            """, countQuery = """
+            SELECT COUNT(a) FROM Attendance a
+            WHERE a.workDate BETWEEN :from AND :to
+              AND (:teacherId IS NULL OR a.teacherId = :teacherId)
+              AND (:status IS NULL OR a.status = :status)
+              AND (:keyword IS NULL OR EXISTS (
+                    SELECT 1 FROM Teacher t
+                    WHERE t.id = a.teacherId
+                      AND LOWER(CONCAT(t.lastName, ' ', t.firstName)) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!'
+              ))
+            """)
+    Page<Attendance> search(
+            @Param("teacherId") Integer teacherId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("status") String status,
+            @Param("keyword") String keyword,
+            Pageable pageable);
+
+    /**
+     * Ba con số tổng của TOÀN BỘ kết quả lọc, không chỉ trang đang xem.
+     *
+     * <p>Cần một câu riêng vì {@link #search} nay trả về từng trang: cộng dồn ở trình duyệt
+     * chỉ ra tổng của 10 dòng đang hiện, mà thẻ "Tổng giờ dạy" phải là tổng của cả kỳ.
+     *
+     * <p>Phải viết SQL THUẦN chứ không JPQL: số giờ không có trong bảng, nó được tính từ
+     * CheckIn/CheckOut ({@code AttendanceResponse.computeHours}), mà JPQL không có hàm trừ
+     * hai mốc giờ. Công thức dưới đây khớp đúng hàm đó — chia 60.0 để ra số thập phân, và
+     * bỏ qua dòng thiếu giờ hoặc giờ ra không sau giờ vào.
+     *
+     * <p>Điều kiện WHERE chép đúng {@link #search}: hai câu nói khác nhau thì bảng và thẻ
+     * tổng sẽ mâu thuẫn ngay trên cùng một màn hình.
+     *
+     * @return một dòng {tổng dòng, số buổi có công, tổng giờ}
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT COUNT(*) AS TongDong,
+                   SUM(CASE WHEN a.Status IN ('PRESENT', 'LATE') THEN 1 ELSE 0 END) AS CoCong,
+                   COALESCE(SUM(CASE WHEN a.CheckIn IS NOT NULL AND a.CheckOut > a.CheckIn
+                                     THEN DATEDIFF(MINUTE, a.CheckIn, a.CheckOut) ELSE 0 END), 0) / 60.0 AS TongGio
+            FROM Attendance a
+            WHERE a.WorkDate BETWEEN :from AND :to
+              AND (:teacherId IS NULL OR a.TeacherId = :teacherId)
+              AND (:status IS NULL OR a.Status = :status)
+              AND (:keyword IS NULL OR EXISTS (
+                    SELECT 1 FROM Teacher t
+                    WHERE t.Id = a.TeacherId
+                      AND LOWER(CONCAT(t.LastName, ' ', t.FirstName)) LIKE LOWER(CONCAT('%', :keyword, '%')) ESCAPE '!'
+              ))
+            """)
+    Object[] summarize(
+            @Param("teacherId") Integer teacherId,
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("status") String status,
+            @Param("keyword") String keyword);
 }

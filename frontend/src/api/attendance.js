@@ -5,9 +5,35 @@ import http from './http'
  * Base: /api/v1/attendance
  */
 export const attendanceApi = {
-  /** Bảng chấm công theo khoảng ngày (mặc định tháng hiện tại) + lọc GV. */
-  list({ teacherId, from, to } = {}) {
-    return http.get('/attendance', { params: { teacherId: teacherId || undefined, from, to } })
+  /**
+   * Bảng chấm công theo khoảng ngày, CÓ PHÂN TRANG (trả về Page: content/totalPages/…).
+   * keyword tìm theo tên giáo viên; status lọc PRESENT/LATE/LEAVE/ABSENT.
+   */
+  list({ teacherId, from, to, status, keyword, page = 0, size = 10 } = {}) {
+    return http.get('/attendance', {
+      params: {
+        teacherId: teacherId || undefined,
+        from,
+        to,
+        status: status || undefined,
+        keyword: keyword || undefined,
+        page,
+        size,
+      },
+    })
+  },
+
+  /** Ba thẻ tổng quan tính trên CẢ kỳ — bảng đã phân trang nên không cộng dồn ở client được. */
+  summary({ teacherId, from, to, status, keyword } = {}) {
+    return http.get('/attendance/summary', {
+      params: {
+        teacherId: teacherId || undefined,
+        from,
+        to,
+        status: status || undefined,
+        keyword: keyword || undefined,
+      },
+    })
   },
 
   /**

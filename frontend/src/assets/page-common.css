@@ -317,3 +317,17 @@
     page-break-inside: avoid;
   }
 }
+
+/* ── Ô tìm kiếm + dropdown có tìm kiếm trên thanh công cụ ──
+   Ba trang Lịch dạy / Chấm công / Bảng lương dùng chung, nên khai một chỗ thay vì chép
+   ba lần vào style scoped. */
+.toolbar .search-input {
+  flex: 1;
+  min-width: 240px;
+}
+.toolbar .ss {
+  min-width: 190px;
+}
+.toolbar .ss--sm {
+  min-width: 150px;
+}

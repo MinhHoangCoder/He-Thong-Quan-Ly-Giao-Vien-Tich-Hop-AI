@@ -873,24 +873,6 @@ onMounted(() => {
   }
 }
 
-/* ── Ô tìm + dropdown có tìm kiếm ── */
-.search-input {
-  flex: 1;
-  min-width: 260px;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  font-size: 0.88rem;
-  background: var(--c-surface);
-  color: var(--c-text);
-}
-.ss {
-  min-width: 190px;
-}
-.ss--sm {
-  min-width: 150px;
-}
-
 /* ── Ngày nghỉ ── */
 .daycell.off {
   background: var(--c-bg);

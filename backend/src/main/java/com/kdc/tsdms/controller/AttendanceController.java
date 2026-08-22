@@ -4,12 +4,15 @@ import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
+import com.kdc.tsdms.dto.AttendanceSummaryResponse;
 import com.kdc.tsdms.dto.AttendanceTodayResponse;
 import com.kdc.tsdms.service.AttendanceDailyService;
 import com.kdc.tsdms.service.AttendanceService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -33,17 +36,41 @@ public class AttendanceController {
         this.dailyService = dailyService;
     }
 
-    /** Bảng chấm công theo khoảng ngày (mặc định tháng hiện tại), lọc theo GV nếu có. */
+    /**
+     * Bảng chấm công theo khoảng ngày (mặc định tháng hiện tại), CÓ PHÂN TRANG.
+     *
+     * <p>{@code keyword} tìm theo tên giáo viên; {@code status} lọc PRESENT/LATE/LEAVE/ABSENT.
+     * Sắp xếp cố định trong câu query (ngày giảm dần) nên không nhận tham số sort từ client.
+     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_VIEW')")
-    public List<AttendanceResponse> list(
+    public Page<AttendanceResponse> list(
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
         LocalDate today = BusinessTime.today();
         LocalDate f = from != null ? from : today.withDayOfMonth(1);
         LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
-        return service.list(teacherId, f, t);
+        return service.list(teacherId, f, t, status, keyword, PageRequest.of(Math.max(page, 0), Math.max(size, 1)));
+    }
+
+    /** Ba thẻ tổng quan cho ĐÚNG bộ lọc đang dùng — tính trên cả kỳ, không riêng trang đang xem. */
+    @GetMapping("/summary")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ATTENDANCE_VIEW')")
+    public AttendanceSummaryResponse summary(
+            @RequestParam(required = false) Integer teacherId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String keyword) {
+        LocalDate today = BusinessTime.today();
+        LocalDate f = from != null ? from : today.withDayOfMonth(1);
+        LocalDate t = to != null ? to : today.withDayOfMonth(today.lengthOfMonth());
+        return service.summary(teacherId, f, t, status, keyword);
     }
 
     /**
