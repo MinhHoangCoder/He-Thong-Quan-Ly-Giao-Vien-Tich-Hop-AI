@@ -10,6 +10,7 @@ import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.ClassEnrollmentRepository;
+import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.security.SecurityUtils;
@@ -53,16 +54,19 @@ public class SchoolClassService {
     private final SchoolRepository schoolRepo;
     private final ClassEnrollmentRepository enrollmentRepo;
     private final AssignmentRepository assignmentRepo;
+    private final PeriodRepository periodRepo;
 
     public SchoolClassService(
             SchoolClassRepository classRepo,
             SchoolRepository schoolRepo,
             ClassEnrollmentRepository enrollmentRepo,
-            AssignmentRepository assignmentRepo) {
+            AssignmentRepository assignmentRepo,
+            PeriodRepository periodRepo) {
         this.classRepo = classRepo;
         this.schoolRepo = schoolRepo;
         this.enrollmentRepo = enrollmentRepo;
         this.assignmentRepo = assignmentRepo;
+        this.periodRepo = periodRepo;
     }
 
     @Transactional(readOnly = true)
@@ -231,29 +235,53 @@ public class SchoolClassService {
 
     /* ── PRIVATE ── */
 
-    private record ValidatedClassFields(String name, String gradeLevel, String year, String status) {}
+    /** Bộ giá trị đã chuẩn hóa của một lớp — kết quả của {@link #validateBusiness}. */
+    public record ValidatedClassFields(String name, String gradeLevel, String year, String status) {}
 
     /**
-     * Không trùng lớp trong cùng trường + cùng năm học (khớp unique index
-     * UX_Class_School_Name_Year). So khớp không phân biệt hoa thường.
+     * Kiểm + chuẩn hóa MỘT dòng lớp học, ném {@link ApiException} kèm lý do nếu sai.
+     *
+     * <p>Mở ra cho {@code BulkClassService} dùng lại: màn "Thêm lớp hàng loạt" cần chấm từng
+     * dòng rồi kể lỗi ra màn hình, chứ không dừng ở dòng sai đầu tiên. Viết bộ kiểm thứ hai
+     * cho luồng hàng loạt thì hai bộ sẽ trôi ra khác nhau, và người dùng gặp cảnh một tên lớp
+     * bị từ chối khi thêm lẻ nhưng lọt qua khi nhập hàng loạt.
+     */
+    public ValidatedClassFields kiemTraMotDong(SchoolClassRequest req) {
+        return validateBusiness(req, null);
+    }
+
+    /**
+     * Không trùng lớp trong cùng trường + CÙNG NĂM HỌC — khớp đúng chỉ mục
+     * {@code UX_Class_School_Name_Year}. So khớp không phân biệt hoa thường.
+     *
+     * <p>NĂM HỌC LÀ MỘT PHẦN CỦA KHÓA, KHÔNG ĐƯỢC BỎ. Bản cũ nhận tham số {@code year} nhưng
+     * không dùng tới, chỉ hỏi "trường này đã có lớp tên 6A1 chưa". Hệ quả: sang năm học mới,
+     * KHÔNG tạo được lớp nào cả — mọi tên lớp đều đã tồn tại ở năm cũ, và thông báo lỗi
+     * ("Lớp 6A1 đã tồn tại ở trường này") không hề gợi ý rằng nó đang nói về năm học khác.
+     * Lỗi chỉ lộ ra đúng một lần mỗi năm, vào lúc bận nhất.
+     *
+     * <p>Chỉ mục dưới database vẫn cho phép trùng tên khác năm, nên tầng nghiệp vụ đang CHẶT
+     * HƠN cả ràng buộc thật của dữ liệu — kiểu lệch khó thấy nhất vì không có gì báo lỗi.
      */
     private void assertNoDuplicate(Integer schoolId, String name, String year, Integer excludeId) {
-        boolean exists = excludeId == null
-                ? classRepo.existsBySchoolIdAndNameAndDeletedFalse(schoolId, name)
-                : classRepo.existsBySchoolIdAndNameAndDeletedFalseAndIdNot(schoolId, name, excludeId);
-        // Thêm kiểm tra case-insensitive qua danh sách cùng trường (phòng client gửi 7a1 vs 7A1)
-        if (!exists) {
-            exists = classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "ACTIVE").stream()
-                            .anyMatch(c -> c.getName().equalsIgnoreCase(name)
-                                    && (excludeId == null || !excludeId.equals(c.getId())))
-                    || classRepo.findBySchoolIdAndDeletedFalseAndStatusOrderByName(schoolId, "INACTIVE").stream()
-                            .anyMatch(c -> c.getName().equalsIgnoreCase(name)
-                                    && (excludeId == null || !excludeId.equals(c.getId())));
-        }
+        boolean exists = classRepo.findBySchoolIdAndDeletedFalseOrderByName(schoolId).stream()
+                .anyMatch(c -> c.getName().equalsIgnoreCase(name)
+                        && cungNamHoc(c.getSchoolYear(), year)
+                        && (excludeId == null || !excludeId.equals(c.getId())));
         if (exists) {
             throw new ApiException(
-                    HttpStatus.CONFLICT, "Lớp '" + name + "' đã tồn tại ở trường này — không được trùng tên lớp");
+                    HttpStatus.CONFLICT,
+                    "Lớp '" + name + "' đã tồn tại ở trường này trong năm học " + year
+                            + " — không được trùng tên lớp trong cùng một năm học");
         }
+    }
+
+    /** Hai năm học coi là một khi bằng nhau (bỏ qua hoa thường); cùng để trống cũng là một. */
+    private static boolean cungNamHoc(String a, String b) {
+        if (a == null || b == null) {
+            return a == null && b == null;
+        }
+        return a.trim().equalsIgnoreCase(b.trim());
     }
 
     /**
@@ -287,6 +315,7 @@ public class SchoolClassService {
                     HttpStatus.BAD_REQUEST,
                     "Tên lớp bắt đầu bằng " + gradeNumFromName + " nhưng khối đã chọn là " + grade);
         }
+        assertKhoiHopCapTruong(req.schoolId(), Integer.parseInt(grade));
 
         // Nếu client không gửi year (UI đã bỏ trường Năm học), tự động chọn năm học hiện tại
         if (year == null || year.isBlank()) {
@@ -318,6 +347,37 @@ public class SchoolClassService {
         }
 
         return new ValidatedClassFields(name, grade, year, status);
+    }
+
+    /**
+     * Khối phải hợp với CẤP HỌC của trường: tiểu học chỉ khối 1-5, THCS chỉ khối 6-9.
+     *
+     * <p>Trước đây luật này chỉ tồn tại ở frontend dưới dạng lọc danh sách khối theo tên
+     * trường — nghĩa là gọi thẳng API là mở được lớp 7 ở một trường tiểu học. Lớp sai cấp
+     * không chỉ trông kỳ: đơn giá tiết dạy tra theo KHỐI, nên một lớp 7 nằm ở trường tiểu học
+     * sẽ được trả theo barem THCS.
+     *
+     * <p>Cấp học suy từ SỐ TIẾT trong khung tiết (tiểu học 10, THCS 9) — dữ liệu vận hành thật
+     * của từng trường, chắc hơn đoán theo tên. Trường chưa có khung tiết thì bỏ qua luật này
+     * thay vì chặn: không suy được cấp không có nghĩa là dữ liệu sai.
+     */
+    private void assertKhoiHopCapTruong(Integer schoolId, int khoi) {
+        if (schoolId == null) {
+            return;
+        }
+        long soTiet = periodRepo.countBySchoolIdAndDeletedFalse(schoolId);
+        if (soTiet == 0) {
+            return;
+        }
+        boolean tieuHoc = soTiet >= 10;
+        if (tieuHoc && khoi > 5) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Trường tiểu học chỉ mở được khối 1-5, không mở được khối " + khoi);
+        }
+        if (!tieuHoc && khoi < 6) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Trường THCS chỉ mở được khối 6-9, không mở được khối " + khoi);
+        }
     }
 
     /**

@@ -67,6 +67,14 @@
             <artifactId>mssql-jdbc</artifactId>
             <scope>runtime</scope>
         </dependency>
+        <!-- Đọc file .xlsx ở màn "Thêm lớp hàng loạt". Dùng thư viện chuẩn của Java thay vì
+             tự bóc ZIP + XML: định dạng xlsx có shared string table, kiểu ô, ngày tháng dạng
+             số thực... tự viết là viết lại POI ở mức tệ hơn. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

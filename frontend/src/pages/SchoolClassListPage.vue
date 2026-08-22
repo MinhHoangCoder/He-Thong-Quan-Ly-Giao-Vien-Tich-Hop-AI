@@ -11,6 +11,7 @@
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { classApi } from '@/api/classes'
+import BulkClassModal from '@/components/BulkClassModal.vue'
 
 /* ── Cấp trường: chỉ TH + THCS ── */
 const SCHOOL_LEVELS = [
@@ -25,6 +26,16 @@ const loading = ref(false)
 const items = ref([])
 const total = ref(0)
 const keyword = ref('')
+/* Hộp thoại "Thêm hàng loạt" — tách ra component riêng vì trang này đã gần 2.000 dòng. */
+const bulkOpen = ref(false)
+
+async function onBulkCreated(ketQua) {
+  bulkOpen.value = false
+  await load()
+  await loadExistingGrades()
+  window.alert(`Đã tạo ${ketQua.daTao} lớp${ketQua.boQua ? `, bỏ qua ${ketQua.boQua} dòng` : ''}.`)
+}
+
 const filterSchoolId = ref('')
 const filterStatus = ref('')
 const filterGradeLevel = ref('')
@@ -771,6 +782,14 @@ function formatDeletedAt(iso) {
         >
           Thùng rác
         </button>
+        <button
+          v-if="viewMode === 'list'"
+          type="button"
+          class="btn btn--ghost"
+          @click="bulkOpen = true"
+        >
+          Thêm hàng loạt
+        </button>
         <button v-if="viewMode === 'list'" type="button" class="btn" @click="openCreate">
           + Thêm lớp học
         </button>
@@ -1242,6 +1261,13 @@ function formatDeletedAt(iso) {
         </div>
       </div>
     </div>
+    <BulkClassModal
+      v-if="bulkOpen"
+      :schools="schools"
+      :default-school-id="filterSchoolId"
+      @close="bulkOpen = false"
+      @created="onBulkCreated"
+    />
   </div>
 </template>
 
