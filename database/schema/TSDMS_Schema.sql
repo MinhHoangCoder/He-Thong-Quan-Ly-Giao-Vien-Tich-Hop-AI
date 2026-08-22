@@ -364,8 +364,9 @@ CREATE TABLE Contract (
     ContractNo   VARCHAR(50)   NOT NULL UNIQUE,      -- số hợp đồng (duy nhất)
     StartDate    DATE          NOT NULL,             -- ngày bắt đầu
     EndDate      DATE          NULL,                 -- ngày kết thúc (NULL = vô thời hạn)
-    BaseSalary   DECIMAL(18,2) NULL,                 -- lương cơ bản theo HĐ
+    BaseSalary   DECIMAL(18,2) NULL,                 -- lương cơ bản theo HĐ (chỉ áp cho GV cơ hữu)
     Allowance    DECIMAL(18,2) NULL,                 -- phụ cấp theo HĐ
+    RatePerPeriod DECIMAL(18,2) NULL,                -- V37: đơn giá/tiết thương lượng riêng (NULL = theo barem PayRate)
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / EXPIRED(hết hạn) / TERMINATED(chấm dứt)
                  CONSTRAINT CK_Contract_Status CHECK (Status IN ('ACTIVE','EXPIRED','TERMINATED')),
     FileUrl      VARCHAR(500)  NULL,
@@ -1109,4 +1110,28 @@ INSERT INTO School (BranchId, Name, AppUserId, ContactPerson)
 SELECT b.Id, N'Trường THCS Demo', u.Id, N'Thầy Hiệu trưởng'
 FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'school' AND b.Name = N'Chi nhánh trung tâm';
+GO
+
+/* ========== Bảng 39: PayRate — ĐƠN GIÁ TIẾT DẠY THEO KHỐI (Flyway V37) ==========
+   Ý nghĩa : Barem chung, thay cho hai hằng số từng nằm trong PayrollService.
+   LƯU Ý   : Có KHOẢNG HIỆU LỰC vì bảng lương tính lại được bất cứ lúc nào —
+             tra theo NGÀY DẠY chứ không theo hôm nay, nếu không thì tính lại
+             tháng 7 sau khi tăng giá từ 1/9 sẽ ra số khác với số đã trả.
+             Đổi giá = đóng dòng cũ (EffectiveTo) + thêm dòng mới, KHÔNG sửa đè. */
+CREATE TABLE PayRate (
+    Id             INT IDENTITY PRIMARY KEY,
+    GradeFrom      TINYINT       NOT NULL,            -- khối nhỏ nhất áp mức này
+    GradeTo        TINYINT       NOT NULL,            -- khối lớn nhất áp mức này
+    Amount         DECIMAL(18,2) NOT NULL,            -- tiền MỘT tiết
+    EffectiveFrom  DATE          NOT NULL,
+    EffectiveTo    DATE          NULL,                -- NULL = còn hiệu lực
+    Note           NVARCHAR(255) NULL,
+    CreatedAt      DATETIME2(3)  NOT NULL DEFAULT SYSUTCDATETIME(),
+    CreatedBy      INT           NULL,
+    UpdatedAt      DATETIME2(3)  NULL,
+    UpdatedBy      INT           NULL,
+    CONSTRAINT CK_PayRate_Grade CHECK (GradeFrom BETWEEN 1 AND 12 AND GradeTo BETWEEN GradeFrom AND 12),
+    CONSTRAINT CK_PayRate_Amount CHECK (Amount > 0),
+    CONSTRAINT CK_PayRate_Range CHECK (EffectiveTo IS NULL OR EffectiveTo >= EffectiveFrom)
+);
 GO

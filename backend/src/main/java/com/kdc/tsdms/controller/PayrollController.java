@@ -28,6 +28,7 @@ public class PayrollController {
     private static final String CAN_VIEW = "hasRole('ADMIN') or hasAuthority('PAYROLL_VIEW')";
     private static final String CAN_MANAGE = "hasRole('ADMIN') or hasAuthority('PAYROLL_MANAGE')";
     private static final String CAN_REOPEN = "hasRole('ADMIN') or hasAuthority('PAYROLL_REOPEN')";
+    private static final String CAN_PAY = "hasRole('ADMIN') or hasAuthority('PAYROLL_PAY')";
 
     private final PayrollService service;
 
@@ -76,6 +77,26 @@ public class PayrollController {
     @PreAuthorize(CAN_MANAGE)
     public PayrollResponse finalizePayroll(@PathVariable Integer id) {
         return service.finalizePayroll(id);
+    }
+
+    /**
+     * Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ (V37).
+     *
+     * <p>Quyền RIÊNG {@code PAYROLL_PAY}, không gộp vào PAYROLL_MANAGE: "tính lại lương" và
+     * "xác nhận tiền đã ra khỏi quỹ" là hai trách nhiệm khác nhau. Cùng lý lẽ với
+     * PAYROLL_REOPEN.
+     */
+    @PostMapping("/{id}/pay")
+    @PreAuthorize(CAN_PAY)
+    public PayrollResponse pay(@PathVariable Integer id) {
+        return service.pay(id);
+    }
+
+    /** Đánh dấu ĐÃ TRẢ cho mọi phiếu đã chốt của một kỳ — kế toán chi lương theo đợt. */
+    @PostMapping("/pay-period")
+    @PreAuthorize(CAN_PAY)
+    public Map<String, Integer> payPeriod(@RequestParam Short year, @RequestParam Short month) {
+        return Map.of("paid", service.payPeriod(year, month));
     }
 
     /**

@@ -43,6 +43,14 @@ public class Contract extends SoftDeletableEntity {
     @Column(name = "Allowance")
     private BigDecimal allowance;
 
+    /**
+     * Đơn giá MỘT TIẾT thương lượng riêng với giáo viên này (V37).
+     *
+     * <p>{@code null} = không thương lượng riêng, tính theo barem chung ở bảng {@code PayRate}.
+     */
+    @Column(name = "RatePerPeriod")
+    private BigDecimal ratePerPeriod;
+
     /** ACTIVE | EXPIRED | TERMINATED */
     @Column(name = "Status", nullable = false)
     private String status = "ACTIVE";

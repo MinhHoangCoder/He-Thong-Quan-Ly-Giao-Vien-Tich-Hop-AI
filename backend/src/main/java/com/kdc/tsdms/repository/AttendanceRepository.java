@@ -127,4 +127,48 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
             @Param("to") LocalDate to,
             @Param("status") String status,
             @Param("keyword") String keyword);
+
+    /**
+     * Nguyên liệu tính lương một kỳ: mỗi dòng chấm công CÓ CÔNG kèm sẵn khối lớp của buổi đó.
+     *
+     * <p>Vì sao gộp thành MỘT câu: bản cũ duyệt từng dòng chấm công rồi hỏi DB bốn lần
+     * (Schedule → Assignment → AssignmentSlot → SchoolClass) để tra khối. Có cache nhưng cache
+     * đánh theo scheduleId, mà mỗi dòng chấm công có scheduleId RIÊNG — nên nó không bao giờ
+     * trúng. Một tháng ~750 dòng thành ~3.000 câu SQL cho một lần bấm "Tính lương".
+     *
+     * <p>Khối lấy theo lớp của Ô THỜI KHÓA BIỂU sinh ra buổi ({@code SourceSlotId}), lùi về
+     * lớp cấp phiếu cho dữ liệu cũ chưa có slot — giống hệt luật ở {@code
+     * ScheduleService.classIdOf}. Từ V16 một phiếu trải nhiều lớp, mà lớp 5 và lớp 6 khác đơn
+     * giá, nên đọc lớp cấp phiếu là tính sai tiền.
+     *
+     * <p>Trả về khối dưới dạng CHUỖI (cột GradeLevel và tên lớp) để tầng service dùng lại
+     * đúng hàm bóc số đang có, thay vì viết luật bóc số lần thứ hai trong SQL.
+     *
+     * @return các dòng {teacherId, workDate, status, gradeLevel, className}
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT a.TeacherId, a.WorkDate, a.Status, c.GradeLevel, c.Name AS ClassName
+            FROM Attendance a
+            JOIN Schedule s ON s.Id = a.ScheduleId
+            LEFT JOIN Assignment asg ON asg.Id = s.AssignmentId
+            LEFT JOIN AssignmentSlot sl ON sl.Id = s.SourceSlotId
+            LEFT JOIN SchoolClass c ON c.Id = COALESCE(sl.ClassId, asg.ClassId)
+            WHERE a.WorkDate BETWEEN :from AND :to
+              AND a.Status IN ('PRESENT', 'LATE')
+            """)
+    List<Object[]> findPayableWithGrade(@Param("from") LocalDate from, @Param("to") LocalDate to);
+
+    /**
+     * Số buổi ĐI MUỘN của từng giáo viên trong khoảng — một câu cho cả bảng lương.
+     *
+     * @return các dòng {teacherId, số buổi muộn}
+     */
+    @Query("""
+            SELECT a.teacherId, COUNT(a)
+            FROM Attendance a
+            WHERE a.workDate BETWEEN :from AND :to
+              AND a.status = 'LATE'
+            GROUP BY a.teacherId
+            """)
+    List<Object[]> countLateByTeacher(@Param("from") LocalDate from, @Param("to") LocalDate to);
 }
