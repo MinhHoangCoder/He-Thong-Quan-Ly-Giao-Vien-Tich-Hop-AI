@@ -12,6 +12,7 @@ import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.RoomRepository;
@@ -69,6 +70,7 @@ public class SchoolService {
     private final StudentRepository studentRepo;
     private final PeriodRepository periodRepo;
     private final RoomRepository roomRepo;
+    private final AssignmentSlotRepository slotRepo;
     private final PeriodService periodService;
 
     public SchoolService(
@@ -80,6 +82,7 @@ public class SchoolService {
             StudentRepository studentRepo,
             PeriodRepository periodRepo,
             RoomRepository roomRepo,
+            AssignmentSlotRepository slotRepo,
             PeriodService periodService) {
         this.sRepo = schoolRepo;
         this.bRepo = branchRepo;
@@ -89,6 +92,7 @@ public class SchoolService {
         this.studentRepo = studentRepo;
         this.periodRepo = periodRepo;
         this.roomRepo = roomRepo;
+        this.slotRepo = slotRepo;
         this.periodService = periodService;
     }
 
@@ -216,6 +220,9 @@ public class SchoolService {
                         "phân công đang chạy")
                 .blockIf(serviceContractRepo.countBySchoolIdAndDeletedFalse(id), "hợp đồng dịch vụ")
                 .blockIf(studentRepo.countBySchoolIdAndDeletedFalse(id), "hồ sơ học sinh")
+                // Từ V27 trường thật nằm ở TỪNG Ô LỊCH, không chỉ ở cấp phiếu: một phiếu trải
+                // nhiều trường thì các trường phụ không xuất hiện ở Assignment.SchoolId nào cả.
+                .blockIf(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(id), "ô thời khóa biểu")
                 .check();
         s.setDeleted(true);
         s.setDeletedAt(Instant.now());

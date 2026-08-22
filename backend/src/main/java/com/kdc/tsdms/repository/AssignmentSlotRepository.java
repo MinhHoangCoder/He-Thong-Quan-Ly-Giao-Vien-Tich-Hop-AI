@@ -61,6 +61,19 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     void deleteByAssignmentId(@Param("assignmentId") Integer assignmentId);
 
     /** Ô thời khóa biểu hằng tuần còn sống đang GẮN một phòng — chặn xóa phòng đang dùng. */
+    /**
+     * Ô lịch còn trỏ vào một LỚP — chốt chặn xóa lớp.
+     *
+     * <p>KHÔNG dùng {@code Assignment.ClassId} cho việc này: từ V16 lớp thật nằm ở TỪNG Ô LỊCH,
+     * còn lớp ở cấp phiếu chỉ là giá trị đại diện của ô đầu tiên. Đếm theo cấp phiếu là chặn
+     * hụt — đo trên dữ liệu demo có 674 lớp đang nằm trong thời khóa biểu nhưng không phải lớp
+     * đại diện của phiếu nào, tức là xóa được sạch sẽ dù giáo viên vẫn đang dạy chúng.
+     */
+    long countByClassIdAndDeletedFalse(Integer classId);
+
+    /** Y hệt cho TRƯỜNG — từ V27 trường thật cũng nằm ở từng ô lịch. */
+    long countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(Integer schoolId);
+
     long countByRoomIdAndDeletedFalse(Integer roomId);
 
     /** Ô thời khóa biểu hằng tuần còn sống đang DÙNG một tiết — chặn xóa tiết đang dùng. */

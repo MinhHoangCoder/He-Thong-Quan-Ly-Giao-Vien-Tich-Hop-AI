@@ -102,6 +102,9 @@ class DeleteRestrictTest {
         @Mock
         private StudentRepository studentRepo;
 
+        @Mock
+        private AssignmentSlotRepository slotRepo;
+
         @InjectMocks
         private SchoolService service;
 
@@ -142,12 +145,28 @@ class DeleteRestrictTest {
                     .thenReturn(2L);
             when(serviceContractRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(1L);
             when(studentRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(40L);
+            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
+                    .thenReturn(9L);
 
             assertThatThrownBy(() -> service.delete(1))
                     .hasMessageContaining("3 lớp học")
                     .hasMessageContaining("2 phân công đang chạy")
                     .hasMessageContaining("1 hợp đồng dịch vụ")
-                    .hasMessageContaining("40 hồ sơ học sinh");
+                    .hasMessageContaining("40 hồ sơ học sinh")
+                    .hasMessageContaining("9 ô thời khóa biểu");
+        }
+
+        @Test
+        void chiCon_oThoiKhoaBieu_thiVanCam() {
+            // Từ V27 trường thật nằm ở TỪNG Ô LỊCH: một phiếu trải nhiều trường thì các trường
+            // phụ không xuất hiện ở Assignment.SchoolId nào cả. Chỉ đếm cấp phiếu là chặn hụt —
+            // đo trên dữ liệu demo có 8 trường lọt lưới đúng kiểu này.
+            givenSchool();
+            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
+                    .thenReturn(12L);
+
+            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("12 ô thời khóa biểu");
+            verify(schoolRepo, never()).save(any());
         }
 
         @Test

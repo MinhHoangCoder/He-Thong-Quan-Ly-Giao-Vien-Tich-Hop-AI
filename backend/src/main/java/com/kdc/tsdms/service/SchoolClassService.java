@@ -1,6 +1,7 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.SchoolClassRequest;
@@ -9,6 +10,7 @@ import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.ClassEnrollmentRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -55,18 +57,21 @@ public class SchoolClassService {
     private final ClassEnrollmentRepository enrollmentRepo;
     private final AssignmentRepository assignmentRepo;
     private final PeriodRepository periodRepo;
+    private final AssignmentSlotRepository slotRepo;
 
     public SchoolClassService(
             SchoolClassRepository classRepo,
             SchoolRepository schoolRepo,
             ClassEnrollmentRepository enrollmentRepo,
             AssignmentRepository assignmentRepo,
-            PeriodRepository periodRepo) {
+            PeriodRepository periodRepo,
+            AssignmentSlotRepository slotRepo) {
         this.classRepo = classRepo;
         this.schoolRepo = schoolRepo;
         this.enrollmentRepo = enrollmentRepo;
         this.assignmentRepo = assignmentRepo;
         this.periodRepo = periodRepo;
+        this.slotRepo = slotRepo;
     }
 
     @Transactional(readOnly = true)
@@ -214,19 +219,22 @@ public class SchoolClassService {
         return ids.stream().filter(Objects::nonNull).map(this::restore).toList();
     }
 
+    /**
+     * Xóa mềm một lớp — chỉ khi không còn gì trỏ vào nó.
+     *
+     * <p>Phải đếm CẢ Ô THỜI KHÓA BIỂU, không chỉ phiếu phân công. Từ V16 lớp thật nằm ở từng ô;
+     * lớp ở cấp phiếu chỉ là giá trị đại diện của ô đầu tiên. Bản cũ chỉ hỏi cấp phiếu nên
+     * chặn hụt: đo trên dữ liệu demo có 674 lớp đang nằm trong thời khóa biểu nhưng không phải
+     * lớp đại diện của phiếu nào — bấm Xóa là mất sạch, giáo viên vẫn tới trường dạy còn ô
+     * lịch thì trỏ vào một cái tên không còn tồn tại.
+     */
     private void softDelete(SchoolClass sc) {
         Integer id = sc.getId();
-        long students = enrollmentRepo.countByClassId(id);
-        if (students > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT, "Không thể xóa lớp '" + sc.getName() + "': đang có " + students + " học sinh");
-        }
-        long assignments = assignmentRepo.countByClassIdAndDeletedFalse(id);
-        if (assignments > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Không thể xóa lớp '" + sc.getName() + "': đang gắn " + assignments + " phân công");
-        }
+        DeleteGuard.of("lớp " + sc.getName())
+                .blockIf(enrollmentRepo.countByClassId(id), "học sinh")
+                .blockIf(assignmentRepo.countByClassIdAndDeletedFalse(id), "phân công")
+                .blockIf(slotRepo.countByClassIdAndDeletedFalse(id), "ô thời khóa biểu")
+                .check();
         sc.setDeleted(true);
         sc.setDeletedAt(Instant.now());
         sc.setDeletedBy(SecurityUtils.currentUserId());
