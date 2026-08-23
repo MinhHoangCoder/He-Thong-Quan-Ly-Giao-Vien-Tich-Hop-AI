@@ -1,19 +1,23 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
+import com.kdc.tsdms.dto.BulkClassDto;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
+import com.kdc.tsdms.service.BulkClassService;
 import com.kdc.tsdms.service.SchoolClassService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * REST API Lớp học — /api/v1/classes
@@ -25,9 +29,42 @@ import org.springframework.web.bind.annotation.*;
 public class SchoolClassController {
 
     private final SchoolClassService service;
+    private final BulkClassService bulkService;
 
-    public SchoolClassController(SchoolClassService service) {
+    public SchoolClassController(SchoolClassService service, BulkClassService bulkService) {
         this.service = service;
+        this.bulkService = bulkService;
+    }
+
+    /* ─────────────────── Thêm lớp hàng loạt ─────────────────── */
+
+    /**
+     * XEM TRƯỚC danh sách lớp sắp tạo — sinh theo mẫu hoặc đọc từ văn bản dán vào.
+     *
+     * <p>Luôn có bước xem trước rồi mới ghi: nhập 100 dòng sai 2 dòng mà bắt làm lại từ đầu là
+     * cách nhanh nhất để người dùng quay về nhập tay từng lớp.
+     */
+    @PostMapping("/bulk/preview")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public BulkClassDto.XemTruocResponse bulkPreview(@Valid @RequestBody BulkClassDto.XemTruocRequest req) {
+        return bulkService.xemTruoc(req);
+    }
+
+    /** Như trên nhưng nguồn là file .xlsx / .csv tải lên. */
+    @PostMapping(value = "/bulk/preview-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public BulkClassDto.XemTruocResponse bulkPreviewFile(
+            @RequestParam Integer schoolId,
+            @RequestParam(required = false) String schoolYear,
+            @RequestPart("file") MultipartFile file) {
+        return bulkService.xemTruocFile(schoolId, schoolYear, file);
+    }
+
+    /** GHI các dòng đã xem trước. Server kiểm lại từ đầu, không tin danh sách client gửi lên. */
+    @PostMapping("/bulk")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
+    public BulkClassDto.TaoResponse bulkCreate(@Valid @RequestBody BulkClassDto.TaoRequest req) {
+        return bulkService.tao(req);
     }
 
     /** Dropdown trường cho form. */
@@ -67,9 +104,7 @@ public class SchoolClassController {
             @RequestParam(required = false) String gradeLevel,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        // Kẹp size 1..100 — không có cận trên thì client gửi size=1000000 kéo cả bảng.
-        Pageable pageable =
-                PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100), Sort.by(Sort.Order.desc("id")));
+        Pageable pageable = Paging.of(page, size, Sort.by(Sort.Order.desc("id")));
         return service.search(keyword, schoolId, status, gradeLevel, pageable);
     }
 
@@ -112,25 +147,10 @@ public class SchoolClassController {
         return service.restore(id);
     }
 
-    @DeleteMapping("/trash/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public ResponseEntity<Void> purge(@PathVariable Integer id) {
-        service.purge(id);
-        return ResponseEntity.noContent().build();
-    }
-
     /** Khôi phục nhiều lớp từ thùng rác trong 1 request. Body: [1, 2, 3]. */
     @PostMapping("/trash/batch-restore")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
     public List<SchoolClassResponse> batchRestore(@RequestBody List<Integer> ids) {
         return service.restoreMany(ids);
-    }
-
-    /** Xóa vĩnh viễn nhiều lớp trong thùng rác trong 1 request. Body: [1, 2, 3]. */
-    @PostMapping("/trash/batch-purge")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public ResponseEntity<Void> batchPurge(@RequestBody List<Integer> ids) {
-        service.purgeMany(ids);
-        return ResponseEntity.noContent().build();
     }
 }

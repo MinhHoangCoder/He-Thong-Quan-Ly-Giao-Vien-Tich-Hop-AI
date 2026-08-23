@@ -1,9 +1,11 @@
 package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
+import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.AttendanceChangeLogResponse;
 import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.dto.AttendanceResponse;
+import com.kdc.tsdms.dto.AttendanceSummaryResponse;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Attendance;
@@ -36,6 +38,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -107,18 +111,84 @@ public class AttendanceService {
         this.notificationService = notificationService;
     }
 
+    /**
+     * Bảng chấm công cho màn quản lý — có phân trang, tìm theo tên GV, lọc theo trạng thái.
+     *
+     * <p>Mỗi dòng ghép sẵn trường/lớp/môn/tiết như bản của giáo viên ({@link #listMine}).
+     * Trước đây chỉ {@code listMine} làm việc này, nên kế toán nhìn bảng thấy "Nguyễn Văn A —
+     * 07:00 — Có mặt" mà không biết buổi đó dạy ở đâu — tức là giáo viên thấy nhiều thông tin
+     * hơn người duyệt công của họ.
+     */
     @Transactional(readOnly = true)
-    public List<AttendanceResponse> list(Integer teacherId, LocalDate from, LocalDate to) {
+    public Page<AttendanceResponse> list(
+            Integer teacherId, LocalDate from, LocalDate to, String status, String keyword, Pageable pageable) {
         // CHỐNG IDOR: GV (có ATTENDANCE_VIEW nhưng không phải staff) chỉ xem chấm công
         // của CHÍNH MÌNH — ép teacherId về hồ sơ người gọi, bỏ qua tham số client gửi.
         Integer scoped = scopedTeacherId(teacherId);
-        List<Attendance> items = scoped != null
-                ? attendanceRepo.findByTeacherIdAndWorkDateBetweenOrderByWorkDateDescIdDesc(scoped, from, to)
-                : attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from, to);
+        Page<Attendance> items = attendanceRepo.search(
+                scoped,
+                from,
+                to,
+                SearchText.blankToNull(status),
+                SearchText.escapeLike(SearchText.blankToNull(keyword)),
+                pageable);
+
         Map<Integer, String> nameCache = new HashMap<>();
-        return items.stream()
-                .map(a -> AttendanceResponse.fromEntity(a, teacherName(a.getTeacherId(), nameCache)))
-                .toList();
+        Map<Long, Schedule> scheduleCache = new HashMap<>();
+        Map<Integer, Assignment> assignmentCache = new HashMap<>();
+        Map<Integer, School> schoolCache = new HashMap<>();
+        Map<Integer, SchoolClass> classCache = new HashMap<>();
+        Map<Integer, Subject> subjectCache = new HashMap<>();
+        Map<Integer, Period> periodCache = new HashMap<>();
+        PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
+
+        return items.map(a -> {
+            AttendanceResponse r = AttendanceResponse.fromEntity(a, teacherName(a.getTeacherId(), nameCache));
+            enrichWithSchedule(
+                    r,
+                    a.getScheduleId(),
+                    scheduleCache,
+                    assignmentCache,
+                    schoolCache,
+                    classCache,
+                    subjectCache,
+                    periodCache,
+                    sessionIndex);
+            return r;
+        });
+    }
+
+    /**
+     * Ba thẻ tổng quan — tính trên TOÀN BỘ kết quả lọc chứ không riêng trang đang xem.
+     *
+     * <p>Dùng lại đúng bộ tham số của {@link #list} (kể cả bước ép teacherId chống IDOR), nên
+     * bảng và thẻ tổng không thể nói hai con số khác nhau.
+     */
+    @Transactional(readOnly = true)
+    public AttendanceSummaryResponse summary(
+            Integer teacherId, LocalDate from, LocalDate to, String status, String keyword) {
+        Object[] row = attendanceRepo.summarize(
+                scopedTeacherId(teacherId),
+                from,
+                to,
+                SearchText.blankToNull(status),
+                SearchText.escapeLike(SearchText.blankToNull(keyword)));
+        // Câu native trả về MỘT dòng; Spring Data gói nó trong Object[] một phần tử khi
+        // kiểu trả về là Object[] — bóc thêm một lớp nếu gặp trường hợp đó.
+        Object[] cells = row.length == 1 && row[0] instanceof Object[] inner ? inner : row;
+        return new AttendanceSummaryResponse(
+                toLong(cells[0]), toLong(cells[1]), toDecimal(cells[2]).setScale(2, java.math.RoundingMode.HALF_UP));
+    }
+
+    private static long toLong(Object v) {
+        return v == null ? 0L : ((Number) v).longValue();
+    }
+
+    private static java.math.BigDecimal toDecimal(Object v) {
+        if (v == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        return v instanceof java.math.BigDecimal d ? d : java.math.BigDecimal.valueOf(((Number) v).doubleValue());
     }
 
     /**

@@ -1,10 +1,8 @@
 package com.kdc.tsdms.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -203,34 +201,6 @@ class SchoolServiceTest {
             service.update(7, request("Trường THCS Ban Mai", null));
 
             assertThat(daLuu().getName()).isEqualTo("THCS Ban Mai");
-        }
-
-        @Test
-        void xoaVinhVien_conDuLieuNghiepVu_thiChan() {
-            trongThungRac();
-            when(schoolRepo.countChildRowsBySchoolId(7))
-                    .thenReturn(List.of(new Object[] {"class", 3L}, new Object[] {"assignment", 12L}));
-
-            assertThatThrownBy(() -> service.purge(7))
-                    .satisfies(SchoolServiceTest::laXungDot)
-                    .hasMessageContaining("3 lớp học")
-                    .hasMessageContaining("12 phân công");
-            verify(schoolRepo, never()).delete(any());
-            verify(periodRepo, never()).xoaCungTheoTruong(anyInt());
-        }
-
-        @Test
-        void xoaVinhVien_truongTaoNham_thiXoaKemKhungTietVaPhongHoc() {
-            // Khung tiết sinh tự động khi tạo trường, nên trường "sạch" vẫn luôn có Period —
-            // không xóa kèm thì khóa ngoại chặn và nút này không bao giờ bấm được.
-            trongThungRac();
-            when(schoolRepo.countChildRowsBySchoolId(7)).thenReturn(List.of());
-
-            assertThatCode(() -> service.purge(7)).doesNotThrowAnyException();
-
-            verify(periodRepo).xoaCungTheoTruong(7);
-            verify(roomRepo).xoaCungTheoTruong(7);
-            verify(schoolRepo).delete(any());
         }
 
         /* ── tiện ích dựng dữ liệu ── */

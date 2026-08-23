@@ -72,24 +72,6 @@ export const adminRoutes = [
       roles: ['ADMIN'],
     },
   },
-  {
-    path: '/admin/lessons',
-    name: 'admin-lesson-list',
-    component: () => import('@/pages/LessonListPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN'] },
-  },
-  {
-    path: '/admin/lessons/new',
-    name: 'admin-lesson-new',
-    component: () => import('@/pages/LessonFormPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN'] },
-  },
-  {
-    path: '/admin/lessons/:id/edit',
-    name: 'admin-lesson-edit',
-    component: () => import('@/pages/LessonFormPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN'] },
-  },
   // ── Nhóm môn (SubjectCategory) — quản lý danh mục ───────────────
   {
     path: '/admin/subject-categories',
@@ -119,15 +101,6 @@ export const adminRoutes = [
     path: '/settings',
     name: 'admin-settings',
     component: () => import('@/pages/SettingsPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN'] },
-  },
-  {
-    // Ma trận Role × Permission (chỉ đọc).
-    // LƯU Ý: trang "quản lý tài khoản" (list/khóa/gán role) do THÀNH VIÊN KHÁC dựng UI —
-    // backend đã sẵn ở /api/v1/admin/users/** (xem api/adminUsers.js), FE không làm trùng.
-    path: '/settings/roles',
-    name: 'admin-roles',
-    component: () => import('@/pages/RoleMatrixPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN'] },
   },
   // ── Hồ sơ của tôi (chỉ xem — tách riêng khỏi Cài đặt) ─────────────

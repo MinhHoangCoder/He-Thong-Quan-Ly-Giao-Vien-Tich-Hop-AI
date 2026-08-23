@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.CanvaLinkRequest;
 import com.kdc.tsdms.dto.LessonFileResponse;
 import com.kdc.tsdms.dto.LessonRequest;
@@ -11,7 +12,6 @@ import com.kdc.tsdms.service.LessonService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -95,8 +95,7 @@ public class LessonController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
 
-        Pageable pageable =
-                PageRequest.of(Math.max(page, 0), Math.max(size, 1), Sort.by(Sort.Direction.DESC, "updatedAt"));
+        Pageable pageable = Paging.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
         return lessonService.search(category, gradeLevel, status, keyword, isTeacherOnly(), pageable);
     }
 

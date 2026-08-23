@@ -278,3 +278,107 @@
 .mono {
   font-variant-numeric: tabular-nums;
 }
+
+/* ── IN GIẤY ──
+   Trang nghiệp vụ nào cũng có lúc phải in ra (thời khóa biểu dán phòng hội đồng, bảng
+   lương đưa kế toán ký). Khai Ở ĐÂY chứ không trong style scoped của từng trang: sidebar
+   và topbar thuộc PortalShell, style scoped của trang con không với tới được.
+
+   Trang nào cần in thì gắn class .no-print lên phần điều khiển của mình (bộ lọc, nút bấm).
+*/
+@media print {
+  .sidebar,
+  .topbar,
+  .no-print {
+    display: none !important;
+  }
+  .content {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .page {
+    max-width: none;
+  }
+  /* Nền tối in ra là một trang đen tốn mực — ép về giấy trắng chữ đen. */
+  :root,
+  body,
+  .card,
+  .table-wrap {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .table-wrap {
+    overflow: visible !important;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+}
+
+/* ── Ô tìm kiếm + dropdown có tìm kiếm trên thanh công cụ ──
+   Ba trang Lịch dạy / Chấm công / Bảng lương dùng chung, nên khai một chỗ thay vì chép
+   ba lần vào style scoped. */
+.toolbar .search-input {
+  flex: 1;
+  min-width: 240px;
+}
+.toolbar .ss {
+  min-width: 190px;
+}
+.toolbar .ss--sm {
+  min-width: 150px;
+}
+
+/* ── Thanh lọc (FilterBar.vue) ──
+   Gom về đây thay vì để mỗi trang một bản scoped: sáu trang từng chép cùng khối này và đã
+   trôi ra khác nhau (khoảng cách, bo góc, cỡ chữ nhãn). */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 16px;
+  padding: 18px;
+  margin-bottom: 18px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+}
+.filter-bar .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+/* Ô tìm kiếm nuốt hết chỗ thừa để các ô lọc còn lại giữ đúng bề ngang của chúng. */
+.filter-bar .field--wide {
+  flex: 1;
+}
+.filter-bar .field > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.filter-bar .field input,
+.filter-bar .field select {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--c-bg);
+  color: var(--c-text);
+}
+.filter-bar .field input:focus,
+.filter-bar .field select:focus {
+  outline: none;
+  border-color: var(--c-primary);
+}
+.filter-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}

@@ -12,13 +12,14 @@ import com.kdc.tsdms.entity.AppUser;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.RefreshTokenRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import java.time.Instant;
-import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -78,6 +79,12 @@ class TeacherDeleteLocksAccountTest {
     @Mock
     private ScheduleRepository scheduleRepo;
 
+    @Mock
+    private AttendanceRepository attendanceRepo;
+
+    @Mock
+    private PayrollRepository payrollRepo;
+
     @InjectMocks
     private TeacherService service;
 
@@ -112,21 +119,6 @@ class TeacherDeleteLocksAccountTest {
 
         assertThat(t.isDeleted()).isFalse();
         assertThat(au.getStatus()).isEqualTo("ACTIVE");
-    }
-
-    @Test
-    void xoa_vinh_vien_thi_xoa_mem_luon_tai_khoan_de_khong_de_ra_tai_khoan_mo_coi() {
-        Teacher t = teacher(true);
-        AppUser au = account();
-        when(teacherRepo.findByIdAndDeletedTrue(TEACHER_ID)).thenReturn(Optional.of(t));
-        when(teacherRepo.countChildRowsByTeacherId(TEACHER_ID)).thenReturn(List.of()); // sạch dữ liệu con
-        when(appUserRepository.findById(USER_ID)).thenReturn(Optional.of(au));
-
-        service.deleteTrueTeacher(TEACHER_ID);
-
-        assertThat(au.isDeleted()).isTrue();
-        assertThat(au.getStatus()).isEqualTo("INACTIVE");
-        verify(teacherRepo).delete(t);
     }
 
     @Test

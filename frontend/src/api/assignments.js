@@ -10,12 +10,15 @@ export const assignmentApi = {
    * @param {Object} [params] - { teacherId, keyword }.
    *   keyword: tìm không phân biệt hoa/thường & dấu theo tên GV/trường/lớp/môn.
    */
-  list({ teacherId, keyword, status } = {}) {
+  /** Danh sách phân trang phía server — trả về Page (content / totalElements / totalPages). */
+  list({ teacherId, keyword, status, page, size } = {}) {
     return http.get('/assignments', {
       params: {
         teacherId: teacherId || undefined,
         keyword: keyword || undefined,
         status: status || undefined,
+        page: page ?? 0,
+        size: size ?? undefined,
       },
     })
   },
@@ -100,10 +103,5 @@ export const assignmentApi = {
   /** Khôi phục phân công từ thùng rác. */
   restore(id) {
     return http.post(`/assignments/${id}/restore`)
-  },
-
-  /** Xóa vĩnh viễn phân công khỏi hệ thống. */
-  purge(id) {
-    return http.delete(`/assignments/${id}/permanent`)
   },
 }

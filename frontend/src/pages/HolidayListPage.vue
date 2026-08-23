@@ -21,8 +21,16 @@ import { useRoute } from 'vue-router'
 import { holidayApi } from '@/api/holidays'
 import { schoolApi } from '@/api/schools'
 import DateField from '@/components/ui/DateField.vue'
+import { PAGE_SIZE } from '@/utils/pagination'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
+import { useToast } from '@/composables/useToast'
 
 const route = useRoute()
+const { showToast } = useToast()
+
+/** 'active' = đang dùng · 'trash' = đã xóa. Hai danh sách dùng chung bảng bên dưới. */
+const tab = ref('active')
 
 const KINDS = [
   { value: 'NATIONAL', label: 'Lễ theo luật' },
@@ -36,7 +44,7 @@ const error = ref('')
 const items = ref([])
 const total = ref(0)
 const page = ref(0)
-const pageSize = 20
+const pageSize = PAGE_SIZE
 
 const schools = ref([])
 
@@ -65,11 +73,15 @@ async function load() {
   try {
     const params = { page: page.value, size: pageSize }
     if (filter.keyword.trim()) params.keyword = filter.keyword.trim()
-    if (filter.kind) params.kind = filter.kind
-    if (filter.schoolId) params.schoolId = filter.schoolId
-    if (filter.from) params.from = filter.from
-    if (filter.to) params.to = filter.to
-    const res = await holidayApi.list(params)
+    // Thùng rác chỉ lọc theo từ khóa: lọc loại/phạm vi/ngày ở đây chỉ làm người dùng
+    // tưởng kỳ nghỉ mình vừa xóa nhầm đã mất hẳn.
+    if (tab.value === 'active') {
+      if (filter.kind) params.kind = filter.kind
+      if (filter.schoolId) params.schoolId = filter.schoolId
+      if (filter.from) params.from = filter.from
+      if (filter.to) params.to = filter.to
+    }
+    const res = tab.value === 'trash' ? await holidayApi.trash(params) : await holidayApi.list(params)
     items.value = res.data?.content ?? []
     total.value = res.data?.totalElements ?? 0
   } catch (e) {
@@ -77,6 +89,13 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function switchTab(t) {
+  if (tab.value === t) return
+  tab.value = t
+  page.value = 0
+  load()
 }
 
 function applyFilter() {
@@ -287,17 +306,63 @@ async function doFixAbsences() {
 
 const deleteTarget = ref(null)
 const deleting = ref(false)
+/** Hậu quả kỳ nghỉ này đã ghi vào dữ liệu — nạp khi mở hộp thoại, null = chưa có/không lấy được. */
+const deleteImpact = ref(null)
+
+async function askDelete(h) {
+  deleteTarget.value = h
+  deleteImpact.value = null
+  try {
+    const res = await holidayApi.deleteImpact(h.id)
+    deleteImpact.value = res.data
+  } catch {
+    // Không lấy được số liệu thì vẫn cho xóa — chỉ mất phần cảnh báo, không chặn việc chính.
+  }
+}
+
+/** Những gì xóa kỳ nghỉ KHÔNG hoàn lại — hiện thành danh sách trong hộp thoại. */
+const deleteBlockers = computed(() => {
+  const d = deleteImpact.value
+  if (!d) return []
+  const out = []
+  if (d.cancelledSessions) out.push({ label: `${d.cancelledSessions} buổi dạy đã hủy trong khoảng ngày này — KHÔNG sống lại` })
+  if (d.leaveAttendances) out.push({ label: `${d.leaveAttendances} dòng chấm công đang là Nghỉ phép — giữ nguyên` })
+  if (d.futureSessions) out.push({ label: `${d.futureSessions} buổi chưa diễn ra sẽ chạy lại bình thường` })
+  return out
+})
 
 async function confirmDelete() {
   deleting.value = true
   try {
+    const name = deleteTarget.value.name
     await holidayApi.remove(deleteTarget.value.id)
     deleteTarget.value = null
+    showToast(`Đã chuyển "${name}" vào thùng rác`)
     await load()
   } catch (e) {
-    error.value = e.response?.data?.message || 'Không xóa được.'
+    showToast(e.response?.data?.message || 'Không xóa được.', 'error')
   } finally {
     deleting.value = false
+  }
+}
+
+/* ───────────────────────── Khôi phục ───────────────────────── */
+
+const restoreTarget = ref(null)
+const restoring = ref(false)
+
+async function confirmRestore() {
+  restoring.value = true
+  try {
+    const name = restoreTarget.value.name
+    await holidayApi.restore(restoreTarget.value.id)
+    restoreTarget.value = null
+    showToast(`Đã khôi phục "${name}"`)
+    await load()
+  } catch (e) {
+    showToast(e.response?.data?.message || 'Không khôi phục được.', 'error')
+  } finally {
+    restoring.value = false
   }
 }
 
@@ -330,46 +395,49 @@ onMounted(async () => {
       <div>
         <h1 class="page__title">Lịch nghỉ</h1>
       </div>
-      <button class="btn" @click="openCreate">+ Thêm kỳ nghỉ</button>
+      <button v-if="tab === 'active'" class="btn" @click="openCreate">+ Thêm kỳ nghỉ</button>
     </div>
 
-    <div class="filter-bar">
-      <label class="field">
-        <span>Loại</span>
-        <select v-model="filter.kind" @change="applyFilter">
-          <option value="">Tất cả</option>
-          <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Phạm vi</span>
-        <select v-model="filter.schoolId" @change="applyFilter">
-          <option value="">Toàn hệ thống + mọi trường</option>
-          <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Từ ngày</span>
-        <DateField v-model="filter.from" @update:model-value="applyFilter" />
-      </label>
-
-      <label class="field">
-        <span>Đến ngày</span>
-        <DateField v-model="filter.to" @update:model-value="applyFilter" />
-      </label>
-
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input v-model="filter.keyword" placeholder="Tên kỳ nghỉ..." @keyup.enter="applyFilter" />
-      </label>
-
-      <div class="filter-actions">
-        <button class="btn" @click="applyFilter">Lọc</button>
-        <button class="btn btn--ghost" @click="clearFilter">Xóa lọc</button>
-      </div>
+    <div class="tabs">
+      <button :class="{ on: tab === 'active' }" @click="switchTab('active')">Đang dùng</button>
+      <button :class="{ on: tab === 'trash' }" @click="switchTab('trash')">Thùng rác</button>
     </div>
+
+    <FilterBar
+      v-model="filter.keyword"
+      placeholder="Tên kỳ nghỉ…"
+      aria-label="Tìm kỳ nghỉ theo tên"
+      @apply="applyFilter"
+      @clear="clearFilter"
+    >
+      <template v-if="tab === 'active'">
+        <label class="field">
+          <span>Loại</span>
+          <select v-model="filter.kind" @change="applyFilter">
+            <option value="">Tất cả</option>
+            <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Phạm vi</span>
+          <select v-model="filter.schoolId" @change="applyFilter">
+            <option value="">Toàn hệ thống</option>
+            <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Từ ngày</span>
+          <DateField v-model="filter.from" @update:model-value="applyFilter" />
+        </label>
+
+        <label class="field">
+          <span>Đến ngày</span>
+          <DateField v-model="filter.to" @update:model-value="applyFilter" />
+        </label>
+      </template>
+    </FilterBar>
 
     <p v-if="error" class="msg msg--error">{{ error }}</p>
 
@@ -411,9 +479,12 @@ onMounted(async () => {
               <span v-else class="scope">Toàn hệ thống</span>
             </td>
             <td class="col-actions">
-              <button class="link" @click="checkImpact(h)">Buổi dạy</button>
-              <button class="link" @click="openEdit(h)">Sửa</button>
-              <button class="link link--danger" @click="deleteTarget = h">Xóa</button>
+              <template v-if="tab === 'active'">
+                <button class="link" @click="checkImpact(h)">Buổi dạy</button>
+                <button class="link" @click="openEdit(h)">Sửa</button>
+                <button class="link link--danger" @click="askDelete(h)">Xóa</button>
+              </template>
+              <button v-else class="link" @click="restoreTarget = h">Khôi phục</button>
             </td>
           </tr>
         </tbody>
@@ -619,25 +690,34 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- ============ Modal xác nhận xóa ============ -->
-    <div v-if="deleteTarget" class="modal" @click.self="deleteTarget = null">
-      <div class="modal-box modal-box--sm">
-        <h2 class="modal-title">Xóa kỳ nghỉ?</h2>
-        <p>
-          Xóa <strong>{{ deleteTarget.name }}</strong> ({{ fmtRange(deleteTarget) }}).
-          Lịch dạy sinh ra sau đó sẽ lại có buổi vào những ngày này.
-        </p>
-        <p class="impact-note">
-          Các buổi đã hủy theo kỳ nghỉ này KHÔNG tự sống lại — nếu cần thì xếp lại qua Phân công.
-        </p>
-        <div class="modal-actions">
-          <button class="btn btn--ghost" @click="deleteTarget = null">Hủy</button>
-          <button class="btn btn--danger" :disabled="deleting" @click="confirmDelete">
-            {{ deleting ? 'Đang xóa...' : 'Xóa' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Xác nhận xóa: kể đủ hậu quả ĐÃ ghi rồi mới cho bấm -->
+    <ConfirmDialog
+      v-if="deleteTarget"
+      title="Chuyển kỳ nghỉ vào thùng rác?"
+      :name="`${deleteTarget.name} (${fmtRange(deleteTarget)})`"
+      :blockers="deleteBlockers"
+      :busy="deleting"
+      confirm-text="Xóa"
+      danger
+      @confirm="confirmDelete"
+      @cancel="deleteTarget = null"
+    >
+      Lịch dạy sinh ra sau đó sẽ lại có buổi vào những ngày này. Khôi phục lại được ở tab
+      Thùng rác, nhưng những gì kỳ nghỉ đã ghi vào dữ liệu thì không tự hoàn lại:
+    </ConfirmDialog>
+
+    <ConfirmDialog
+      v-if="restoreTarget"
+      title="Khôi phục kỳ nghỉ?"
+      :name="`${restoreTarget.name} (${fmtRange(restoreTarget)})`"
+      :busy="restoring"
+      confirm-text="Khôi phục"
+      @confirm="confirmRestore"
+      @cancel="restoreTarget = null"
+    >
+      Từ giờ lịch dạy sẽ không sinh buổi vào những ngày này nữa. Buổi ĐÃ sinh trước đó vẫn
+      còn — bấm "Buổi dạy" ở danh sách chính để dọn.
+    </ConfirmDialog>
   </div>
 </template>
 
@@ -661,51 +741,35 @@ onMounted(async () => {
   font-weight: 700;
   color: var(--c-text);
 }
-
-/* ================= Filter ================= */
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-  background: var(--c-surface);
-  border-radius: 14px;
-  border: 1px solid var(--c-border);
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 170px;
-}
-.field--wide {
-  flex: 1;
-}
-.field span {
+.page__desc {
+  margin: 6px 0 0;
+  max-width: 640px;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--c-text);
+  line-height: 1.55;
+  color: var(--c-text-muted);
 }
-.field input,
-.field select {
-  height: 40px;
-  border: 1px solid var(--c-input-border);
-  border-radius: 8px;
-  padding: 0 12px;
-  font-size: 14px;
+
+/* ================= Tabs ================= */
+.tabs {
+  display: inline-flex;
+  margin-bottom: 16px;
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  overflow: hidden;
   background: var(--c-surface);
-  color: var(--c-text);
 }
-.field input:focus,
-.field select:focus {
-  outline: none;
-  border-color: var(--c-primary);
+.tabs button {
+  border: none;
+  background: transparent;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  cursor: pointer;
 }
-.filter-actions {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
+.tabs button.on {
+  background: var(--grad-primary);
+  color: #fff;
 }
 
 /* ================= Buttons ================= */

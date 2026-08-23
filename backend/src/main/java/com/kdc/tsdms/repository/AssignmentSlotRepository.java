@@ -40,6 +40,15 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     List<AssignmentSlot> findByDeletedFalse();
 
     /**
+     * Ô lịch của NHIỀU phiếu trong một câu — chống N+1 ở màn danh sách phân công.
+     *
+     * <p>Bản cũ gọi findByAssignmentId cho từng phiếu: 444 phiếu là 444 câu, chưa kể mỗi ô
+     * lại tra tiếp tiết/lớp/trường. Trả về cả ô ĐÃ XÓA MỀM để thùng rác dùng chung được câu
+     * này; bên gọi tự lọc theo cờ.
+     */
+    List<AssignmentSlot> findByAssignmentIdIn(List<Integer> assignmentIds);
+
+    /**
      * Mọi ô lịch còn hiệu lực của một TRƯỜNG (V27) — nguồn cho lưới xếp lịch khóa sẵn những ô
      * đã có giáo viên khác dạy. Hỏi theo trường chứ không theo từng lớp vì lưới hiện cả trường
      * một lúc: hỏi lẻ từng lớp là 20+ lượt gọi cho một lần mở form.
@@ -52,6 +61,19 @@ public interface AssignmentSlotRepository extends JpaRepository<AssignmentSlot, 
     void deleteByAssignmentId(@Param("assignmentId") Integer assignmentId);
 
     /** Ô thời khóa biểu hằng tuần còn sống đang GẮN một phòng — chặn xóa phòng đang dùng. */
+    /**
+     * Ô lịch còn trỏ vào một LỚP — chốt chặn xóa lớp.
+     *
+     * <p>KHÔNG dùng {@code Assignment.ClassId} cho việc này: từ V16 lớp thật nằm ở TỪNG Ô LỊCH,
+     * còn lớp ở cấp phiếu chỉ là giá trị đại diện của ô đầu tiên. Đếm theo cấp phiếu là chặn
+     * hụt — đo trên dữ liệu demo có 674 lớp đang nằm trong thời khóa biểu nhưng không phải lớp
+     * đại diện của phiếu nào, tức là xóa được sạch sẽ dù giáo viên vẫn đang dạy chúng.
+     */
+    long countByClassIdAndDeletedFalse(Integer classId);
+
+    /** Y hệt cho TRƯỜNG — từ V27 trường thật cũng nằm ở từng ô lịch. */
+    long countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(Integer schoolId);
+
     long countByRoomIdAndDeletedFalse(Integer roomId);
 
     /** Ô thời khóa biểu hằng tuần còn sống đang DÙNG một tiết — chặn xóa tiết đang dùng. */

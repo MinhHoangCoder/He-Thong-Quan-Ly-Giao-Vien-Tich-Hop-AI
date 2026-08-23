@@ -36,6 +36,14 @@ export const payrollApi = {
    * Cảnh báo trước khi chốt: kỳ này còn dòng Vắng nào rơi vào ngày nghỉ.
    * Chốt lương khóa luôn chấm công của kỳ — chốt khi còn Vắng giả là khóa lỗi vào trong.
    */
+  /**
+   * Kiểm tra sức khỏe dữ liệu của kỳ trước khi chốt — gộp bảy phép đếm.
+   * Trả { year, month, sanSangChot, vanDe: [{ ma, mucDo, tieuDe, moTa, soLuong, duongDan }] }.
+   */
+  health(year, month) {
+    return http.get('/payroll/health', { params: { year, month } })
+  },
+
   holidayIssues(year, month) {
     return http.get('/payroll/holiday-issues', { params: { year, month } })
   },
@@ -53,5 +61,38 @@ export const payrollApi = {
   /** Mở lại MỌI phiếu đã chốt của một kỳ. Cần quyền PAYROLL_REOPEN. */
   reopenPeriod(year, month, reason) {
     return http.post('/payroll/reopen-period', { reason }, { params: { year, month } })
+  },
+
+  /** Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ. Cần quyền PAYROLL_PAY. */
+  pay(id) {
+    return http.post(`/payroll/${id}/pay`)
+  },
+
+  /** Đánh dấu ĐÃ TRẢ cho mọi phiếu đã chốt của một kỳ. Cần quyền PAYROLL_PAY. */
+  payPeriod(year, month) {
+    return http.post('/payroll/pay-period', null, { params: { year, month } })
+  },
+}
+
+/**
+ * API module Bảng đơn giá tiết dạy (PayRate, Flyway V38).
+ * Base: /api/v1/pay-rates
+ *
+ * Không có hàm update: sửa đè một mức đã áp dụng sẽ làm mọi kỳ lương cũ tính lại ra số khác
+ * với số đã trả. Đổi giá = tạo mức mới, backend tự đóng mức cũ.
+ */
+export const payRateApi = {
+  list() {
+    return http.get('/pay-rates')
+  },
+
+  /** body: { gradeFrom, gradeTo, amount, effectiveFrom, note } */
+  create(body) {
+    return http.post('/pay-rates', body)
+  },
+
+  /** Chỉ xóa được mức CHƯA có hiệu lực (gõ nhầm). */
+  remove(id) {
+    return http.delete(`/pay-rates/${id}`)
   },
 }

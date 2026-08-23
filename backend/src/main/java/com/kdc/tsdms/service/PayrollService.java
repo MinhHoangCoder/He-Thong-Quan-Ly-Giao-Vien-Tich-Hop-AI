@@ -5,22 +5,18 @@ import com.kdc.tsdms.dto.PayrollChangeLogResponse;
 import com.kdc.tsdms.dto.PayrollHolidayIssueResponse;
 import com.kdc.tsdms.dto.PayrollResponse;
 import com.kdc.tsdms.dto.PayrollUpdateRequest;
-import com.kdc.tsdms.entity.AssignmentSlot;
-import com.kdc.tsdms.entity.Attendance;
+import com.kdc.tsdms.entity.Contract;
+import com.kdc.tsdms.entity.PayRate;
 import com.kdc.tsdms.entity.Payroll;
 import com.kdc.tsdms.entity.PayrollChangeLog;
-import com.kdc.tsdms.entity.Schedule;
-import com.kdc.tsdms.entity.SchoolClass;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
-import com.kdc.tsdms.repository.AssignmentRepository;
-import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayRateRepository;
 import com.kdc.tsdms.repository.PayrollChangeLogRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
-import com.kdc.tsdms.repository.ScheduleRepository;
-import com.kdc.tsdms.repository.SchoolClassRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
 import jakarta.persistence.EntityManager;
@@ -42,32 +38,30 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Nghiệp vụ Bảng lương (Payroll) — tính theo TIẾT (buổi dạy), đơn giá theo CẤP.
+ * Nghiệp vụ Bảng lương (Payroll) — tính theo TIẾT (buổi dạy).
  *
- * <p>Mỗi buổi chấm công (PRESENT/LATE) = 1 tiết. Đơn giá theo CẤP của lớp buổi đó: khối 1–5
- * {@value #TH_RATE_STR}đ/tiết, khối 6–9 {@value #THCS_RATE_STR}đ/tiết. Trung tâm chỉ dạy khối
- * 1–9. Cấp suy ra qua {@code Attendance.scheduleId → Schedule → Assignment → SchoolClass
- * .gradeLevel}.
+ * <p>Mỗi dòng chấm công PRESENT/LATE = 1 tiết. Đơn giá tra theo thứ tự: đơn giá riêng ghi
+ * trong hợp đồng của giáo viên → barem chung theo khối và theo ngày dạy (bảng {@code PayRate},
+ * Flyway V38). Khối lấy từ lớp của Ô THỜI KHÓA BIỂU sinh ra buổi, không phải lớp cấp phiếu —
+ * từ V16 một phiếu trải nhiều lớp, mà lớp 5 và lớp 6 khác giá.
  *
- * <p>Mỗi GV chỉ dạy 1 cấp (quy ước dữ liệu) nên mọi tiết của họ cùng đơn giá. TÊN CỘT GÂY
- * NHẦM: {@code TaughtHours} lưu SỐ TIẾT, {@code RatePerHour} lưu ĐƠN GIÁ/TIẾT. Cột computed
- * {@code NetAmount} = base + TaughtHours×RatePerHour + phụ cấp + thưởng − khấu trừ.
+ * <p>Lương cứng đọc từ {@code Contract.BaseSalary} và chỉ áp cho giáo viên CƠ HỮU; thỉnh
+ * giảng chỉ ăn tiền tiết.
+ *
+ * <p>TÊN CỘT GÂY NHẦM: {@code TaughtHours} lưu SỐ TIẾT, {@code RatePerHour} lưu ĐƠN GIÁ/TIẾT.
+ * Hai cột này bị dùng lại chứ không đổi tên vì {@code NetAmount} là cột COMPUTED của SQL
+ * Server dựng trên chính chúng — đổi tên phải drop rồi tạo lại cột computed, đánh đổi không
+ * xứng với việc chỉ để tên đọc xuôi hơn. Giao diện đã hiện đúng nhãn "Số tiết".
+ *
+ * <p>{@code NetAmount} = lương cứng + TaughtHours×RatePerHour + phụ cấp + thưởng − khấu trừ.
  */
 @Service
 public class PayrollService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PayrollService.class);
 
-    static final String TH_RATE_STR = "115000";
-    static final String THCS_RATE_STR = "125000";
-
     /** Trạng thái phiếu lương được phép cho GV tự xem (đã chốt/đã trả) — KHÔNG lộ bản nháp. */
     private static final Set<String> TEACHER_VISIBLE_STATUS = Set.of("FINALIZED", "PAID");
-
-    /** Đơn giá 1 tiết theo cấp học. */
-    private static final BigDecimal TH_RATE = new BigDecimal(TH_RATE_STR); // Tiểu học (khối 1–5)
-
-    private static final BigDecimal THCS_RATE = new BigDecimal(THCS_RATE_STR); // THCS (khối 6–9)
 
     private static final Pattern DIGITS = Pattern.compile("(\\d{1,2})");
 
@@ -83,10 +77,8 @@ public class PayrollService {
     private final PayrollRepository payrollRepo;
     private final AttendanceRepository attendanceRepo;
     private final TeacherRepository teacherRepo;
-    private final ScheduleRepository scheduleRepo;
-    private final AssignmentRepository assignmentRepo;
-    private final AssignmentSlotRepository slotRepo;
-    private final SchoolClassRepository classRepo;
+    private final PayRateRepository payRateRepo;
+    private final ContractRepository contractRepo;
     private final PayrollChangeLogRepository changeLogRepo;
     private final AppUserRepository userRepo;
     private final DisplayNameResolver displayNameResolver;
@@ -98,10 +90,8 @@ public class PayrollService {
             PayrollRepository payrollRepo,
             AttendanceRepository attendanceRepo,
             TeacherRepository teacherRepo,
-            ScheduleRepository scheduleRepo,
-            AssignmentRepository assignmentRepo,
-            AssignmentSlotRepository slotRepo,
-            SchoolClassRepository classRepo,
+            PayRateRepository payRateRepo,
+            ContractRepository contractRepo,
             PayrollChangeLogRepository changeLogRepo,
             AppUserRepository userRepo,
             DisplayNameResolver displayNameResolver,
@@ -111,10 +101,8 @@ public class PayrollService {
         this.payrollRepo = payrollRepo;
         this.attendanceRepo = attendanceRepo;
         this.teacherRepo = teacherRepo;
-        this.scheduleRepo = scheduleRepo;
-        this.assignmentRepo = assignmentRepo;
-        this.slotRepo = slotRepo;
-        this.classRepo = classRepo;
+        this.payRateRepo = payRateRepo;
+        this.contractRepo = contractRepo;
         this.changeLogRepo = changeLogRepo;
         this.userRepo = userRepo;
         this.displayNameResolver = displayNameResolver;
@@ -126,9 +114,24 @@ public class PayrollService {
     @Transactional(readOnly = true)
     public List<PayrollResponse> list(short year, short month) {
         Map<Integer, String> cache = new HashMap<>();
+        Map<Integer, Long> lateByTeacher = lateCountsOf(year, month);
         return payrollRepo.findByPeriodYearAndPeriodMonthOrderByTeacherId(year, month).stream()
-                .map(p -> PayrollResponse.fromEntity(p, teacherName(p.getTeacherId(), cache)))
+                .map(p -> {
+                    PayrollResponse r = PayrollResponse.fromEntity(p, teacherName(p.getTeacherId(), cache));
+                    r.lateCount = lateByTeacher.getOrDefault(p.getTeacherId(), 0L);
+                    return r;
+                })
                 .toList();
+    }
+
+    /** teacherId → số buổi đi muộn trong kỳ. Một câu SQL cho cả bảng lương. */
+    private Map<Integer, Long> lateCountsOf(short year, short month) {
+        LocalDate from = LocalDate.of(year, month, 1);
+        Map<Integer, Long> out = new HashMap<>();
+        for (Object[] r : attendanceRepo.countLateByTeacher(from, from.withDayOfMonth(from.lengthOfMonth()))) {
+            out.put(((Number) r[0]).intValue(), ((Number) r[1]).longValue());
+        }
+        return out;
     }
 
     /**
@@ -165,29 +168,59 @@ public class PayrollService {
 
     /**
      * Sinh/tính lại bảng lương một kỳ từ chấm công: đếm SỐ TIẾT mỗi GV và cộng tiền theo
-     * đơn giá cấp của từng buổi. Chỉ ghi đè các dòng NHÁP (DRAFT).
+     * đơn giá của từng buổi. Chỉ ghi đè các dòng NHÁP (DRAFT).
+     *
+     * <p>Đơn giá tra theo BA thứ, đúng thứ tự: đơn giá riêng trong hợp đồng của giáo viên →
+     * barem chung theo khối và theo NGÀY DẠY ({@code PayRate}) → không tra ra thì bỏ qua và
+     * ghi cảnh báo. Tra theo ngày dạy chứ không theo hôm nay: tính lại tháng 7 sau khi tăng
+     * giá từ 1/9 phải ra đúng số của tháng 7.
+     *
+     * <p>Lương cứng đọc từ hợp đồng và CHỈ áp cho giáo viên cơ hữu — thỉnh giảng chỉ ăn tiền
+     * tiết. Trước V38 cột này luôn bằng 0 trừ khi kế toán gõ tay.
      */
     @Transactional
     public List<PayrollResponse> generate(short year, short month) {
         LocalDate from = LocalDate.of(year, month, 1);
         LocalDate to = from.withDayOfMonth(from.lengthOfMonth());
 
-        // Gom theo GV: số tiết + tổng tiền (đơn giá tra theo cấp từng buổi).
-        Map<Integer, int[]> periodsByTeacher = new LinkedHashMap<>();
-        Map<Integer, BigDecimal> payByTeacher = new LinkedHashMap<>();
-        Map<Integer, BigDecimal> gradeRateCache = new HashMap<>(); // scheduleId → đơn giá (tránh join lặp)
+        // MỘT câu SQL cho cả kỳ, đã kèm khối lớp của từng buổi. Bản cũ hỏi DB bốn lần cho
+        // mỗi dòng chấm công (~3.000 câu/tháng) vì cache đánh theo scheduleId không bao giờ
+        // trúng — mỗi dòng chấm công có một scheduleId riêng.
+        List<Object[]> rows = attendanceRepo.findPayableWithGrade(from, to);
 
-        for (Attendance a : attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(from, to)) {
-            if (!("PRESENT".equals(a.getStatus()) || "LATE".equals(a.getStatus()))) {
+        // Gom theo GV: số tiết · số buổi muộn · tổng tiền.
+        Map<Integer, int[]> countsByTeacher = new LinkedHashMap<>(); // [0] = tiết, [1] = buổi muộn
+        Map<Integer, BigDecimal> payByTeacher = new LinkedHashMap<>();
+
+        List<PayRate> rateTable = payRateRepo.findAllByOrderByEffectiveFromDescGradeFromAsc();
+        Map<Integer, Contract> contracts = contractsOf(rows);
+
+        for (Object[] r : rows) {
+            Integer teacherId = ((Number) r[0]).intValue();
+            LocalDate workDate = toLocalDate(r[1]);
+            boolean late = "LATE".equals(r[2]);
+            Integer grade = parseGrade((String) r[3], (String) r[4]);
+
+            BigDecimal rate = resolveRate(contracts.get(teacherId), grade, workDate, rateTable);
+            if (rate == null) {
+                log.warn(
+                        "Không tra được đơn giá cho GV id={} ngày {} (khối {}) — bỏ qua tiết này."
+                                + " Kiểm tra bảng PayRate và khối của lớp.",
+                        teacherId,
+                        workDate,
+                        grade);
                 continue;
             }
-            BigDecimal rate = rateForAttendance(a, gradeRateCache);
-            periodsByTeacher.computeIfAbsent(a.getTeacherId(), k -> new int[1])[0]++;
-            payByTeacher.merge(a.getTeacherId(), rate, BigDecimal::add);
+            int[] counts = countsByTeacher.computeIfAbsent(teacherId, k -> new int[2]);
+            counts[0]++;
+            if (late) {
+                counts[1]++;
+            }
+            payByTeacher.merge(teacherId, rate, BigDecimal::add);
         }
 
         Integer userId = SecurityUtils.currentUserId();
-        for (Map.Entry<Integer, int[]> e : periodsByTeacher.entrySet()) {
+        for (Map.Entry<Integer, int[]> e : countsByTeacher.entrySet()) {
             Integer teacherId = e.getKey();
             int periods = e.getValue()[0];
             BigDecimal pay = payByTeacher.getOrDefault(teacherId, BigDecimal.ZERO);
@@ -211,6 +244,7 @@ public class PayrollService {
                     periods > 0 ? pay.divide(BigDecimal.valueOf(periods), 2, RoundingMode.HALF_UP) : BigDecimal.ZERO;
             p.setTaughtHours(BigDecimal.valueOf(periods)); // repurpose: SỐ TIẾT
             p.setRatePerHour(effRate); // ĐƠN GIÁ / TIẾT
+            p.setBaseSalary(baseSalaryOf(teacherId, contracts.get(teacherId)));
             p.setUpdatedBy(userId);
             p.setUpdatedAt(Instant.now());
             payrollRepo.save(p);
@@ -219,7 +253,7 @@ public class PayrollService {
         // Dòng nháp của GV KHÔNG còn tiết nào trong kỳ → reset 0, tránh giữ số cũ đã sai.
         for (Payroll p : payrollRepo.findByPeriodYearAndPeriodMonthOrderByTeacherId(year, month)) {
             if ("DRAFT".equals(p.getStatus())
-                    && !periodsByTeacher.containsKey(p.getTeacherId())
+                    && !countsByTeacher.containsKey(p.getTeacherId())
                     && p.getTaughtHours() != null
                     && p.getTaughtHours().signum() != 0) {
                 p.setTaughtHours(BigDecimal.ZERO);
@@ -277,6 +311,70 @@ public class PayrollService {
                 p.getId().longValue(),
                 false);
         return toResponse(p);
+    }
+
+    /* ──────────────── XÁC NHẬN ĐÃ TRẢ (V38) ──────────────── */
+
+    /**
+     * Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ.
+     *
+     * <p>Trước V38 trạng thái {@code PAID} là trạng thái CHẾT: có trong ràng buộc của bảng, có
+     * trong danh sách giáo viên được xem, và {@link #assertReopenable} từ chối mở lại phiếu
+     * PAID — nhưng không có đường code nào đặt được nó. Kế toán chi tiền xong không có nút nào
+     * để ghi nhận, nên "đã chốt" và "đã trả" trên hệ thống là một.
+     *
+     * <p>Chỉ đi được từ FINALIZED. Từ DRAFT thẳng sang PAID là bỏ qua bước chốt sổ, mà bước
+     * chốt mới là chỗ có cảnh báo ngày nghỉ và khóa chấm công.
+     */
+    @Transactional
+    public PayrollResponse pay(Integer id) {
+        Payroll p = getOrThrow(id);
+        if ("PAID".equals(p.getStatus())) {
+            throw new ApiException(HttpStatus.CONFLICT, "Phiếu lương này đã được đánh dấu ĐÃ TRẢ.");
+        }
+        if (!"FINALIZED".equals(p.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT, "Chỉ đánh dấu đã trả cho phiếu ĐÃ CHỐT. Vui lòng chốt phiếu trước.");
+        }
+        p.setStatus("PAID");
+        p.setUpdatedBy(SecurityUtils.currentUserId());
+        p.setUpdatedAt(Instant.now());
+        payrollRepo.saveAndFlush(p);
+        em.refresh(p);
+        writeLog(p, "PAY", null, "FINALIZED", "PAID", p.getNetAmount(), p.getNetAmount());
+
+        notificationService.publishToTeacher(
+                p.getTeacherId(),
+                "Đã chi lương kỳ " + p.getPeriodMonth() + "/" + p.getPeriodYear(),
+                "Lương tháng " + p.getPeriodMonth() + "/" + p.getPeriodYear() + " đã được chi: "
+                        + formatVnd(p.getNetAmount()) + ".",
+                "PAYROLL",
+                "Payroll",
+                p.getId().longValue(),
+                false);
+        return toResponse(p);
+    }
+
+    /**
+     * Đánh dấu ĐÃ TRẢ cho MỌI phiếu đã chốt của một kỳ — kế toán chi lương theo đợt chứ không
+     * theo từng người.
+     *
+     * @return số phiếu đã đánh dấu
+     */
+    @Transactional
+    public int payPeriod(short year, short month) {
+        List<Payroll> targets = payrollRepo.findByPeriodYearAndPeriodMonthOrderByTeacherId(year, month).stream()
+                .filter(p -> "FINALIZED".equals(p.getStatus()))
+                .toList();
+        if (targets.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Kỳ lương " + month + "/" + year + " không có phiếu nào ở trạng thái đã chốt.");
+        }
+        for (Payroll p : targets) {
+            pay(p.getId());
+        }
+        return targets.size();
     }
 
     /* ──────────────── MỞ LẠI KỲ LƯƠNG ĐÃ CHỐT (V32) ──────────────── */
@@ -430,60 +528,73 @@ public class PayrollService {
 
     /* ── helpers ── */
 
-    /** Đơn giá/tiết của một buổi chấm công: tra cấp qua buổi→phân công→lớp→khối. */
-    private BigDecimal rateForAttendance(Attendance a, Map<Integer, BigDecimal> cache) {
-        if (a.getScheduleId() == null) {
-            return TH_RATE; // chấm công lẻ không gắn buổi: mặc định đơn giá TH (an toàn thấp)
+    /**
+     * Đơn giá một tiết, theo thứ tự ưu tiên: hợp đồng riêng → barem chung.
+     *
+     * <p>Trả {@code null} khi không tra ra mức nào (khối rỗng, khối ngoài barem, hoặc ngày dạy
+     * nằm ngoài mọi khoảng hiệu lực). Cố ý KHÔNG lấy một mức mặc định: đoán một con số ở đây
+     * là ghi tiền sai vào phiếu lương mà không ai biết. Bên gọi ghi cảnh báo và bỏ qua tiết đó,
+     * để số tiết trên phiếu lệch đi và người dùng nhìn thấy có gì đó không ổn.
+     *
+     * @param contract hợp đồng đang hiệu lực của giáo viên, có thể null
+     * @param grade khối lớp của buổi dạy, có thể null nếu dữ liệu lớp hỏng
+     * @param workDate ngày dạy — mức giá tra theo ngày này, KHÔNG theo hôm nay
+     */
+    static BigDecimal resolveRate(Contract contract, Integer grade, LocalDate workDate, List<PayRate> rateTable) {
+        if (contract != null && contract.getRatePerPeriod() != null) {
+            return contract.getRatePerPeriod();
         }
-        int key = a.getScheduleId().intValue();
-        BigDecimal cached = cache.get(key);
-        if (cached != null) {
-            return cached;
+        if (grade == null || workDate == null) {
+            return null;
         }
-        BigDecimal rate = TH_RATE;
-        Schedule s = scheduleRepo.findById(a.getScheduleId()).orElse(null);
-        if (s != null) {
-            var asg = assignmentRepo.findById(s.getAssignmentId()).orElse(null);
-            // Đơn giá theo KHỐI của lớp dạy ở CHÍNH tiết đó (V16): một phân công nay có thể
-            // trải nhiều lớp, mà lớp 5 (TH) và lớp 6 (THCS) khác đơn giá — đọc lớp ở cấp
-            // phân công sẽ tính sai tiền.
-            Integer classId = asg != null ? asg.getClassId() : null;
-            if (s.getSourceSlotId() != null) {
-                AssignmentSlot slot = slotRepo.findById(s.getSourceSlotId()).orElse(null);
-                if (slot != null && slot.getClassId() != null) {
-                    classId = slot.getClassId();
-                }
-            }
-            if (classId != null) {
-                SchoolClass c = classRepo.findById(classId).orElse(null);
-                Integer grade = c != null ? parseGrade(c.getGradeLevel(), c.getName()) : null;
-                BigDecimal byGrade = rateForGrade(grade);
-                if (byGrade != null) {
-                    rate = byGrade;
-                } else if (grade != null) {
-                    log.warn(
-                            "Lớp id={} có khối {} ngoài phạm vi 1-9 — tạm tính đơn giá TH. Dữ liệu này cần sửa lại.",
-                            classId,
-                            grade);
-                }
+        // Bảng giá đã sắp EffectiveFrom giảm dần nên mức đầu tiên khớp cũng là mức mới nhất
+        // còn hiệu lực vào ngày đó.
+        for (PayRate r : rateTable) {
+            if (r.coversGrade(grade) && r.coversDate(workDate)) {
+                return r.getAmount();
             }
         }
-        cache.put(key, rate);
-        return rate;
+        return null;
     }
 
     /**
-     * Đơn giá 1 tiết theo số khối, {@code null} nếu khối ngoài 1–9.
+     * Lương cứng của một kỳ.
      *
-     * <p>KHÔNG viết gộp thành {@code grade <= 5 ? TH_RATE : THCS_RATE}: cách đó nuốt cả khối
-     * 10–12 vào đơn giá THCS, hồi còn trường cấp 3 là tính sai tiền lương mà không nhánh nào
-     * báo lên. Khối ngoài 1–9 là dữ liệu hỏng nên trả null để bên gọi ghi cảnh báo.
+     * <p>CHỈ giáo viên cơ hữu mới có: thỉnh giảng ăn theo tiết, cộng thêm lương cứng cho họ là
+     * trả tiền cho những tháng họ không dạy buổi nào. Không có hợp đồng thì trả 0 chứ không
+     * chặn — hồ sơ thiếu hợp đồng là việc của HR, không nên làm kế toán không chốt được lương.
      */
-    static BigDecimal rateForGrade(Integer grade) {
-        if (grade == null || grade < 1 || grade > 9) {
-            return null;
+    private BigDecimal baseSalaryOf(Integer teacherId, Contract contract) {
+        if (contract == null || contract.getBaseSalary() == null) {
+            return BigDecimal.ZERO;
         }
-        return grade <= 5 ? TH_RATE : THCS_RATE;
+        boolean coHuu = teacherRepo
+                .findById(teacherId)
+                .map(t -> "CO_HUU".equals(t.getEmploymentType()))
+                .orElse(false);
+        return coHuu ? contract.getBaseSalary() : BigDecimal.ZERO;
+    }
+
+    /** Hợp đồng của mọi giáo viên xuất hiện trong kết quả, nạp một lượt. */
+    private Map<Integer, Contract> contractsOf(List<Object[]> rows) {
+        Set<Integer> ids =
+                rows.stream().map(r -> ((Number) r[0]).intValue()).collect(java.util.stream.Collectors.toSet());
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Integer, Contract> out = new HashMap<>();
+        for (Contract c : contractRepo.findByTeacherIdInAndDeletedFalse(ids)) {
+            out.put(c.getTeacherId(), c);
+        }
+        return out;
+    }
+
+    /** Cột DATE của SQL Server về qua JDBC dưới dạng java.sql.Date. */
+    private static LocalDate toLocalDate(Object v) {
+        if (v instanceof java.sql.Date d) {
+            return d.toLocalDate();
+        }
+        return v instanceof LocalDate d ? d : null;
     }
 
     /** Lấy số khối từ "Khối 6" / tên lớp "6A"… (1–9). */

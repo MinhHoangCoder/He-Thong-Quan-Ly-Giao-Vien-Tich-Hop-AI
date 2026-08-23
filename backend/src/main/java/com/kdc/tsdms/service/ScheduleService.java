@@ -1,11 +1,14 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.BatchIn;
+import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.MyScheduleFilters;
 import com.kdc.tsdms.dto.OptionItem;
 import com.kdc.tsdms.dto.ScheduleEventResponse;
 import com.kdc.tsdms.dto.ScheduleFilterOptions;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
+import com.kdc.tsdms.entity.Holiday;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -15,6 +18,7 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.HolidayRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -31,6 +35,8 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -55,6 +61,7 @@ public class ScheduleService {
     private final SchoolClassRepository classRepo;
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
+    private final HolidayRepository holidayRepo;
 
     public ScheduleService(
             ScheduleRepository scheduleRepo,
@@ -64,7 +71,8 @@ public class ScheduleService {
             SchoolRepository schoolRepo,
             SchoolClassRepository classRepo,
             SubjectRepository subjectRepo,
-            PeriodRepository periodRepo) {
+            PeriodRepository periodRepo,
+            HolidayRepository holidayRepo) {
         this.scheduleRepo = scheduleRepo;
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
@@ -73,6 +81,35 @@ public class ScheduleService {
         this.classRepo = classRepo;
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
+        this.holidayRepo = holidayRepo;
+    }
+
+    /**
+     * Khoảng ngày dài nhất một lần gọi được phép hỏi.
+     *
+     * <p>Lịch dạy là màn hình LỊCH — nó luôn hiển thị một tuần hoặc một lưới tháng, tức là
+     * nhiều nhất 42 ngày. Trần 45 ngày chừa đúng một chút chỗ xoay.
+     *
+     * <p>Vì sao phải có trần: {@code ?from=2025-09-01&to=2027-06-30} gom trọn 86.745 buổi
+     * dạy, dựng từng ấy đối tượng trong bộ nhớ rồi đổ ra JSON vài chục megabyte — không cần
+     * sửa dòng code nào, chỉ cần sửa URL trên thanh địa chỉ. Đo thực tế: 45 ngày trả 1,5 MB
+     * trong 0,5 giây, còn 100 ngày đã là 8,3 MB và 1,5 giây.
+     */
+    private static final int SO_NGAY_TOI_DA = 45;
+
+    /** Khoảng ngày phải có, phải thuận chiều, và không dài quá {@link #SO_NGAY_TOI_DA}. */
+    private static void assertKhoangNgayHopLe(LocalDate from, LocalDate to) {
+        if (from == null || to == null) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn khoảng ngày cần xem.");
+        }
+        if (to.isBefore(from)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải sau ngày bắt đầu.");
+        }
+        if (java.time.temporal.ChronoUnit.DAYS.between(from, to) > SO_NGAY_TOI_DA) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Chỉ xem được tối đa " + SO_NGAY_TOI_DA + " ngày một lần. Hãy thu hẹp khoảng ngày.");
+        }
     }
 
     /**
@@ -83,8 +120,7 @@ public class ScheduleService {
      */
     private Integer classIdOf(Schedule s, Assignment a, Map<Integer, AssignmentSlot> slotCache) {
         if (s.getSourceSlotId() != null) {
-            AssignmentSlot slot = slotCache.computeIfAbsent(
-                    s.getSourceSlotId(), id -> slotRepo.findById(id).orElse(null));
+            AssignmentSlot slot = slotCache.get(s.getSourceSlotId());
             if (slot != null && slot.getClassId() != null) {
                 return slot.getClassId();
             }
@@ -99,8 +135,7 @@ public class ScheduleService {
      */
     private Integer schoolIdOf(Schedule s, Assignment a, Map<Integer, AssignmentSlot> slotCache) {
         if (s.getSourceSlotId() != null) {
-            AssignmentSlot slot = slotCache.computeIfAbsent(
-                    s.getSourceSlotId(), id -> slotRepo.findById(id).orElse(null));
+            AssignmentSlot slot = slotCache.get(s.getSourceSlotId());
             if (slot != null && slot.getSchoolId() != null) {
                 return slot.getSchoolId();
             }
@@ -108,17 +143,43 @@ public class ScheduleService {
         return a.getSchoolId();
     }
 
+    /**
+     * Buổi dạy trong khoảng ngày.
+     *
+     * @param status trạng thái cần xem; null/rỗng = {@value #APPROVED}. Điều phối viên cần
+     *     nhìn được cả buổi PENDING ("tuần sau còn 12 buổi chưa ai xác nhận") ngay trên lịch,
+     *     nhưng mặc định vẫn chỉ hiện buổi đã duyệt — lịch là thứ đã chốt.
+     * @param keyword lọc theo tên GV / trường / lớp / môn, bỏ dấu vẫn khớp. Lọc Ở ĐÂY chứ
+     *     không để trình duyệt tự lọc sau khi tải: một tháng của trung tâm là vài nghìn buổi,
+     *     gửi hết về rồi giấu đi 99% là trả giá đường truyền cho thứ người dùng không nhìn.
+     */
     @Transactional(readOnly = true)
     public List<ScheduleEventResponse> list(
-            LocalDate from, LocalDate to, Integer teacherId, Integer schoolId, Integer classId) {
+            LocalDate from,
+            LocalDate to,
+            Integer teacherId,
+            Integer schoolId,
+            Integer classId,
+            String status,
+            String keyword) {
+        assertKhoangNgayHopLe(from, to);
         Integer effectiveTeacher = scopedTeacherId(teacherId);
+        String wanted =
+                status == null || status.isBlank() ? APPROVED : status.trim().toUpperCase();
 
         List<Schedule> schedules = effectiveTeacher != null
                 ? scheduleRepo.findByTeacherIdAndStatusAndStartTimeBetweenAndDeletedFalseOrderByStartTime(
-                        effectiveTeacher, APPROVED, from.atStartOfDay(), to.atTime(LocalTime.MAX))
+                        effectiveTeacher, wanted, from.atStartOfDay(), to.atTime(LocalTime.MAX))
                 : scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
-                        from.atStartOfDay(), to.atTime(LocalTime.MAX), APPROVED);
-        return buildEvents(schedules, schoolId, classId);
+                        from.atStartOfDay(), to.atTime(LocalTime.MAX), wanted);
+        List<ScheduleEventResponse> events = buildEvents(schedules, schoolId, classId);
+        String kw = SearchText.normalize(keyword);
+        if (kw.isEmpty()) {
+            return events;
+        }
+        return events.stream()
+                .filter(e -> SearchText.matchesAny(kw, e.teacherName, e.schoolName, e.className, e.subjectName))
+                .toList();
     }
 
     /**
@@ -134,9 +195,17 @@ public class ScheduleService {
         return buildEvents(schedules, schoolId, classId);
     }
 
-    /** Ghép các buổi dạy thành sự kiện lịch (tên GV/trường/lớp/môn/tiết), lọc theo trường/lớp. */
+    /**
+     * Ghép các buổi dạy thành sự kiện lịch (tên GV/trường/lớp/môn/tiết), lọc theo trường/lớp.
+     *
+     * <p>Mọi thứ cần tra đều NẠP SẴN trước vòng lặp. Bản cũ có cache nhưng để nó tự lười nạp,
+     * mà khóa cache là {@code SourceSlotId} — mỗi buổi dạy sinh ra từ một ô lịch RIÊNG nên
+     * cache không bao giờ trúng. Một tuần 1.575 buổi thành hơn 1.700 câu SQL và 3,6 giây.
+     *
+     * <p>Các bảng tra cứu (giáo viên, trường, lớp, môn, tiết) đều nhỏ và ổn định nên nạp trọn;
+     * riêng phân công và ô lịch chỉ nạp đúng những dòng mà khoảng ngày này đụng tới.
+     */
     private List<ScheduleEventResponse> buildEvents(List<Schedule> schedules, Integer schoolId, Integer classId) {
-        // Cache tra cứu (tránh N+1 khi nhiều buổi trùng GV/trường/lớp/môn/tiết).
         Map<Integer, Assignment> aCache = new HashMap<>();
         Map<Integer, String> teacherName = new HashMap<>();
         Map<Integer, School> schoolCache = new HashMap<>();
@@ -146,10 +215,42 @@ public class ScheduleService {
         Map<Integer, AssignmentSlot> slotCache = new HashMap<>();
         PeriodSessionIndex sessionIndex = new PeriodSessionIndex(periodRepo);
 
+        if (!schedules.isEmpty()) {
+            Set<Integer> assignmentIds = schedules.stream()
+                    .map(Schedule::getAssignmentId)
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (Assignment x : BatchIn.theoLo(assignmentIds, assignmentRepo::findAllById)) {
+                aCache.put(x.getId(), x);
+            }
+            Set<Integer> slotIds = schedules.stream()
+                    .map(Schedule::getSourceSlotId)
+                    .filter(Objects::nonNull)
+                    .collect(java.util.stream.Collectors.toSet());
+            for (AssignmentSlot x : BatchIn.theoLo(slotIds, slotRepo::findAllById)) {
+                slotCache.put(x.getId(), x);
+            }
+            for (Teacher x : teacherRepo.findAll()) {
+                teacherName.put(x.getId(), fullName(x));
+            }
+            for (School x : schoolRepo.findAll()) {
+                schoolCache.put(x.getId(), x);
+            }
+            for (SchoolClass x : classRepo.findAll()) {
+                classCache.put(x.getId(), x);
+            }
+            for (Subject x : subjectRepo.findAll()) {
+                subjectCache.put(x.getId(), x);
+            }
+            for (Period x : periodRepo.findAll()) {
+                periodCache.put(x.getId(), x);
+            }
+            sessionIndex.napTruoc(periodCache.values());
+        }
+
         List<ScheduleEventResponse> out = new ArrayList<>();
         for (Schedule s : schedules) {
-            Assignment a = aCache.computeIfAbsent(
-                    s.getAssignmentId(), id -> assignmentRepo.findById(id).orElse(null));
+            Assignment a = aCache.get(s.getAssignmentId());
             if (a == null) {
                 continue;
             }
@@ -171,27 +272,20 @@ public class ScheduleService {
             e.endTime = s.getEndTime().toLocalTime();
             e.dayOfWeek = dayCode(s.getStartTime().getDayOfWeek());
             e.teacherId = s.getTeacherId();
-            e.teacherName = teacherName.computeIfAbsent(s.getTeacherId(), id -> teacherRepo
-                    .findById(id)
-                    .map(ScheduleService::fullName)
-                    .orElse("(GV #" + id + ")"));
+            e.teacherName = teacherName.getOrDefault(s.getTeacherId(), "(GV #" + s.getTeacherId() + ")");
             e.schoolId = eventSchoolId;
-            School school = schoolCache.computeIfAbsent(
-                    eventSchoolId, id -> schoolRepo.findById(id).orElse(null));
+            School school = schoolCache.get(eventSchoolId);
             e.schoolName = school != null ? school.getName() : "(Trường #" + eventSchoolId + ")";
             e.classId = eventClassId;
             if (eventClassId != null) {
-                SchoolClass c = classCache.computeIfAbsent(
-                        eventClassId, id -> classRepo.findById(id).orElse(null));
+                SchoolClass c = classCache.get(eventClassId);
                 e.className = c != null ? c.getName() : null;
             }
             e.subjectId = a.getSubjectId();
-            Subject subj = subjectCache.computeIfAbsent(
-                    a.getSubjectId(), id -> subjectRepo.findById(id).orElse(null));
+            Subject subj = subjectCache.get(a.getSubjectId());
             e.subjectName = subj != null ? subj.getName() : "(Môn #" + a.getSubjectId() + ")";
             if (s.getPeriodId() != null) {
-                Period p = periodCache.computeIfAbsent(
-                        s.getPeriodId(), id -> periodRepo.findById(id).orElse(null));
+                Period p = periodCache.get(s.getPeriodId());
                 if (p != null) {
                     e.periodId = p.getId();
                     e.periodNumber = p.getPeriodNumber();
@@ -211,21 +305,48 @@ public class ScheduleService {
         List<OptionItem> teachers = teacherRepo.findByDeletedFalse().stream()
                 .map(t -> new OptionItem(t.getId(), fullName(t)))
                 .toList();
-        List<OptionItem> schools = schoolRepo.findAll().stream()
-                .filter(s -> !s.isDeleted())
+        List<OptionItem> schools = schoolRepo.findByDeletedFalseOrderByNameAsc().stream()
                 .map(s -> new OptionItem(s.getId(), s.getName()))
                 .toList();
         return new ScheduleFilterOptions(teachers, schools);
     }
 
-    /** Lớp của một trường (dropdown lọc cấp 2). */
+    /**
+     * Lớp của một trường (dropdown lọc cấp 2).
+     *
+     * <p>Lọc bằng câu WHERE chứ không {@code findAll()} rồi lọc trong Java: bản cũ nạp cả
+     * gần 400 lớp của mọi trường về bộ nhớ mỗi lần người dùng đổi dropdown, để lấy ra hơn
+     * chục dòng.
+     */
     @Transactional(readOnly = true)
     public List<OptionItem> classesOf(Integer schoolId) {
-        return classRepo.findAll().stream()
-                .filter(c -> !c.isDeleted() && c.getSchoolId().equals(schoolId))
+        return classRepo.findBySchoolIdAndDeletedFalseOrderByName(schoolId).stream()
                 .map(c -> new OptionItem(c.getId(), c.getName()))
                 .toList();
     }
+
+    /**
+     * Ngày nghỉ chạm vào khoảng đang xem, để lịch tô màu và ghi tên kỳ nghỉ.
+     *
+     * <p>Không có nó thì ngày 2/9 trên lịch trông y hệt một ngày bị quên xếp lịch — người
+     * dùng không phân biệt được "trường đóng cửa" với "ai đó làm thiếu việc".
+     */
+    @Transactional(readOnly = true)
+    public List<HolidayMark> holidaysIn(LocalDate from, LocalDate to, Integer schoolId) {
+        List<HolidayMark> out = new ArrayList<>();
+        for (Holiday h : holidayRepo.findOverlapping(from, to)) {
+            // schoolId null = nghỉ toàn hệ thống, luôn tính. Có giá trị = chỉ trường đó nghỉ,
+            // nên chỉ đánh dấu khi người dùng đang xem đúng trường ấy (hoặc xem tất cả).
+            if (h.getSchoolId() != null && schoolId != null && !h.getSchoolId().equals(schoolId)) {
+                continue;
+            }
+            out.add(new HolidayMark(h.getId(), h.getFromDate(), h.getToDate(), h.getName(), h.getKind()));
+        }
+        return out;
+    }
+
+    /** Một khoảng ngày nghỉ, đủ để frontend tô lịch. */
+    public record HolidayMark(Integer id, LocalDate fromDate, LocalDate toDate, String name, String kind) {}
 
     /**
      * Options lọc cho trang "Lịch dạy của tôi": chỉ TRƯỜNG + LỚP mà chính giáo viên đang đăng

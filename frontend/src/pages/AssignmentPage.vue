@@ -8,11 +8,13 @@
  * Một phiếu nay trải được NHIỀU TRƯỜNG (V27) nên cột "Trường" và "Lớp" đều là tập hợp —
  * quá hai cái thì rút gọn "TH Dư Hàng +2" để dòng không tràn.
  */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { assignmentApi } from '@/api/assignments'
 import { tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
+import FilterBar from '@/components/ui/FilterBar.vue'
+import { PAGE_SIZE } from '@/utils/pagination'
 
 const router = useRouter()
 
@@ -48,55 +50,57 @@ const selectedIds = ref([])
 const view = ref('list')
 const inTrash = computed(() => view.value === 'trash')
 
-/* ── Tìm kiếm (chỉ ở danh sách đang hoạt động) — lọc phía server ──
-   "Lọc ngay khi gõ" nhưng debounce 300ms để không gọi API dồn dập theo từng phím. */
+/* Tìm kiếm phía server; nhịp gõ và hai nút Lọc/Xóa lọc do FilterBar lo. */
 const search = ref('')
-let searchTimer = null
-function onSearchInput() {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(load, 300)
-}
-function applySearch() {
-  clearTimeout(searchTimer)
-  load()
-}
-function clearSearch() {
-  if (!search.value) return
-  search.value = ''
-  clearTimeout(searchTimer)
-  load()
-}
 
-/* ── Phân trang phía client (áp cho danh sách đang xem) ── */
-const PAGE_SIZE = 10
+/* ── Phân trang ──
+   Danh sách chính cắt trang Ở SERVER: 444 phiếu kèm ô lịch là 1,5 MB JSON cho một màn
+   chỉ hiện 10 dòng. Thùng rác vẫn cắt ở client vì nó hiếm khi quá vài chục phiếu. */
 const page = ref(0)
-const currentList = computed(() => (inTrash.value ? trashItems.value : items.value))
-const totalPages = computed(() => Math.ceil(currentList.value.length / PAGE_SIZE))
+const totalItems = ref(0)
+const totalPages = computed(() =>
+  inTrash.value
+    ? Math.ceil(trashItems.value.length / PAGE_SIZE)
+    : Math.max(1, Math.ceil(totalItems.value / PAGE_SIZE)),
+)
 const pagedItems = computed(() => {
+  if (!inTrash.value) return items.value
   const start = page.value * PAGE_SIZE
-  return currentList.value.slice(start, start + PAGE_SIZE)
+  return trashItems.value.slice(start, start + PAGE_SIZE)
 })
 
 const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
-const purgeTarget = ref(null) // xóa vĩnh viễn khỏi thùng rác
 
-async function load() {
+/**
+   * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
+   *   đầu (đổi bộ lọc / từ khóa — kết quả mới thì số trang cũ không còn nghĩa gì).
+   */
+async function load(giuTrang = false) {
   loading.value = true
-  page.value = 0
+  if (!giuTrang) page.value = 0
   selectedIds.value = []
   try {
     const { data } = await assignmentApi.list({
       keyword: search.value,
       status: statusFilter.value,
+      page: page.value,
+      size: PAGE_SIZE,
     })
-    items.value = data
+    items.value = data.content ?? []
+    totalItems.value = data.totalElements ?? 0
   } catch {
     items.value = []
+    totalItems.value = 0
   } finally {
     loading.value = false
   }
   loadCounts()
 }
+
+/* Đổi trang: tải lại đúng trang đó từ server. */
+watch(page, () => {
+  if (!inTrash.value) load(true)
+})
 
 /** Số phiếu từng trạng thái cho badge trên tab — tải kèm mỗi lần làm mới danh sách. */
 async function loadCounts() {
@@ -138,7 +142,6 @@ function showList() {
 }
 
 onMounted(load)
-onBeforeUnmount(() => clearTimeout(searchTimer))
 
 /* ── Điều hướng sang trang tạo/sửa ── */
 function openCreate() {
@@ -280,19 +283,6 @@ async function restoreItem(a) {
     alert(e.response?.data?.message ?? 'Khôi phục thất bại')
   }
 }
-
-/* Xóa vĩnh viễn khỏi hệ thống (không thể hoàn tác). */
-async function confirmPurge() {
-  if (!purgeTarget.value) return
-  try {
-    await assignmentApi.purge(purgeTarget.value.id)
-    purgeTarget.value = null
-    loadTrash()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
-    purgeTarget.value = null
-  }
-}
 </script>
 
 <template>
@@ -313,22 +303,14 @@ async function confirmPurge() {
     </div>
 
     <!-- Tìm kiếm phân công theo GV/trường/lớp/môn (chỉ ở danh sách đang hoạt động) -->
-    <div v-if="view === 'list'" class="filter-bar">
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-        <input
-          v-model="search"
-          type="search"
-          aria-label="Tìm phân công theo giáo viên, trường, lớp, môn"
-          @input="onSearchInput"
-          @keyup.enter="applySearch"
-        />
-      </label>
-      <div class="filter-actions">
-        <button class="btn btn-primary" @click="applySearch">Lọc</button>
-        <button class="btn btn-outline" @click="clearSearch">Xóa lọc</button>
-      </div>
-    </div>
+    <FilterBar
+      v-if="view === 'list'"
+      v-model="search"
+      placeholder="Tên giáo viên, trường, lớp, môn…"
+      aria-label="Tìm phân công theo giáo viên, trường, lớp, môn"
+      @apply="load"
+      @clear="load"
+    />
 
     <!-- Tab trạng thái: việc cần xử lý (Chờ xác nhận / Hết hạn / Bị từ chối) đứng trước -->
     <div v-if="view === 'list'" class="status-tabs">
@@ -401,7 +383,7 @@ async function confirmPurge() {
           <tr v-if="loading">
             <td colspan="9" class="text-center text-muted">Đang tải…</td>
           </tr>
-          <tr v-else-if="!currentList.length">
+          <tr v-else-if="!pagedItems.length">
             <td colspan="9" class="text-center text-muted">
               {{
                 inTrash
@@ -501,9 +483,6 @@ async function confirmPurge() {
               </template>
               <template v-else>
                 <button class="btn btn-sm btn-outline" @click="restoreItem(a)">Khôi phục</button>
-                <button class="btn btn-sm btn-danger" @click="purgeTarget = a">
-                  Xóa vĩnh viễn
-                </button>
               </template>
             </td>
           </tr>
@@ -552,23 +531,6 @@ async function confirmPurge() {
         </div>
       </div>
     </div>
-
-    <!-- Confirm xóa vĩnh viễn -->
-    <div v-if="purgeTarget" class="modal-overlay" @click.self="purgeTarget = null">
-      <div class="modal-box modal-sm">
-        <h3>Xóa vĩnh viễn</h3>
-        <p>
-          Xóa <strong>vĩnh viễn</strong> phân công của
-          <strong>{{ purgeTarget.teacherName }}</strong> tại {{ purgeTarget.schoolName }} khỏi hệ
-          thống? Hành động này <strong>không thể hoàn tác</strong> và sẽ xóa cả các buổi dạy liên
-          quan.
-        </p>
-        <div class="modal-actions">
-          <button class="btn btn-outline" @click="purgeTarget = null">Không</button>
-          <button class="btn btn-danger" @click="confirmPurge">Xóa vĩnh viễn</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -584,52 +546,6 @@ async function confirmPurge() {
   gap: 0.5rem;
   align-items: center;
 }
-/* Ô tìm kiếm phân công — khung bo viền + nhãn + nút Lọc/Xóa lọc */
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-  background: var(--c-surface);
-  border: 1px solid var(--c-border);
-  border-radius: 14px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 220px;
-}
-.field--wide {
-  flex: 1;
-}
-.field span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.field input {
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: var(--c-surface);
-  color: var(--c-text);
-}
-.field input:focus {
-  outline: none;
-  border-color: var(--c-primary);
-  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
-}
-.filter-actions {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-end;
-}
-
 /* ── Tab trạng thái ── */
 .status-tabs {
   display: flex;

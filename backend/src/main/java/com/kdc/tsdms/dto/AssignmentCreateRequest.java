@@ -58,12 +58,12 @@ public record AssignmentCreateRequest(
         @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,
 
         /**
-         * Ngày kết thúc giai đoạn — nullable trên REQUEST, nhưng KHÔNG bao giờ được lưu null:
-         * bỏ trống thì Service chốt luôn thành {@code startDate + 8 tuần} (đúng bằng khoảng đã
-         * sinh Schedule) rồi mới ghi xuống. Lưu null sẽ khiến luật chống trùng coi giai đoạn là
-         * vô hạn và giữ khung giờ của giáo viên mãi mãi dù không còn buổi dạy nào.
+         * Ngày kết thúc giai đoạn — BẮT BUỘC. Trước đây bỏ trống thì Service tự chốt thành
+         * {@code startDate + 8 tuần}, một con số người xếp lịch không hề chọn và cũng không
+         * nhìn thấy: họ tưởng phiếu chạy tới hết học kỳ trong khi buổi dạy dừng ở tuần thứ
+         * tám. Bắt điền là bắt nói ra giai đoạn thật.
          */
-        LocalDate endDate,
+        @NotNull(message = "Vui lòng nhập ngày kết thúc") LocalDate endDate,
 
         /**
          * Danh sách slot Thứ+Tiết — tối thiểu 1. KHÔNG giới hạn ở 9 nữa: một phân công có

@@ -29,6 +29,8 @@ const props = defineProps({
    * Chỉ khóa trong LỊCH; gõ tay vẫn nhận để trang gọi tự quyết cách báo lỗi.
    */
   min: { type: String, default: '' },
+  /** Ngày muộn nhất được chọn, cùng quy ước với {@link min}. */
+  max: { type: String, default: '' },
 })
 const emit = defineEmits(['update:modelValue'])
 
@@ -99,7 +101,7 @@ const cells = computed(() => {
       day: d.getDate(),
       outside: d.getMonth() !== viewMonth.value,
       // So chuỗi ISO trực tiếp được vì cùng định dạng yyyy-MM-dd.
-      blocked: !!props.min && iso < props.min,
+      blocked: (!!props.min && iso < props.min) || (!!props.max && iso > props.max),
     })
   }
   return out

@@ -66,7 +66,6 @@ const modal = reactive({
 
 const deleteTarget = ref(null)
 const restoreTarget = ref(null)
-const purgeTarget = ref(null)
 const trashBusy = ref(false)
 const trashError = ref('')
 
@@ -355,7 +354,7 @@ async function saveModal() {
   }
 }
 
-/* ── Xóa mềm / khôi phục / xóa vĩnh viễn ── */
+/* ── Xóa mềm / khôi phục ── */
 async function confirmDelete() {
   if (!deleteTarget.value) return
   try {
@@ -377,20 +376,6 @@ async function confirmRestore() {
     loadTrash()
   } catch (e) {
     alert(e.response?.data?.message ?? 'Khôi phục thất bại')
-  } finally {
-    trashBusy.value = false
-  }
-}
-
-async function confirmPurge() {
-  if (!purgeTarget.value) return
-  trashBusy.value = true
-  try {
-    await schoolApi.purge(purgeTarget.value.id)
-    purgeTarget.value = null
-    loadTrash()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
   } finally {
     trashBusy.value = false
   }
@@ -684,9 +669,6 @@ async function confirmPurge() {
               <td>{{ item.contactPerson || '-' }}</td>
               <td class="col-actions">
                 <button class="act-btn" @click="restoreTarget = item">Khôi phục</button>
-                <button class="act-btn act-btn--del" @click="purgeTarget = item">
-                  Xóa vĩnh viễn
-                </button>
               </td>
             </tr>
           </tbody>
@@ -866,24 +848,6 @@ async function confirmPurge() {
           <button class="btn btn--ghost" @click="restoreTarget = null">Hủy</button>
           <button class="btn" :disabled="trashBusy" @click="confirmRestore">
             {{ trashBusy ? 'Đang xử lý...' : 'Khôi phục' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================= MODAL: xóa vĩnh viễn ================= -->
-    <div v-if="purgeTarget" class="overlay" @click.self="purgeTarget = null">
-      <div class="modal">
-        <h3>Xóa vĩnh viễn</h3>
-        <p>
-          Xóa hẳn <strong>{{ purgeTarget.name }}</strong> khỏi hệ thống? Khung tiết và phòng học của
-          trường bị xóa theo. Thao tác này không hoàn tác được.
-        </p>
-
-        <div class="modal__actions">
-          <button class="btn btn--ghost" @click="purgeTarget = null">Hủy</button>
-          <button class="btn btn--danger" :disabled="trashBusy" @click="confirmPurge">
-            {{ trashBusy ? 'Đang xử lý...' : 'Xóa vĩnh viễn' }}
           </button>
         </div>
       </div>

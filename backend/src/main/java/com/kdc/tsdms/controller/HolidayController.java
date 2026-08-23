@@ -1,6 +1,8 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.HolidayAbsenceResponse;
+import com.kdc.tsdms.dto.HolidayDeleteImpactResponse;
 import com.kdc.tsdms.dto.HolidayFixAbsencesRequest;
 import com.kdc.tsdms.dto.HolidayImpactResponse;
 import com.kdc.tsdms.dto.HolidayRequest;
@@ -10,7 +12,6 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.Map;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -74,15 +75,39 @@ public class HolidayController {
             @RequestParam(required = false) Integer schoolId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(
-                Math.max(page, 0), Math.max(size, 1), Sort.by("fromDate").descending());
+        Pageable pageable = Paging.of(page, size, Sort.by("fromDate").descending());
         return service.search(keyword, kind, from, to, schoolId, pageable);
+    }
+
+    /** Kỳ nghỉ đã xóa. Đặt TRƯỚC /{id} vì "trash" cũng khớp mẫu {id} nếu để sau. */
+    @GetMapping("/trash")
+    @PreAuthorize(CAN_MANAGE)
+    public Page<HolidayResponse> trash(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        Pageable pageable = Paging.of(page, size, Sort.by("deletedAt").descending());
+        return service.trash(keyword, pageable);
     }
 
     @GetMapping("/{id}")
     @PreAuthorize(CAN_VIEW)
     public HolidayResponse detail(@PathVariable Integer id) {
         return service.getById(id);
+    }
+
+    /** Kỳ nghỉ này đã để lại những gì — hỏi trước khi xóa. */
+    @GetMapping("/{id}/delete-impact")
+    @PreAuthorize(CAN_MANAGE)
+    public HolidayDeleteImpactResponse deleteImpact(@PathVariable Integer id) {
+        return service.deleteImpact(id);
+    }
+
+    /** Đưa kỳ nghỉ từ thùng rác về danh sách chính. */
+    @PostMapping("/{id}/restore")
+    @PreAuthorize(CAN_MANAGE)
+    public HolidayResponse restore(@PathVariable Integer id) {
+        return service.restore(id);
     }
 
     /** Số buổi dạy đã sinh đang rơi vào kỳ nghỉ — màn hình hỏi trước khi hủy. */

@@ -40,9 +40,4 @@ export const schoolApi = {
   restore(id) {
     return http.post(`/schools/${id}/restore`)
   },
-
-  /** Xóa vĩnh viễn — chỉ được khi trường chưa phát sinh dữ liệu nghiệp vụ nào. */
-  purge(id) {
-    return http.delete(`/schools/${id}/permanent`)
-  },
 }

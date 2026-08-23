@@ -5,8 +5,11 @@ import http from './http'
  * Base: /api/v1/schedules
  */
 export const scheduleApi = {
-  /** Buổi dạy đã duyệt trong [from, to] (yyyy-MM-dd), lọc GV/trường/lớp tùy chọn. */
-  list({ from, to, teacherId, schoolId, classId } = {}) {
+  /**
+   * Buổi dạy trong [from, to] (yyyy-MM-dd), lọc GV/trường/lớp/trạng thái tùy chọn.
+   * Bỏ trống status = chỉ buổi ĐÃ DUYỆT.
+   */
+  list({ from, to, teacherId, schoolId, classId, status, keyword } = {}) {
     return http.get('/schedules', {
       params: {
         from,
@@ -14,7 +17,16 @@ export const scheduleApi = {
         teacherId: teacherId || undefined,
         schoolId: schoolId || undefined,
         classId: classId || undefined,
+        status: status || undefined,
+        keyword: keyword?.trim() || undefined,
       },
+    })
+  },
+
+  /** Ngày nghỉ chạm vào [from, to] — để lịch tô màu, phân biệt "nghỉ lễ" với "quên xếp lịch". */
+  holidays({ from, to, schoolId } = {}) {
+    return http.get('/schedules/holidays', {
+      params: { from, to, schoolId: schoolId || undefined },
     })
   },
 

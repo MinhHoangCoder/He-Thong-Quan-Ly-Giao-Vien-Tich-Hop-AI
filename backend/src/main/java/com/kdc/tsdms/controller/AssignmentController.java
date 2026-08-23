@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.AssignmentBulkRequest;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
@@ -15,6 +16,7 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import org.springframework.data.domain.Page;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,13 +40,21 @@ public class AssignmentController {
         this.approvalService = approvalService;
     }
 
+    /**
+     * Danh sách phân công, PHÂN TRANG PHÍA SERVER.
+     *
+     * <p>Trước đây trả cả 444 phiếu kèm toàn bộ ô lịch (1,5 MB, 4,8 giây) cho một màn hình
+     * chỉ hiện 10 dòng — trình duyệt tải hết rồi cắt trang bằng JavaScript.
+     */
     @GetMapping
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_VIEW')")
-    public List<AssignmentResponse> list(
+    public Page<AssignmentResponse> list(
             @RequestParam(required = false) Integer teacherId,
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String status) {
-        return service.list(teacherId, keyword, status);
+            @RequestParam(required = false) String status,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return service.list(teacherId, keyword, status, Paging.of(page, size));
     }
 
     /** Số phiếu theo từng trạng thái — badge/tab trên màn Phân công. */
@@ -189,13 +199,5 @@ public class AssignmentController {
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
     public AssignmentResponse restore(@PathVariable Integer id) {
         return service.restore(id);
-    }
-
-    /** Xóa VĨNH VIỄN phân công khỏi hệ thống (chỉ khi đang ở thùng rác). */
-    @DeleteMapping("/{id}/permanent")
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
-    public ResponseEntity<Void> purge(@PathVariable Integer id) {
-        service.purge(id);
-        return ResponseEntity.noContent().build();
     }
 }

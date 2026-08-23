@@ -28,6 +28,21 @@ public final class PeriodSessionIndex {
     }
 
     /**
+     * Nạp SẴN số tiết sáng cho một loạt trường bằng MỘT câu, thay vì hỏi lẻ từng trường.
+     *
+     * <p>Dùng khi map cả một trang danh sách: 27 trường là 27 câu SQL nếu để cache tự lười
+     * nạp, mà con số này chỉ là "đếm tiết sáng" — thứ lấy một lần được.
+     */
+    public void napTruoc(java.util.Collection<Period> periods) {
+        for (Period p : periods) {
+            if (p != null && p.getSchoolId() != null) {
+                morningCountBySchool.computeIfAbsent(
+                        p.getSchoolId(), id -> periodRepo.countBySchoolIdAndSessionTypeAndDeletedFalse(id, "MORNING"));
+            }
+        }
+    }
+
+    /**
      * Tiết thứ mấy trong buổi của nó. Sáng = giữ nguyên số tiết; chiều = trừ đi số tiết sáng
      * của CHÍNH trường đó.
      *

@@ -47,6 +47,28 @@ export const classApi = {
     return http.post('/classes/batch-delete', ids)
   },
 
+  /* ── Thêm lớp hàng loạt ── */
+
+  /** Xem trước danh sách lớp sắp tạo (sinh theo mẫu hoặc dán từ Excel). */
+  bulkPreview(body) {
+    return http.post('/classes/bulk/preview', body)
+  },
+
+  /** Như trên nhưng nguồn là file .xlsx / .csv. */
+  bulkPreviewFile({ schoolId, schoolYear, file }) {
+    const fd = new FormData()
+    fd.append('file', file)
+    return http.post('/classes/bulk/preview-file', fd, {
+      params: { schoolId, schoolYear: schoolYear || undefined },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  /** Tạo các lớp đã xem trước. */
+  bulkCreate(body) {
+    return http.post('/classes/bulk', body)
+  },
+
   /** Thùng rác. */
   trash() {
     return http.get('/classes/trash')
@@ -60,15 +82,5 @@ export const classApi = {
   /** Khôi phục nhiều — 1 request, BE chạy trong 1 transaction (lỗi 1 lớp là rollback cả lô). */
   restoreMany(ids) {
     return http.post('/classes/trash/batch-restore', ids)
-  },
-
-  /** Xóa vĩnh viễn (chỉ khi đang ở thùng rác). */
-  purge(id) {
-    return http.delete(`/classes/trash/${id}`)
-  },
-
-  /** Xóa vĩnh viễn nhiều — 1 request, BE chạy trong 1 transaction. */
-  purgeMany(ids) {
-    return http.post('/classes/trash/batch-purge', ids)
   },
 }

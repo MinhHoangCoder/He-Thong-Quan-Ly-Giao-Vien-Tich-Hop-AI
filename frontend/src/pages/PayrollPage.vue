@@ -1,28 +1,37 @@
 <script setup>
 /**
- * Trang Bảng lương: tính lương theo kỳ (tháng/năm) = GIỜ DẠY × ĐƠN GIÁ + phụ cấp
- * + thưởng − khấu trừ. "Tính lương" tổng hợp giờ dạy từ Chấm công; kế toán có thể
- * chỉnh từng dòng rồi chốt (FINALIZED).
+ * Trang Bảng lương: tính theo kỳ (tháng/năm) = lương cứng + SỐ TIẾT × ĐƠN GIÁ + phụ cấp
+ * + thưởng − khấu trừ. "Tính lương" tổng hợp số tiết từ Chấm công.
  *
- * CHỐT LƯƠNG KHÓA LUÔN CHẤM CÔNG CỦA KỲ — hai thứ trang này thêm vào vì lẽ đó:
- * 1. Cảnh báo ngày nghỉ: kỳ còn dòng VẮNG ghi nhầm cho buổi rơi vào ngày lễ (buổi sinh trước
- *    khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong. Banner báo trước + hỏi lại
- *    lần hai lúc bấm.
- * 2. Nút "Mở lại" (V32): cần quyền PAYROLL_REOPEN, bắt buộc nêu lý do, ghi vào nhật ký phiếu.
+ * VÒNG ĐỜI MỘT PHIẾU: Nháp → Đã chốt → Đã trả. Mỗi bước đi một chiều và có rào riêng:
+ * 1. CHỐT khóa luôn chấm công của kỳ. Nếu kỳ còn dòng VẮNG ghi nhầm cho buổi rơi vào ngày lễ
+ *    (buổi sinh trước khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong: banner báo
+ *    trước, và hỏi lại lần hai lúc bấm.
+ * 2. MỞ LẠI (V32) gỡ được bước 1 — cần quyền PAYROLL_REOPEN, bắt buộc nêu lý do.
+ * 3. ĐÃ TRẢ (V38) là điểm không quay lại: tiền đã ra khỏi quỹ. Cần quyền PAYROLL_PAY.
+ *    Trước V38 trạng thái này không có đường nào đặt được, nên "đã chốt" và "đã trả" là một.
+ *
+ * Nút "Bảng đơn giá" mở barem tiết dạy (V38) — trước đó hai mức giá là hằng số trong code.
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { payrollApi } from '@/api/payroll'
+import { payrollApi, payRateApi } from '@/api/payroll'
 import { useAuthStore } from '@/stores/auth'
 import Pagination from '@/components/ui/Pagination.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import { useToast } from '@/composables/useToast'
+import { taiFile, loiTaiFile } from '@/utils/download'
 
 const router = useRouter()
 const auth = useAuthStore()
+const { showToast } = useToast()
 
-/** Nút mở lại chỉ hiện với người thật sự bấm được — ADMIN đi tắt như mọi quyền khác. */
-const canReopen = computed(
-  () => auth.roles.includes('ADMIN') || (auth.user?.perms ?? []).includes('PAYROLL_REOPEN'),
-)
+/** Nút chỉ hiện với người thật sự bấm được — ADMIN đi tắt như mọi quyền khác. */
+const hasPerm = (code) =>
+  auth.roles.includes('ADMIN') || (auth.user?.perms ?? []).includes(code)
+const canReopen = computed(() => hasPerm('PAYROLL_REOPEN'))
+const canPay = computed(() => hasPerm('PAYROLL_PAY'))
+const canManageRate = computed(() => hasPerm('PAYRATE_MANAGE'))
 
 const now = new Date()
 const filter = reactive({
@@ -41,14 +50,37 @@ const STATUS = {
 const rows = ref([])
 const loading = ref(false)
 const info = ref('')
+/** Ô tìm theo tên giáo viên — lọc tại chỗ, xem ghi chú ở filteredRows. */
+const keyword = ref('')
 
-/* ── Phân trang phía client ── */
+/* ── Tìm + phân trang ──
+   Khác Chấm công (phân trang ở server): một kỳ lương chỉ có tối đa vài chục dòng — mỗi giáo
+   viên một dòng — nên tải trọn kỳ về là chuyện bình thường, và dòng "Tổng thực nhận" ở chân
+   bảng phải cộng CẢ KỲ chứ không phải trang đang xem. Tải trọn rồi lọc tại chỗ vừa đúng số
+   vừa gõ tới đâu lọc tới đó. */
+const norm = (s) =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+
+const filteredRows = computed(() => {
+  const q = norm(keyword.value.trim())
+  return q ? rows.value.filter((r) => norm(r.teacherName).includes(q)) : rows.value
+})
+
 const PAGE_SIZE = 10
 const page = ref(0)
-const totalPages = computed(() => Math.ceil(rows.value.length / PAGE_SIZE))
+const totalPages = computed(() => Math.ceil(filteredRows.value.length / PAGE_SIZE))
 const pagedRows = computed(() => {
   const start = page.value * PAGE_SIZE
-  return rows.value.slice(start, start + PAGE_SIZE)
+  return filteredRows.value.slice(start, start + PAGE_SIZE)
+})
+// Gõ tìm làm danh sách ngắn lại → trang 5 có thể không còn tồn tại.
+watch(filteredRows, () => {
+  if (page.value >= totalPages.value) page.value = 0
 })
 
 const editModal = reactive({ open: false, saving: false, error: '', row: null, form: {} })
@@ -63,12 +95,55 @@ const vnd = (n) =>
 const issues = ref(null)
 const hasIssues = computed(() => (issues.value?.absenceCount ?? 0) > 0)
 
+/**
+ * SỨC KHỎE DỮ LIỆU của kỳ đang xem — bảy phép đếm ở backend gộp lại.
+ *
+ * Điểm chung của mọi vấn đề trong đây: không cái nào tự báo lỗi. Bảng lương vẫn sinh ra bình
+ * thường, con số vẫn có, chỉ là sai — nên phải chủ động đi đếm và bày ra TRƯỚC khi người dùng
+ * bấm chốt, chứ không phải sau.
+ */
+const health = ref(null)
+const vanDeChan = computed(() =>
+  (health.value?.vanDe ?? []).filter((v) => v.mucDo === 'CHAN'),
+)
+const coVanDe = computed(() => (health.value?.vanDe ?? []).length > 0)
+
+/**
+ * Xuất CẢ KỲ ra Excel, không phải trang đang xem.
+ *
+ * Bảng lương phân trang 10 dòng ở client trên tập đã tải; nhưng file phải đủ 150 giáo viên,
+ * nên server tự lấy trọn kỳ và dựng file. Xuất từ những gì trình duyệt đang giữ là ra một cái
+ * file trông đúng mà thiếu dữ liệu — và không có gì báo cho người dùng biết.
+ */
+const dangXuat = ref(false)
+
+async function xuatExcel() {
+  dangXuat.value = true
+  try {
+    await taiFile(
+      '/payroll/export',
+      { year: filter.year, month: filter.month },
+      `bang-luong_${filter.month}-${filter.year}.xlsx`,
+    )
+  } catch (e) {
+    showToast(await loiTaiFile(e, 'Không xuất được bảng lương'), 'error')
+  } finally {
+    dangXuat.value = false
+  }
+}
+
 async function loadIssues() {
   try {
-    const { data } = await payrollApi.holidayIssues(filter.year, filter.month)
-    issues.value = data
+    const [hi, hl] = await Promise.all([
+      payrollApi.holidayIssues(filter.year, filter.month),
+      payrollApi.health(filter.year, filter.month),
+    ])
+    issues.value = hi.data
+    health.value = hl.data
   } catch {
-    issues.value = null // cảnh báo hỏng thì im lặng, không chặn việc chính
+    // Cảnh báo hỏng thì im lặng, không chặn việc chính: người dùng vẫn phải xem được bảng lương.
+    issues.value = null
+    health.value = null
   }
 }
 
@@ -165,11 +240,145 @@ async function doFinalize(r) {
   try {
     await payrollApi.finalize(r.id)
     confirmModal.open = false
+    showToast(`Đã chốt phiếu lương của ${r.teacherName}`)
     load()
   } catch (e) {
-    alert(e.response?.data?.message ?? 'Chốt lương thất bại')
+    showToast(e.response?.data?.message ?? 'Chốt lương thất bại', 'error')
   } finally {
     confirmModal.working = false
+  }
+}
+
+/* ──────────── Xác nhận đã trả lương (V38) ──────────── */
+
+/**
+ * row = null → đánh dấu CẢ THÁNG. Kế toán chi lương theo đợt chứ không theo từng người, nên
+ * bắt bấm năm chục lần là bắt làm sai quy trình thật.
+ */
+const payTarget = ref(null) // { row } | { row: null } cho cả tháng; null = đóng
+const paying = ref(false)
+
+const finalizedCount = computed(() => rows.value.filter((r) => r.status === 'FINALIZED').length)
+const finalizedTotal = computed(() =>
+  rows.value
+    .filter((r) => r.status === 'FINALIZED')
+    .reduce((s, r) => s + Number(r.netAmount || 0), 0),
+)
+
+async function doPay() {
+  paying.value = true
+  try {
+    const row = payTarget.value.row
+    if (row) {
+      await payrollApi.pay(row.id)
+      showToast(`Đã đánh dấu đã trả lương cho ${row.teacherName}`)
+    } else {
+      const { data } = await payrollApi.payPeriod(filter.year, filter.month)
+      showToast(`Đã đánh dấu đã trả ${data?.paid ?? 0} phiếu lương kỳ ${filter.month}/${filter.year}`)
+    }
+    payTarget.value = null
+    load()
+  } catch (e) {
+    showToast(e.response?.data?.message ?? 'Đánh dấu thất bại', 'error')
+  } finally {
+    paying.value = false
+  }
+}
+
+/* ──────────── Nhật ký phiếu lương ──────────── */
+
+/**
+ * Endpoint /logs và bảng PayrollChangeLog đã có từ V32 nhưng frontend chưa gọi bao giờ —
+ * lịch sử chốt/mở lại/trả lương nằm trong DB mà không có đường nào nhìn thấy.
+ */
+const logModal = reactive({ open: false, row: null, items: [], loading: false })
+
+const LOG_ACTIONS = {
+  FINALIZE: 'Chốt lương',
+  REOPEN: 'Mở lại',
+  PAY: 'Đã trả',
+}
+
+async function openLogs(r) {
+  logModal.open = true
+  logModal.row = r
+  logModal.items = []
+  logModal.loading = true
+  try {
+    const { data } = await payrollApi.logs(r.id)
+    logModal.items = data
+  } catch (e) {
+    showToast(e.response?.data?.message ?? 'Không tải được nhật ký', 'error')
+    logModal.open = false
+  } finally {
+    logModal.loading = false
+  }
+}
+
+const fmtAt = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN') : '—')
+
+/* ──────────── Bảng đơn giá tiết dạy (V38) ──────────── */
+
+/**
+ * Trước V38 hai mức giá là hằng số trong PayrollService: tăng giá phải sửa code và deploy.
+ * Bảng này để kế toán tự khai, và quan trọng hơn — để người xem bảng lương đối chiếu được
+ * con số trên phiếu với barem mà không phải hỏi ai.
+ */
+const rateModal = reactive({ open: false, items: [], loading: false, error: '', saving: false })
+const rateForm = reactive({ gradeFrom: 1, gradeTo: 5, amount: null, effectiveFrom: '', note: '' })
+
+async function openRates() {
+  rateModal.open = true
+  rateModal.error = ''
+  rateModal.loading = true
+  try {
+    const { data } = await payRateApi.list()
+    rateModal.items = data
+  } catch (e) {
+    rateModal.error = e.response?.data?.message ?? 'Không tải được bảng đơn giá'
+  } finally {
+    rateModal.loading = false
+  }
+}
+
+/**
+ * Một mức giá CHƯA tới ngày áp dụng thì còn xóa được — đó là mức vừa gõ nhầm.
+ *
+ * Mức ĐÃ có hiệu lực thì không: nó là căn cứ của những phiếu lương đã trả, xóa đi thì tính
+ * lại kỳ cũ ra số khác và không ai giải thích được chênh lệch. Backend chặn lần nữa, ở đây chỉ
+ * là không bày ra cái nút mà bấm vào chắc chắn báo lỗi.
+ */
+const todayIso = new Date().toISOString().slice(0, 10)
+const coTheXoaMuc = (r) => canManageRate.value && r.effectiveFrom > todayIso
+
+async function removeRate(r) {
+  rateModal.error = ''
+  try {
+    await payRateApi.remove(r.id)
+    showToast(`Đã xóa mức giá khối ${r.gradeFrom}–${r.gradeTo} áp dụng từ ${r.effectiveFrom}.`)
+    await openRates()
+  } catch (e) {
+    rateModal.error = e.response?.data?.message ?? 'Không xóa được mức giá'
+  }
+}
+
+async function saveRate() {
+  if (!rateForm.amount || !rateForm.effectiveFrom) {
+    rateModal.error = 'Vui lòng nhập đơn giá và ngày bắt đầu áp dụng.'
+    return
+  }
+  rateModal.saving = true
+  rateModal.error = ''
+  try {
+    await payRateApi.create({ ...rateForm })
+    rateForm.amount = null
+    rateForm.note = ''
+    showToast('Đã thêm mức giá mới. Mức cũ cùng khối đã được đóng lại.')
+    await openRates()
+  } catch (e) {
+    rateModal.error = e.response?.data?.message ?? 'Không lưu được mức giá'
+  } finally {
+    rateModal.saving = false
   }
 }
 
@@ -182,8 +391,6 @@ function goFixHoliday(holidayId) {
 /* ──────────── Mở lại kỳ lương đã chốt (V32) ──────────── */
 
 const reopenModal = reactive({ open: false, row: null, reason: '', working: false, error: '' })
-
-const finalizedCount = computed(() => rows.value.filter((r) => r.status === 'FINALIZED').length)
 
 /** row = null → mở lại CẢ THÁNG (lỗi lịch nghỉ hiếm khi chỉ dính một người). */
 function openReopen(row) {
@@ -238,6 +445,17 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
       <button class="btn btn-outline btn-sm" @click="load">Xem</button>
       <span class="divider" />
       <button class="btn btn-primary btn-sm" @click="generate">Tính lương từ chấm công</button>
+      <button class="btn btn-outline btn-sm" @click="openRates">Bảng đơn giá</button>
+      <button class="btn btn-outline btn-sm" :disabled="dangXuat" @click="xuatExcel">
+        {{ dangXuat ? 'Đang xuất…' : 'Xuất Excel' }}
+      </button>
+      <button
+        v-if="canPay && finalizedCount > 0"
+        class="btn btn-outline btn-sm"
+        @click="payTarget = { row: null }"
+      >
+        Đánh dấu đã trả cả tháng ({{ finalizedCount }})
+      </button>
       <button
         v-if="canReopen && finalizedCount > 0"
         class="btn btn-outline btn-sm"
@@ -248,30 +466,52 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
       <span v-if="info" class="info-text">{{ info }}</span>
     </div>
 
-    <!-- Cảnh báo NGÀY NGHỈ: hiện ngay khi chọn tháng, trước cả khi người dùng định chốt. -->
-    <div v-if="hasIssues" class="alert-holiday">
-      <div class="alert-holiday__body">
-        <strong
-          >Kỳ này còn {{ issues.absenceCount }} dòng chấm công Vắng rơi vào ngày nghỉ</strong
-        >
-        ({{ issues.teacherCount }} giáo viên).
-        Đó là buổi dạy sinh ra trước khi kỳ nghỉ được khai báo — hôm đó trường đóng cửa nhưng
-        hệ thống vẫn ghi giáo viên vắng mặt.
-        <br />
-        <span class="alert-holiday__warn">
-          Chốt lương sẽ KHÓA chấm công của kỳ này. Xử lý trước khi chốt.
-        </span>
-        <div class="alert-holiday__links">
-          <button
-            v-for="h in issues.holidays"
-            :key="h.holidayId"
-            class="link-chip"
-            @click="goFixHoliday(h.holidayId)"
-          >
-            {{ h.name }} · {{ h.absenceCount }} dòng →
-          </button>
-        </div>
+    <div class="toolbar">
+      <input
+        v-model="keyword"
+        class="search-input"
+        type="search"
+        placeholder="Tìm theo tên giáo viên…"
+      />
+      <span class="spacer" />
+      <span class="count-info">{{ filteredRows.length }} / {{ rows.length }} giáo viên</span>
+    </div>
+
+<!-- ══════════ SỨC KHỎE DỮ LIỆU CỦA KỲ ══════════
+         Hiện ngay khi chọn tháng, trước cả khi người dùng định chốt. Chốt lương KHÓA chấm công
+         của kỳ, nên mọi thứ khuyết phải nói ra trước — sau đó thì đã khóa luôn cái khuyết vào. -->
+    <div v-if="coVanDe" class="health" :class="{ 'health--ok': !vanDeChan.length }">
+      <div class="health__head">
+        <strong v-if="vanDeChan.length">
+          Kỳ {{ filter.month }}/{{ filter.year }} có {{ vanDeChan.length }} vấn đề nên xử lý
+          trước khi chốt lương
+        </strong>
+        <strong v-else>Kỳ {{ filter.month }}/{{ filter.year }} có điểm cần lưu ý</strong>
       </div>
+
+      <ul class="health__list">
+        <li v-for="v in health.vanDe" :key="v.ma" :class="'lvl-' + v.mucDo.toLowerCase()">
+          <div class="health__row">
+            <span class="health__badge">{{ v.mucDo === 'CHAN' ? 'Nên sửa' : 'Lưu ý' }}</span>
+            <span class="health__title">{{ v.tieuDe }}</span>
+            <span class="health__count">{{ v.soLuong }}</span>
+            <RouterLink :to="v.duongDan" class="health__go">Đi sửa →</RouterLink>
+          </div>
+          <p class="health__desc">{{ v.moTa }}</p>
+
+          <!-- Riêng ngày nghỉ: chỉ thẳng từng kỳ nghỉ gây lỗi, bấm một cái là sang đúng chỗ. -->
+          <div v-if="v.ma === 'VANG_ROI_VAO_NGAY_NGHI' && hasIssues" class="health__chips">
+            <button
+              v-for="h in issues.holidays"
+              :key="h.holidayId"
+              class="link-chip"
+              @click="goFixHoliday(h.holidayId)"
+            >
+              {{ h.name }} · {{ h.absenceCount }} dòng →
+            </button>
+          </div>
+        </li>
+      </ul>
     </div>
 
     <div class="table-wrap">
@@ -280,6 +520,9 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
           <tr>
             <th>Giáo viên</th>
             <th class="num">Số tiết</th>
+            <th class="num" title="Đi muộn vẫn được trả đủ tiết — số này để kế toán tự quyết khấu trừ">
+              Đi muộn
+            </th>
             <th class="num">Đơn giá/tiết</th>
             <th class="num">Lương cứng</th>
             <th class="num">Phụ cấp</th>
@@ -292,16 +535,22 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="10" class="text-center text-muted">Đang tải…</td>
+            <td colspan="11" class="text-center text-muted">Đang tải…</td>
           </tr>
           <tr v-else-if="!rows.length">
-            <td colspan="10" class="text-center text-muted">
+            <td colspan="11" class="text-center text-muted">
               Chưa có dữ liệu — bấm “Tính lương từ chấm công”.
             </td>
+          </tr>
+          <tr v-else-if="!filteredRows.length">
+            <td colspan="11" class="text-center text-muted">Không có giáo viên nào khớp từ khóa.</td>
           </tr>
           <tr v-for="r in pagedRows" :key="r.id">
             <td class="font-medium">{{ r.teacherName }}</td>
             <td class="num mono">{{ Math.round(Number(r.taughtHours ?? 0)) }}</td>
+            <td class="num mono" :class="{ 'late-warn': r.lateCount > 0 }">
+              {{ r.lateCount || '—' }}
+            </td>
             <td class="num mono">{{ vnd(r.ratePerHour) }}</td>
             <td class="num mono">{{ vnd(r.baseSalary) }}</td>
             <td class="num mono">{{ vnd(r.allowance) }}</td>
@@ -329,18 +578,27 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
                 Chốt
               </button>
               <button
+                v-if="canPay && r.status === 'FINALIZED'"
+                class="btn btn-sm btn-primary"
+                @click="payTarget = { row: r }"
+              >
+                Đã trả
+              </button>
+              <button
                 v-if="canReopen && r.status === 'FINALIZED'"
                 class="btn btn-sm btn-outline"
                 @click="openReopen(r)"
               >
                 Mở lại
               </button>
+              <button class="btn btn-sm btn-outline" @click="openLogs(r)">Lịch sử</button>
             </td>
           </tr>
         </tbody>
+        <!-- Tổng của CẢ KỲ, không phải của trang đang xem — đó là con số kế toán cần. -->
         <tfoot v-if="rows.length">
           <tr>
-            <td colspan="7" class="text-right font-medium">Tổng thực nhận</td>
+            <td colspan="8" class="text-right font-medium">Tổng thực nhận</td>
             <td class="num mono net">{{ vnd(totalNet) }}</td>
             <td colspan="2"></td>
           </tr>
@@ -469,10 +727,247 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         </div>
       </div>
     </div>
+
+    <!-- Xác nhận đã trả lương — một chiều, không mở lại được nên phải hỏi -->
+    <ConfirmDialog
+      v-if="payTarget"
+      title="Xác nhận đã trả lương?"
+      :name="
+        payTarget.row
+          ? payTarget.row.teacherName
+          : `Cả kỳ ${filter.month}/${filter.year} — ${finalizedCount} phiếu`
+      "
+      :busy="paying"
+      confirm-text="Đã trả"
+      @confirm="doPay"
+      @cancel="payTarget = null"
+    >
+      Số tiền:
+      <strong>{{ vnd(payTarget.row ? payTarget.row.netAmount : finalizedTotal) }}</strong
+      >.
+      <br /><br />
+      Đánh dấu đã trả là <strong>một chiều</strong>: phiếu đã trả KHÔNG mở lại được nữa, vì
+      tiền đã ra khỏi quỹ thì sửa số trên hệ thống chỉ làm lệch sổ sách. Chênh lệch (nếu có)
+      điều chỉnh vào kỳ lương kế tiếp.
+    </ConfirmDialog>
+
+    <!-- Nhật ký phiếu lương: chốt / mở lại / đã trả -->
+    <div v-if="logModal.open" class="modal-overlay" @click.self="logModal.open = false">
+      <div class="modal-box modal-lg">
+        <h3>Nhật ký phiếu lương — {{ logModal.row?.teacherName }}</h3>
+        <p v-if="logModal.loading" class="text-muted small">Đang tải…</p>
+        <p v-else-if="!logModal.items.length" class="text-muted small">
+          Phiếu này chưa từng được chốt hay mở lại.
+        </p>
+        <table v-else class="table">
+          <thead>
+            <tr>
+              <th>Thời điểm</th>
+              <th>Việc</th>
+              <th>Trạng thái</th>
+              <th class="num">Thực nhận</th>
+              <th>Người thực hiện</th>
+              <th>Lý do</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="l in logModal.items" :key="l.id">
+              <td class="mono small">{{ fmtAt(l.changedAt) }}</td>
+              <td class="font-medium">{{ LOG_ACTIONS[l.action] ?? l.action }}</td>
+              <td class="small text-muted">{{ l.statusBefore }} → {{ l.statusAfter }}</td>
+              <td class="num mono">{{ vnd(l.netAmountAfter ?? l.netAmountBefore) }}</td>
+              <td class="small">{{ l.changedByName ?? '—' }}</td>
+              <td class="small text-muted">{{ l.reason ?? '—' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="logModal.open = false">Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bảng đơn giá tiết dạy -->
+    <div v-if="rateModal.open" class="modal-overlay" @click.self="rateModal.open = false">
+      <div class="modal-box modal-lg">
+        <h3>Đơn giá tiết dạy</h3>
+        <p class="text-muted small">
+          Đơn giá tra theo <strong>ngày dạy</strong> của từng buổi, không theo hôm nay — nhờ vậy
+          tính lại một kỳ cũ vẫn ra đúng số đã trả. Tăng giá thì thêm mức mới, mức cũ tự được
+          đóng lại ở ngày liền trước. Giáo viên có đơn giá riêng trong hợp đồng thì hợp đồng
+          thắng bảng này.
+        </p>
+
+        <p v-if="rateModal.error" class="msg msg--error">{{ rateModal.error }}</p>
+        <p v-if="rateModal.loading" class="text-muted small">Đang tải…</p>
+        <table v-else class="table">
+          <thead>
+            <tr>
+              <th>Khối</th>
+              <th class="num">Đơn giá/tiết</th>
+              <th>Áp dụng từ</th>
+              <th>Đến</th>
+              <th>Ghi chú</th>
+              <th v-if="canManageRate" width="70"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="r in rateModal.items" :key="r.id" :class="{ closed: !!r.effectiveTo }">
+              <td>Khối {{ r.gradeFrom }}–{{ r.gradeTo }}</td>
+              <td class="num mono">{{ vnd(r.amount) }}</td>
+              <td class="mono">{{ r.effectiveFrom }}</td>
+              <td class="mono">{{ r.effectiveTo ?? 'còn hiệu lực' }}</td>
+              <td class="small text-muted">{{ r.note ?? '—' }}</td>
+              <td v-if="canManageRate">
+                <button
+                  v-if="coTheXoaMuc(r)"
+                  class="link link--danger"
+                  title="Mức này chưa tới ngày áp dụng nên còn xóa được"
+                  @click="removeRate(r)"
+                >
+                  Xóa
+                </button>
+                <span v-else class="small text-muted" title="Mức đã áp dụng là căn cứ của phiếu lương đã tính">
+                  đã áp dụng
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <template v-if="canManageRate">
+          <h4 class="rate-form-title">Thêm mức giá mới</h4>
+          <div class="rate-form">
+            <label>
+              Khối từ
+              <input v-model.number="rateForm.gradeFrom" type="number" min="1" max="12" />
+            </label>
+            <label>
+              đến
+              <input v-model.number="rateForm.gradeTo" type="number" min="1" max="12" />
+            </label>
+            <label>
+              Đơn giá (₫)
+              <input v-model.number="rateForm.amount" type="number" min="1" />
+            </label>
+            <label>
+              Áp dụng từ
+              <input v-model="rateForm.effectiveFrom" type="date" />
+            </label>
+            <label class="rate-note">
+              Ghi chú
+              <input v-model="rateForm.note" placeholder="VD: tăng giá theo quyết định 12/2026" />
+            </label>
+            <button class="btn btn-primary btn-sm" :disabled="rateModal.saving" @click="saveRate">
+              {{ rateModal.saving ? 'Đang lưu…' : 'Thêm' }}
+            </button>
+          </div>
+        </template>
+
+        <p v-if="rateModal.error" class="error-msg">{{ rateModal.error }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="rateModal.open = false">Đóng</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* Nút chữ trong bảng đơn giá + dòng báo lỗi của hộp thoại. */
+.link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--c-primary);
+  font-size: 0.84rem;
+}
+.link--danger {
+  color: var(--c-danger, #ef4444);
+}
+.msg--error {
+  color: var(--c-danger, #ef4444);
+  font-size: 0.86rem;
+  margin: 8px 0;
+}
+
+/* ===== Bảng sức khỏe dữ liệu của kỳ =====
+   Hai mức phân biệt bằng MÀU VIỀN TRÁI chứ không chỉ bằng chữ: mắt quét màu nhanh hơn đọc
+   nhãn từng dòng, và người dùng chỉ liếc bảng này chứ không đọc kỹ. */
+.health {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border-left: 4px solid var(--c-danger, #ef4444);
+  background: color-mix(in srgb, var(--c-danger, #ef4444) 9%, transparent);
+}
+.health--ok {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+.health__head {
+  font-size: 14px;
+  margin-bottom: 10px;
+  color: var(--c-text);
+}
+.health__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.health__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.health__badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  color: #fff;
+  background: var(--c-danger, #ef4444);
+}
+.lvl-canh_bao .health__badge {
+  background: #f59e0b;
+}
+.health__title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--c-text);
+}
+.health__count {
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--c-text);
+}
+.health__go {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--c-primary);
+  text-decoration: none;
+}
+.health__desc {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--c-text-muted);
+}
+.health__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
 /* ===== Cảnh báo ngày nghỉ ===== */
 .alert-holiday {
   display: flex;
@@ -556,5 +1051,49 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
 tfoot td {
   padding: 0.7rem 1rem;
   border-top: 2px solid var(--c-border);
+}
+
+/* Số buổi đi muộn — chỉ nhấn khi khác 0, để mắt không bị kéo về cả cột dấu gạch. */
+.late-warn {
+  color: var(--c-danger);
+  font-weight: 700;
+}
+
+/* ── Modal bảng đơn giá ── */
+.closed td {
+  opacity: 0.55;
+}
+.rate-form-title {
+  margin: 1.2rem 0 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+.rate-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+.rate-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--c-text-muted);
+}
+.rate-form input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: var(--c-surface);
+  color: var(--c-text);
+  width: 130px;
+}
+.rate-note {
+  flex: 1;
+}
+.rate-note input {
+  width: 100%;
 }
 </style>

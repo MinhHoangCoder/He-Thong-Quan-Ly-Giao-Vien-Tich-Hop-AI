@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.MessageResponse;
 import com.kdc.tsdms.dto.RoleMatrixResponse;
 import com.kdc.tsdms.dto.UpdateUserRolesRequest;
@@ -42,7 +43,7 @@ public class UserAdminController {
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return userAdminService.listUsers(keyword, page, size);
+        return userAdminService.listUsers(keyword, Paging.safePage(page), Paging.safeSize(size));
     }
 
     /** Khóa / mở tài khoản (ACTIVE | LOCKED). */

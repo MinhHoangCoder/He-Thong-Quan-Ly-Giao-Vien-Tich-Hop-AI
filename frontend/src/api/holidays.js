@@ -53,4 +53,24 @@ export const holidayApi = {
   remove(id) {
     return http.delete(`/holidays/${id}`)
   },
+
+  /** Kỳ nghỉ đã xóa (thùng rác). params: keyword, page, size */
+  trash(params = {}) {
+    return http.get('/holidays/trash', { params })
+  },
+
+  /** Đưa kỳ nghỉ từ thùng rác về danh sách chính. */
+  restore(id) {
+    return http.post(`/holidays/${id}/restore`)
+  },
+
+  /**
+   * Kỳ nghỉ này đã để lại những gì — hỏi TRƯỚC khi xóa.
+   * Khác impact() ở chỗ: impact() đếm buổi SẼ phải hủy, còn cái này đếm hậu quả ĐÃ ghi
+   * (buổi đã hủy, dòng chấm công đã chuyển sang Nghỉ phép) — những thứ xóa kỳ nghỉ không
+   * hoàn lại được.
+   */
+  deleteImpact(id) {
+    return http.get(`/holidays/${id}/delete-impact`)
+  },
 }

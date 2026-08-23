@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.Certificate;
 import com.kdc.tsdms.entity.Employee;
@@ -19,11 +18,13 @@ import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Room;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Student;
+import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.CertificateRepository;
 import com.kdc.tsdms.repository.ClassEnrollmentRepository;
@@ -45,6 +46,7 @@ import com.kdc.tsdms.repository.StudentRepository;
 import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
+import com.kdc.tsdms.repository.TeacherSubjectRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -56,7 +58,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
-import org.springframework.context.ApplicationContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -101,6 +102,9 @@ class DeleteRestrictTest {
         @Mock
         private StudentRepository studentRepo;
 
+        @Mock
+        private AssignmentSlotRepository slotRepo;
+
         @InjectMocks
         private SchoolService service;
 
@@ -141,12 +145,28 @@ class DeleteRestrictTest {
                     .thenReturn(2L);
             when(serviceContractRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(1L);
             when(studentRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(40L);
+            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
+                    .thenReturn(9L);
 
             assertThatThrownBy(() -> service.delete(1))
                     .hasMessageContaining("3 lớp học")
                     .hasMessageContaining("2 phân công đang chạy")
                     .hasMessageContaining("1 hợp đồng dịch vụ")
-                    .hasMessageContaining("40 hồ sơ học sinh");
+                    .hasMessageContaining("40 hồ sơ học sinh")
+                    .hasMessageContaining("9 ô thời khóa biểu");
+        }
+
+        @Test
+        void chiCon_oThoiKhoaBieu_thiVanCam() {
+            // Từ V27 trường thật nằm ở TỪNG Ô LỊCH: một phiếu trải nhiều trường thì các trường
+            // phụ không xuất hiện ở Assignment.SchoolId nào cả. Chỉ đếm cấp phiếu là chặn hụt —
+            // đo trên dữ liệu demo có 8 trường lọt lưới đúng kiểu này.
+            givenSchool();
+            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
+                    .thenReturn(12L);
+
+            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("12 ô thời khóa biểu");
+            verify(schoolRepo, never()).save(any());
         }
 
         @Test
@@ -186,6 +206,12 @@ class DeleteRestrictTest {
 
         @Mock
         private ScheduleRepository scheduleRepo;
+
+        @Mock
+        private AttendanceRepository attendanceRepo;
+
+        @Mock
+        private PayrollRepository payrollRepo;
 
         @InjectMocks
         private TeacherService service;
@@ -279,209 +305,6 @@ class DeleteRestrictTest {
     }
 
     /* ══════════════════ ĐỢT 2 — NHÓM B: BẢO VỆ DỮ LIỆU TIỀN BẠC ══════════════════ */
-
-    /**
-     * Xóa vĩnh viễn phân công là chỗ DUY NHẤT trong dự án xóa CỨNG bảng {@code Attendance} —
-     * mà chấm công là bằng chứng gốc của con số trên phiếu lương. Nếu kỳ lương đã chốt/đã trả
-     * thì đây là rào chắn KHÔNG GỠ ĐƯỢC, cố ý: hệ thống không có nút mở lại kỳ lương.
-     */
-    @Nested
-    class XoaVinhVienPhanCong {
-
-        @Mock
-        private AssignmentRepository assignmentRepo;
-
-        @Mock
-        private AssignmentSlotRepository slotRepo;
-
-        @Mock
-        private ScheduleRepository scheduleRepo;
-
-        @Mock
-        private PayrollRepository payrollRepo;
-
-        @Mock
-        private TeacherRepository teacherRepo;
-
-        @Mock
-        private SchoolRepository schoolRepo;
-
-        @Mock
-        private SchoolClassRepository classRepo;
-
-        @Mock
-        private SubjectRepository subjectRepo;
-
-        @Mock
-        private PeriodRepository periodRepo;
-
-        @Mock
-        private AssignmentApprovalService approvalService;
-
-        @Mock
-        private TeacherTimeConflictChecker conflictChecker;
-
-        @Mock
-        private ApplicationContext applicationContext;
-
-        @InjectMocks
-        private AssignmentService service;
-
-        private void givenTrashedAssignment() {
-            Assignment a = new Assignment();
-            a.setId(11);
-            when(assignmentRepo.findByIdAndDeletedTrue(11)).thenReturn(Optional.of(a));
-        }
-
-        @Test
-        void chamCongThuocKyLuongDaChot_thiCam() {
-            givenTrashedAssignment();
-            when(payrollRepo.findKyLuongDaChotTheoPhanCong(11)).thenReturn(List.of("7/2026", "8/2026"));
-
-            assertThatThrownBy(() -> service.purge(11))
-                    .satisfies(DeleteRestrictTest::assertConflict)
-                    .hasMessageContaining("kỳ lương đã chốt")
-                    .hasMessageContaining("7/2026")
-                    .hasMessageContaining("8/2026");
-
-            // Quan trọng hơn cả cái exception: KHÔNG được xóa gì trước khi ném.
-            verify(scheduleRepo, never()).deleteAttendanceByAssignmentId(anyInt());
-            verify(scheduleRepo, never()).deleteByAssignmentId(anyInt());
-            verify(assignmentRepo, never()).delete(any());
-        }
-
-        @Test
-        void khongDinhKyLuongDaChot_thiXoaHanDuoc() {
-            givenTrashedAssignment();
-            when(payrollRepo.findKyLuongDaChotTheoPhanCong(11)).thenReturn(List.of());
-
-            service.purge(11);
-
-            verify(scheduleRepo).deleteStatusLogsByAssignmentId(11);
-            verify(scheduleRepo).deleteAttendanceByAssignmentId(11);
-            verify(scheduleRepo).deleteByAssignmentId(11);
-            verify(slotRepo).deleteByAssignmentId(11);
-            verify(assignmentRepo).delete(any());
-        }
-
-        @Test
-        void loiPhaiChiDungDuongGo_chuKhongPhaiCauMacDinh() {
-            // Câu mặc định của DeleteGuard ("vui lòng xử lý mục này trước khi xóa") không chỉ
-            // được đường nào. Ở đây đường gỡ có thật nhưng chỉ đúng một nửa: kỳ ĐÃ CHỐT mở lại
-            // được (V32), kỳ ĐÃ TRẢ thì không. Nói thiếu vế nào cũng là chỉ sai đường.
-            givenTrashedAssignment();
-            when(payrollRepo.findKyLuongDaChotTheoPhanCong(11)).thenReturn(List.of("8/2026"));
-
-            assertThatThrownBy(() -> service.purge(11))
-                    .hasMessageContaining("mở lại")
-                    .hasMessageContaining("ĐÃ TRẢ")
-                    .hasMessageNotContaining("Vui lòng xử lý");
-        }
-    }
-
-    /**
-     * Xóa vĩnh viễn giáo viên: trước đây tự tay xóa CỨNG hết chứng chỉ + hợp đồng để dọn đường
-     * cho câu {@code DELETE Teacher}, rồi nuốt {@code DataIntegrityViolationException} thành một
-     * câu "Không thể xóa vĩnh viễn: giáo viên id=7" chẳng nói gì.
-     */
-    @Nested
-    class XoaVinhVienGiaoVien {
-
-        @Mock
-        private TeacherRepository teacherRepo;
-
-        @Mock
-        private CertificateRepository ceRepo;
-
-        @Mock
-        private ContractRepository contractRepo;
-
-        @Mock
-        private AppUserRepository appUserRepository;
-
-        @Mock
-        private PasswordEncoder passwordEncoder;
-
-        @Mock
-        private RefreshTokenRepository refreshTokenRepo;
-
-        @Mock
-        private AssignmentRepository assignmentRepo;
-
-        @Mock
-        private ScheduleRepository scheduleRepo;
-
-        @InjectMocks
-        private TeacherService service;
-
-        private void givenTrashedTeacher() {
-            Teacher t = new Teacher();
-            t.setId(7);
-            t.setLastName("Trần Thị");
-            t.setFirstName("Bình");
-            when(teacherRepo.findByIdAndDeletedTrue(7)).thenReturn(Optional.of(t));
-        }
-
-        @Test
-        void conDuLieuCon_thiCam_vaKeDUNG_TENtungLoai() {
-            givenTrashedTeacher();
-            when(teacherRepo.countChildRowsByTeacherId(7))
-                    .thenReturn(List.<Object[]>of(
-                            new Object[] {"certificate", 2},
-                            new Object[] {"contract", 1},
-                            new Object[] {"attendance", 96},
-                            new Object[] {"payroll", 3}));
-
-            assertThatThrownBy(() -> service.deleteTrueTeacher(7))
-                    .satisfies(DeleteRestrictTest::assertConflict)
-                    .hasMessageContaining("Trần Thị Bình")
-                    .hasMessageContaining("2 chứng chỉ")
-                    .hasMessageContaining("1 hợp đồng")
-                    .hasMessageContaining("96 bản ghi chấm công")
-                    .hasMessageContaining("3 phiếu lương");
-            verify(teacherRepo, never()).delete(any());
-        }
-
-        @Test
-        void khongDuocTuXoaHoChungChiVaHopDong() {
-            // Đây mới là điểm chốt của Đợt 2: hồ sơ pháp lý không được hủy như hiệu ứng phụ của
-            // một thao tác dọn dẹp. Đỏ ở đây = ai đó khôi phục lại hành vi cũ.
-            givenTrashedTeacher();
-            when(teacherRepo.countChildRowsByTeacherId(7)).thenReturn(List.<Object[]>of(new Object[] {"contract", 1}));
-
-            assertThatThrownBy(() -> service.deleteTrueTeacher(7));
-
-            verify(ceRepo, never()).deleteAll(any());
-            verify(contractRepo, never()).deleteAll(any());
-        }
-
-        @Test
-        void hoSoTrong_thiXoaHanDuoc() {
-            // Hồ sơ tạo nhầm, chưa gắn gì — đúng thứ tính năng xóa vĩnh viễn cần phục vụ.
-            givenTrashedTeacher();
-            when(teacherRepo.countChildRowsByTeacherId(7)).thenReturn(List.of());
-
-            service.deleteTrueTeacher(7);
-
-            verify(teacherRepo).delete(any());
-            // Kể cả trên đường đi trót lọt cũng không được tự tay dọn hồ sơ pháp lý — bản cũ xóa
-            // chứng chỉ/hợp đồng TRƯỚC khi thử DELETE nên rào chắn đặt sau không đỡ được gì.
-            verify(ceRepo, never()).deleteAll(any());
-            verify(contractRepo, never()).deleteAll(any());
-        }
-
-        @Test
-        void bangConLaChuaKhaiNhan_vanPhaiDuocKeRa() {
-            // Thành viên thêm bảng con mới vào câu SQL mà quên khai nhãn tiếng Việt: thà hiện
-            // mã thô còn hơn im lặng bỏ sót một rào chắn rồi cho xóa.
-            givenTrashedTeacher();
-            when(teacherRepo.countChildRowsByTeacherId(7))
-                    .thenReturn(List.<Object[]>of(new Object[] {"bang_moi_toanh", 5}));
-
-            assertThatThrownBy(() -> service.deleteTrueTeacher(7)).hasMessageContaining("5 bang_moi_toanh");
-            verify(teacherRepo, never()).delete(any());
-        }
-    }
 
     /** Chứng chỉ/bằng cấp là hồ sơ pháp lý → xóa MỀM, và file PDF phải ở nguyên trên đĩa. */
     @Nested
@@ -811,6 +634,88 @@ class DeleteRestrictTest {
 
             assertThat(p.isDeleted()).isTrue();
             verify(periodRepo).save(p);
+        }
+    }
+
+    /**
+     * Môn học: từ 2026-08-22 xóa MỀM trở lại. Bản hard delete trước đó xóa hẳn dòng Subject
+     * và cuốn theo toàn bộ Lesson + LessonFile + TeacherSubject, nên test này canh hai thứ:
+     * còn dữ liệu con thì chặn, và khi xóa được thì KHÔNG có bản ghi nào khác bị đụng vào.
+     */
+    @Nested
+    class XoaMonHoc {
+
+        @Mock
+        private SubjectRepository subjectRepo;
+
+        @Mock
+        private SubjectCategoryRepository categoryRepo;
+
+        @Mock
+        private LessonRepository lessonRepo;
+
+        @Mock
+        private TeacherSubjectRepository teacherSubjectRepo;
+
+        @Mock
+        private AssignmentRepository assignmentRepo;
+
+        @InjectMocks
+        private SubjectService service;
+
+        private Subject monDaTat() {
+            Subject s = new Subject();
+            s.setId(4);
+            s.setName("Lập trình Scratch");
+            s.setStatus("DISABLED");
+            when(subjectRepo.findByIdAndDeletedFalse(4)).thenReturn(Optional.of(s));
+            return s;
+        }
+
+        @Test
+        void monDangHoatDong_thiChan() {
+            Subject s = new Subject();
+            s.setId(4);
+            s.setStatus("ACTIVE");
+            when(subjectRepo.findByIdAndDeletedFalse(4)).thenReturn(Optional.of(s));
+
+            assertThatThrownBy(() -> service.delete(4))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("tắt trạng thái hoạt động");
+            verify(subjectRepo, never()).save(any());
+        }
+
+        @Test
+        void conDuLieuCon_thiChanVaKeHetLyDoTrongMotLan() {
+            // DeleteGuard gom hết rào rồi mới báo: người dùng biết còn bao nhiêu việc phải xử
+            // lý thay vì bấm xóa ba lần để lần lượt gặp ba câu lỗi khác nhau.
+            monDaTat();
+            when(assignmentRepo.countBySubjectId(4)).thenReturn(6L);
+            when(lessonRepo.countBySubjectIdAndDeletedFalse(4)).thenReturn(2L);
+            when(teacherSubjectRepo.countBySubjectId(4)).thenReturn(3L);
+
+            assertThatThrownBy(() -> service.delete(4))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("6 phân công giảng dạy")
+                    .hasMessageContaining("2 bài giảng")
+                    .hasMessageContaining("3 giáo viên đang phụ trách môn");
+            verify(subjectRepo, never()).save(any());
+        }
+
+        @Test
+        void monSachDuLieu_thiXoaMemVaKhongDungToiBaiGiang() {
+            Subject s = monDaTat();
+            when(assignmentRepo.countBySubjectId(4)).thenReturn(0L);
+            when(lessonRepo.countBySubjectIdAndDeletedFalse(4)).thenReturn(0L);
+            when(teacherSubjectRepo.countBySubjectId(4)).thenReturn(0L);
+
+            service.delete(4);
+
+            assertThat(s.isDeleted()).isTrue();
+            assertThat(s.getDeletedAt()).isNotNull();
+            verify(subjectRepo).save(s);
+            // Điểm chính của lần sửa này: không xóa hộ thứ gì của bảng khác nữa.
+            verify(lessonRepo, never()).deleteAll(any());
         }
     }
 }

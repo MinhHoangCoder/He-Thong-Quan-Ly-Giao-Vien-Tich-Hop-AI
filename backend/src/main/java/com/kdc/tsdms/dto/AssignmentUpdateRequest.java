@@ -26,8 +26,8 @@ public record AssignmentUpdateRequest(
 
         @NotNull(message = "Vui lòng nhập ngày bắt đầu") LocalDate startDate,
 
-        /** Bỏ trống = sinh lịch mặc định 8 tuần kể từ ngày bắt đầu. */
-        LocalDate endDate,
+        /** Ngày kết thúc — BẮT BUỘC, cùng lý do với lúc tạo phiếu. */
+        @NotNull(message = "Vui lòng nhập ngày kết thúc") LocalDate endDate,
 
         /** Các tiết Thứ+Tiết+Lớp — thay THẾ toàn bộ danh sách cũ. */
         @NotEmpty(message = "Vui lòng chọn ít nhất 1 tiết dạy") @Size(max = 63, message = "Số tiết dạy trong một phân công vượt mức cho phép") @Valid List<AssignmentSlotRequest> slots) {}

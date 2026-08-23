@@ -22,6 +22,19 @@ public class PayrollResponse {
     /** DRAFT | FINALIZED | PAID */
     public String status;
 
+    /**
+     * Số buổi giáo viên đi muộn trong kỳ — TÍNH LẠI mỗi lần đọc từ bảng chấm công, không lưu.
+     *
+     * <p>Đi muộn vẫn được trả đủ tiền tiết (tiết đó vẫn dạy hết nội dung), nên con số này
+     * không tham gia công thức tính tiền. Nó có mặt để kế toán NHÌN THẤY rồi tự quyết định
+     * khấu trừ — giấu đi thì trên hệ thống người đi muộn 40 phút và người đúng giờ giống hệt
+     * nhau.
+     *
+     * <p>Không thêm cột vào bảng Payroll: cột lưu sẵn sẽ cũ đi mỗi khi chấm công được sửa,
+     * mà số này lấy từ đúng đám dữ liệu đang duyệt nên không tốn thêm câu SQL nào.
+     */
+    public long lateCount;
+
     public static PayrollResponse fromEntity(Payroll p, String teacherName) {
         PayrollResponse r = new PayrollResponse();
         r.id = p.getId();

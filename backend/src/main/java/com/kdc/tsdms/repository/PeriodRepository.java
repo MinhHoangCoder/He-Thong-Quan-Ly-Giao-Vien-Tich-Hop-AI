@@ -20,6 +20,15 @@ public interface PeriodRepository extends JpaRepository<Period, Integer> {
     /** Số tiết của một BUỔI (MORNING|AFTERNOON) — dùng quy đổi "tiết thứ mấy trong buổi". */
     int countBySchoolIdAndSessionTypeAndDeletedFalse(Integer schoolId, String sessionType);
 
+    /**
+     * Tổng số tiết trong khung của một trường — dùng để SUY CẤP HỌC.
+     *
+     * <p>Khung chuẩn ở {@code PeriodService}: tiểu học 10 tiết (5 sáng + 5 chiều), THCS 9 tiết
+     * (5 + 4). Suy từ khung tiết chắc hơn đoán theo tên trường, vì khung tiết là dữ liệu VẬN
+     * HÀNH thật của từng trường.
+     */
+    long countBySchoolIdAndDeletedFalse(Integer schoolId);
+
     /** Tiết còn sống theo id — dùng cho luồng xóa có kiểm soát ({@code PeriodService.delete}). */
     Optional<Period> findByIdAndDeletedFalse(Integer id);
 

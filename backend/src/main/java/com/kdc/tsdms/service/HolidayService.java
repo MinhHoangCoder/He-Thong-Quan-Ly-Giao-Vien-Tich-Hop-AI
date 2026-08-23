@@ -2,6 +2,7 @@ package com.kdc.tsdms.service;
 
 import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.dto.HolidayAbsenceResponse;
+import com.kdc.tsdms.dto.HolidayDeleteImpactResponse;
 import com.kdc.tsdms.dto.HolidayFixAbsencesRequest;
 import com.kdc.tsdms.dto.HolidayImpactResponse;
 import com.kdc.tsdms.dto.HolidayRequest;
@@ -139,6 +140,60 @@ public class HolidayService {
         h.setDeletedAt(Instant.now());
         h.setDeletedBy(SecurityUtils.currentUserId());
         holidayRepo.save(h);
+    }
+
+    /* ──────────────── THÙNG RÁC ──────────────── */
+
+    /** Kỳ nghỉ đã xóa — để khôi phục lại. */
+    @Transactional(readOnly = true)
+    public Page<HolidayResponse> trash(String keyword, Pageable pageable) {
+        Page<Holiday> page = holidayRepo.searchTrash(blankToNull(keyword), pageable);
+        Map<Integer, String> schoolNames = schoolNameCache(page.getContent());
+        return page.map(h -> HolidayResponse.fromEntity(h, schoolNames.get(h.getSchoolId())));
+    }
+
+    /**
+     * Đưa một kỳ nghỉ từ thùng rác về danh sách chính.
+     *
+     * <p>Chỉ bỏ cờ xóa, KHÔNG hủy lại các buổi dạy đã sinh trong lúc kỳ nghỉ nằm ở thùng rác —
+     * cùng lý lẽ với {@link #delete(Integer)} theo chiều ngược lại. Muốn dọn thì bấm "Hủy buổi
+     * dạy" như bình thường, để người dùng nhìn con số trước khi quyết.
+     */
+    @Transactional
+    public HolidayResponse restore(Integer id) {
+        Holiday h = holidayRepo
+                .findById(id)
+                .filter(Holiday::isDeleted)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Không tìm thấy kỳ nghỉ id=" + id + " trong thùng rác."));
+        h.setDeleted(false);
+        h.setDeletedAt(null);
+        h.setDeletedBy(null);
+        h.setUpdatedAt(Instant.now());
+        h.setUpdatedBy(SecurityUtils.currentUserId());
+        return HolidayResponse.fromEntity(holidayRepo.save(h), schoolNameOf(h.getSchoolId()));
+    }
+
+    /**
+     * Kỳ nghỉ này đã để lại những gì — màn hình hỏi trước khi xóa.
+     *
+     * <p>Kỳ nghỉ KHÔNG bị chặn xóa theo dữ liệu con như Trường/Lớp: kỳ gõ nhầm năm vừa là kỳ
+     * để lại nhiều hậu quả nhất vừa là kỳ cần xóa gấp nhất, chặn cứng ở đây là tự nhốt mình.
+     * Đổi lại phải kể đủ những gì sẽ KHÔNG được hoàn lại.
+     */
+    @Transactional(readOnly = true)
+    public HolidayDeleteImpactResponse deleteImpact(Integer id) {
+        Holiday h = getOrThrow(id);
+        LocalDateTime from = h.getFromDate().atStartOfDay();
+        LocalDateTime to = h.getToDate().plusDays(1).atStartOfDay();
+        LocalDateTime now = BusinessTime.now();
+        long future = affectedSchedules(h).stream()
+                .filter(s -> s.getStartTime().isAfter(now))
+                .count();
+        return new HolidayDeleteImpactResponse(
+                holidayRepo.countCancelledSessionsInRange(from, to),
+                attendanceRepo.countByStatusAndWorkDateBetween("LEAVE", h.getFromDate(), h.getToDate()),
+                future);
     }
 
     /* ──────────────── DỌN BUỔI DẠY ĐÃ SINH TRƯỚC ĐÓ ──────────────── */

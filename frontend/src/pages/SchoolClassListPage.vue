@@ -11,6 +11,7 @@
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { classApi } from '@/api/classes'
+import BulkClassModal from '@/components/BulkClassModal.vue'
 
 /* ── Cấp trường: chỉ TH + THCS ── */
 const SCHOOL_LEVELS = [
@@ -25,6 +26,16 @@ const loading = ref(false)
 const items = ref([])
 const total = ref(0)
 const keyword = ref('')
+/* Hộp thoại "Thêm hàng loạt" — tách ra component riêng vì trang này đã gần 2.000 dòng. */
+const bulkOpen = ref(false)
+
+async function onBulkCreated(ketQua) {
+  bulkOpen.value = false
+  await load()
+  await loadExistingGrades()
+  window.alert(`Đã tạo ${ketQua.daTao} lớp${ketQua.boQua ? `, bỏ qua ${ketQua.boQua} dòng` : ''}.`)
+}
+
 const filterSchoolId = ref('')
 const filterStatus = ref('')
 const filterGradeLevel = ref('')
@@ -67,7 +78,6 @@ const modal = reactive({
 
 const deleteTarget = ref(null)
 const batchDeleteOpen = ref(false)
-const purgeTarget = ref(null)
 
 /* =========================
    Helpers: cấp / năm / gộp tên
@@ -666,7 +676,6 @@ const allTrashSelected = computed(
 
 const trashBatchBusy = ref(false)
 const trashBatchRestoreOpen = ref(false)
-const trashBatchPurgeOpen = ref(false)
 
 /* Batch qua 1 endpoint BE (transaction): lỗi 1 lớp là rollback cả lô + báo đúng lớp lỗi —
  * thay cho N request song song từng lớp (nửa thành công nửa thất bại khó lần). */
@@ -683,24 +692,6 @@ async function confirmTrashBatchRestore() {
     alert(
       (e.response?.data?.message ?? 'Khôi phục hàng loạt thất bại') +
         ' — chưa lớp nào được khôi phục.',
-    )
-  } finally {
-    trashBatchBusy.value = false
-  }
-}
-
-async function confirmTrashBatchPurge() {
-  if (!selectedIds.value.length) return
-  trashBatchBusy.value = true
-  try {
-    await classApi.purgeMany([...selectedIds.value])
-    trashBatchPurgeOpen.value = false
-    selectedIds.value = []
-    deleteMode.value = false
-    await loadTrash()
-  } catch (e) {
-    alert(
-      (e.response?.data?.message ?? 'Xóa vĩnh viễn hàng loạt thất bại') + ' — chưa lớp nào bị xóa.',
     )
   } finally {
     trashBatchBusy.value = false
@@ -753,20 +744,6 @@ async function restoreClass(id) {
   }
 }
 
-async function confirmPurge() {
-  if (!purgeTarget.value) return
-  try {
-    const id = purgeTarget.value.id
-    await classApi.purge(id)
-    purgeTarget.value = null
-    selectedIds.value = selectedIds.value.filter((x) => x !== id)
-    await loadTrash()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Xóa vĩnh viễn thất bại')
-    purgeTarget.value = null
-  }
-}
-
 function statusLabel(s) {
   return s === 'ACTIVE' ? 'Hoạt động' : 'Ngừng'
 }
@@ -804,6 +781,14 @@ function formatDeletedAt(iso) {
           @click="switchView('trash')"
         >
           Thùng rác
+        </button>
+        <button
+          v-if="viewMode === 'list'"
+          type="button"
+          class="btn btn--ghost"
+          @click="bulkOpen = true"
+        >
+          Thêm hàng loạt
         </button>
         <button v-if="viewMode === 'list'" type="button" class="btn" @click="openCreate">
           + Thêm lớp học
@@ -1006,15 +991,6 @@ function formatDeletedAt(iso) {
             >
               Khôi phục {{ selectedIds.length }}
             </button>
-            <button
-              v-if="deleteMode && selectedIds.length"
-              type="button"
-              class="btn btn--danger"
-              :disabled="trashBatchBusy"
-              @click="trashBatchPurgeOpen = true"
-            >
-              Xóa hẳn {{ selectedIds.length }}
-            </button>
           </div>
         </div>
         <p v-if="deleteMode && selectedIds.length" class="total-hint trash-banner__count">
@@ -1071,7 +1047,6 @@ function formatDeletedAt(iso) {
                 <button class="act-btn act-btn--restore" @click="restoreClass(item.id)">
                   Khôi phục
                 </button>
-                <button class="act-btn act-btn--del" @click="purgeTarget = item">Xóa hẳn</button>
               </td>
             </tr>
           </tbody>
@@ -1267,22 +1242,6 @@ function formatDeletedAt(iso) {
       </div>
     </div>
 
-    <!-- ================= MODAL: xóa vĩnh viễn ================= -->
-    <div v-if="purgeTarget" class="overlay" @click.self="purgeTarget = null">
-      <div class="modal">
-        <h3>Xóa vĩnh viễn?</h3>
-        <p>
-          Xóa hẳn lớp
-          <strong>{{ purgeTarget.name }}</strong>
-          — <strong>không hoàn tác</strong>.
-        </p>
-        <div class="modal__actions">
-          <button class="btn btn--ghost" @click="purgeTarget = null">Hủy</button>
-          <button class="btn btn--danger" @click="confirmPurge">Xóa vĩnh viễn</button>
-        </div>
-      </div>
-    </div>
-
     <!-- ================= MODAL: khôi phục nhiều (thùng rác) ================= -->
     <div v-if="trashBatchRestoreOpen" class="overlay" @click.self="trashBatchRestoreOpen = false">
       <div class="modal">
@@ -1302,32 +1261,13 @@ function formatDeletedAt(iso) {
         </div>
       </div>
     </div>
-
-    <!-- ================= MODAL: xóa hẳn nhiều (thùng rác) ================= -->
-    <div v-if="trashBatchPurgeOpen" class="overlay" @click.self="trashBatchPurgeOpen = false">
-      <div class="modal">
-        <h3>Xóa vĩnh viễn {{ selectedIds.length }} lớp?</h3>
-        <p>
-          Thao tác <strong>không hoàn tác</strong>. Chỉ xóa được lớp không còn ràng buộc dữ liệu.
-        </p>
-        <div class="modal__actions">
-          <button
-            class="btn btn--ghost"
-            :disabled="trashBatchBusy"
-            @click="trashBatchPurgeOpen = false"
-          >
-            Hủy
-          </button>
-          <button
-            class="btn btn--danger"
-            :disabled="trashBatchBusy"
-            @click="confirmTrashBatchPurge"
-          >
-            {{ trashBatchBusy ? 'Đang xóa...' : 'Xóa vĩnh viễn' }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <BulkClassModal
+      v-if="bulkOpen"
+      :schools="schools"
+      :default-school-id="filterSchoolId"
+      @close="bulkOpen = false"
+      @created="onBulkCreated"
+    />
   </div>
 </template>
 

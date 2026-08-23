@@ -12,11 +12,47 @@
  * Tab "Hôm nay" đọc từ LỊCH DẠY chứ không từ bảng chấm công — buổi chưa ai chấm thì
  * chưa có dòng nào, nhìn bảng chấm công sẽ không thấy nó tồn tại.
  */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
 import { attendanceApi, attendanceAmendApi } from '@/api/attendance'
 import { assignmentApi } from '@/api/assignments'
 import Pagination from '@/components/ui/Pagination.vue'
 import DateField from '@/components/ui/DateField.vue'
+import { tietLabel } from '@/utils/period'
+import SearchSelect from '@/components/ui/SearchSelect.vue'
+import { useToast } from '@/composables/useToast'
+import { taiFile, loiTaiFile } from '@/utils/download'
+
+const { showToast } = useToast()
+
+/**
+ * Xuất theo ĐÚNG bộ lọc đang dùng, lấy trọn khoảng ngày chứ không lấy trang đang xem.
+ *
+ * Màn này phân trang ở server 10 dòng một trang; dựng file từ đó ra được đúng 10 dòng — một
+ * cái file trông có vẻ đúng mà thiếu gần hết dữ liệu. Server vì thế tự lấy trọn khoảng, và
+ * chặn lại nếu khoảng quá rộng thay vì im lặng cắt bớt.
+ */
+const dangXuat = ref(false)
+
+async function xuatExcel() {
+  dangXuat.value = true
+  try {
+    await taiFile(
+      '/attendance/export',
+      {
+        teacherId: filter.teacherId || undefined,
+        from: filter.from,
+        to: filter.to,
+        status: filter.status || undefined,
+        keyword: filter.keyword.trim() || undefined,
+      },
+      `cham-cong_${filter.from}_${filter.to}.xlsx`,
+    )
+  } catch (e) {
+    showToast(await loiTaiFile(e, 'Không xuất được bảng chấm công'), 'error')
+  } finally {
+    dangXuat.value = false
+  }
+}
 
 const STATUSES = [
   { code: 'PRESENT', label: 'Có mặt', cls: 'badge-green' },
@@ -46,20 +82,27 @@ const today = new Date()
 const firstOfMonth = isoLocal(new Date(today.getFullYear(), today.getMonth(), 1))
 const lastOfMonth = isoLocal(new Date(today.getFullYear(), today.getMonth() + 1, 0))
 
-const filter = reactive({ from: firstOfMonth, to: lastOfMonth, teacherId: '' })
+const filter = reactive({
+  from: firstOfMonth,
+  to: lastOfMonth,
+  teacherId: '',
+  status: '',
+  keyword: '',
+})
 const teachers = ref([])
 const rows = ref([])
 const loading = ref(false)
 const info = ref('')
 
-/* ── Phân trang phía client ── */
+/* ── Phân trang phía SERVER ──
+   Trước đây tải hết một tháng rồi mới cắt 10 dòng ở trình duyệt: 101 giáo viên × một tháng
+   là hơn nghìn dòng JSON mỗi lần mở trang, để hiện đúng 10 dòng đầu. Ô tìm và bộ lọc trạng
+   thái vì thế cũng phải chạy ở server — lọc ở client trên dữ liệu đã cắt trang thì chỉ tìm
+   được trong trang đang xem. */
 const PAGE_SIZE = 10
 const page = ref(0)
-const totalPages = computed(() => Math.ceil(rows.value.length / PAGE_SIZE))
-const pagedRows = computed(() => {
-  const start = page.value * PAGE_SIZE
-  return rows.value.slice(start, start + PAGE_SIZE)
-})
+const totalPages = ref(1)
+const totalRows = ref(0)
 
 const editModal = reactive({ open: false, saving: false, error: '', id: null, form: {} })
 
@@ -72,25 +115,42 @@ async function loadTeachers() {
   }
 }
 
+/** Đổi bộ lọc là đổi hẳn tập dữ liệu → về trang 1, nếu không sẽ rơi vào trang trống. */
+function applyFilter() {
+  page.value = 0
+  load()
+}
+
 async function load() {
   loading.value = true
   info.value = ''
-  page.value = 0
   try {
     const { data } = await attendanceApi.list({
       teacherId: filter.teacherId || undefined,
       from: filter.from,
       to: filter.to,
+      status: filter.status || undefined,
+      keyword: filter.keyword.trim() || undefined,
+      page: page.value,
+      size: PAGE_SIZE,
     })
-    rows.value = data
+    rows.value = data.content ?? []
+    totalPages.value = Math.max(1, data.totalPages ?? 1)
+    totalRows.value = data.totalElements ?? 0
   } catch (e) {
     rows.value = []
+    totalPages.value = 1
+    totalRows.value = 0
     info.value = e.response?.data?.message ?? 'Không tải được dữ liệu'
   } finally {
     loading.value = false
   }
   loadAttention()
+  loadSummary()
 }
+
+// Bấm số trang → nạp lại từ server (khác bản cũ: cắt sẵn trong mảng đã tải).
+watch(page, load)
 
 /* ── Cần xử lý + nhật ký thay đổi ── */
 const attention = ref([])
@@ -259,17 +319,31 @@ async function refreshPendingCount() {
   }
 }
 
-async function approveAmend(r) {
+/**
+ * Duyệt một yêu cầu bổ sung.
+ *
+ * @param status bỏ trống = ghi CÔNG (backend tự suy Có mặt/Đi muộn theo giờ giáo viên khai);
+ *   'LEAVE' = ghi NGHỈ PHÉP.
+ *
+ * Vì sao cần nhánh Nghỉ phép: job nền ghi VẮNG cho mọi buổi hết giờ mà không ai check-in,
+ * nên giáo viên nằm viện bị đánh y hệt người bỏ dạy — cả hai đều mất tiền buổi đó. Đây là
+ * đường để kế toán phân biệt hai trường hợp, và luồng xin/duyệt đã có sẵn nên không cần
+ * dựng thêm module đơn xin nghỉ riêng.
+ */
+async function approveAmend(r, status) {
   if (amendBusyId.value) return
   amendBusyId.value = r.id
-  amendInfo.value = ''
   try {
-    await attendanceAmendApi.approve(r.id, {})
-    amendInfo.value = `Đã duyệt yêu cầu của ${r.teacherName}`
+    await attendanceAmendApi.approve(r.id, status ? { status } : {})
+    showToast(
+      status === 'LEAVE'
+        ? `Đã ghi Nghỉ phép cho ${r.teacherName}`
+        : `Đã duyệt yêu cầu của ${r.teacherName}`,
+    )
     await loadAmend()
     load()
   } catch (e) {
-    amendInfo.value = e.response?.data?.message ?? 'Duyệt thất bại'
+    showToast(e.response?.data?.message ?? 'Duyệt thất bại', 'error')
   } finally {
     amendBusyId.value = null
   }
@@ -314,12 +388,24 @@ function switchTab(name) {
   if (name === 'amend' && !amendRows.value.length) loadAmend()
 }
 
-const totalHours = computed(() =>
-  rows.value.reduce((sum, r) => sum + Number(r.hours || 0), 0).toFixed(2),
-)
-const presentCount = computed(
-  () => rows.value.filter((r) => r.status === 'PRESENT' || r.status === 'LATE').length,
-)
+/* Ba thẻ tổng quan lấy từ server: bảng nay phân trang nên cộng dồn rows.value chỉ ra
+   tổng của 10 dòng đang hiện — một con số vô nghĩa nằm cạnh nhãn "Tổng giờ dạy". */
+const summary = ref({ totalRows: 0, presentRows: 0, totalHours: 0 })
+
+async function loadSummary() {
+  try {
+    const { data } = await attendanceApi.summary({
+      teacherId: filter.teacherId || undefined,
+      from: filter.from,
+      to: filter.to,
+      status: filter.status || undefined,
+      keyword: filter.keyword.trim() || undefined,
+    })
+    summary.value = data
+  } catch {
+    summary.value = { totalRows: 0, presentRows: 0, totalHours: 0 }
+  }
+}
 </script>
 
 <template>
@@ -348,15 +434,15 @@ const presentCount = computed(
       <div class="stats">
         <div class="stat card">
           <span class="stat-label">Tổng dòng</span>
-          <span class="stat-value">{{ rows.length }}</span>
+          <span class="stat-value">{{ summary.totalRows }}</span>
         </div>
         <div class="stat card">
           <span class="stat-label">Buổi có công</span>
-          <span class="stat-value">{{ presentCount }}</span>
+          <span class="stat-value">{{ summary.presentRows }}</span>
         </div>
         <div class="stat card">
           <span class="stat-label">Tổng giờ dạy</span>
-          <span class="stat-value">{{ totalHours }}h</span>
+          <span class="stat-value">{{ Number(summary.totalHours).toFixed(2) }}h</span>
         </div>
       </div>
 
@@ -367,11 +453,34 @@ const presentCount = computed(
         <label>Đến</label>
         <DateField v-model="filter.to" class="df--inline" />
         <label>Giáo viên</label>
-        <select v-model="filter.teacherId">
+        <SearchSelect
+          v-model="filter.teacherId"
+          :options="teachers"
+          class="ss"
+          placeholder="Tất cả"
+          search-placeholder="Gõ tên giáo viên…"
+          clearable
+          @change="applyFilter"
+        />
+        <label>Trạng thái</label>
+        <select v-model="filter.status" @change="applyFilter">
           <option value="">Tất cả</option>
-          <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.name }}</option>
+          <option v-for="s in STATUSES" :key="s.code" :value="s.code">{{ s.label }}</option>
         </select>
-        <button class="btn btn-outline btn-sm" @click="load">Lọc</button>
+      </div>
+
+      <div class="toolbar">
+        <input
+          v-model="filter.keyword"
+          class="search-input"
+          type="search"
+          placeholder="Tìm theo tên giáo viên…"
+          @keyup.enter="applyFilter"
+        />
+        <button class="btn btn-outline btn-sm" @click="applyFilter">Lọc</button>
+        <button class="btn btn-outline btn-sm" :disabled="dangXuat" @click="xuatExcel">
+          {{ dangXuat ? 'Đang xuất…' : 'Xuất Excel' }}
+        </button>
         <span v-if="info" class="info-text">{{ info }}</span>
       </div>
 
@@ -398,6 +507,7 @@ const presentCount = computed(
             <tr>
               <th>Ngày</th>
               <th>Giáo viên</th>
+              <th>Buổi dạy</th>
               <th>Vào</th>
               <th>Ra</th>
               <th>Giờ</th>
@@ -409,17 +519,30 @@ const presentCount = computed(
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="9" class="text-center text-muted">Đang tải…</td>
+              <td colspan="10" class="text-center text-muted">Đang tải…</td>
             </tr>
             <tr v-else-if="!rows.length">
-              <td colspan="9" class="text-center text-muted">
-                Chưa có dòng nào trong khoảng ngày này — dòng chấm công chỉ xuất hiện khi giáo viên
-                tự check-in.
+              <td colspan="10" class="text-center text-muted">
+                Không có dòng nào khớp bộ lọc — dòng chấm công chỉ xuất hiện khi giáo viên tự
+                check-in.
               </td>
             </tr>
-            <tr v-for="r in pagedRows" :key="r.id">
+            <tr v-for="r in rows" :key="r.id">
               <td class="mono">{{ r.workDate }}</td>
               <td class="font-medium">{{ r.teacherName }}</td>
+              <!-- Cột này trước đây KHÔNG có: kế toán nhìn "Nguyễn Văn A – 07:00 – Có mặt"
+                   mà không biết buổi đó dạy ở đâu, trong khi chính giáo viên lại thấy đủ. -->
+              <td class="text-muted small">
+                <template v-if="r.schoolName">
+                  {{ r.schoolName
+                  }}<template v-if="r.className"> · Lớp {{ r.className }}</template
+                  ><template v-if="r.subjectName"> · {{ r.subjectName }}</template>
+                  <div v-if="r.periodNumber" class="sess-period">
+                    {{ tietLabel(r.periodNumber, r.sessionType, r.indexInSession) }}
+                  </div>
+                </template>
+                <template v-else>—</template>
+              </td>
               <td class="mono">{{ r.checkIn ? r.checkIn.slice(0, 5) : '—' }}</td>
               <td class="mono">{{ r.checkOut ? r.checkOut.slice(0, 5) : '—' }}</td>
               <td class="mono">{{ Number(r.hours).toFixed(2) }}</td>
@@ -576,7 +699,18 @@ const presentCount = computed(
                     :disabled="amendBusyId === r.id"
                     @click="approveAmend(r)"
                   >
-                    Duyệt
+                    Ghi công
+                  </button>
+                  <!-- Buổi giáo viên báo ốm / có phép: ghi Nghỉ phép thay vì Có mặt.
+                       Nghỉ phép KHÔNG được tính tiết nên không phát sinh tiền, chỉ làm
+                       sạch hồ sơ chuyên cần. -->
+                  <button
+                    class="btn btn-sm btn-outline"
+                    :disabled="amendBusyId === r.id"
+                    title="Buổi không diễn ra nhưng giáo viên có phép — không tính tiền"
+                    @click="approveAmend(r, 'LEAVE')"
+                  >
+                    Nghỉ phép
                   </button>
                   <button
                     class="btn btn-sm btn-outline"
@@ -856,5 +990,11 @@ const presentCount = computed(
   .stats {
     grid-template-columns: 1fr;
   }
+}
+
+/* Nhãn tiết nằm dưới tên trường/lớp/môn trong cột "Buổi dạy". */
+.sess-period {
+  margin-top: 0.1rem;
+  font-variant-numeric: tabular-nums;
 }
 </style>
