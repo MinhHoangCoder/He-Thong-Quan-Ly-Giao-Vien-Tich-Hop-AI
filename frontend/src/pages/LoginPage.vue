@@ -117,7 +117,7 @@ const features = [
     <main class="auth__panel">
       <div class="login-card fade-up">
         <BrandLogo :size="44" :show-text="false" class="login-mark" />
-        <h1 class="login-title">KDC EduOps</h1>
+        <h1 class="login-title">Sao Việt</h1>
         <p class="login-sub">Hệ thống quản lý &amp; điều phối giáo viên</p>
 
         <!-- CHẾ ĐỘ ĐĂNG NHẬP -->

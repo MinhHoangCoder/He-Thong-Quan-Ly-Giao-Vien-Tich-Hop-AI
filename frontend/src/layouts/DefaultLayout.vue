@@ -34,7 +34,7 @@ const year = new Date().getFullYear()
 
     <footer class="layout__footer">
       <div class="container">
-        <p>© {{ year }} KDC EduOps — Hệ thống quản lý &amp; điều phối giáo viên.</p>
+        <p>© {{ year }} Trung tâm Sao Việt — Hệ thống quản lý &amp; điều phối giáo viên.</p>
       </div>
     </footer>
   </div>

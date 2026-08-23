@@ -347,7 +347,7 @@ function switchTo(acc) {
     <aside class="sidebar">
       <RouterLink :to="trangChu" class="sidebar__brand" title="Về trang chủ">
         <BrandLogo :size="34" :show-text="false" />
-        <span class="sidebar__name">KDC EduOps</span>
+        <span class="sidebar__name">Sao Việt</span>
       </RouterLink>
 
       <nav class="sidebar__nav">

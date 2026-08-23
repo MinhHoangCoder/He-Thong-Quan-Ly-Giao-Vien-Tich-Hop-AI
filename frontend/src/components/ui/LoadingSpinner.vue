@@ -1,6 +1,6 @@
 <script setup>
 /**
- * Báo "đang tải" bằng vòng cung gradient xoay quanh logo KDC.
+ * Báo "đang tải" bằng vòng cung gradient xoay quanh logo Sao Việt.
  *
  * VÌ SAO LOGO ĐỨNG YÊN: logo là ảnh chụp, không phải icon đối xứng — xoay cả ảnh thì thấy rõ
  * nó lệch và giật ở mỗi vòng. Cho vòng cung xoay còn logo đứng im vừa mượt vừa giữ được nhận
@@ -13,7 +13,7 @@
  *   <LoadingSpinner overlay text="Đang tải số liệu…" />   <!-- phủ lên vùng nội dung -->
  *   <LoadingSpinner bare :size="14" />                    <!-- trong nút bấm, không logo -->
  */
-import logoUrl from '@/assets/KDC_EduOps_AI_Logo.jpg'
+import logoUrl from '@/assets/logo-sao-viet.png'
 
 defineProps({
   /** Đường kính vòng xoay, tính bằng px. */
