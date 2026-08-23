@@ -85,9 +85,6 @@ class TeacherDeleteLocksAccountTest {
     @Mock
     private PayrollRepository payrollRepo;
 
-    @Mock
-    private AuditService auditService;
-
     @InjectMocks
     private TeacherService service;
 

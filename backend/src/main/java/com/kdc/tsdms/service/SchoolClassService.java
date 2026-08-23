@@ -58,7 +58,6 @@ public class SchoolClassService {
     private final AssignmentRepository assignmentRepo;
     private final PeriodRepository periodRepo;
     private final AssignmentSlotRepository slotRepo;
-    private final AuditService auditService;
 
     public SchoolClassService(
             SchoolClassRepository classRepo,
@@ -66,15 +65,13 @@ public class SchoolClassService {
             ClassEnrollmentRepository enrollmentRepo,
             AssignmentRepository assignmentRepo,
             PeriodRepository periodRepo,
-            AssignmentSlotRepository slotRepo,
-            AuditService auditService) {
+            AssignmentSlotRepository slotRepo) {
         this.classRepo = classRepo;
         this.schoolRepo = schoolRepo;
         this.enrollmentRepo = enrollmentRepo;
         this.assignmentRepo = assignmentRepo;
         this.periodRepo = periodRepo;
         this.slotRepo = slotRepo;
-        this.auditService = auditService;
     }
 
     @Transactional(readOnly = true)
@@ -238,7 +235,6 @@ public class SchoolClassService {
                 .blockIf(assignmentRepo.countByClassIdAndDeletedFalse(id), "phân công")
                 .blockIf(slotRepo.countByClassIdAndDeletedFalse(id), "ô thời khóa biểu")
                 .check();
-        auditService.ghi("XOA_LOP", "SchoolClass", id, sc.getName() + " · năm học " + sc.getSchoolYear(), "Xóa mềm");
         sc.setDeleted(true);
         sc.setDeletedAt(Instant.now());
         sc.setDeletedBy(SecurityUtils.currentUserId());

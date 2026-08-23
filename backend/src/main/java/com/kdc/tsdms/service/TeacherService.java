@@ -50,7 +50,6 @@ public class TeacherService {
     private final ScheduleRepository scheduleRepo;
     private final AttendanceRepository attendanceRepo;
     private final PayrollRepository payrollRepo;
-    private final AuditService auditService;
 
     /** Phiếu lương trung tâm CÒN NỢ giáo viên: đã tính ra tiền nhưng chưa xác nhận đã chi. */
     private static final List<String> LUONG_CHUA_CHI = List.of("DRAFT", "FINALIZED");
@@ -93,8 +92,7 @@ public class TeacherService {
             AssignmentRepository assignmentRepo,
             ScheduleRepository scheduleRepo,
             AttendanceRepository attendanceRepo,
-            PayrollRepository payrollRepo,
-            AuditService auditService) {
+            PayrollRepository payrollRepo) {
         this.teacherRepo = teacherRepo;
         this.ceRepo = ceRepo;
         this.contractRepo = contractRepo;
@@ -105,7 +103,6 @@ public class TeacherService {
         this.scheduleRepo = scheduleRepo;
         this.attendanceRepo = attendanceRepo;
         this.payrollRepo = payrollRepo;
-        this.auditService = auditService;
     }
 
     // DANH SÁCH  ======================================
@@ -317,12 +314,6 @@ public class TeacherService {
         t.setUpdatedAt(Instant.now());
         t.setUpdatedBy(SecurityUtils.currentUserId());
         teacherRepo.save(t);
-        auditService.ghi(
-                "XOA_GIAO_VIEN",
-                "Teacher",
-                id,
-                fullName(t.getLastName(), t.getFirstName()) + " (" + t.getEmploymentType() + ")",
-                "Xóa mềm, khóa tài khoản đăng nhập");
         // Khóa luôn TÀI KHOẢN ĐĂNG NHẬP gắn với hồ sơ.
         // Bản cũ chỉ ẩn hồ sơ Teacher và không đụng gì tới AppUser, mà AuthService.login chỉ
         // hỏi AppUser (còn sống? đúng mật khẩu? ACTIVE?) — nên "giáo viên đã xóa" vẫn đăng

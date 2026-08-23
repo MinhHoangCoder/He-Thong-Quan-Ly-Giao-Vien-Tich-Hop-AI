@@ -71,7 +71,6 @@ public class SchoolService {
     private final PeriodRepository periodRepo;
     private final RoomRepository roomRepo;
     private final AssignmentSlotRepository slotRepo;
-    private final AuditService auditService;
     private final PeriodService periodService;
 
     public SchoolService(
@@ -84,7 +83,6 @@ public class SchoolService {
             PeriodRepository periodRepo,
             RoomRepository roomRepo,
             AssignmentSlotRepository slotRepo,
-            AuditService auditService,
             PeriodService periodService) {
         this.sRepo = schoolRepo;
         this.bRepo = branchRepo;
@@ -95,7 +93,6 @@ public class SchoolService {
         this.periodRepo = periodRepo;
         this.roomRepo = roomRepo;
         this.slotRepo = slotRepo;
-        this.auditService = auditService;
         this.periodService = periodService;
     }
 
@@ -234,7 +231,6 @@ public class SchoolService {
         s.setUpdatedAt(Instant.now());
         s.setUpdatedBy(SecurityUtils.currentUserId());
         sRepo.save(s);
-        auditService.ghi("XOA_TRUONG", "School", id, s.getName(), "Xóa mềm, chuyển trạng thái sang Ngừng hợp tác");
     }
 
     /**

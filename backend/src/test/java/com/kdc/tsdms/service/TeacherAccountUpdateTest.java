@@ -64,9 +64,6 @@ class TeacherAccountUpdateTest {
     @Mock
     private RefreshTokenRepository refreshTokenRepo;
 
-    @Mock
-    private AuditService auditService;
-
     @InjectMocks
     private TeacherService service;
 

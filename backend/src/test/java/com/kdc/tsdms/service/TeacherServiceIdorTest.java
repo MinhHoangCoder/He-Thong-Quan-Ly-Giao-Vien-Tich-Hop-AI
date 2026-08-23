@@ -68,9 +68,6 @@ class TeacherServiceIdorTest {
     @Mock
     private PasswordEncoder passwordEncoder;
 
-    @Mock
-    private AuditService auditService;
-
     @InjectMocks
     private TeacherService service;
 

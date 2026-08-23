@@ -25,11 +25,9 @@ import org.springframework.transaction.annotation.Transactional;
 public class PayRateService {
 
     private final PayRateRepository repo;
-    private final AuditService auditService;
 
-    public PayRateService(PayRateRepository repo, AuditService auditService) {
+    public PayRateService(PayRateRepository repo) {
         this.repo = repo;
-        this.auditService = auditService;
     }
 
     /** Toàn bộ bảng giá, mới nhất trước — cả mức đang dùng lẫn mức đã đóng. */
@@ -79,14 +77,7 @@ public class PayRateService {
         moi.setNote(
                 req.note() == null || req.note().isBlank() ? null : req.note().trim());
         moi.setCreatedBy(userId);
-        PayRate daLuu = repo.save(moi);
-        auditService.ghi(
-                "THEM_DON_GIA",
-                "PayRate",
-                daLuu.getId(),
-                "Khối " + req.gradeFrom() + "-" + req.gradeTo() + " · "
-                        + req.amount().toPlainString() + "đ/tiết, áp dụng từ " + req.effectiveFrom());
-        return daLuu;
+        return repo.save(moi);
     }
 
     /**
@@ -117,13 +108,6 @@ public class PayRateService {
         }
         moLaiMucBiDongBoi(r);
         repo.delete(r);
-        auditService.ghi(
-                "XOA_DON_GIA",
-                "PayRate",
-                id,
-                "Khối " + r.getGradeFrom() + "-" + r.getGradeTo() + " · "
-                        + r.getAmount().toPlainString() + "đ/tiết, lẽ ra áp dụng từ " + r.getEffectiveFrom(),
-                "Đã mở lại mức giá liền trước");
     }
 
     /**

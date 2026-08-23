@@ -162,9 +162,6 @@ class SchoolServiceTest {
         @Mock
         private PeriodService periodService;
 
-        @Mock
-        private AuditService auditService;
-
         @InjectMocks
         private SchoolService service;
 

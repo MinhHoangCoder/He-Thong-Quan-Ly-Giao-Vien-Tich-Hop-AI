@@ -124,14 +124,6 @@ export const adminRoutes = [
     component: () => import('@/pages/HolidayListPage.vue'),
     meta: { layout: 'admin', roles: ['ADMIN'] },
   },
-  // ── Hệ thống: nhật ký thao tác + rà soát dữ liệu mồ côi ──────────
-  // Chỉ ADMIN: đây là câu hỏi về sức khỏe dữ liệu, không phải nghiệp vụ hằng ngày.
-  {
-    path: '/admin/system',
-    name: 'admin-system',
-    component: () => import('@/pages/SystemLogPage.vue'),
-    meta: { layout: 'admin', roles: ['ADMIN'] },
-  },
   // ── Tạo / sửa phân công (wizard 3 bước, trang riêng) ─────────────
   // Tách khỏi modal cũ vì bước xếp tiết là lưới thời khóa biểu 10 tiết × 7 thứ cho TỪNG
   // trường — modal không đủ chỗ. Sửa dùng CHUNG trang này để hai luồng không lệch nhau.
