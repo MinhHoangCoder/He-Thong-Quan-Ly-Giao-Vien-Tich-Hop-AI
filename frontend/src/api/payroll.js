@@ -75,7 +75,7 @@ export const payrollApi = {
 }
 
 /**
- * API module Bảng đơn giá tiết dạy (PayRate, Flyway V37).
+ * API module Bảng đơn giá tiết dạy (PayRate, Flyway V38).
  * Base: /api/v1/pay-rates
  *
  * Không có hàm update: sửa đè một mức đã áp dụng sẽ làm mọi kỳ lương cũ tính lại ra số khác

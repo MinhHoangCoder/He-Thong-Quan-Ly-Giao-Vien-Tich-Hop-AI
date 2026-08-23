@@ -12,9 +12,9 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * ĐƠN GIÁ MỘT TIẾT DẠY theo khối lớp, có hiệu lực theo thời gian (bảng PayRate, Flyway V37).
+ * ĐƠN GIÁ MỘT TIẾT DẠY theo khối lớp, có hiệu lực theo thời gian (bảng PayRate, Flyway V38).
  *
- * <p>Trước V37 hai mức giá nằm thẳng trong {@code PayrollService} dưới dạng hằng số Java:
+ * <p>Trước V38 hai mức giá nằm thẳng trong {@code PayrollService} dưới dạng hằng số Java:
  * đổi giá phải sửa code và deploy lại.
  *
  * <p>Vì sao phải có KHOẢNG HIỆU LỰC chứ không chỉ một cột giá: bảng lương tính lại được bất

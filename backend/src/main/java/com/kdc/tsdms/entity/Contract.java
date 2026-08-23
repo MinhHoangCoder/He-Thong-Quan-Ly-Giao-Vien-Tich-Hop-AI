@@ -44,7 +44,7 @@ public class Contract extends SoftDeletableEntity {
     private BigDecimal allowance;
 
     /**
-     * Đơn giá MỘT TIẾT thương lượng riêng với giáo viên này (V37).
+     * Đơn giá MỘT TIẾT thương lượng riêng với giáo viên này (V38).
      *
      * <p>{@code null} = không thương lượng riêng, tính theo barem chung ở bảng {@code PayRate}.
      */

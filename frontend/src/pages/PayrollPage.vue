@@ -8,10 +8,10 @@
  *    (buổi sinh trước khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong: banner báo
  *    trước, và hỏi lại lần hai lúc bấm.
  * 2. MỞ LẠI (V32) gỡ được bước 1 — cần quyền PAYROLL_REOPEN, bắt buộc nêu lý do.
- * 3. ĐÃ TRẢ (V37) là điểm không quay lại: tiền đã ra khỏi quỹ. Cần quyền PAYROLL_PAY.
- *    Trước V37 trạng thái này không có đường nào đặt được, nên "đã chốt" và "đã trả" là một.
+ * 3. ĐÃ TRẢ (V38) là điểm không quay lại: tiền đã ra khỏi quỹ. Cần quyền PAYROLL_PAY.
+ *    Trước V38 trạng thái này không có đường nào đặt được, nên "đã chốt" và "đã trả" là một.
  *
- * Nút "Bảng đơn giá" mở barem tiết dạy (V37) — trước đó hai mức giá là hằng số trong code.
+ * Nút "Bảng đơn giá" mở barem tiết dạy (V38) — trước đó hai mức giá là hằng số trong code.
  */
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -249,7 +249,7 @@ async function doFinalize(r) {
   }
 }
 
-/* ──────────── Xác nhận đã trả lương (V37) ──────────── */
+/* ──────────── Xác nhận đã trả lương (V38) ──────────── */
 
 /**
  * row = null → đánh dấu CẢ THÁNG. Kế toán chi lương theo đợt chứ không theo từng người, nên
@@ -317,10 +317,10 @@ async function openLogs(r) {
 
 const fmtAt = (iso) => (iso ? new Date(iso).toLocaleString('vi-VN') : '—')
 
-/* ──────────── Bảng đơn giá tiết dạy (V37) ──────────── */
+/* ──────────── Bảng đơn giá tiết dạy (V38) ──────────── */
 
 /**
- * Trước V37 hai mức giá là hằng số trong PayrollService: tăng giá phải sửa code và deploy.
+ * Trước V38 hai mức giá là hằng số trong PayrollService: tăng giá phải sửa code và deploy.
  * Bảng này để kế toán tự khai, và quan trọng hơn — để người xem bảng lương đối chiếu được
  * con số trên phiếu với barem mà không phải hỏi ai.
  */

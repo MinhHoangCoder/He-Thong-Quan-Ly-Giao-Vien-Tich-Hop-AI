@@ -20,7 +20,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * được tính theo giá THCS. Sai TIỀN LƯƠNG, mà không có exception nào, không log nào, không test
  * nào.
  *
- * <p>Từ V37 hai mức giá nằm trong bảng {@code PayRate} và có HIỆU LỰC THEO NGÀY, nên bộ test
+ * <p>Từ V38 hai mức giá nằm trong bảng {@code PayRate} và có HIỆU LỰC THEO NGÀY, nên bộ test
  * này khóa lại bốn thứ:
  *
  * <ul>

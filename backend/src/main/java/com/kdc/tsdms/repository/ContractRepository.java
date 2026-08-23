@@ -1,6 +1,8 @@
 package com.kdc.tsdms.repository;
 
 import com.kdc.tsdms.entity.Contract;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -15,5 +17,14 @@ public interface ContractRepository extends JpaRepository<Contract, Integer> {
      * <p>Gọi {@link #findByTeacherIdAndDeletedFalse} trong vòng lặp là năm chục câu SQL cho
      * một lần bấm nút, mà dữ liệu cần lấy hoàn toàn biết trước.
      */
-    java.util.List<Contract> findByTeacherIdInAndDeletedFalse(java.util.Collection<Integer> teacherIds);
+    List<Contract> findByTeacherIdInAndDeletedFalse(Collection<Integer> teacherIds);
+
+    /**
+     * Các phiên bản hợp đồng ĐÃ BỊ THAY THẾ của một GV, mới nhất trước.
+     *
+     * <p>{@code IsDeleted = 1} ở bảng này KHÔNG mang nghĩa "đã hủy" mà là "đã bị bản sau thay
+     * thế" — xem {@code TeacherService.saveContract}. Đây là đường duy nhất đọc lại được mức
+     * lương/thời hạn của các bản trước, thứ mà bản cũ ghi đè lên và làm mất vĩnh viễn.
+     */
+    List<Contract> findByTeacherIdAndDeletedTrueOrderByIdDesc(Integer teacherId);
 }

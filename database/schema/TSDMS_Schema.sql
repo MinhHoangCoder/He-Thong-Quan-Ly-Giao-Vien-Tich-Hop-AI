@@ -366,7 +366,7 @@ CREATE TABLE Contract (
     EndDate      DATE          NULL,                 -- ngày kết thúc (NULL = vô thời hạn)
     BaseSalary   DECIMAL(18,2) NULL,                 -- lương cơ bản theo HĐ (chỉ áp cho GV cơ hữu)
     Allowance    DECIMAL(18,2) NULL,                 -- phụ cấp theo HĐ
-    RatePerPeriod DECIMAL(18,2) NULL,                -- V37: đơn giá/tiết thương lượng riêng (NULL = theo barem PayRate)
+    RatePerPeriod DECIMAL(18,2) NULL,                -- V38: đơn giá/tiết thương lượng riêng (NULL = theo barem PayRate)
     Status       VARCHAR(20)   NOT NULL DEFAULT 'ACTIVE'  -- ACTIVE / EXPIRED(hết hạn) / TERMINATED(chấm dứt)
                  CONSTRAINT CK_Contract_Status CHECK (Status IN ('ACTIVE','EXPIRED','TERMINATED')),
     FileUrl      VARCHAR(500)  NULL,
@@ -1112,7 +1112,7 @@ FROM AppUser u CROSS JOIN Branch b
 WHERE u.Username = 'school' AND b.Name = N'Chi nhánh trung tâm';
 GO
 
-/* ========== Bảng 39: PayRate — ĐƠN GIÁ TIẾT DẠY THEO KHỐI (Flyway V37) ==========
+/* ========== Bảng 39: PayRate — ĐƠN GIÁ TIẾT DẠY THEO KHỐI (Flyway V38) ==========
    Ý nghĩa : Barem chung, thay cho hai hằng số từng nằm trong PayrollService.
    LƯU Ý   : Có KHOẢNG HIỆU LỰC vì bảng lương tính lại được bất cứ lúc nào —
              tra theo NGÀY DẠY chứ không theo hôm nay, nếu không thì tính lại

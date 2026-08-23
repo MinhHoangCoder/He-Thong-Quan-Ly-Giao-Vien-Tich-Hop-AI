@@ -37,7 +37,7 @@ import org.mockito.quality.Strictness;
  * Phiếu lương vẫn sinh ra bình thường, chỉ là thiếu tiền. Người duy nhất phát hiện là giáo
  * viên bị hụt, sau khi đã nhận lương.
  *
- * <p>Lỗ hổng này nằm im trong backend từ V37 vì chưa có màn hình nào gọi được {@code delete}.
+ * <p>Lỗ hổng này nằm im trong backend từ V38 vì chưa có màn hình nào gọi được {@code delete}.
  * Nó lộ ra ngay lần đầu thêm nút Xóa vào giao diện.
  */
 @ExtendWith(MockitoExtension.class)

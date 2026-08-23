@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * REST API Bảng đơn giá tiết dạy — /api/v1/pay-rates (Flyway V37).
+ * REST API Bảng đơn giá tiết dạy — /api/v1/pay-rates (Flyway V38).
  *
  * <p>Đọc mở cho PAYROLL_VIEW: người xem bảng lương cần đối chiếu được con số trên phiếu với
  * barem, chứ không phải hỏi lại kế toán. Ghi cần PAYRATE_MANAGE — đổi giá là quyết định tiền

@@ -321,7 +321,7 @@ nhiên" suy từ `CHECKSUM(Id)` chứ không dùng `RAND()`). Rollback nhận di
 
 Đã bàn và đồng ý làm, chưa làm trong đợt này:
 
-- Màn **Quản lý đơn giá tiết dạy** — bảng `PayRate` đã có (V37) nhưng chưa có màn hình nào
+- Màn **Quản lý đơn giá tiết dạy** — bảng `PayRate` đã có (V38) nhưng chưa có màn hình nào
   xem/sửa, nên tính năng "đơn giá ra khỏi code" mới đi được nửa đường.
 - Màn **Nhật ký hệ thống** (`AuditLog`) — bảng có sẵn trong schema, đang rỗng.
 - Màn **Dữ liệu mồ côi** — bảng `OrphanScan` đã có 2 dòng nhưng không ai xem được.

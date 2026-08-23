@@ -1,4 +1,4 @@
-# Bảng lương: khép vòng đời phiếu + đơn giá ra khỏi code (V37, 2026-08-22)
+# Bảng lương: khép vòng đời phiếu + đơn giá ra khỏi code (V38, 2026-08-22)
 
 ## Ba lỗi, đều nằm ở bước cuối của dây chuyền tiền lương
 
@@ -102,10 +102,10 @@ trên chính hai cột đó. Đổi tên phải drop rồi tạo lại cột com
 dẫm bẫy một lần (`sp_rename` không sửa thân trigger, note V11). Đánh đổi không xứng với việc chỉ
 để tên đọc xuôi hơn; giao diện đã hiện đúng nhãn "Số tiết".
 
-## Bẫy đã dẫm phải khi làm: checksum V37
+## Bẫy đã dẫm phải khi làm: checksum V38
 
-Chạy `mvnw test` khởi động Spring context thật → Flyway áp V37 vào DB local. **Sau đó** mới sửa
-file V37 (thêm `ALTER TABLE Contract ADD RatePerPeriod`) → checksum đổi → backend chết lúc khởi
+Chạy `mvnw test` khởi động Spring context thật → Flyway áp V38 vào DB local. **Sau đó** mới sửa
+file V38 (thêm `ALTER TABLE Contract ADD RatePerPeriod`) → checksum đổi → backend chết lúc khởi
 động với `Migration checksum mismatch for migration version 37`.
 
 Cách chữa (giống note 2026-08-21, nhưng nguyên nhân khác — lần đó là PR sửa file đã merge):

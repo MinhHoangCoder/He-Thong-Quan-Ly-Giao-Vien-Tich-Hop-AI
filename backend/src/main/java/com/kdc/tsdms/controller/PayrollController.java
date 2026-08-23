@@ -87,7 +87,7 @@ public class PayrollController {
     }
 
     /**
-     * Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ (V37).
+     * Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ (V38).
      *
      * <p>Quyền RIÊNG {@code PAYROLL_PAY}, không gộp vào PAYROLL_MANAGE: "tính lại lương" và
      * "xác nhận tiền đã ra khỏi quỹ" là hai trách nhiệm khác nhau. Cùng lý lẽ với

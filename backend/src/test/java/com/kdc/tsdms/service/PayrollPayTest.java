@@ -33,9 +33,9 @@ import org.mockito.quality.Strictness;
 import org.springframework.http.HttpStatus;
 
 /**
- * XÁC NHẬN ĐÃ TRẢ LƯƠNG (PayrollService.pay, Flyway V37).
+ * XÁC NHẬN ĐÃ TRẢ LƯƠNG (PayrollService.pay, Flyway V38).
  *
- * <p>Trước V37 trạng thái {@code PAID} là trạng thái CHẾT: nó có trong ràng buộc của bảng, có
+ * <p>Trước V38 trạng thái {@code PAID} là trạng thái CHẾT: nó có trong ràng buộc của bảng, có
  * trong danh sách trạng thái giáo viên được xem, và {@code assertReopenable} từ chối mở lại
  * phiếu PAID — nhưng không có đường code nào ĐẶT được nó. Kế toán chi tiền xong không có nút
  * nào để ghi nhận, nên trên hệ thống "đã chốt" và "đã trả" là một.

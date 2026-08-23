@@ -42,7 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Mỗi dòng chấm công PRESENT/LATE = 1 tiết. Đơn giá tra theo thứ tự: đơn giá riêng ghi
  * trong hợp đồng của giáo viên → barem chung theo khối và theo ngày dạy (bảng {@code PayRate},
- * Flyway V37). Khối lấy từ lớp của Ô THỜI KHÓA BIỂU sinh ra buổi, không phải lớp cấp phiếu —
+ * Flyway V38). Khối lấy từ lớp của Ô THỜI KHÓA BIỂU sinh ra buổi, không phải lớp cấp phiếu —
  * từ V16 một phiếu trải nhiều lớp, mà lớp 5 và lớp 6 khác giá.
  *
  * <p>Lương cứng đọc từ {@code Contract.BaseSalary} và chỉ áp cho giáo viên CƠ HỮU; thỉnh
@@ -176,7 +176,7 @@ public class PayrollService {
      * giá từ 1/9 phải ra đúng số của tháng 7.
      *
      * <p>Lương cứng đọc từ hợp đồng và CHỈ áp cho giáo viên cơ hữu — thỉnh giảng chỉ ăn tiền
-     * tiết. Trước V37 cột này luôn bằng 0 trừ khi kế toán gõ tay.
+     * tiết. Trước V38 cột này luôn bằng 0 trừ khi kế toán gõ tay.
      */
     @Transactional
     public List<PayrollResponse> generate(short year, short month) {
@@ -313,12 +313,12 @@ public class PayrollService {
         return toResponse(p);
     }
 
-    /* ──────────────── XÁC NHẬN ĐÃ TRẢ (V37) ──────────────── */
+    /* ──────────────── XÁC NHẬN ĐÃ TRẢ (V38) ──────────────── */
 
     /**
      * Đánh dấu một phiếu ĐÃ CHỐT thành ĐÃ TRẢ.
      *
-     * <p>Trước V37 trạng thái {@code PAID} là trạng thái CHẾT: có trong ràng buộc của bảng, có
+     * <p>Trước V38 trạng thái {@code PAID} là trạng thái CHẾT: có trong ràng buộc của bảng, có
      * trong danh sách giáo viên được xem, và {@link #assertReopenable} từ chối mở lại phiếu
      * PAID — nhưng không có đường code nào đặt được nó. Kế toán chi tiền xong không có nút nào
      * để ghi nhận, nên "đã chốt" và "đã trả" trên hệ thống là một.

@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * BẢNG ĐƠN GIÁ TIẾT DẠY (Flyway V37) — đưa hai con số từng nằm cứng trong {@code
+ * BẢNG ĐƠN GIÁ TIẾT DẠY (Flyway V38) — đưa hai con số từng nằm cứng trong {@code
  * PayrollService} ra thành dữ liệu sửa được.
  *
  * <p>Cách dùng đúng khi tăng giá: gọi {@link #create} với mức mới kèm ngày bắt đầu áp dụng.

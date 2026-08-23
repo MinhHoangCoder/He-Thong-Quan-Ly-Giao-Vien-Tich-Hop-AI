@@ -1,5 +1,5 @@
 /* =====================================================================
-   V37 — ĐƠN GIÁ TIẾT DẠY RA KHỎI CODE + KHÉP VÒNG ĐỜI PHIẾU LƯƠNG.
+   V38 — ĐƠN GIÁ TIẾT DẠY RA KHỎI CODE + KHÉP VÒNG ĐỜI PHIẾU LƯƠNG.
 
    Hai lỗ hổng cùng nằm ở bước cuối của dây chuyền tiền lương.
 
@@ -25,7 +25,7 @@
        phiếu PAID — nhưng KHÔNG có đường code nào đặt được nó. Kế toán
        chi tiền xong không có nút nào để đánh dấu.
 
-       V37 thêm quyền PAYROLL_PAY và mở rộng CHECK của PayrollChangeLog
+       V38 thêm quyền PAYROLL_PAY và mở rộng CHECK của PayrollChangeLog
        để ghi được hành động 'PAY'. Quyền RIÊNG chứ không gộp vào
        PAYROLL_MANAGE, cùng lý lẽ với PAYROLL_REOPEN ở V32: "tính lại
        lương" và "xác nhận đã chi tiền" là hai việc khác hẳn nhau về
@@ -93,7 +93,7 @@ GO
 
    NULL = không thương lượng riêng, dùng barem chung.
 
-   Contract.BaseSalary đã có sẵn từ V1 nhưng chưa ai đọc. V37 nối nó vào
+   Contract.BaseSalary đã có sẵn từ V1 nhưng chưa ai đọc. V38 nối nó vào
    PayrollService: giáo viên CƠ HỮU (EmploymentType = CO_HUU) có lương
    cứng theo hợp đồng cộng tiền tiết; THỈNH GIẢNG chỉ có tiền tiết.
    --------------------------------------------------------------------- */
