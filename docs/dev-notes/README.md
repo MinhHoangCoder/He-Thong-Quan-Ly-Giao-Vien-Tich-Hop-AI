@@ -69,6 +69,8 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-22 | fullstack | ⭐ Bảng lương: khép vòng đời phiếu (PAID từng là trạng thái chết), đơn giá ra khỏi code có hiệu lực theo ngày, gộp ~3.000 câu SQL thành 1 JOIN (V38) | [2026-08-22-fullstack-bang-luong-don-gia.md](2026-08-22-fullstack-bang-luong-don-gia.md) |
 | 2026-08-22 | fullstack | ⭐⭐ **Dữ liệu lớn (86.745 buổi dạy) + quét lỗ hổng toàn hệ thống** — N+1 làm màn Phân công mất 4,8s, trần 2.100 tham số của SQL Server, 674 lớp xóa được dù đang trong thời khóa biểu · 20 kịch bản phá + 20 câu hỏi kèm câu trả lời | [2026-08-22-fullstack-du-lieu-lon-quet-lo-hong.md](2026-08-22-fullstack-du-lieu-lon-quet-lo-hong.md) |
 
+| 2026-08-24 | fullstack | ⭐⭐ **Ràng buộc xóa Đợt 5 — những chỗ còn sót**: xóa nhóm môn học quét sạch kho bài giảng (đi vòng qua DeleteGuard), phân công vào thùng rác kéo theo cả buổi ĐÃ DẠY, thùng rác + khôi phục cho Kho bài giảng, dọn 5 câu xóa cứng nằm chờ | [2026-08-24-fullstack-rang-buoc-xoa-dot-5.md](2026-08-24-fullstack-rang-buoc-xoa-dot-5.md) |
+
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.
 
