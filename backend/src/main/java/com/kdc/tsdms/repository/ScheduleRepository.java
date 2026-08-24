@@ -32,15 +32,11 @@ public interface ScheduleRepository extends JpaRepository<Schedule, Long> {
             nativeQuery = true)
     void deleteStatusLogsByAssignmentId(@Param("assignmentId") Integer assignmentId);
 
-    /** Xóa CỨNG bản ghi chấm công gắn với các buổi thuộc phân công (FK Attendance.ScheduleId). */
-    @Modifying
-    @Query(
-            value = "DELETE FROM Attendance WHERE ScheduleId IN "
-                    + "(SELECT Id FROM Schedule WHERE AssignmentId = :assignmentId)",
-            nativeQuery = true)
-    void deleteAttendanceByAssignmentId(@Param("assignmentId") Integer assignmentId);
-
-    /** Xóa CỨNG mọi buổi của phân công — dùng khi xóa vĩnh viễn. */
+    /**
+     * Xóa CỨNG mọi buổi của phân công. Chỉ {@code AssignmentService.update} gọi, và chỉ cho
+     * phiếu CHƯA xác nhận — buổi của phiếu như vậy chưa bao giờ có hiệu lực nên không có chấm
+     * công nào bám vào. Xem rào chắn ở đó trước khi gọi từ chỗ khác.
+     */
     @Modifying
     @Query("DELETE FROM Schedule s WHERE s.assignmentId = :assignmentId")
     void deleteByAssignmentId(@Param("assignmentId") Integer assignmentId);

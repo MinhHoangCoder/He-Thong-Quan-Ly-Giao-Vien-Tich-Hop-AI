@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -37,9 +36,4 @@ public interface PeriodRepository extends JpaRepository<Period, Integer> {
     @Query("SELECT p.schoolId, COUNT(p) FROM Period p WHERE p.deleted = false"
             + " AND p.schoolId IN :schoolIds GROUP BY p.schoolId")
     List<Object[]> demTietTheoTruong(@Param("schoolIds") Collection<Integer> schoolIds);
-
-    /** Xóa CỨNG khung tiết của một trường — chỉ gọi khi xóa vĩnh viễn trường khỏi thùng rác. */
-    @Modifying
-    @Query("DELETE FROM Period p WHERE p.schoolId = :schoolId")
-    int xoaCungTheoTruong(@Param("schoolId") Integer schoolId);
 }

@@ -958,8 +958,10 @@ public class AssignmentService {
      * <p>Đổi được GIÁO VIÊN, KHÔNG đổi trường/môn — khung tiết và lớp gắn với trường nên đổi
      * trường là một phiếu khác hẳn.
      *
-     * <p>Tiết + buổi cũ bị xóa cứng rồi sinh lại. An toàn vì phiếu chưa xác nhận nên chưa buổi
-     * nào APPROVED, chưa có chấm công/lương bám vào.
+     * <p>Tiết + buổi cũ bị xóa CỨNG rồi sinh lại. Trạng thái phiếu đã chặn phần lớn rủi ro
+     * (chưa xác nhận thì chưa buổi nào APPROVED nên chưa có chấm công/lương bám vào), nhưng từ
+     * Đợt 5 còn hỏi thẳng dữ liệu trước khi xóa — xem ghi chú tại chỗ gọi
+     * {@code demChamCongTheoPhanCong}.
      */
     @Transactional
     public AssignmentResponse update(Integer id, AssignmentUpdateRequest req) {
@@ -969,6 +971,22 @@ public class AssignmentService {
                     HttpStatus.CONFLICT,
                     "Chỉ sửa được phân công đang chờ xác nhận, bị từ chối hoặc đã hết hạn. "
                             + "Phân công đã có hiệu lực cần được hủy và tạo lại.");
+        }
+        // ĐỢT 5 — chốt bằng DỮ LIỆU chứ không chỉ bằng TRẠNG THÁI. Ba dòng dưới xóa CỨNG, mà
+        // Attendance.ScheduleId là khóa ngoại không có ON DELETE: còn một dòng chấm công là câu
+        // DELETE bung ra lỗi 500 SQL thô. Hôm nay chuyện đó không xảy ra được (chỉ phiếu chưa
+        // xác nhận mới sửa được, buổi của nó chưa APPROVED nên không đường nào sinh chấm công),
+        // nhưng đó là suy luận bắc cầu qua ba file khác — thêm một trạng thái vào isEditable
+        // hoặc một đường ghi Attendance mới là nó gãy trong im lặng. Hỏi thẳng dữ liệu thì rào
+        // này không phụ thuộc vào ai nhớ gì.
+        long soChamCong = attendanceRepo.demChamCongTheoPhanCong(id);
+        if (soChamCong > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không sửa được phân công này: đã có " + soChamCong
+                            + " bản ghi chấm công gắn với các buổi dạy của nó. Sửa phiếu là xóa và "
+                            + "sinh lại toàn bộ buổi, làm mất luôn phần chấm công đó. "
+                            + "Hãy hủy phiếu này rồi tạo phiếu mới cho giai đoạn còn lại.");
         }
         assertPeriodValid(req.startDate(), req.endDate());
         // Sửa phiếu: chỉ chặn khi ĐỔI sang một ngày quá khứ KHÁC. Giữ nguyên ngày cũ (dù đã qua)
