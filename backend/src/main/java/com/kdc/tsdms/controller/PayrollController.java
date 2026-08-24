@@ -2,12 +2,10 @@ package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.common.ExcelWriter;
 import com.kdc.tsdms.dto.PayrollChangeLogResponse;
-import com.kdc.tsdms.dto.PayrollHealthResponse;
 import com.kdc.tsdms.dto.PayrollHolidayIssueResponse;
 import com.kdc.tsdms.dto.PayrollReopenRequest;
 import com.kdc.tsdms.dto.PayrollResponse;
 import com.kdc.tsdms.dto.PayrollUpdateRequest;
-import com.kdc.tsdms.service.PayrollHealthService;
 import com.kdc.tsdms.service.PayrollService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
@@ -36,11 +34,9 @@ public class PayrollController {
     private static final String CAN_PAY = "hasRole('ADMIN') or hasAuthority('PAYROLL_PAY')";
 
     private final PayrollService service;
-    private final PayrollHealthService healthService;
 
-    public PayrollController(PayrollService service, PayrollHealthService healthService) {
+    public PayrollController(PayrollService service) {
         this.service = service;
-        this.healthService = healthService;
     }
 
     /** Bảng lương một kỳ (mặc định tháng hiện tại). */
@@ -116,22 +112,6 @@ public class PayrollController {
     @PreAuthorize(CAN_VIEW)
     public PayrollHolidayIssueResponse holidayIssues(@RequestParam Short year, @RequestParam Short month) {
         return service.holidayIssues(year, month);
-    }
-
-    /**
-     * KIỂM TRA SỨC KHỎE DỮ LIỆU của một kỳ trước khi chốt.
-     *
-     * <p>Gộp bảy phép đếm trả lời cùng một câu hỏi: "còn bao nhiêu dòng sẽ làm số tiền sai mà
-     * không ai biết". Không phép nào trong đó tự báo lỗi — bảng lương vẫn sinh ra bình thường,
-     * chỉ là sai — nên phải chủ động đi đếm chứ không đợi màn hình đỏ lên.
-     *
-     * <p>Chỉ PAYROLL_VIEW: đây là câu hỏi đọc, và người xem bảng lương cần thấy cảnh báo ngay
-     * cả khi họ không phải người bấm nút chốt.
-     */
-    @GetMapping("/health")
-    @PreAuthorize(CAN_VIEW)
-    public PayrollHealthResponse health(@RequestParam Short year, @RequestParam Short month) {
-        return healthService.check(year, month);
     }
 
     /**
