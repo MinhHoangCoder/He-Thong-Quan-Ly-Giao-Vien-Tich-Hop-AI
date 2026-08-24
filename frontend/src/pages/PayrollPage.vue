@@ -5,8 +5,8 @@
  *
  * VÒNG ĐỜI MỘT PHIẾU: Nháp → Đã chốt → Đã trả. Mỗi bước đi một chiều và có rào riêng:
  * 1. CHỐT khóa luôn chấm công của kỳ. Nếu kỳ còn dòng VẮNG ghi nhầm cho buổi rơi vào ngày lễ
- *    (buổi sinh trước khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong: banner báo
- *    trước, và hỏi lại lần hai lúc bấm.
+ *    (buổi sinh trước khi khai kỳ nghỉ — V29) thì chốt là khóa luôn lỗi vào trong, nên bấm
+ *    Chốt lúc đó sẽ hỏi lại một lần.
  * 2. MỞ LẠI (V32) gỡ được bước 1 — cần quyền PAYROLL_REOPEN, bắt buộc nêu lý do.
  * 3. ĐÃ TRẢ (V38) là điểm không quay lại: tiền đã ra khỏi quỹ. Cần quyền PAYROLL_PAY.
  *    Trước V38 trạng thái này không có đường nào đặt được, nên "đã chốt" và "đã trả" là một.
@@ -88,25 +88,9 @@ const editModal = reactive({ open: false, saving: false, error: '', row: null, f
 const vnd = (n) =>
   n == null ? '—' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(n) + ' ₫'
 
-/**
- * Dòng Vắng rơi vào ngày nghỉ trong kỳ đang xem — nguồn của cả banner lẫn hộp xác nhận.
- * Một nguồn duy nhất để hai chỗ không bao giờ nói hai con số khác nhau.
- */
+/** Dòng Vắng rơi vào ngày nghỉ trong kỳ đang xem — dùng cho hộp xác nhận lúc bấm Chốt. */
 const issues = ref(null)
 const hasIssues = computed(() => (issues.value?.absenceCount ?? 0) > 0)
-
-/**
- * SỨC KHỎE DỮ LIỆU của kỳ đang xem — bảy phép đếm ở backend gộp lại.
- *
- * Điểm chung của mọi vấn đề trong đây: không cái nào tự báo lỗi. Bảng lương vẫn sinh ra bình
- * thường, con số vẫn có, chỉ là sai — nên phải chủ động đi đếm và bày ra TRƯỚC khi người dùng
- * bấm chốt, chứ không phải sau.
- */
-const health = ref(null)
-const vanDeChan = computed(() =>
-  (health.value?.vanDe ?? []).filter((v) => v.mucDo === 'CHAN'),
-)
-const coVanDe = computed(() => (health.value?.vanDe ?? []).length > 0)
 
 /**
  * Xuất CẢ KỲ ra Excel, không phải trang đang xem.
@@ -134,16 +118,11 @@ async function xuatExcel() {
 
 async function loadIssues() {
   try {
-    const [hi, hl] = await Promise.all([
-      payrollApi.holidayIssues(filter.year, filter.month),
-      payrollApi.health(filter.year, filter.month),
-    ])
-    issues.value = hi.data
-    health.value = hl.data
+    const { data } = await payrollApi.holidayIssues(filter.year, filter.month)
+    issues.value = data
   } catch {
     // Cảnh báo hỏng thì im lặng, không chặn việc chính: người dùng vẫn phải xem được bảng lương.
     issues.value = null
-    health.value = null
   }
 }
 
@@ -449,19 +428,20 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
       <button class="btn btn-outline btn-sm" :disabled="dangXuat" @click="xuatExcel">
         {{ dangXuat ? 'Đang xuất…' : 'Xuất Excel' }}
       </button>
+      <!-- Còn đúng một phiếu đã chốt thì dùng nút trên dòng của nó, không cần thao tác cả tháng. -->
       <button
-        v-if="canPay && finalizedCount > 0"
+        v-if="canPay && finalizedCount > 1"
         class="btn btn-outline btn-sm"
         @click="payTarget = { row: null }"
       >
-        Đánh dấu đã trả cả tháng ({{ finalizedCount }})
+        Đã trả cả tháng
       </button>
       <button
-        v-if="canReopen && finalizedCount > 0"
+        v-if="canReopen && finalizedCount > 1"
         class="btn btn-outline btn-sm"
         @click="openReopen(null)"
       >
-        Mở lại cả tháng ({{ finalizedCount }})
+        Mở lại cả tháng
       </button>
       <span v-if="info" class="info-text">{{ info }}</span>
     </div>
@@ -475,43 +455,6 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
       />
       <span class="spacer" />
       <span class="count-info">{{ filteredRows.length }} / {{ rows.length }} giáo viên</span>
-    </div>
-
-<!-- ══════════ SỨC KHỎE DỮ LIỆU CỦA KỲ ══════════
-         Hiện ngay khi chọn tháng, trước cả khi người dùng định chốt. Chốt lương KHÓA chấm công
-         của kỳ, nên mọi thứ khuyết phải nói ra trước — sau đó thì đã khóa luôn cái khuyết vào. -->
-    <div v-if="coVanDe" class="health" :class="{ 'health--ok': !vanDeChan.length }">
-      <div class="health__head">
-        <strong v-if="vanDeChan.length">
-          Kỳ {{ filter.month }}/{{ filter.year }} có {{ vanDeChan.length }} vấn đề nên xử lý
-          trước khi chốt lương
-        </strong>
-        <strong v-else>Kỳ {{ filter.month }}/{{ filter.year }} có điểm cần lưu ý</strong>
-      </div>
-
-      <ul class="health__list">
-        <li v-for="v in health.vanDe" :key="v.ma" :class="'lvl-' + v.mucDo.toLowerCase()">
-          <div class="health__row">
-            <span class="health__badge">{{ v.mucDo === 'CHAN' ? 'Nên sửa' : 'Lưu ý' }}</span>
-            <span class="health__title">{{ v.tieuDe }}</span>
-            <span class="health__count">{{ v.soLuong }}</span>
-            <RouterLink :to="v.duongDan" class="health__go">Đi sửa →</RouterLink>
-          </div>
-          <p class="health__desc">{{ v.moTa }}</p>
-
-          <!-- Riêng ngày nghỉ: chỉ thẳng từng kỳ nghỉ gây lỗi, bấm một cái là sang đúng chỗ. -->
-          <div v-if="v.ma === 'VANG_ROI_VAO_NGAY_NGHI' && hasIssues" class="health__chips">
-            <button
-              v-for="h in issues.holidays"
-              :key="h.holidayId"
-              class="link-chip"
-              @click="goFixHoliday(h.holidayId)"
-            >
-              {{ h.name }} · {{ h.absenceCount }} dòng →
-            </button>
-          </div>
-        </li>
-      </ul>
     </div>
 
     <div class="table-wrap">
@@ -892,103 +835,6 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
   margin: 8px 0;
 }
 
-/* ===== Bảng sức khỏe dữ liệu của kỳ =====
-   Hai mức phân biệt bằng MÀU VIỀN TRÁI chứ không chỉ bằng chữ: mắt quét màu nhanh hơn đọc
-   nhãn từng dòng, và người dùng chỉ liếc bảng này chứ không đọc kỹ. */
-.health {
-  margin-bottom: 14px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border-left: 4px solid var(--c-danger, #ef4444);
-  background: color-mix(in srgb, var(--c-danger, #ef4444) 9%, transparent);
-}
-.health--ok {
-  border-left-color: #f59e0b;
-  background: rgba(245, 158, 11, 0.1);
-}
-.health__head {
-  font-size: 14px;
-  margin-bottom: 10px;
-  color: var(--c-text);
-}
-.health__list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.health__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.health__badge {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  color: #fff;
-  background: var(--c-danger, #ef4444);
-}
-.lvl-canh_bao .health__badge {
-  background: #f59e0b;
-}
-.health__title {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--c-text);
-}
-.health__count {
-  font-family: ui-monospace, monospace;
-  font-weight: 700;
-  font-size: 14px;
-  color: var(--c-text);
-}
-.health__go {
-  margin-left: auto;
-  font-size: 13px;
-  color: var(--c-primary);
-  text-decoration: none;
-}
-.health__desc {
-  margin: 4px 0 0 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--c-text-muted);
-}
-.health__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-/* ===== Cảnh báo ngày nghỉ ===== */
-.alert-holiday {
-  display: flex;
-  gap: 12px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-  border-radius: 12px;
-  border-left: 4px solid #f59e0b;
-  background: rgba(245, 158, 11, 0.12);
-  font-size: 14px;
-  line-height: 1.55;
-}
-.alert-holiday__warn {
-  font-weight: 700;
-}
-.alert-holiday__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
 .chip-row {
   display: flex;
   flex-wrap: wrap;

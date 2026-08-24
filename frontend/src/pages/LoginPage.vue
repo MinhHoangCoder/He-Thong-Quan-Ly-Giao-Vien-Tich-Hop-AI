@@ -74,10 +74,12 @@ function fillDemo(u) {
   username.value = u
   password.value = 'Tsdms@123'
 }
-// Chip đăng nhập nhanh — tất cả mật khẩu Tsdms@123.
-// 'employee' CỐ TÌNH không liệt kê: nó là tài khoản TEST gộp 4 phòng ban (Flyway V5),
-// để dành test nội bộ (gõ tay 'employee'), không bày ra màn đăng nhập demo cho gọn.
-const demoAccounts = ['admin', 'school', 'teacher', 'ketoan', 'nhansu', 'daotao', 'tuyensinh']
+// Chip đăng nhập nhanh — mật khẩu Tsdms@123.
+// Chỉ còn 'admin': Flyway V31 gỡ tác nhân Nhà trường, V33 xoá nốt các tài khoản phòng ban
+// (school, teacher, ketoan, nhansu, daotao, tuyensinh, employee) nên bấm vào chúng chỉ nhận
+// "sai tên đăng nhập". Tài khoản giáo viên do bộ seed sinh ra theo tên thật (gv.<họtên>)
+// nên không có tên cố định nào để bày sẵn ở đây.
+const demoAccounts = ['admin']
 
 // Tính năng hiển thị ở hero (giống các "hexchip" trên ảnh bìa)
 // Mục "Trợ lý AI hỗ trợ" đã thay bằng "Chấm công & bảng lương" (tính năng AI đã gỡ khỏi hệ thống).
@@ -117,7 +119,7 @@ const features = [
     <main class="auth__panel">
       <div class="login-card fade-up">
         <BrandLogo :size="44" :show-text="false" class="login-mark" />
-        <h1 class="login-title">KDC EduOps</h1>
+        <h1 class="login-title">Sao Việt</h1>
         <p class="login-sub">Hệ thống quản lý &amp; điều phối giáo viên</p>
 
         <!-- CHẾ ĐỘ ĐĂNG NHẬP -->
