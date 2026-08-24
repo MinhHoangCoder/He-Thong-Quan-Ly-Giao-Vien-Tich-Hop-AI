@@ -42,6 +42,16 @@ const pageInput = ref('')
 // tránh bấm nhầm Xóa vì bài giảng xóa xong sẽ mất kèm toàn bộ file/link đính kèm.
 const deleteTarget = reactive({ open: false, id: null, title: '', typedTitle: '', deleting: false })
 
+// ĐỢT 5: 'list' = Kho bài giảng | 'trash' = Thùng rác (cùng pattern với trang Trường/Lớp).
+// Trước đó Kho bài giảng xóa MỀM nhưng không có màn hình nào lôi bài đã xóa ra, nên bài giảng
+// — thứ tốn công soạn nhất hệ thống — lại là thứ duy nhất không có đường lùi.
+const viewMode = ref('list')
+const trashItems = ref([])
+const trashLoading = ref(false)
+const trashError = ref('')
+const restoreTarget = ref(null)
+const trashBusy = ref(false)
+
 /* =========================
    Filter
 ========================= */
@@ -267,6 +277,59 @@ async function doDelete() {
 }
 
 /* =========================
+   Thùng rác
+========================= */
+
+async function loadTrash() {
+  trashLoading.value = true
+  trashError.value = ''
+  try {
+    const { data } = await lessonApi.trash()
+    trashItems.value = data
+  } catch (e) {
+    console.error(e)
+    trashItems.value = []
+    trashError.value = e.response?.data?.message ?? 'Không tải được thùng rác.'
+  } finally {
+    trashLoading.value = false
+  }
+}
+
+function switchView(mode) {
+  viewMode.value = mode
+  if (mode === 'trash') loadTrash()
+}
+
+async function confirmRestore() {
+  if (!restoreTarget.value || trashBusy.value) return
+
+  trashBusy.value = true
+  try {
+    await lessonApi.restore(restoreTarget.value.id)
+    restoreTarget.value = null
+    await loadTrash()
+    // Nạp lại cả Kho: bài vừa khôi phục phải có mặt ngay khi người dùng bấm sang tab Danh sách.
+    await loadLessons()
+  } catch (e) {
+    console.error(e)
+    trashError.value = e.response?.data?.message ?? 'Khôi phục thất bại.'
+  } finally {
+    trashBusy.value = false
+  }
+}
+
+function formatDeletedAt(iso) {
+  if (!iso) return '-'
+  return new Date(iso).toLocaleString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/* =========================
    Mounted
 ========================= */
 
@@ -284,192 +347,298 @@ onMounted(async () => {
         <h1 class="page__title">Kho bài giảng</h1>
       </div>
 
-      <button class="btn" @click="router.push({ name: newRouteName })">+ Thêm bài giảng</button>
-    </div>
-
-    <!-- ================= FILTER ================= -->
-
-    <div class="filter-bar">
-      <label class="field">
-        <span>Danh mục</span>
-
-        <select v-model="filter.category" @change="applyFilter">
-          <option value="">Tất cả</option>
-
-          <option v-for="item in categories" :key="item.id" :value="item.name">
-            {{ item.name }}
-          </option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Khối lớp</span>
-
-        <select v-model="filter.gradeLevel" @change="applyFilter">
-          <option value="">Tất cả</option>
-
-          <option v-for="g in gradeLevels" :key="g" :value="g">
-            {{ g }}
-          </option>
-        </select>
-      </label>
-
-      <label class="field">
-        <span>Trạng thái</span>
-
-        <select v-model="filter.status" @change="applyFilter">
-          <option value="">Tất cả</option>
-          <option value="DRAFT">Bản nháp</option>
-          <option value="PUBLISHED">Đã đăng</option>
-          <option value="ARCHIVED">Lưu kho</option>
-        </select>
-      </label>
-
-      <label class="field field--wide">
-        <span>Tìm kiếm</span>
-
-        <input v-model="filter.keyword" placeholder="Nhập tiêu đề..." @keyup.enter="applyFilter" />
-      </label>
-
-      <div class="filter-actions">
-        <button class="btn" @click="applyFilter">Lọc</button>
-
-        <button class="btn btn--ghost" @click="clearFilter">Xóa lọc</button>
+      <div class="head-actions">
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'list' }"
+          @click="switchView('list')"
+        >
+          Danh sách
+        </button>
+        <button
+          type="button"
+          class="btn-tab"
+          :class="{ 'btn-tab--active': viewMode === 'trash' }"
+          @click="switchView('trash')"
+        >
+          Thùng rác
+        </button>
+        <button v-if="viewMode === 'list'" class="btn" @click="router.push({ name: newRouteName })">
+          + Thêm bài giảng
+        </button>
       </div>
     </div>
 
-    <!-- ================= INFO ================= -->
+    <!-- ================= VIEW: KHO BÀI GIẢNG ================= -->
+    <template v-if="viewMode === 'list'">
+      <!-- ================= FILTER ================= -->
 
-    <p v-if="error" class="msg msg--error">
-      {{ error }}
-    </p>
+      <div class="filter-bar">
+        <label class="field">
+          <span>Danh mục</span>
 
-    <p v-if="!loading" class="total">
-      Tổng cộng
-      <strong>{{ totalItems }}</strong>
-      bài giảng
-    </p>
+          <select v-model="filter.category" @change="applyFilter">
+            <option value="">Tất cả</option>
 
-    <!-- ================= KHO BÀI GIẢNG: Khối > Danh mục > Bài giảng ================= -->
+            <option v-for="item in categories" :key="item.id" :value="item.name">
+              {{ item.name }}
+            </option>
+          </select>
+        </label>
 
-    <p v-if="loading" class="empty-state">Đang tải...</p>
+        <label class="field">
+          <span>Khối lớp</span>
 
-    <p v-else-if="lessons.length === 0" class="empty-state">Không có dữ liệu</p>
+          <select v-model="filter.gradeLevel" @change="applyFilter">
+            <option value="">Tất cả</option>
 
-    <div v-else class="lesson-tree">
-      <details v-for="grp in groupedLessons" :key="grp.grade" class="grade-group" open>
-        <summary class="grade-group__head">
-          <span class="grade-group__title">Khối {{ grp.grade }}</span>
-          <span class="grade-group__count">{{ grp.total }} bài</span>
-        </summary>
+            <option v-for="g in gradeLevels" :key="g" :value="g">
+              {{ g }}
+            </option>
+          </select>
+        </label>
 
-        <details
-          v-for="catGrp in grp.categories"
-          :key="grp.grade + '-' + catGrp.category"
-          class="cat-group"
-          open
-        >
-          <summary class="cat-group__head">
-            <span class="cat-badge">{{ catGrp.category }}</span>
-            <span class="cat-group__count">{{ catGrp.items.length }} bài</span>
+        <label class="field">
+          <span>Trạng thái</span>
+
+          <select v-model="filter.status" @change="applyFilter">
+            <option value="">Tất cả</option>
+            <option value="DRAFT">Bản nháp</option>
+            <option value="PUBLISHED">Đã đăng</option>
+            <option value="ARCHIVED">Lưu kho</option>
+          </select>
+        </label>
+
+        <label class="field field--wide">
+          <span>Tìm kiếm</span>
+
+          <input
+            v-model="filter.keyword"
+            placeholder="Nhập tiêu đề..."
+            @keyup.enter="applyFilter"
+          />
+        </label>
+
+        <div class="filter-actions">
+          <button class="btn" @click="applyFilter">Lọc</button>
+
+          <button class="btn btn--ghost" @click="clearFilter">Xóa lọc</button>
+        </div>
+      </div>
+
+      <!-- ================= INFO ================= -->
+
+      <p v-if="error" class="msg msg--error">
+        {{ error }}
+      </p>
+
+      <p v-if="!loading" class="total">
+        Tổng cộng
+        <strong>{{ totalItems }}</strong>
+        bài giảng
+      </p>
+
+      <!-- ================= KHO BÀI GIẢNG: Khối > Danh mục > Bài giảng ================= -->
+
+      <p v-if="loading" class="empty-state">Đang tải...</p>
+
+      <p v-else-if="lessons.length === 0" class="empty-state">Không có dữ liệu</p>
+
+      <div v-else class="lesson-tree">
+        <details v-for="grp in groupedLessons" :key="grp.grade" class="grade-group" open>
+          <summary class="grade-group__head">
+            <span class="grade-group__title">Khối {{ grp.grade }}</span>
+            <span class="grade-group__count">{{ grp.total }} bài</span>
           </summary>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tiêu đề</th>
-                  <th>Môn học</th>
-                  <th>Trạng thái</th>
-                  <th width="120">Thao tác</th>
-                </tr>
-              </thead>
+          <details
+            v-for="catGrp in grp.categories"
+            :key="grp.grade + '-' + catGrp.category"
+            class="cat-group"
+            open
+          >
+            <summary class="cat-group__head">
+              <span class="cat-badge">{{ catGrp.category }}</span>
+              <span class="cat-group__count">{{ catGrp.items.length }} bài</span>
+            </summary>
 
-              <tbody>
-                <tr v-for="lesson in catGrp.items" :key="lesson.id">
-                  <td class="col-title">
-                    <div class="title-text">
-                      {{ lesson.title }}
-                    </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Tiêu đề</th>
+                    <th>Môn học</th>
+                    <th>Trạng thái</th>
+                    <th width="120">Thao tác</th>
+                  </tr>
+                </thead>
 
-                    <div v-if="lesson.description" class="desc-text">
-                      {{ lesson.description }}
-                    </div>
-                  </td>
+                <tbody>
+                  <tr v-for="lesson in catGrp.items" :key="lesson.id">
+                    <td class="col-title">
+                      <div class="title-text">
+                        {{ lesson.title }}
+                      </div>
 
-                  <td>
-                    {{ lesson.subjectName || '-' }}
-                  </td>
+                      <div v-if="lesson.description" class="desc-text">
+                        {{ lesson.description }}
+                      </div>
+                    </td>
 
-                  <td>
-                    <span class="badge" :class="STATUS_MAP[lesson.status]?.cls">
-                      {{ STATUS_MAP[lesson.status]?.label }}
-                    </span>
-                  </td>
+                    <td>
+                      {{ lesson.subjectName || '-' }}
+                    </td>
 
-                  <td class="col-actions">
-                    <button
-                      class="act-btn"
-                      title="Sửa"
-                      @click="
-                        router.push({
-                          name: editRouteName,
-                          params: { id: lesson.id },
-                        })
-                      "
-                    >
-                      Sửa
-                    </button>
+                    <td>
+                      <span class="badge" :class="STATUS_MAP[lesson.status]?.cls">
+                        {{ STATUS_MAP[lesson.status]?.label }}
+                      </span>
+                    </td>
 
-                    <button class="act-btn act-btn--del" title="Xóa" @click="confirmDelete(lesson)">
-                      Xóa
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                    <td class="col-actions">
+                      <button
+                        class="act-btn"
+                        title="Sửa"
+                        @click="
+                          router.push({
+                            name: editRouteName,
+                            params: { id: lesson.id },
+                          })
+                        "
+                      >
+                        Sửa
+                      </button>
+
+                      <button
+                        class="act-btn act-btn--del"
+                        title="Xóa"
+                        @click="confirmDelete(lesson)"
+                      >
+                        Xóa
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </details>
         </details>
-      </details>
-    </div>
+      </div>
 
-    <!-- ================= PAGINATION ================= -->
+      <!-- ================= PAGINATION ================= -->
 
-    <div v-if="totalPages > 1" class="pagination">
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
+      <div v-if="totalPages > 1" class="pagination">
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(0)">«</button>
 
-      <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
+        <button class="pg-btn" :disabled="page === 0" @click="goPage(page - 1)">‹</button>
 
-      <button
-        v-for="p in visiblePages"
-        :key="p"
-        class="pg-btn"
-        :class="{
-          'pg-btn--active': page === p - 1,
-        }"
-        @click="goPage(p - 1)"
-      >
-        {{ p }}
-      </button>
+        <button
+          v-for="p in visiblePages"
+          :key="p"
+          class="pg-btn"
+          :class="{
+            'pg-btn--active': page === p - 1,
+          }"
+          @click="goPage(p - 1)"
+        >
+          {{ p }}
+        </button>
 
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
-        ›
-      </button>
+        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(page + 1)">
+          ›
+        </button>
 
-      <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
-        »
-      </button>
+        <button class="pg-btn" :disabled="page === totalPages - 1" @click="goPage(totalPages - 1)">
+          »
+        </button>
 
-      <input
-        v-model="pageInput"
-        class="page-input"
-        type="number"
-        min="1"
-        :max="totalPages"
-        placeholder="Trang"
-      />
+        <input
+          v-model="pageInput"
+          class="page-input"
+          type="number"
+          min="1"
+          :max="totalPages"
+          placeholder="Trang"
+        />
 
-      <button class="pg-btn" @click="jumpPage">Đi</button>
+        <button class="pg-btn" @click="jumpPage">Đi</button>
+      </div>
+    </template>
+
+    <!-- ================= VIEW: THÙNG RÁC ================= -->
+    <template v-else>
+      <p class="trash-note">
+        Bài giảng đã xóa được giữ lại ở đây. Khôi phục sẽ mang về cả những file đính kèm đã biến mất
+        theo bài — file bạn xóa riêng trước đó thì vẫn nằm nguyên chỗ đã xóa.
+      </p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Tiêu đề</th>
+              <th>Môn học</th>
+              <th>Khối</th>
+              <th>Đính kèm</th>
+              <th>Xóa lúc</th>
+              <th width="120">Thao tác</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr v-if="trashLoading">
+              <td colspan="6" class="empty">Đang tải...</td>
+            </tr>
+            <tr v-else-if="trashError">
+              <td colspan="6" class="empty">
+                {{ trashError }}
+                <button class="btn btn--ghost btn--sm" @click="loadTrash">Thử lại</button>
+              </td>
+            </tr>
+            <tr v-else-if="trashItems.length === 0">
+              <td colspan="6" class="empty">Thùng rác trống</td>
+            </tr>
+
+            <tr v-for="item in trashItems" :key="item.id">
+              <td class="col-title">
+                <div class="title-text">{{ item.title }}</div>
+              </td>
+              <td>
+                <span class="cat-badge">{{ item.subjectName || '—' }}</span>
+              </td>
+              <td>{{ item.gradeLevel || '—' }}</td>
+              <td>{{ item.soFileKemTheo ? item.soFileKemTheo + ' file' : '—' }}</td>
+              <td>{{ formatDeletedAt(item.deletedAt) }}</td>
+              <td class="col-actions">
+                <button class="act-btn" @click="restoreTarget = item">Khôi phục</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </template>
+
+    <!-- ================= RESTORE MODAL ================= -->
+
+    <div v-if="restoreTarget" class="overlay" @click.self="restoreTarget = null">
+      <div class="modal">
+        <h3>Khôi phục bài giảng</h3>
+
+        <p>
+          Đưa <strong>"{{ restoreTarget.title }}"</strong> về Kho bài giảng?
+          <template v-if="restoreTarget.soFileKemTheo">
+            {{ restoreTarget.soFileKemTheo }} file đính kèm sẽ về theo.
+          </template>
+        </p>
+
+        <div class="modal__actions">
+          <button class="btn btn--ghost" @click="restoreTarget = null">Hủy</button>
+          <button class="btn" :disabled="trashBusy" @click="confirmRestore">
+            {{ trashBusy ? 'Đang xử lý…' : 'Khôi phục' }}
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- ================= DELETE MODAL ================= -->
@@ -480,7 +649,8 @@ onMounted(async () => {
 
         <p>
           Gõ lại tiêu đề <strong>"{{ deleteTarget.title }}"</strong> để xác nhận xóa. Bài giảng và
-          toàn bộ file/link đính kèm sẽ không thể khôi phục.
+          toàn bộ file/link đính kèm sẽ chuyển vào <strong>Thùng rác</strong> — khôi phục lại được ở
+          tab bên cạnh.
         </p>
 
         <input
@@ -527,6 +697,51 @@ onMounted(async () => {
   font-size: 26px;
   font-weight: 700;
   color: var(--c-text);
+}
+
+/* ================= Tab Danh sách / Thùng rác ================= */
+
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-tab {
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--c-text);
+  border-radius: 8px;
+  padding: 9px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.btn-tab:hover {
+  border-color: var(--c-primary-light);
+}
+
+.btn-tab--active {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+}
+
+.trash-note {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--c-surface-2);
+  color: var(--c-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.btn--sm {
+  padding: 5px 10px;
+  font-size: 12px;
 }
 
 .page__sub {

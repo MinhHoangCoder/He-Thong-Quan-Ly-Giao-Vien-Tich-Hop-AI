@@ -14,6 +14,12 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
 
     Optional<Lesson> findByIdAndDeletedFalse(Integer id);
 
+    /** Một bài giảng ĐANG nằm trong thùng rác — dùng cho luồng khôi phục. */
+    Optional<Lesson> findByIdAndDeletedTrue(Integer id);
+
+    /** Thùng rác Kho bài giảng: bài mới xóa hiện trước. */
+    List<Lesson> findByDeletedTrueOrderByDeletedAtDesc();
+
     /** Dùng để chặn xóa Subject đang được bài giảng nào đó tham chiếu. */
     long countBySubjectIdAndDeletedFalse(Integer subjectId);
 
@@ -26,14 +32,6 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
      * xóa môn kèm các bài giảng liên quan.
      */
     List<Lesson> findBySubjectIdAndDeletedFalse(Integer subjectId);
-
-    /**
-     * TOÀN BỘ bài giảng thuộc 1 môn học, KHÔNG lọc theo IsDeleted — dùng khi xóa
-     * vĩnh viễn (hard delete) môn học: phải dọn sạch mọi bài giảng con (kể cả
-     * bài đã xóa mềm trước đó) thì mới xóa được dòng Subject do ràng buộc khóa
-     * ngoại Lesson.SubjectId.
-     */
-    List<Lesson> findBySubjectId(Integer subjectId);
 
     /**
      * Tìm kiếm bài giảng có phân trang + lọc — lọc theo Category (TÊN nhóm từ

@@ -1,12 +1,11 @@
 package com.kdc.tsdms.service;
 
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.dto.SubjectCategoryRequest;
 import com.kdc.tsdms.dto.SubjectCategoryResponse;
-import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.Subject;
 import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
-import com.kdc.tsdms.repository.LessonRepository;
 import com.kdc.tsdms.repository.SubjectCategoryRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.security.SecurityUtils;
@@ -30,13 +29,13 @@ public class SubjectCategoryService {
 
     private final SubjectCategoryRepository categoryRepo;
     private final SubjectRepository subjectRepo;
-    private final LessonRepository lessonRepo;
+    private final SubjectService subjectService;
 
     public SubjectCategoryService(
-            SubjectCategoryRepository categoryRepo, SubjectRepository subjectRepo, LessonRepository lessonRepo) {
+            SubjectCategoryRepository categoryRepo, SubjectRepository subjectRepo, SubjectService subjectService) {
         this.categoryRepo = categoryRepo;
         this.subjectRepo = subjectRepo;
-        this.lessonRepo = lessonRepo;
+        this.subjectService = subjectService;
     }
 
     /* ── Dropdown cho form (chỉ ACTIVE) ── */
@@ -91,14 +90,27 @@ public class SubjectCategoryService {
 
     /* ── Xóa mềm ── */
     /**
-     * FIX (2026-07-30): quy tắc xóa nhóm môn học nay CHỈ dựa vào trạng thái
-     * (status):
-     * - status = ACTIVE (đang hoạt động) -> LUÔN chặn xóa, kể cả khi nhóm chưa
-     * có môn học nào, để tránh xóa nhầm 1 nhóm đang được dùng.
-     * - status = DISABLED (đã tắt hoạt động) -> cho phép xóa, đồng thời xóa mềm
-     * (cascade) toàn bộ môn học thuộc nhóm này, và với mỗi môn học đó, cascade
-     * tiếp xuống toàn bộ bài giảng đang thuộc môn — tránh để lại môn học/bài
-     * giảng "mồ côi" trỏ tới 1 nhóm môn đã bị xóa.
+     * Xóa mềm nhóm môn học, CASCADE xuống các môn con.
+     *
+     * <p>Vì sao vẫn cascade chứ không chặn hẳn như Chi nhánh/Trường: môn học BẮT BUỘC thuộc
+     * một nhóm ({@code CategoryId} không cho null từ V8), nên để lại môn khi nhóm đã biến mất
+     * là đẻ ra đúng cái "môn mồ côi" làm dropdown Kho bài giảng trống rỗng.
+     *
+     * <p>ĐỢT 5 (2026-08-24) — VÁ LỖ HỔNG NẶNG NHẤT CỦA CHUỖI XÓA. Bản cũ cascade THẲNG: gắn
+     * cờ xóa cho mọi môn trong nhóm rồi cho mọi bài giảng của các môn đó, KHÔNG hỏi han gì.
+     * Nghĩa là nó đi vòng qua trọn vẹn {@code DeleteGuard} của {@link SubjectService}: xóa một
+     * môn còn 1 bài giảng thì bị chặn, còn xóa cả nhóm chứa 20 môn và 300 bài giảng thì trôi
+     * tuột. Đường đi chỉ 2 bước và chỉ cần quyền {@code LESSON_MANAGE}: sửa nhóm → đổi trạng
+     * thái sang Đã tắt (không có rào nào), rồi bấm Xóa.
+     *
+     * <p>Nay hỏi lại ĐÚNG bộ rào chắn của từng môn con qua
+     * {@link SubjectService#raoChanXoaMon} — một môn vướng là cả thao tác dừng, và thông báo
+     * kể rõ môn nào vướng cái gì. Hệ quả: cascade chỉ còn chạm tới môn RỖNG, nên vòng lặp xóa
+     * bài giảng của bản cũ không còn lý do tồn tại và đã được bỏ.
+     *
+     * <p>CỐ Ý KHÔNG bắt từng môn con phải ở trạng thái DISABLED (điều kiện của
+     * {@link SubjectService#delete}): việc nhóm đã bị tắt là đủ làm cửa xác nhận, mà môn đã
+     * qua được rào dữ liệu ở trên thì đằng nào cũng là môn rỗng.
      */
     @Transactional
     public void delete(Integer id) {
@@ -108,29 +120,33 @@ public class SubjectCategoryService {
                     HttpStatus.CONFLICT,
                     "Không thể xóa: nhóm môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
         }
+
         List<Subject> subjects = subjectRepo.findByCategoryIdAndDeletedFalseOrderByName(id);
-        if (!subjects.isEmpty()) {
-            Instant now = Instant.now();
-            Integer uid = SecurityUtils.currentUserId();
-            for (Subject s : subjects) {
-                List<Lesson> lessons = lessonRepo.findBySubjectIdAndDeletedFalse(s.getId());
-                if (!lessons.isEmpty()) {
-                    for (Lesson l : lessons) {
-                        l.setDeleted(true);
-                        l.setDeletedAt(now);
-                        l.setDeletedBy(uid);
-                    }
-                    lessonRepo.saveAll(lessons);
-                }
-                s.setDeleted(true);
-                s.setDeletedAt(now);
-                s.setDeletedBy(uid);
-            }
-            subjectRepo.saveAll(subjects);
+
+        // Hỏi rào chắn của TẤT CẢ môn con TRƯỚC, chưa đụng vào dòng nào. Gom hết môn vướng rồi
+        // báo một lần — người dùng thấy trọn bức tranh thay vì gỡ từng môn rồi bấm lại.
+        DeleteGuard guard = DeleteGuard.of("nhóm môn học " + sc.getName());
+        for (Subject s : subjects) {
+            List<String> lyDo =
+                    subjectService.raoChanXoaMon(s.getId(), s.getName()).lyDo();
+            guard.blockWhen(!lyDo.isEmpty(), "môn " + s.getName() + " (" + String.join(", ", lyDo) + ")");
         }
+        guard.huongDan("Xóa nhóm môn sẽ xóa theo mọi môn trong nhóm, nên môn nào còn dữ liệu là cả "
+                        + "thao tác dừng lại. Hãy xử lý dữ liệu của những môn kể trên trước khi xóa cả nhóm.")
+                .check();
+
+        Instant now = Instant.now();
+        Integer uid = SecurityUtils.currentUserId();
+        for (Subject s : subjects) {
+            s.setDeleted(true);
+            s.setDeletedAt(now);
+            s.setDeletedBy(uid);
+        }
+        subjectRepo.saveAll(subjects);
+
         sc.setDeleted(true);
-        sc.setDeletedAt(Instant.now());
-        sc.setDeletedBy(SecurityUtils.currentUserId());
+        sc.setDeletedAt(now);
+        sc.setDeletedBy(uid);
         categoryRepo.save(sc);
     }
 

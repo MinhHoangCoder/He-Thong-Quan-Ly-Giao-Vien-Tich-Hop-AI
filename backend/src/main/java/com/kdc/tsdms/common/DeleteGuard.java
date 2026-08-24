@@ -95,6 +95,18 @@ public final class DeleteGuard {
         return !blockers.isEmpty();
     }
 
+    /**
+     * Danh sách lý do đã gom, mỗi lý do một câu ("3 phân công giảng dạy") — cho bên gọi ghép
+     * vào một {@link DeleteGuard} khác thay vì ném lỗi tại chỗ.
+     *
+     * <p>Sinh ra để xóa NHÓM MÔN HỌC hỏi lại đúng bộ rào chắn của từng MÔN con
+     * ({@code SubjectService.raoChanXoaMon}). Nếu không có đường này thì luật xóa môn phải
+     * viết bản thứ hai bên nhóm môn, và bản đi đường vòng bao giờ cũng là bản lỏng hơn.
+     */
+    public List<String> lyDo() {
+        return List.copyOf(blockers);
+    }
+
     /** Ném 409 kèm ĐẦY ĐỦ lý do nếu có rào; không có rào thì trả về im lặng. */
     public void check() {
         if (blockers.isEmpty()) {

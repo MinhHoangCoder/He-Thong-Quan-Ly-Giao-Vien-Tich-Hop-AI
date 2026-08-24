@@ -958,8 +958,10 @@ public class AssignmentService {
      * <p>Đổi được GIÁO VIÊN, KHÔNG đổi trường/môn — khung tiết và lớp gắn với trường nên đổi
      * trường là một phiếu khác hẳn.
      *
-     * <p>Tiết + buổi cũ bị xóa cứng rồi sinh lại. An toàn vì phiếu chưa xác nhận nên chưa buổi
-     * nào APPROVED, chưa có chấm công/lương bám vào.
+     * <p>Tiết + buổi cũ bị xóa CỨNG rồi sinh lại. Trạng thái phiếu đã chặn phần lớn rủi ro
+     * (chưa xác nhận thì chưa buổi nào APPROVED nên chưa có chấm công/lương bám vào), nhưng từ
+     * Đợt 5 còn hỏi thẳng dữ liệu trước khi xóa — xem ghi chú tại chỗ gọi
+     * {@code demChamCongTheoPhanCong}.
      */
     @Transactional
     public AssignmentResponse update(Integer id, AssignmentUpdateRequest req) {
@@ -969,6 +971,22 @@ public class AssignmentService {
                     HttpStatus.CONFLICT,
                     "Chỉ sửa được phân công đang chờ xác nhận, bị từ chối hoặc đã hết hạn. "
                             + "Phân công đã có hiệu lực cần được hủy và tạo lại.");
+        }
+        // ĐỢT 5 — chốt bằng DỮ LIỆU chứ không chỉ bằng TRẠNG THÁI. Ba dòng dưới xóa CỨNG, mà
+        // Attendance.ScheduleId là khóa ngoại không có ON DELETE: còn một dòng chấm công là câu
+        // DELETE bung ra lỗi 500 SQL thô. Hôm nay chuyện đó không xảy ra được (chỉ phiếu chưa
+        // xác nhận mới sửa được, buổi của nó chưa APPROVED nên không đường nào sinh chấm công),
+        // nhưng đó là suy luận bắc cầu qua ba file khác — thêm một trạng thái vào isEditable
+        // hoặc một đường ghi Attendance mới là nó gãy trong im lặng. Hỏi thẳng dữ liệu thì rào
+        // này không phụ thuộc vào ai nhớ gì.
+        long soChamCong = attendanceRepo.demChamCongTheoPhanCong(id);
+        if (soChamCong > 0) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không sửa được phân công này: đã có " + soChamCong
+                            + " bản ghi chấm công gắn với các buổi dạy của nó. Sửa phiếu là xóa và "
+                            + "sinh lại toàn bộ buổi, làm mất luôn phần chấm công đó. "
+                            + "Hãy hủy phiếu này rồi tạo phiếu mới cho giai đoạn còn lại.");
         }
         assertPeriodValid(req.startDate(), req.endDate());
         // Sửa phiếu: chỉ chặn khi ĐỔI sang một ngày quá khứ KHÁC. Giữ nguyên ngày cũ (dù đã qua)
@@ -1186,8 +1204,25 @@ public class AssignmentService {
     /**
      * HỦY + đưa vào Thùng rác trong MỘT thao tác (nút "Hủy" của trang phân công). Nếu phân
      * công đang chạy thì HỦY trước (đổi CANCELLED + hủy các buổi tương lai qua {@link #cancel}),
-     * rồi gắn cờ {@code deleted} và CASCADE xóa mềm toàn bộ AssignmentSlot + Schedule của nó.
+     * rồi gắn cờ {@code deleted} cho phiếu và CASCADE xóa mềm các ô thời khóa biểu.
      * Khôi phục lại từ Thùng rác (xem {@link #restore}).
+     *
+     * <p><b>BUỔI ĐÃ DẠY THÌ Ở LẠI.</b> Đợt 5 (2026-08-24) vá một mâu thuẫn nội bộ: {@link
+     * #cancel} rất cẩn thận, chỉ hủy buổi TƯƠNG LAI và cố ý giữ buổi quá khứ để không mất chấm
+     * công/lương — rồi ngay sau đó {@code softDelete} gắn cờ xóa lên TẤT CẢ buổi, kể cả buổi
+     * đã dạy xong đã có chấm công, xóa sạch sự thận trọng vừa rồi.
+     *
+     * <p>Hậu quả của bản cũ: dòng {@code Attendance} vẫn còn (Attendance không có xóa mềm và
+     * không nằm trong cascade này) nhưng buổi dạy sinh ra nó đã ẩn khỏi mọi màn hình. Đúng thứ
+     * mà {@code PayrollRepository.demChamCongMoCoi} đếm để cảnh báo trước khi chốt lương — mà
+     * mức của nó chỉ là CẢNH BÁO, nên kế toán vẫn chốt kỳ được và phiếu lương trả tiền cho
+     * những buổi dạy không còn tồn tại ở đâu cả (tiền KHÔNG mất: câu tính lương join Schedule
+     * nhưng không lọc {@code IsDeleted}).
+     *
+     * <p>Nay dùng ĐÚNG luật của {@link #cancel}: phiếu CHƯA TỪNG được xác nhận thì không buổi
+     * nào có hiệu lực nên xóa sạch, kể cả buổi quá khứ; phiếu đã từng chạy thì buổi đã tới giờ
+     * là bằng chứng, giữ nguyên. Buổi giữ lại vẫn hiện ở Lịch dạy và Chấm công dù phiếu đã nằm
+     * trong thùng rác — đó là chủ đích: tiền đã trả cho buổi nào thì buổi ấy phải tra ra được.
      */
     @Transactional
     public void softDelete(Integer id) {
@@ -1198,10 +1233,16 @@ public class AssignmentService {
         }
         Integer userId = SecurityUtils.currentUserId();
         Instant now = Instant.now();
+        // Đọc TRƯỚC khi gắn cờ, và đọc lại từ entity đã qua cancel() — cancel không đụng
+        // ConfirmedAt nên giá trị vẫn đúng.
+        boolean chuaTungXacNhan = a.getConfirmedAt() == null;
+        LocalDateTime bayGio = BusinessTime.now();
         a.setDeleted(true);
         a.setDeletedAt(now);
         a.setDeletedBy(userId);
         assignmentRepo.save(a);
+        // Ô thời khóa biểu là MẪU LẶP TUẦN, không phải bằng chứng của buổi nào — phiếu vào
+        // thùng rác thì mẫu phải biến khỏi thời khóa biểu, nên vẫn cascade đủ.
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
             slot.setDeleted(true);
             slot.setDeletedAt(now);
@@ -1209,6 +1250,9 @@ public class AssignmentService {
             slotRepo.save(slot);
         }
         for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            if (!chuaTungXacNhan && !s.getStartTime().isAfter(bayGio)) {
+                continue; // buổi đã tới giờ của phiếu đã từng chạy: để lại làm bằng chứng
+            }
             s.setDeleted(true);
             s.setDeletedAt(now);
             s.setDeletedBy(userId);
@@ -1229,6 +1273,11 @@ public class AssignmentService {
      * Assignment + slot + buổi, rồi BỎ HỦY (đưa về ACTIVE, kích hoạt lại buổi dạy) qua
      * {@link #reactivate} — có DÒ TRÙNG LỊCH nên nếu khung Thứ+Tiết đã bị phân công ACTIVE
      * khác chiếm thì báo lỗi và không khôi phục.
+     *
+     * <p>Chỉ bỏ cờ cho dòng NÀO ĐANG bị gắn cờ, nên vẫn đúng sau thay đổi ở Đợt 5: buổi đã dạy
+     * của phiếu đã từng chạy không hề bị {@link #softDelete} đụng tới, ở đây cũng không phải
+     * bỏ cờ cho chúng. Ngược lại, file đính kèm hay ô lịch bị xóa RIÊNG trước đó thì đã mang cờ
+     * sẵn và sẽ bị khôi phục nhầm — chấp nhận được vì ô lịch không có nút xóa riêng.
      */
     @Transactional
     public AssignmentResponse restore(Integer id) {

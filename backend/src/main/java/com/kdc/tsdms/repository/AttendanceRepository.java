@@ -66,6 +66,23 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
                     """, nativeQuery = true)
     long countDangDayDoTheoPhanCong(@Param("assignmentId") Integer assignmentId);
 
+    /**
+     * MỌI dòng chấm công gắn với các buổi của một phân công, không lọc trạng thái gì cả.
+     *
+     * <p>Dùng làm rào chắn cho {@code AssignmentService.update} — luồng đó XÓA CỨNG toàn bộ
+     * Schedule của phiếu rồi sinh lại. Hôm nay việc đó an toàn vì chỉ phiếu chưa xác nhận mới
+     * sửa được, mà buổi của phiếu chưa xác nhận thì chưa APPROVED nên cả ba đường sinh chấm
+     * công (tự check-in, job quét, kỳ nghỉ) đều không chạm tới. Nhưng hàng rào đó là TRẠNG
+     * THÁI PHIẾU chứ không phải DỮ LIỆU THẬT: thêm một trạng thái vào danh sách sửa được, hoặc
+     * thêm một đường ghi Attendance mới, là câu DELETE đâm thẳng vào khóa ngoại
+     * Attendance.ScheduleId và bung ra lỗi 500 SQL thô thay vì một câu tiếng Việt.
+     */
+    @Query(
+            value = "SELECT COUNT(*) FROM Attendance a JOIN Schedule s ON s.Id = a.ScheduleId"
+                    + " WHERE s.AssignmentId = :assignmentId",
+            nativeQuery = true)
+    long demChamCongTheoPhanCong(@Param("assignmentId") Integer assignmentId);
+
     /** Như trên nhưng theo GIÁO VIÊN — chặn xóa hồ sơ của người đang đứng lớp. */
     @Query("""
             SELECT COUNT(a) FROM Attendance a

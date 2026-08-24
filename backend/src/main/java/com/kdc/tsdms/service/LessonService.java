@@ -5,9 +5,11 @@ import com.kdc.tsdms.dto.LessonFileResponse;
 import com.kdc.tsdms.dto.LessonRequest;
 import com.kdc.tsdms.dto.LessonResponse;
 import com.kdc.tsdms.dto.LessonSummary;
+import com.kdc.tsdms.dto.LessonTrashItem;
 import com.kdc.tsdms.entity.Lesson;
 import com.kdc.tsdms.entity.LessonFile;
 import com.kdc.tsdms.entity.Subject;
+import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.LessonFileRepository;
@@ -241,6 +243,130 @@ public class LessonService {
         lesson.setDeletedAt(now);
         lesson.setDeletedBy(uid);
         lessonRepo.save(lesson);
+    }
+
+    /*
+     * ================================================================
+     * 5b. THÙNG RÁC + KHÔI PHỤC
+     * ================================================================
+     */
+
+    /**
+     * Kho bài giảng đã xóa, bài mới xóa hiện trước.
+     *
+     * <p>Vì sao đến Đợt 5 mới có: từ trước tới nay Kho bài giảng xóa MỀM nhưng KHÔNG có màn
+     * hình nào lôi bài đã xóa ra, nên trên thực tế "xóa mềm" ở đây bằng đúng xóa vĩnh viễn từ
+     * góc nhìn người dùng — dòng còn nằm trong DB nhưng chỉ lấy lại được bằng câu UPDATE tay
+     * trong SSMS. Bài giảng là thứ tốn công soạn nhất trong cả hệ thống mà lại là thứ duy nhất
+     * không có đường lùi.
+     */
+    @Transactional(readOnly = true)
+    public List<LessonTrashItem> listTrash() {
+        List<Lesson> items = lessonRepo.findByDeletedTrueOrderByDeletedAtDesc();
+        Map<Integer, Subject> subjectMap = buildSubjectMap(items.stream()
+                .map(Lesson::getSubjectId)
+                .filter(id -> id != null)
+                .distinct()
+                .toList());
+        return items.stream()
+                .map(l -> {
+                    Subject subj = subjectMap.get(l.getSubjectId());
+                    return new LessonTrashItem(
+                            l.getId(),
+                            l.getTitle(),
+                            l.getSubjectId(),
+                            subj != null ? subj.getName() : null,
+                            l.getGradeLevel(),
+                            l.getStatus(),
+                            demFileVeTheoBai(l),
+                            l.getDeletedAt());
+                })
+                .toList();
+    }
+
+    /**
+     * Đưa một bài giảng từ Thùng rác về Kho.
+     *
+     * <p>KHÔNG khôi phục bừa mọi file đã xóa của bài. File nào bị xóa RIÊNG bằng nút xóa file
+     * trước đó thì phải nằm nguyên chỗ đã xóa — người dùng đã cố ý bỏ nó. Phân biệt bằng dấu
+     * thời gian: {@link #delete} gắn CÙNG MỘT {@code deletedAt} cho bài giảng và mọi file bị
+     * cuốn theo, nên file trùng khít mốc đó chính là file biến mất VÌ bài giảng.
+     *
+     * <p>DỰNG LẠI CẢ CÁI GIÁ ĐỠ. Nếu môn học (và nhóm môn) của bài đang nằm ở trạng thái đã
+     * xóa thì khôi phục theo, vì một bài giảng sống dưới một môn đã chết chính là "môn mồ côi"
+     * mà cả dự án đang chống. Trạng thái của chúng CỐ Ý giữ nguyên DISABLED — cùng lý lẽ với
+     * {@code SchoolService.restore} giữ trường ở INACTIVE: thứ vừa moi ra khỏi thùng rác chưa
+     * chắc đã muốn cho hoạt động lại ngay, người dùng tự bật khi đã chắc.
+     *
+     * <p>Trường hợp này có thật chứ không phải giả định: xóa bài giảng cuối cùng của một môn
+     * làm môn đó rỗng, và môn rỗng thì xóa được (rào chắn ở
+     * {@code SubjectService.raoChanXoaMon} chỉ đếm bài giảng CÒN SỐNG).
+     */
+    @Transactional
+    public LessonResponse restore(Integer id) {
+        Lesson lesson = lessonRepo
+                .findByIdAndDeletedTrue(id)
+                .orElseThrow(() -> new ApiException(
+                        HttpStatus.NOT_FOUND, "Không tìm thấy bài giảng id=" + id + " trong thùng rác."));
+
+        Integer uid = SecurityUtils.currentUserId();
+        dungLaiMonHocNeuDaBiXoa(lesson.getSubjectId(), uid);
+
+        List<LessonFile> veTheoBai = fileVeTheoBai(lesson);
+        for (LessonFile f : veTheoBai) {
+            f.setDeleted(false);
+            f.setDeletedAt(null);
+            f.setDeletedBy(null);
+        }
+        lessonFileRepo.saveAll(veTheoBai);
+
+        lesson.setDeleted(false);
+        lesson.setDeletedAt(null);
+        lesson.setDeletedBy(null);
+        lesson.setUpdatedAt(Instant.now());
+        lesson.setUpdatedBy(uid);
+        return buildResponse(lessonRepo.save(lesson));
+    }
+
+    /** File sẽ về theo bài giảng: đã xóa mềm ĐÚNG cùng thời điểm với bài. */
+    private List<LessonFile> fileVeTheoBai(Lesson lesson) {
+        Instant xoaLuc = lesson.getDeletedAt();
+        if (xoaLuc == null) {
+            return List.of();
+        }
+        return lessonFileRepo.findByLessonIdAndDeletedTrue(lesson.getId()).stream()
+                .filter(f -> xoaLuc.equals(f.getDeletedAt()))
+                .toList();
+    }
+
+    private int demFileVeTheoBai(Lesson lesson) {
+        return fileVeTheoBai(lesson).size();
+    }
+
+    /** Bỏ cờ xóa cho môn học của bài giảng, và cho cả nhóm môn của nó nếu nhóm cũng đã xóa. */
+    private void dungLaiMonHocNeuDaBiXoa(Integer subjectId, Integer uid) {
+        if (subjectId == null) {
+            return;
+        }
+        Subject subject = subjectRepo.findById(subjectId).orElse(null);
+        if (subject == null || !subject.isDeleted()) {
+            return;
+        }
+        SubjectCategory nhom = subject.getCategory();
+        if (nhom != null && nhom.isDeleted()) {
+            nhom.setDeleted(false);
+            nhom.setDeletedAt(null);
+            nhom.setDeletedBy(null);
+            nhom.setUpdatedAt(Instant.now());
+            nhom.setUpdatedBy(uid);
+            subjectCategoryRepo.save(nhom);
+        }
+        subject.setDeleted(false);
+        subject.setDeletedAt(null);
+        subject.setDeletedBy(null);
+        subject.setUpdatedAt(Instant.now());
+        subject.setUpdatedBy(uid);
+        subjectRepo.save(subject);
     }
 
     /*

@@ -209,6 +209,20 @@ public class SchoolService {
      * <p>CỐ Ý KHÔNG chặn theo Room và Period: đó là cấu hình thuộc về chính trường (phòng học,
      * khung tiết), không phải dữ liệu nghiệp vụ độc lập — chặn theo chúng thì mọi trường đã
      * seed đều không bao giờ xóa được.
+     *
+     * <p>ĐỢT 5 đã cân nhắc và CỐ Ý KHÔNG thêm hai rào nữa, ghi lại để lần sau khỏi bàn lại:
+     *
+     * <ul>
+     *   <li><b>Holiday.SchoolId</b> — lịch nghỉ là cấu hình riêng của trường, cùng loại với
+     *       Room/Period, nên theo đúng lý lẽ ở trên thì không chặn.
+     *   <li><b>TeacherEvaluation.SchoolId</b> — phiếu đánh giá là LỊCH SỬ, không phải nghĩa vụ
+     *       đang treo. Chặn theo lịch sử thì một trường từng hợp tác là vĩnh viễn không xóa
+     *       được, đúng cái bẫy mà rào "phân công ĐANG CHẠY" ở trên đã tránh bằng cách chỉ đếm
+     *       phiếu còn hiệu lực.
+     * </ul>
+     *
+     * <p>Cả hai đều chỉ để lại dòng trỏ vào một trường ở thùng rác, mà mọi chỗ hiển thị tên
+     * trường đều tra bằng {@code findById} (không lọc cờ xóa) nên tên vẫn hiện đúng.
      */
     @Transactional
     public void delete(Integer id) {
