@@ -23,6 +23,13 @@ public interface LessonFileRepository extends JpaRepository<LessonFile, Integer>
     List<LessonFile> findByLessonIdAndDeletedFalse(Integer lessonId);
 
     /**
+     * File đã xóa mềm của một bài giảng. Luồng khôi phục lọc tiếp theo {@code deletedAt} để
+     * chỉ trả lại đúng những file BIẾN MẤT THEO bài giảng, không đụng tới file mà người dùng
+     * đã cố ý xóa riêng trước đó (xem {@code LessonService.restore}).
+     */
+    List<LessonFile> findByLessonIdAndDeletedTrue(Integer lessonId);
+
+    /**
      * Xóa vĩnh viễn mọi file đính kèm của các bài giảng truyền vào — dùng khi
      * hard-delete môn học (cascade xóa hẳn bài giảng con), phải dọn LessonFile
      * trước vì LessonFile.LessonId có khóa ngoại trỏ tới Lesson.

@@ -6,6 +6,7 @@ import com.kdc.tsdms.dto.LessonFileResponse;
 import com.kdc.tsdms.dto.LessonRequest;
 import com.kdc.tsdms.dto.LessonResponse;
 import com.kdc.tsdms.dto.LessonSummary;
+import com.kdc.tsdms.dto.LessonTrashItem;
 import com.kdc.tsdms.dto.SubjectDto;
 import com.kdc.tsdms.security.SecurityUtils;
 import com.kdc.tsdms.service.LessonService;
@@ -97,6 +98,28 @@ public class LessonController {
 
         Pageable pageable = Paging.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"));
         return lessonService.search(category, gradeLevel, status, keyword, isTeacherOnly(), pageable);
+    }
+
+    /* ── 1b. THÙNG RÁC ──────────────────────────────────────────────── */
+
+    /**
+     * Bài giảng đã xóa. Đặt TRƯỚC {@code /{id}} vì "trash" cũng khớp mẫu {@code {id}} nếu để
+     * sau — cùng lý do đã ghi ở {@code HolidayController}.
+     *
+     * <p>Quyền LESSON_MANAGE chứ không phải LESSON_VIEW: giáo viên chỉ đọc bài đã xuất bản,
+     * không có việc gì trong thùng rác của người soạn.
+     */
+    @GetMapping("/trash")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_MANAGE')")
+    public List<LessonTrashItem> trash() {
+        return lessonService.listTrash();
+    }
+
+    /** Đưa một bài giảng từ thùng rác về Kho, kèm các file đã biến mất theo nó. */
+    @PostMapping("/trash/{id}/restore")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('LESSON_MANAGE')")
+    public LessonResponse restore(@PathVariable Integer id) {
+        return lessonService.restore(id);
     }
 
     /* ── 2. CHI TIẾT ────────────────────────────────────────────────── */

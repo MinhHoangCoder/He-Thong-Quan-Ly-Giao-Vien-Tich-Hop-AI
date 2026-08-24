@@ -38,6 +38,23 @@ export const lessonApi = {
     return http.delete(`/lessons/${id}`)
   },
 
+  /* ── Thùng rác ─────────────────────────────────────── */
+  /**
+   * Bài giảng đã xóa. Trước Đợt 5 màn này không tồn tại, nên "xóa mềm" ở Kho
+   * bài giảng bằng đúng xóa vĩnh viễn từ góc nhìn người dùng — dòng vẫn nằm
+   * trong DB nhưng chỉ lấy lại được bằng câu UPDATE tay.
+   */
+  trash() {
+    return http.get('/lessons/trash')
+  },
+  /**
+   * Đưa một bài giảng về Kho, kèm các file đã biến mất THEO nó. File bị xóa
+   * riêng trước đó vẫn nằm nguyên chỗ đã xóa (backend phân biệt bằng deletedAt).
+   */
+  restore(id) {
+    return http.post(`/lessons/trash/${id}/restore`)
+  },
+
   /* ── File đính kèm ─────────────────────────────────── */
   uploadFiles(id, files) {
     const form = new FormData()

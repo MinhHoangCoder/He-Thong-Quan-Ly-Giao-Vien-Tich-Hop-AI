@@ -14,6 +14,12 @@ public interface LessonRepository extends JpaRepository<Lesson, Integer> {
 
     Optional<Lesson> findByIdAndDeletedFalse(Integer id);
 
+    /** Một bài giảng ĐANG nằm trong thùng rác — dùng cho luồng khôi phục. */
+    Optional<Lesson> findByIdAndDeletedTrue(Integer id);
+
+    /** Thùng rác Kho bài giảng: bài mới xóa hiện trước. */
+    List<Lesson> findByDeletedTrueOrderByDeletedAtDesc();
+
     /** Dùng để chặn xóa Subject đang được bài giảng nào đó tham chiếu. */
     long countBySubjectIdAndDeletedFalse(Integer subjectId);
 
