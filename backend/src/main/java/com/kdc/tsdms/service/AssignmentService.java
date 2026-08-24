@@ -1186,8 +1186,25 @@ public class AssignmentService {
     /**
      * HỦY + đưa vào Thùng rác trong MỘT thao tác (nút "Hủy" của trang phân công). Nếu phân
      * công đang chạy thì HỦY trước (đổi CANCELLED + hủy các buổi tương lai qua {@link #cancel}),
-     * rồi gắn cờ {@code deleted} và CASCADE xóa mềm toàn bộ AssignmentSlot + Schedule của nó.
+     * rồi gắn cờ {@code deleted} cho phiếu và CASCADE xóa mềm các ô thời khóa biểu.
      * Khôi phục lại từ Thùng rác (xem {@link #restore}).
+     *
+     * <p><b>BUỔI ĐÃ DẠY THÌ Ở LẠI.</b> Đợt 5 (2026-08-24) vá một mâu thuẫn nội bộ: {@link
+     * #cancel} rất cẩn thận, chỉ hủy buổi TƯƠNG LAI và cố ý giữ buổi quá khứ để không mất chấm
+     * công/lương — rồi ngay sau đó {@code softDelete} gắn cờ xóa lên TẤT CẢ buổi, kể cả buổi
+     * đã dạy xong đã có chấm công, xóa sạch sự thận trọng vừa rồi.
+     *
+     * <p>Hậu quả của bản cũ: dòng {@code Attendance} vẫn còn (Attendance không có xóa mềm và
+     * không nằm trong cascade này) nhưng buổi dạy sinh ra nó đã ẩn khỏi mọi màn hình. Đúng thứ
+     * mà {@code PayrollRepository.demChamCongMoCoi} đếm để cảnh báo trước khi chốt lương — mà
+     * mức của nó chỉ là CẢNH BÁO, nên kế toán vẫn chốt kỳ được và phiếu lương trả tiền cho
+     * những buổi dạy không còn tồn tại ở đâu cả (tiền KHÔNG mất: câu tính lương join Schedule
+     * nhưng không lọc {@code IsDeleted}).
+     *
+     * <p>Nay dùng ĐÚNG luật của {@link #cancel}: phiếu CHƯA TỪNG được xác nhận thì không buổi
+     * nào có hiệu lực nên xóa sạch, kể cả buổi quá khứ; phiếu đã từng chạy thì buổi đã tới giờ
+     * là bằng chứng, giữ nguyên. Buổi giữ lại vẫn hiện ở Lịch dạy và Chấm công dù phiếu đã nằm
+     * trong thùng rác — đó là chủ đích: tiền đã trả cho buổi nào thì buổi ấy phải tra ra được.
      */
     @Transactional
     public void softDelete(Integer id) {
@@ -1198,10 +1215,16 @@ public class AssignmentService {
         }
         Integer userId = SecurityUtils.currentUserId();
         Instant now = Instant.now();
+        // Đọc TRƯỚC khi gắn cờ, và đọc lại từ entity đã qua cancel() — cancel không đụng
+        // ConfirmedAt nên giá trị vẫn đúng.
+        boolean chuaTungXacNhan = a.getConfirmedAt() == null;
+        LocalDateTime bayGio = BusinessTime.now();
         a.setDeleted(true);
         a.setDeletedAt(now);
         a.setDeletedBy(userId);
         assignmentRepo.save(a);
+        // Ô thời khóa biểu là MẪU LẶP TUẦN, không phải bằng chứng của buổi nào — phiếu vào
+        // thùng rác thì mẫu phải biến khỏi thời khóa biểu, nên vẫn cascade đủ.
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
             slot.setDeleted(true);
             slot.setDeletedAt(now);
@@ -1209,6 +1232,9 @@ public class AssignmentService {
             slotRepo.save(slot);
         }
         for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            if (!chuaTungXacNhan && !s.getStartTime().isAfter(bayGio)) {
+                continue; // buổi đã tới giờ của phiếu đã từng chạy: để lại làm bằng chứng
+            }
             s.setDeleted(true);
             s.setDeletedAt(now);
             s.setDeletedBy(userId);
@@ -1229,6 +1255,11 @@ public class AssignmentService {
      * Assignment + slot + buổi, rồi BỎ HỦY (đưa về ACTIVE, kích hoạt lại buổi dạy) qua
      * {@link #reactivate} — có DÒ TRÙNG LỊCH nên nếu khung Thứ+Tiết đã bị phân công ACTIVE
      * khác chiếm thì báo lỗi và không khôi phục.
+     *
+     * <p>Chỉ bỏ cờ cho dòng NÀO ĐANG bị gắn cờ, nên vẫn đúng sau thay đổi ở Đợt 5: buổi đã dạy
+     * của phiếu đã từng chạy không hề bị {@link #softDelete} đụng tới, ở đây cũng không phải
+     * bỏ cờ cho chúng. Ngược lại, file đính kèm hay ô lịch bị xóa RIÊNG trước đó thì đã mang cờ
+     * sẵn và sẽ bị khôi phục nhầm — chấp nhận được vì ô lịch không có nút xóa riêng.
      */
     @Transactional
     public AssignmentResponse restore(Integer id) {
