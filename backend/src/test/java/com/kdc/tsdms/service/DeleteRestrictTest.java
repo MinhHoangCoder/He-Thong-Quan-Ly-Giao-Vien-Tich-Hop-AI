@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.Certificate;
 import com.kdc.tsdms.entity.Employee;
@@ -19,6 +20,7 @@ import com.kdc.tsdms.entity.Room;
 import com.kdc.tsdms.entity.School;
 import com.kdc.tsdms.entity.Student;
 import com.kdc.tsdms.entity.Subject;
+import com.kdc.tsdms.entity.SubjectCategory;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AppUserRepository;
@@ -692,7 +694,7 @@ class DeleteRestrictTest {
             monDaTat();
             when(assignmentRepo.countBySubjectId(4)).thenReturn(6L);
             when(lessonRepo.countBySubjectIdAndDeletedFalse(4)).thenReturn(2L);
-            when(teacherSubjectRepo.countBySubjectId(4)).thenReturn(3L);
+            when(teacherSubjectRepo.demGiaoVienConSongTheoMon(4)).thenReturn(3L);
 
             assertThatThrownBy(() -> service.delete(4))
                     .satisfies(DeleteRestrictTest::assertConflict)
@@ -707,7 +709,7 @@ class DeleteRestrictTest {
             Subject s = monDaTat();
             when(assignmentRepo.countBySubjectId(4)).thenReturn(0L);
             when(lessonRepo.countBySubjectIdAndDeletedFalse(4)).thenReturn(0L);
-            when(teacherSubjectRepo.countBySubjectId(4)).thenReturn(0L);
+            when(teacherSubjectRepo.demGiaoVienConSongTheoMon(4)).thenReturn(0L);
 
             service.delete(4);
 
@@ -716,6 +718,138 @@ class DeleteRestrictTest {
             verify(subjectRepo).save(s);
             // Điểm chính của lần sửa này: không xóa hộ thứ gì của bảng khác nữa.
             verify(lessonRepo, never()).deleteAll(any());
+        }
+
+        /**
+         * ĐỢT 5: rào "giáo viên đang phụ trách môn" phải hỏi câu ĐẾM NGƯỜI CÒN SỐNG.
+         *
+         * <p>Bản cũ gọi {@code countBySubjectId} — đếm cả dòng TeacherSubject của giáo viên đã
+         * nằm trong thùng rác (bảng nối không có cờ xóa mềm và không ai dọn nó khi xóa giáo
+         * viên). Hậu quả là môn học BẾ TẮC VĨNH VIỄN: báo còn giáo viên phụ trách, người dùng
+         * mở danh sách giáo viên tìm mãi không ra ai, mà cũng không có màn hình nào gỡ liên kết.
+         */
+        @Test
+        void giaoVienDaVaoThungRac_thiKhongConGiuMonHocLai() {
+            Subject s = monDaTat();
+            when(assignmentRepo.countBySubjectId(4)).thenReturn(0L);
+            when(lessonRepo.countBySubjectIdAndDeletedFalse(4)).thenReturn(0L);
+            // Bảng nối vẫn còn dòng, nhưng chủ nhân của chúng đều đã bị xóa mềm.
+            when(teacherSubjectRepo.demGiaoVienConSongTheoMon(4)).thenReturn(0L);
+
+            service.delete(4);
+
+            assertThat(s.isDeleted()).isTrue();
+            verify(subjectRepo).save(s);
+        }
+    }
+
+    /**
+     * ĐỢT 5 — Nhóm môn học. Đây là lỗ hổng NẶNG NHẤT của cả chuỗi ràng buộc xóa: xóa nhóm môn
+     * cascade thẳng xuống môn con rồi bài giảng mà không hỏi rào chắn nào, tức đi vòng qua trọn
+     * vẹn DeleteGuard của SubjectService. Bộ test này canh đúng chỗ đó.
+     */
+    @Nested
+    class XoaNhomMonHoc {
+
+        @Mock
+        private SubjectCategoryRepository categoryRepo;
+
+        @Mock
+        private SubjectRepository subjectRepo;
+
+        @Mock
+        private SubjectService subjectService;
+
+        @InjectMocks
+        private SubjectCategoryService service;
+
+        private SubjectCategory nhomDaTat() {
+            SubjectCategory sc = new SubjectCategory();
+            sc.setId(9);
+            sc.setName("Tin học");
+            sc.setStatus("DISABLED");
+            when(categoryRepo.findByIdAndDeletedFalse(9)).thenReturn(Optional.of(sc));
+            return sc;
+        }
+
+        private Subject mon(Integer id, String ten) {
+            Subject s = new Subject();
+            s.setId(id);
+            s.setName(ten);
+            return s;
+        }
+
+        @Test
+        void nhomDangHoatDong_thiChan() {
+            SubjectCategory sc = new SubjectCategory();
+            sc.setId(9);
+            sc.setStatus("ACTIVE");
+            when(categoryRepo.findByIdAndDeletedFalse(9)).thenReturn(Optional.of(sc));
+
+            assertThatThrownBy(() -> service.delete(9))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("tắt trạng thái hoạt động");
+            verify(categoryRepo, never()).save(any());
+        }
+
+        /**
+         * Trọng tâm: một môn con còn dữ liệu là CẢ nhóm không xóa được, và thông báo phải chỉ
+         * đích danh môn nào vướng cái gì. Trước Đợt 5, ca này xóa trót lọt cả môn lẫn bài giảng.
+         */
+        @Test
+        void monConConDuLieu_thiChanCaNhomVaGoiTenTungMon() {
+            nhomDaTat();
+            Subject tin6 = mon(11, "Tin học 6");
+            Subject tin7 = mon(12, "Tin học 7");
+            when(subjectRepo.findByCategoryIdAndDeletedFalseOrderByName(9)).thenReturn(List.of(tin6, tin7));
+            when(subjectService.raoChanXoaMon(11, "Tin học 6"))
+                    .thenReturn(DeleteGuard.of("môn học Tin học 6")
+                            .blockIf(3, "phân công giảng dạy")
+                            .blockIf(120, "bài giảng"));
+            when(subjectService.raoChanXoaMon(12, "Tin học 7")).thenReturn(DeleteGuard.of("môn học Tin học 7"));
+
+            assertThatThrownBy(() -> service.delete(9))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("nhóm môn học Tin học")
+                    .hasMessageContaining("môn Tin học 6")
+                    .hasMessageContaining("3 phân công giảng dạy")
+                    .hasMessageContaining("120 bài giảng");
+
+            // Không được đụng vào dòng nào: môn sạch nằm cùng nhóm cũng phải nguyên vẹn.
+            assertThat(tin6.isDeleted()).isFalse();
+            assertThat(tin7.isDeleted()).isFalse();
+            verify(subjectRepo, never()).saveAll(any());
+            verify(categoryRepo, never()).save(any());
+        }
+
+        /** Mọi môn con đều rỗng thì cascade chạy: nhóm và các môn cùng vào thùng rác một lượt. */
+        @Test
+        void moiMonConDeuRong_thiXoaMemCaNhomLanMonCon() {
+            SubjectCategory sc = nhomDaTat();
+            Subject tin6 = mon(11, "Tin học 6");
+            when(subjectRepo.findByCategoryIdAndDeletedFalseOrderByName(9)).thenReturn(List.of(tin6));
+            when(subjectService.raoChanXoaMon(11, "Tin học 6")).thenReturn(DeleteGuard.of("môn học Tin học 6"));
+
+            service.delete(9);
+
+            assertThat(tin6.isDeleted()).isTrue();
+            assertThat(tin6.getDeletedAt()).isNotNull();
+            assertThat(sc.isDeleted()).isTrue();
+            verify(subjectRepo).saveAll(List.of(tin6));
+            verify(categoryRepo).save(sc);
+        }
+
+        /** Nhóm rỗng thì xóa thẳng, không hỏi SubjectService câu nào. */
+        @Test
+        void nhomRong_thiXoaThang() {
+            SubjectCategory sc = nhomDaTat();
+            when(subjectRepo.findByCategoryIdAndDeletedFalseOrderByName(9)).thenReturn(List.of());
+
+            service.delete(9);
+
+            assertThat(sc.isDeleted()).isTrue();
+            verify(categoryRepo).save(sc);
+            verify(subjectService, never()).raoChanXoaMon(any(), any());
         }
     }
 }

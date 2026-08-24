@@ -130,16 +130,32 @@ public class SubjectService {
                     HttpStatus.CONFLICT,
                     "Không thể xóa: môn học đang ở trạng thái hoạt động. Vui lòng tắt trạng thái hoạt động trước khi xóa.");
         }
-        DeleteGuard.of("môn học " + s.getName())
-                .blockIf(assignmentRepo.countBySubjectId(id), "phân công giảng dạy")
-                .blockIf(lessonRepo.countBySubjectIdAndDeletedFalse(id), "bài giảng")
-                .blockIf(teacherSubjectRepo.countBySubjectId(id), "giáo viên đang phụ trách môn")
-                .check();
+        raoChanXoaMon(id, s.getName()).check();
 
         s.setDeleted(true);
         s.setDeletedAt(Instant.now());
         s.setDeletedBy(SecurityUtils.currentUserId());
         subjectRepo.save(s);
+    }
+
+    /**
+     * Bộ rào chắn xóa của MỘT môn học, chưa ném lỗi — gọi {@code .check()} để ném, hoặc
+     * {@code .lyDo()} để lấy danh sách lý do mà ghép vào thông báo khác.
+     *
+     * <p>Tách ra khỏi {@link #delete} vì {@code SubjectCategoryService} xóa nhóm môn theo kiểu
+     * CASCADE xuống từng môn con, nên nó phải hỏi ĐÚNG bộ câu hỏi này. Trước Đợt 5 nó không
+     * hỏi gì cả, thành ra cùng một luật có hai bản và bản đi đường vòng là bản không có rào:
+     * xóa một môn còn 1 bài giảng thì bị chặn, còn xóa cả nhóm chứa 20 môn và 300 bài giảng
+     * thì trôi tuột.
+     *
+     * <p>CỐ Ý đếm phân công KHÔNG lọc cờ xóa: phiếu trong thùng rác khôi phục lại được, mà
+     * khôi phục xong lại trỏ vào một môn đã bị xóa thì còn tệ hơn.
+     */
+    DeleteGuard raoChanXoaMon(Integer subjectId, String tenMon) {
+        return DeleteGuard.of("môn học " + tenMon)
+                .blockIf(assignmentRepo.countBySubjectId(subjectId), "phân công giảng dạy")
+                .blockIf(lessonRepo.countBySubjectIdAndDeletedFalse(subjectId), "bài giảng")
+                .blockIf(teacherSubjectRepo.demGiaoVienConSongTheoMon(subjectId), "giáo viên đang phụ trách môn");
     }
 
     /* ── PRIVATE ── */
