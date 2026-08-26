@@ -22,6 +22,7 @@ import { holidayApi } from '@/api/holidays'
 import { schoolApi } from '@/api/schools'
 import DateField from '@/components/ui/DateField.vue'
 import { PAGE_SIZE } from '@/utils/pagination'
+import { isoToday } from '@/utils/format'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import FilterBar from '@/components/ui/FilterBar.vue'
 import { useToast } from '@/composables/useToast'
@@ -52,9 +53,13 @@ const filter = reactive({ keyword: '', kind: '', schoolId: '', from: '', to: '' 
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
-/** Kỳ nghỉ đã trôi qua hoàn toàn — làm mờ đi để mắt bám vào phần sắp tới. */
-const todayIso = new Date().toISOString().slice(0, 10)
-const isPast = (h) => h.toDate < todayIso
+/**
+ * Kỳ nghỉ đã trôi qua hoàn toàn — làm mờ đi để mắt bám vào phần sắp tới.
+ *
+ * Gọi isoToday() mỗi lần thay vì tính sẵn một hằng số lúc load: trang này hay được mở suốt
+ * ngày, hằng số sẽ đứng yên qua nửa đêm.
+ */
+const isPast = (h) => h.toDate < isoToday()
 
 function fmt(iso) {
   if (!iso) return '—'

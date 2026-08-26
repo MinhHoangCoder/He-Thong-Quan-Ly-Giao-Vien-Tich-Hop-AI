@@ -18,6 +18,7 @@
  */
 import { reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { loiTaiFile } from '@/utils/download'
 import StatCard from '@/components/ui/StatCard.vue'
 import SearchSelect from '@/components/ui/SearchSelect.vue'
 import LoadingSpinner from '@/components/ui/LoadingSpinner.vue'
@@ -210,8 +211,20 @@ const lichTheoNgay = computed(() => {
 function mo(duongDan) {
   if (duongDan) router.push(duongDan)
 }
-function xuat(chieu) {
-  dashboardApi.xuatCsv(boLoc, chieu)
+/**
+ * Xuất CSV. PHẢI bắt lỗi: `xuatCsv` là hàm async, gọi trần thì mọi thất bại (mất mạng, 403,
+ * kỳ quá lớn bị server chặn) chỉ thành một unhandled rejection trong console — người dùng bấm
+ * Xuất rồi KHÔNG thấy gì xảy ra và không biết vì sao.
+ *
+ * Lỗi của request `responseType: 'blob'` nằm trong blob chứ không phải `e.response.data.message`,
+ * nên bóc bằng `loiTaiFile` để giữ đúng câu server đã nói.
+ */
+async function xuat(chieu) {
+  try {
+    await dashboardApi.xuatCsv(boLoc, chieu)
+  } catch (e) {
+    alert(await loiTaiFile(e, 'Không xuất được CSV'))
+  }
 }
 
 const TONE = { ok: 'badge-green', wait: 'badge-amber', done: 'badge-gray', no: 'badge-red' }

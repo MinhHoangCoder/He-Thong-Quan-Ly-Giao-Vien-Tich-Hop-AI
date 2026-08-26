@@ -20,9 +20,14 @@ const newRouteName = 'admin-lesson-new'
    State
 ========================= */
 
-// Kho bài giảng hiển thị dạng nhóm Khối > Danh mục > Bài giảng nên không dùng
-// phân trang nhỏ (sẽ làm vỡ nhóm giữa 2 trang) — lấy 1 lượt với size đủ lớn.
-const PAGE_SIZE = 1000
+// Kho bài giảng hiển thị dạng nhóm Khối > Danh mục > Bài giảng nên không dùng phân trang nhỏ
+// (sẽ làm vỡ nhóm giữa 2 trang) — lấy một lượt nhiều nhất có thể.
+//
+// 100 chứ không phải 1000: Paging.MAX_SIZE ở backend kẹp mọi endpoint danh sách về 100 và kẹp
+// IM LẶNG, nên xin 1000 vẫn chỉ nhận 100. Để số 1000 ở đây là một lời hứa sai — người đọc sau
+// tưởng trang này luôn lấy trọn kho. Quá 100 bài thì cây nhóm BỊ CẮT theo trang thật (phân
+// trang bên dưới vẫn chạy đúng), muốn khác phải bàn lại ở backend chứ không sửa được ở đây.
+const PAGE_SIZE = 100
 
 const loading = ref(false)
 const error = ref('')

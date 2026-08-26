@@ -21,6 +21,7 @@ import Pagination from '@/components/ui/Pagination.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { useToast } from '@/composables/useToast'
 import { taiFile, loiTaiFile } from '@/utils/download'
+import { isoToday } from '@/utils/format'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -327,8 +328,7 @@ async function openRates() {
  * lại kỳ cũ ra số khác và không ai giải thích được chênh lệch. Backend chặn lần nữa, ở đây chỉ
  * là không bày ra cái nút mà bấm vào chắc chắn báo lỗi.
  */
-const todayIso = new Date().toISOString().slice(0, 10)
-const coTheXoaMuc = (r) => canManageRate.value && r.effectiveFrom > todayIso
+const coTheXoaMuc = (r) => canManageRate.value && r.effectiveFrom > isoToday()
 
 async function removeRate(r) {
   rateModal.error = ''
@@ -783,11 +783,11 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
           <div class="rate-form">
             <label>
               Khối từ
-              <input v-model.number="rateForm.gradeFrom" type="number" min="1" max="12" />
+              <input v-model.number="rateForm.gradeFrom" type="number" min="1" max="9" />
             </label>
             <label>
               đến
-              <input v-model.number="rateForm.gradeTo" type="number" min="1" max="12" />
+              <input v-model.number="rateForm.gradeTo" type="number" min="1" max="9" />
             </label>
             <label>
               Đơn giá (₫)

@@ -1,5 +1,6 @@
 package com.kdc.tsdms.controller;
 
+import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.common.ExcelWriter;
 import com.kdc.tsdms.dto.PayrollChangeLogResponse;
 import com.kdc.tsdms.dto.PayrollHolidayIssueResponse;
@@ -44,7 +45,11 @@ public class PayrollController {
     @PreAuthorize(CAN_VIEW)
     public List<PayrollResponse> list(
             @RequestParam(required = false) Short year, @RequestParam(required = false) Short month) {
-        LocalDate today = LocalDate.now();
+        // BusinessTime chứ không phải LocalDate.now(): TsdmsApplication ghim JVM về UTC, mà VN
+        // là UTC+7 — nên trong khung 00:00–07:00 giờ VN, LocalDate.now() còn ở NGÀY HÔM QUA.
+        // Vào mùng 1 đầu tháng, kỳ mặc định vì thế rơi về THÁNG TRƯỚC (mùng 1 tháng 1 thì lệch
+        // cả năm lẫn tháng). Đúng loại lỗi mà javadoc của BusinessTime dựng ra để chặn.
+        LocalDate today = BusinessTime.today();
         short y = year != null ? year : (short) today.getYear();
         short m = month != null ? month : (short) today.getMonthValue();
         return service.list(y, m);
@@ -59,7 +64,7 @@ public class PayrollController {
     @PreAuthorize("hasRole('TEACHER')")
     public List<PayrollResponse> listMine(
             @RequestParam(required = false) Short year, @RequestParam(required = false) Short month) {
-        short y = year != null ? year : (short) LocalDate.now().getYear();
+        short y = year != null ? year : (short) BusinessTime.today().getYear();
         return service.listMine(y, month);
     }
 
