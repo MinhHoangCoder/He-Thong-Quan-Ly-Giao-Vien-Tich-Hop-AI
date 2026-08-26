@@ -25,6 +25,7 @@ import com.kdc.tsdms.security.SecurityUtils;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -415,7 +416,10 @@ public class HolidayService {
      */
     private List<Schedule> affectedSchedules(Holiday h) {
         LocalDateTime from = h.getFromDate().atStartOfDay();
-        LocalDateTime to = h.getToDate().plusDays(1).atStartOfDay();
+        // findBy...Between sinh ra SQL BETWEEN, tức là ĐÓNG CẢ HAI ĐẦU. Dùng
+        // toDate.plusDays(1).atStartOfDay() như câu đếm bên deleteImpact (câu đó là >= AND <)
+        // thì buổi bắt đầu đúng 00:00:00 của NGÀY SAU kỳ nghỉ cũng bị tính là bị ảnh hưởng.
+        LocalDateTime to = h.getToDate().atTime(LocalTime.MAX);
         List<Schedule> inRange = scheduleRepo.findByStartTimeBetweenAndDeletedFalse(from, to).stream()
                 .filter(s -> !"CANCELLED".equals(s.getStatus()))
                 .toList();

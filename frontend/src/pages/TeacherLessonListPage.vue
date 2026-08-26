@@ -13,7 +13,7 @@ const router = useRouter()
 
 // Kho bài giảng hiển thị dạng nhóm Khối > Danh mục > Bài giảng nên không dùng
 // phân trang nhỏ (sẽ làm vỡ nhóm giữa 2 trang) — lấy 1 lượt với size đủ lớn.
-const PAGE_SIZE = 1000
+const PAGE_SIZE = 100
 
 const loading = ref(false)
 const error = ref('')
