@@ -275,7 +275,6 @@ function doPrint() {
   window.print()
 }
 
-
 /**
  * Xuất CSV khoảng ngày đang xem. Tự ghép chuỗi thay vì thêm thư viện: dữ liệu ở đây là bảng
  * phẳng, một hàm 15 dòng làm đủ việc.
@@ -289,7 +288,10 @@ function exportCsv() {
   const header = ['Ngày', 'Thứ', 'Tiết', 'Giờ', 'Trường', 'Lớp', 'Môn', 'Giáo viên', 'Trạng thái']
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
   const rows = [...events.value]
-    .sort((a, b) => a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''))
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''),
+    )
     .map((e) =>
       [
         e.date,
@@ -412,7 +414,12 @@ onMounted(() => {
             v-for="c in monthCells"
             :key="c.iso"
             class="daycell"
-            :class="{ out: !c.inMonth, today: c.isToday, sel: c.iso === selectedIso, off: !!c.holiday }"
+            :class="{
+              out: !c.inMonth,
+              today: c.isToday,
+              sel: c.iso === selectedIso,
+              off: !!c.holiday,
+            }"
             :title="c.holiday || ''"
             @click="selectedIso = c.iso"
           >

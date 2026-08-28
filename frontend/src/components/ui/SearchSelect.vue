@@ -251,9 +251,7 @@ function onControlKeydown(e) {
         </div>
 
         <div v-if="!options.length" class="sspop__empty">{{ emptyText }}</div>
-        <div v-else-if="!filtered.length" class="sspop__empty">
-          Không tìm thấy “{{ query }}”
-        </div>
+        <div v-else-if="!filtered.length" class="sspop__empty">Không tìm thấy “{{ query }}”</div>
         <div v-else ref="listEl" class="sspop__list" role="listbox">
           <div
             v-for="(item, i) in filtered"

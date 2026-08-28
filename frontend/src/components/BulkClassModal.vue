@@ -204,8 +204,8 @@ function doiTab(t) {
           </label>
           <p class="hint">
             Mỗi dòng một lớp, cột cách nhau bằng Tab hoặc dấu phẩy, theo thứ tự
-            <strong>Tên lớp · Khối · Năm học</strong>. Khối và Năm học bỏ trống được — khối suy
-            từ chữ số đầu tên lớp, năm học lấy theo ô ở trên.
+            <strong>Tên lớp · Khối · Năm học</strong>. Khối và Năm học bỏ trống được — khối suy từ
+            chữ số đầu tên lớp, năm học lấy theo ô ở trên.
           </p>
         </template>
 

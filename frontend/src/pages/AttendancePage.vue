@@ -534,8 +534,7 @@ async function loadSummary() {
                    mà không biết buổi đó dạy ở đâu, trong khi chính giáo viên lại thấy đủ. -->
               <td class="text-muted small">
                 <template v-if="r.schoolName">
-                  {{ r.schoolName
-                  }}<template v-if="r.className"> · Lớp {{ r.className }}</template
+                  {{ r.schoolName }}<template v-if="r.className"> · Lớp {{ r.className }}</template
                   ><template v-if="r.subjectName"> · {{ r.subjectName }}</template>
                   <div v-if="r.periodNumber" class="sess-period">
                     {{ tietLabel(r.periodNumber, r.sessionType, r.indexInSession) }}

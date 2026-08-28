@@ -28,8 +28,7 @@ const auth = useAuthStore()
 const { showToast } = useToast()
 
 /** Nút chỉ hiện với người thật sự bấm được — ADMIN đi tắt như mọi quyền khác. */
-const hasPerm = (code) =>
-  auth.roles.includes('ADMIN') || (auth.user?.perms ?? []).includes(code)
+const hasPerm = (code) => auth.roles.includes('ADMIN') || (auth.user?.perms ?? []).includes(code)
 const canReopen = computed(() => hasPerm('PAYROLL_REOPEN'))
 const canPay = computed(() => hasPerm('PAYROLL_PAY'))
 const canManageRate = computed(() => hasPerm('PAYRATE_MANAGE'))
@@ -254,7 +253,9 @@ async function doPay() {
       showToast(`Đã đánh dấu đã trả lương cho ${row.teacherName}`)
     } else {
       const { data } = await payrollApi.payPeriod(filter.year, filter.month)
-      showToast(`Đã đánh dấu đã trả ${data?.paid ?? 0} phiếu lương kỳ ${filter.month}/${filter.year}`)
+      showToast(
+        `Đã đánh dấu đã trả ${data?.paid ?? 0} phiếu lương kỳ ${filter.month}/${filter.year}`,
+      )
     }
     payTarget.value = null
     load()
@@ -389,7 +390,11 @@ async function doReopen() {
       await payrollApi.reopen(reopenModal.row.id, reopenModal.reason.trim())
       info.value = `Đã mở lại phiếu lương của ${reopenModal.row.teacherName}.`
     } else {
-      const { data } = await payrollApi.reopenPeriod(filter.year, filter.month, reopenModal.reason.trim())
+      const { data } = await payrollApi.reopenPeriod(
+        filter.year,
+        filter.month,
+        reopenModal.reason.trim(),
+      )
       info.value = `Đã mở lại ${data?.reopened ?? 0} phiếu lương của kỳ ${filter.month}/${filter.year}.`
     }
     reopenModal.open = false
@@ -463,7 +468,10 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
           <tr>
             <th>Giáo viên</th>
             <th class="num">Số tiết</th>
-            <th class="num" title="Đi muộn vẫn được trả đủ tiết — số này để kế toán tự quyết khấu trừ">
+            <th
+              class="num"
+              title="Đi muộn vẫn được trả đủ tiết — số này để kế toán tự quyết khấu trừ"
+            >
               Đi muộn
             </th>
             <th class="num">Đơn giá/tiết</th>
@@ -486,7 +494,9 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
             </td>
           </tr>
           <tr v-else-if="!filteredRows.length">
-            <td colspan="11" class="text-center text-muted">Không có giáo viên nào khớp từ khóa.</td>
+            <td colspan="11" class="text-center text-muted">
+              Không có giáo viên nào khớp từ khóa.
+            </td>
           </tr>
           <tr v-for="r in pagedRows" :key="r.id">
             <td class="font-medium">{{ r.teacherName }}</td>
@@ -599,11 +609,10 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         <h3>Chốt lương khi kỳ còn lỗi ngày nghỉ?</h3>
         <p class="warn-block">
           Kỳ {{ filter.month }}/{{ filter.year }} còn
-          <strong>{{ issues?.absenceCount }}</strong> dòng chấm công ghi Vắng cho buổi rơi vào
-          ngày nghỉ ({{ issues?.teacherCount }} giáo viên).
-          <br /><br />
-          Chốt xong sẽ <strong>khóa chấm công của cả kỳ này</strong>. Các dòng Vắng đó nằm lại
-          trong hồ sơ chuyên cần của giáo viên, và chỉ sửa được sau khi mở lại bảng lương.
+          <strong>{{ issues?.absenceCount }}</strong> dòng chấm công ghi Vắng cho buổi rơi vào ngày
+          nghỉ ({{ issues?.teacherCount }} giáo viên). <br /><br />
+          Chốt xong sẽ <strong>khóa chấm công của cả kỳ này</strong>. Các dòng Vắng đó nằm lại trong
+          hồ sơ chuyên cần của giáo viên, và chỉ sửa được sau khi mở lại bảng lương.
         </p>
         <p class="small text-muted">
           Nếu bạn biết rõ đây là vắng thật (giáo viên có buổi dạy bù hôm đó mà bỏ) thì cứ chốt.
@@ -619,7 +628,9 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
           </button>
         </div>
         <div class="modal-actions">
-          <button class="btn btn-outline" @click="confirmModal.open = false">Để tôi xử lý trước</button>
+          <button class="btn btn-outline" @click="confirmModal.open = false">
+            Để tôi xử lý trước
+          </button>
           <button
             class="btn btn-primary"
             :disabled="confirmModal.working"
@@ -687,11 +698,10 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
     >
       Số tiền:
       <strong>{{ vnd(payTarget.row ? payTarget.row.netAmount : finalizedTotal) }}</strong
-      >.
-      <br /><br />
-      Đánh dấu đã trả là <strong>một chiều</strong>: phiếu đã trả KHÔNG mở lại được nữa, vì
-      tiền đã ra khỏi quỹ thì sửa số trên hệ thống chỉ làm lệch sổ sách. Chênh lệch (nếu có)
-      điều chỉnh vào kỳ lương kế tiếp.
+      >. <br /><br />
+      Đánh dấu đã trả là <strong>một chiều</strong>: phiếu đã trả KHÔNG mở lại được nữa, vì tiền đã
+      ra khỏi quỹ thì sửa số trên hệ thống chỉ làm lệch sổ sách. Chênh lệch (nếu có) điều chỉnh vào
+      kỳ lương kế tiếp.
     </ConfirmDialog>
 
     <!-- Nhật ký phiếu lương: chốt / mở lại / đã trả -->
@@ -736,9 +746,9 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
         <h3>Đơn giá tiết dạy</h3>
         <p class="text-muted small">
           Đơn giá tra theo <strong>ngày dạy</strong> của từng buổi, không theo hôm nay — nhờ vậy
-          tính lại một kỳ cũ vẫn ra đúng số đã trả. Tăng giá thì thêm mức mới, mức cũ tự được
-          đóng lại ở ngày liền trước. Giáo viên có đơn giá riêng trong hợp đồng thì hợp đồng
-          thắng bảng này.
+          tính lại một kỳ cũ vẫn ra đúng số đã trả. Tăng giá thì thêm mức mới, mức cũ tự được đóng
+          lại ở ngày liền trước. Giáo viên có đơn giá riêng trong hợp đồng thì hợp đồng thắng bảng
+          này.
         </p>
 
         <p v-if="rateModal.error" class="msg msg--error">{{ rateModal.error }}</p>
@@ -770,7 +780,11 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
                 >
                   Xóa
                 </button>
-                <span v-else class="small text-muted" title="Mức đã áp dụng là căn cứ của phiếu lương đã tính">
+                <span
+                  v-else
+                  class="small text-muted"
+                  title="Mức đã áp dụng là căn cứ của phiếu lương đã tính"
+                >
                   đã áp dụng
                 </span>
               </td>
