@@ -66,20 +66,26 @@ const rows = computed(() => {
     })
   }
   return [...byKey.values()].sort(
-    (a, b) => String(a.startTime).localeCompare(String(b.startTime)) || a.periodNumber - b.periodNumber,
+    (a, b) =>
+      String(a.startTime).localeCompare(String(b.startTime)) || a.periodNumber - b.periodNumber,
   )
 })
 
 function cellOf(dayCode, row) {
   return (
     slots.value.find(
-      (s) => s.dayOfWeek === dayCode && s.periodNumber === row.periodNumber && s.startTime === row.startTime,
+      (s) =>
+        s.dayOfWeek === dayCode &&
+        s.periodNumber === row.periodNumber &&
+        s.startTime === row.startTime,
     ) ?? null
   )
 }
 
 /** Phiếu có trải nhiều trường không — chỉ khi đó mới cần ghi tên trường lên từng ô. */
-const multiSchool = computed(() => new Set(slots.value.map((s) => s.schoolId).filter(Boolean)).size > 1)
+const multiSchool = computed(
+  () => new Set(slots.value.map((s) => s.schoolId).filter(Boolean)).size > 1,
+)
 
 const hhmm = (t) => (t ? String(t).slice(0, 5) : '')
 const fmtDate = (iso) => {
@@ -222,7 +228,10 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
                       {{ cellOf(d.code, r).className || 'Chưa gán lớp' }}
                       <!-- Nhiều trường thì PHẢI ghi rõ trường: thiếu nó giáo viên không biết
                            buổi đó phải tới đâu, mà lời mời chính là chỗ họ quyết định nhận. -->
-                      <small v-if="multiSchool && cellOf(d.code, r).schoolName" class="inv__cellschool">
+                      <small
+                        v-if="multiSchool && cellOf(d.code, r).schoolName"
+                        class="inv__cellschool"
+                      >
                         {{ cellOf(d.code, r).schoolName }}
                       </small>
                     </span>

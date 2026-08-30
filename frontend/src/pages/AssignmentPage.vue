@@ -72,9 +72,9 @@ const pagedItems = computed(() => {
 const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
 
 /**
-   * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
-   *   đầu (đổi bộ lọc / từ khóa — kết quả mới thì số trang cũ không còn nghĩa gì).
-   */
+ * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
+ *   đầu (đổi bộ lọc / từ khóa — kết quả mới thì số trang cũ không còn nghĩa gì).
+ */
 async function load(giuTrang = false) {
   loading.value = true
   if (!giuTrang) page.value = 0
@@ -417,8 +417,9 @@ async function restoreItem(a) {
                 {{ tietShort(s.periodNumber, s.sessionType, s.indexInSession)
                 }}<template v-if="s.className"> · {{ s.className }}</template
                 ><template v-if="isMultiSchool(a) && s.schoolName">
-                  <span class="chip__school">{{ s.schoolName }}</span> </template
-              ></span>
+                  <span class="chip__school">{{ s.schoolName }}</span>
+                </template></span
+              >
               <span v-if="!a.slots?.length" class="text-muted">—</span>
             </td>
             <td>

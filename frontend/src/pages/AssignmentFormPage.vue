@@ -181,7 +181,10 @@ function addBlock() {
 function removeBlock(block) {
   // Bỏ khối là bỏ luôn các tiết đã xếp ở trường đó — hỏi lại nếu có tiết, đừng xóa lặng lẽ.
   const mine = form.slots.filter((s) => s.schoolId === block.schoolId)
-  if (mine.length && !window.confirm(`Bỏ trường này khỏi phiếu? ${mine.length} tiết đã xếp sẽ mất.`))
+  if (
+    mine.length &&
+    !window.confirm(`Bỏ trường này khỏi phiếu? ${mine.length} tiết đã xếp sẽ mất.`)
+  )
     return
   form.slots = form.slots.filter((s) => s.schoolId !== block.schoolId)
   blocks.value = blocks.value.filter((b) => b.key !== block.key)
@@ -424,9 +427,7 @@ function teacherLabel(t) {
 const teachersForSubject = computed(() => {
   const sid = Number(form.subjectId)
   if (!sid) return options.teachers
-  return options.teachers.filter(
-    (t) => !t.subjectIds?.length || t.subjectIds.includes(sid),
-  )
+  return options.teachers.filter((t) => !t.subjectIds?.length || t.subjectIds.includes(sid))
 })
 
 /**
@@ -486,9 +487,7 @@ const minStartDate = computed(() => {
     : isoToday()
 })
 
-const startDateInvalid = computed(
-  () => !!form.startDate && form.startDate < minStartDate.value,
-)
+const startDateInvalid = computed(() => !!form.startDate && form.startDate < minStartDate.value)
 
 /**
  * Ngày muộn nhất được chọn làm ngày kết thúc — khớp hằng số MAX_MONTHS (12) ở backend.
@@ -576,7 +575,12 @@ const review = computed(() => {
         }),
       }
     })
-    return { schoolId, schoolName: schoolName(schoolId), days, count: form.slots.filter((s) => s.schoolId === schoolId).length }
+    return {
+      schoolId,
+      schoolName: schoolName(schoolId),
+      days,
+      count: form.slots.filter((s) => s.schoolId === schoolId).length,
+    }
   })
 })
 
@@ -739,7 +743,9 @@ function cancel() {
         <span class="lg"><i class="cell cell--chosen"></i> Đang xếp</span>
         <span class="lg"><i class="cell cell--teacher"></i> Giáo viên bận</span>
         <span class="lg"><i class="cell cell--class"></i> Lớp đã có người dạy</span>
-        <span class="lg lg--total">Tổng: <b>{{ totalWeekly }}</b> tiết/tuần</span>
+        <span class="lg lg--total"
+          >Tổng: <b>{{ totalWeekly }}</b> tiết/tuần</span
+        >
       </div>
 
       <div v-for="block in blocks" :key="block.key" class="card afp__block">
@@ -811,15 +817,19 @@ function cancel() {
              quản lý khung tiết, nên đưa luôn nút áp bộ chuẩn theo cấp học ngay tại đây. -->
         <div v-else-if="!block.periods.length" class="afp__warn">
           <p>
-            Trường này <b>chưa có khung tiết</b> nên chưa xếp lịch được. Áp bộ khung chuẩn theo
-            cấp học của trường để bắt đầu.
+            Trường này <b>chưa có khung tiết</b> nên chưa xếp lịch được. Áp bộ khung chuẩn theo cấp
+            học của trường để bắt đầu.
           </p>
-          <button class="btn btn-primary btn-sm" :disabled="block.applying" @click="applyStandardFrame(block)">
+          <button
+            class="btn btn-primary btn-sm"
+            :disabled="block.applying"
+            @click="applyStandardFrame(block)"
+          >
             {{ block.applying ? 'Đang áp…' : 'Áp khung tiết chuẩn' }}
           </button>
           <small>
-            Tiểu học 10 tiết/ngày (mỗi tiết 35 phút) · THCS 9 tiết/ngày (mỗi tiết 45 phút) — vào
-            học 07:00 và 14:00, ra chơi sau tiết 2 mỗi buổi.
+            Tiểu học 10 tiết/ngày (mỗi tiết 35 phút) · THCS 9 tiết/ngày (mỗi tiết 45 phút) — vào học
+            07:00 và 14:00, ra chơi sau tiết 2 mỗi buổi.
           </small>
         </div>
         <div v-else class="afp__gridwrap">
@@ -896,7 +906,9 @@ function cancel() {
       </dl>
 
       <div v-for="r in review" :key="r.schoolId" class="afp__rev">
-        <h4>{{ r.schoolName }} <span class="text-muted small">· {{ r.count }} tiết</span></h4>
+        <h4>
+          {{ r.schoolName }} <span class="text-muted small">· {{ r.count }} tiết</span>
+        </h4>
         <div v-for="d in r.days" :key="d.code" class="afp__revday">
           <span class="afp__revdaylabel">{{ d.label }}</span>
           <span v-for="it in d.items" :key="it.key" class="chip">

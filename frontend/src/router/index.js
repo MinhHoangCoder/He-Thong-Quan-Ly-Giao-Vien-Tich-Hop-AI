@@ -19,12 +19,7 @@ const notFoundRoute = {
   meta: { layout: 'blank', public: true },
 }
 
-const routes = [
-  ...publicRoutes,
-  ...adminRoutes,
-  ...teacherRoutes,
-  notFoundRoute,
-]
+const routes = [...publicRoutes, ...adminRoutes, ...teacherRoutes, notFoundRoute]
 
 const router = createRouter({
   history: createWebHistory(),

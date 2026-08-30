@@ -86,7 +86,8 @@ async function load() {
       if (filter.from) params.from = filter.from
       if (filter.to) params.to = filter.to
     }
-    const res = tab.value === 'trash' ? await holidayApi.trash(params) : await holidayApi.list(params)
+    const res =
+      tab.value === 'trash' ? await holidayApi.trash(params) : await holidayApi.list(params)
     items.value = res.data?.content ?? []
     total.value = res.data?.totalElements ?? 0
   } catch (e) {
@@ -216,7 +217,14 @@ async function save() {
  *                          chuyên cần của giáo viên và phải chuyển sang Nghỉ phép (absence).
  * Tách thành hai nút riêng thì ai cũng bấm nút đầu rồi tưởng đã xong.
  */
-const impact = reactive({ open: false, holiday: null, data: null, loading: false, working: false, done: '' })
+const impact = reactive({
+  open: false,
+  holiday: null,
+  data: null,
+  loading: false,
+  working: false,
+  done: '',
+})
 
 const absence = reactive({
   rows: [],
@@ -230,7 +238,9 @@ const absence = reactive({
 })
 
 const pickedCount = computed(() => absence.picked.size)
-const allPicked = computed(() => absence.rows.length > 0 && absence.picked.size === absence.rows.length)
+const allPicked = computed(
+  () => absence.rows.length > 0 && absence.picked.size === absence.rows.length,
+)
 
 function togglePick(id) {
   if (absence.picked.has(id)) absence.picked.delete(id)
@@ -265,7 +275,10 @@ async function checkImpact(h) {
     absence.rows.forEach((r) => absence.picked.add(r.attendanceId))
     // Không có gì vướng thì đừng bắt người dùng đóng một hộp thoại rỗng.
     const nothing =
-      !imp.data?.sessionCount && !imp.data?.pastSessionCount && !absence.rows.length && !absence.lockedCount
+      !imp.data?.sessionCount &&
+      !imp.data?.pastSessionCount &&
+      !absence.rows.length &&
+      !absence.lockedCount
     if (nothing) impact.open = false
   } catch {
     impact.open = false
@@ -330,9 +343,14 @@ const deleteBlockers = computed(() => {
   const d = deleteImpact.value
   if (!d) return []
   const out = []
-  if (d.cancelledSessions) out.push({ label: `${d.cancelledSessions} buổi dạy đã hủy trong khoảng ngày này — KHÔNG sống lại` })
-  if (d.leaveAttendances) out.push({ label: `${d.leaveAttendances} dòng chấm công đang là Nghỉ phép — giữ nguyên` })
-  if (d.futureSessions) out.push({ label: `${d.futureSessions} buổi chưa diễn ra sẽ chạy lại bình thường` })
+  if (d.cancelledSessions)
+    out.push({
+      label: `${d.cancelledSessions} buổi dạy đã hủy trong khoảng ngày này — KHÔNG sống lại`,
+    })
+  if (d.leaveAttendances)
+    out.push({ label: `${d.leaveAttendances} dòng chấm công đang là Nghỉ phép — giữ nguyên` })
+  if (d.futureSessions)
+    out.push({ label: `${d.futureSessions} buổi chưa diễn ra sẽ chạy lại bình thường` })
   return out
 })
 
@@ -477,10 +495,14 @@ onMounted(async () => {
               <div v-else-if="h.note" class="desc-text">{{ h.note }}</div>
             </td>
             <td>
-              <span class="badge" :class="'badge--' + h.kind.toLowerCase()">{{ kindLabel(h.kind) }}</span>
+              <span class="badge" :class="'badge--' + h.kind.toLowerCase()">{{
+                kindLabel(h.kind)
+              }}</span>
             </td>
             <td>
-              <span v-if="h.schoolId" class="scope scope--school">{{ h.schoolName || '(trường đã xóa)' }}</span>
+              <span v-if="h.schoolId" class="scope scope--school">{{
+                h.schoolName || '(trường đã xóa)'
+              }}</span>
               <span v-else class="scope">Toàn hệ thống</span>
             </td>
             <td class="col-actions">
@@ -555,8 +577,8 @@ onMounted(async () => {
           </label>
         </div>
         <p class="hint">
-          Để "Toàn hệ thống" cho ngày lễ và nghỉ hè. Chọn một trường khi chỉ trường đó nghỉ —
-          ví dụ trường sửa chữa, tổ chức sự kiện riêng.
+          Để "Toàn hệ thống" cho ngày lễ và nghỉ hè. Chọn một trường khi chỉ trường đó nghỉ — ví dụ
+          trường sửa chữa, tổ chức sự kiện riêng.
         </p>
 
         <label class="field">
@@ -579,7 +601,9 @@ onMounted(async () => {
     <div v-if="impact.open" class="modal" @click.self="impact.open = false">
       <div class="modal-box modal-box--lg">
         <h2 class="modal-title">Buổi dạy rơi vào kỳ nghỉ</h2>
-        <p class="modal-sub">{{ impact.holiday?.name }} · {{ impact.holiday && fmtRange(impact.holiday) }}</p>
+        <p class="modal-sub">
+          {{ impact.holiday?.name }} · {{ impact.holiday && fmtRange(impact.holiday) }}
+        </p>
 
         <p v-if="impact.loading">Đang kiểm tra...</p>
 
@@ -599,8 +623,8 @@ onMounted(async () => {
             <p v-else class="impact-ok">Không còn buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.</p>
 
             <p v-if="impact.data.pastSessionCount > 0" class="impact-note">
-              Ngoài ra có {{ impact.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này —
-              giữ nguyên, không hủy: chúng có thể đã gắn chấm công và đã vào bảng lương.
+              Ngoài ra có {{ impact.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này — giữ
+              nguyên, không hủy: chúng có thể đã gắn chấm công và đã vào bảng lương.
             </p>
 
             <p v-if="impact.done" class="msg">{{ impact.done }}</p>
@@ -622,12 +646,12 @@ onMounted(async () => {
           <template v-if="absence.rows.length">
             <p class="impact-warn">
               <strong>{{ absence.rows.length }}</strong> dòng chấm công đang ghi
-              <strong>Vắng</strong> cho buổi rơi vào kỳ nghỉ. Hủy buổi KHÔNG xóa được các dòng
-              này — chúng nằm trong hồ sơ chuyên cần của giáo viên, và job nền đã nhắn cho họ là
-              đã vắng buổi đó.
+              <strong>Vắng</strong> cho buổi rơi vào kỳ nghỉ. Hủy buổi KHÔNG xóa được các dòng này —
+              chúng nằm trong hồ sơ chuyên cần của giáo viên, và job nền đã nhắn cho họ là đã vắng
+              buổi đó.
               <br />
-              Chuyển sang <strong>Nghỉ phép</strong> không làm đổi tiền lương (cả hai đều không
-              tính tiết) — nó chỉ trả lại hồ sơ đúng sự thật: hôm đó trường không hoạt động.
+              Chuyển sang <strong>Nghỉ phép</strong> không làm đổi tiền lương (cả hai đều không tính
+              tiết) — nó chỉ trả lại hồ sơ đúng sự thật: hôm đó trường không hoạt động.
             </p>
 
             <div class="abs-wrap">
@@ -673,9 +697,9 @@ onMounted(async () => {
           </template>
 
           <p v-if="absence.lockedCount > 0" class="impact-note">
-            Còn <strong>{{ absence.lockedCount }}</strong> dòng thuộc kỳ lương ĐÃ CHỐT
-            ({{ absence.lockedPeriods.join(', ') }}) nên chưa sửa được. Vào Bảng lương mở lại kỳ
-            đó rồi quay lại đây.
+            Còn <strong>{{ absence.lockedCount }}</strong> dòng thuộc kỳ lương ĐÃ CHỐT ({{
+              absence.lockedPeriods.join(', ')
+            }}) nên chưa sửa được. Vào Bảng lương mở lại kỳ đó rồi quay lại đây.
           </p>
 
           <p v-if="absence.done" class="msg">{{ absence.done }}</p>
@@ -707,8 +731,8 @@ onMounted(async () => {
       @confirm="confirmDelete"
       @cancel="deleteTarget = null"
     >
-      Lịch dạy sinh ra sau đó sẽ lại có buổi vào những ngày này. Khôi phục lại được ở tab
-      Thùng rác, nhưng những gì kỳ nghỉ đã ghi vào dữ liệu thì không tự hoàn lại:
+      Lịch dạy sinh ra sau đó sẽ lại có buổi vào những ngày này. Khôi phục lại được ở tab Thùng rác,
+      nhưng những gì kỳ nghỉ đã ghi vào dữ liệu thì không tự hoàn lại:
     </ConfirmDialog>
 
     <ConfirmDialog
@@ -720,8 +744,8 @@ onMounted(async () => {
       @confirm="confirmRestore"
       @cancel="restoreTarget = null"
     >
-      Từ giờ lịch dạy sẽ không sinh buổi vào những ngày này nữa. Buổi ĐÃ sinh trước đó vẫn
-      còn — bấm "Buổi dạy" ở danh sách chính để dọn.
+      Từ giờ lịch dạy sẽ không sinh buổi vào những ngày này nữa. Buổi ĐÃ sinh trước đó vẫn còn — bấm
+      "Buổi dạy" ở danh sách chính để dọn.
     </ConfirmDialog>
   </div>
 </template>

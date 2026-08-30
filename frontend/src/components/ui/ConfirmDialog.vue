@@ -73,8 +73,15 @@ const canConfirm = computed(() => {
       </ul>
 
       <div v-if="requireTyping" class="cfm__typing">
-        <label>Gõ lại <strong>{{ name }}</strong> để xác nhận:</label>
-        <input v-model="typed" type="text" :placeholder="name" @keyup.enter="canConfirm && emit('confirm')" />
+        <label
+          >Gõ lại <strong>{{ name }}</strong> để xác nhận:</label
+        >
+        <input
+          v-model="typed"
+          type="text"
+          :placeholder="name"
+          @keyup.enter="canConfirm && emit('confirm')"
+        />
       </div>
 
       <p v-if="error" class="error-msg">{{ error }}</p>
