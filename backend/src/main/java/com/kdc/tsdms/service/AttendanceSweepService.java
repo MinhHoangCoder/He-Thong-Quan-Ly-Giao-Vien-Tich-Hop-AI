@@ -5,15 +5,16 @@ import com.kdc.tsdms.entity.Attendance;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.repository.AttendanceRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * KHÉP SỔ CHẤM CÔNG TỰ ĐỘNG — chạy nền, dọn những buổi giáo viên quên bấm.
@@ -65,28 +66,46 @@ public class AttendanceSweepService {
         this.notificationService = notificationService;
     }
 
+    /**
+     * KHÔNG bọc {@code @Transactional} quanh cả lượt quét. Một lượt soi ~600 buổi và có thể ghi
+     * vài trăm dòng chấm công (mỗi dòng còn kéo theo trigger ghi nhật ký); gói chung thành một
+     * giao dịch là giữ khóa ghi trên Attendance suốt hàng chục giây, và trong quãng đó Bảng điều
+     * khiển — vốn phải quét Attendance để đếm buổi chưa chấm — nằm chờ khóa, người dùng chỉ thấy
+     * màn hình quay mãi không ra số.
+     *
+     * <p>Mỗi dòng tự ghi tự chốt là an toàn vì job vốn idempotent: dừng giữa chừng thì lượt sau
+     * quét nốt phần còn lại, không có trạng thái nửa vời nào để phải quay lui.
+     */
     @Scheduled(fixedDelay = SWEEP_INTERVAL_MS, initialDelay = 120_000)
-    @Transactional
     public void sweep() {
         LocalDateTime now = BusinessTime.now();
+        LocalDate tuNgay = now.minusDays(LOOKBACK_DAYS).toLocalDate();
         List<Schedule> ended = scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(
-                now.minusDays(LOOKBACK_DAYS).toLocalDate().atStartOfDay(), now, "APPROVED");
+                tuNgay.atStartOfDay(), now, "APPROVED");
+
+        // Chấm công của cả lô lấy MỘT lần. Bản cũ hỏi DB cho từng buổi — 600 câu lẻ mỗi lượt.
+        // Tra theo khoảng ngày chứ không theo danh sách Id: danh sách dài thì câu IN phình to và
+        // đụng trần 2.100 tham số của SQL Server, trong khi WorkDate luôn bằng ngày của buổi.
+        Map<Long, Attendance> daCham =
+                attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(tuNgay, now.toLocalDate()).stream()
+                        .filter(a -> a.getScheduleId() != null)
+                        .collect(Collectors.toMap(Attendance::getScheduleId, a -> a, (cu, moi) -> cu));
 
         Map<Integer, Integer> closedByTeacher = new HashMap<>();
         Map<Integer, Integer> absentByTeacher = new HashMap<>();
+        Map<String, Boolean> demKyChot = new HashMap<>();
 
         for (Schedule s : ended) {
             if (now.isBefore(s.getEndTime())) {
                 continue; // buổi chưa xong
             }
-            Attendance a =
-                    attendanceRepo.findFirstByScheduleIdOrderByIdAsc(s.getId()).orElse(null);
+            Attendance a = daCham.get(s.getId());
 
             if (a == null) {
-                if (now.isAfter(s.getEndTime().plusMinutes(ABSENT_GRACE_MIN)) && markAbsent(s)) {
+                if (now.isAfter(s.getEndTime().plusMinutes(ABSENT_GRACE_MIN)) && markAbsent(s, demKyChot)) {
                     absentByTeacher.merge(s.getTeacherId(), 1, Integer::sum);
                 }
-            } else if (closeCheckOut(a, s)) {
+            } else if (closeCheckOut(a, s, demKyChot)) {
                 closedByTeacher.merge(a.getTeacherId(), 1, Integer::sum);
             }
         }
@@ -104,7 +123,7 @@ public class AttendanceSweepService {
     }
 
     /** Giáo viên đã check-in nhưng chưa check-out → chốt bằng giờ tan tiết. */
-    private boolean closeCheckOut(Attendance a, Schedule s) {
+    private boolean closeCheckOut(Attendance a, Schedule s, Map<String, Boolean> demKyChot) {
         if (a.getCheckIn() == null || a.getCheckOut() != null) {
             return false;
         }
@@ -112,7 +131,7 @@ public class AttendanceSweepService {
         if ("ABSENT".equals(a.getStatus()) || "LEAVE".equals(a.getStatus())) {
             return false;
         }
-        if (attendanceService.isPeriodLocked(a.getTeacherId(), a.getWorkDate())) {
+        if (kyDaChot(demKyChot, a.getTeacherId(), a.getWorkDate())) {
             return false;
         }
         java.time.LocalTime out = s.getEndTime().toLocalTime().withSecond(0).withNano(0);
@@ -131,8 +150,8 @@ public class AttendanceSweepService {
     }
 
     /** Buổi đã hết mà không ai chấm → ghi Vắng, nguồn SYSTEM. */
-    private boolean markAbsent(Schedule s) {
-        if (attendanceService.isPeriodLocked(s.getTeacherId(), s.getStartTime().toLocalDate())) {
+    private boolean markAbsent(Schedule s, Map<String, Boolean> demKyChot) {
+        if (kyDaChot(demKyChot, s.getTeacherId(), s.getStartTime().toLocalDate())) {
             return false;
         }
         Attendance a = new Attendance();
@@ -150,6 +169,17 @@ public class AttendanceSweepService {
         }
         log.info("Ghi Vang cho buoi #{} (GV #{})", s.getId(), s.getTeacherId());
         return true;
+    }
+
+    /**
+     * Kỳ lương đã chốt chưa — có đệm theo (giáo viên, tháng). Một lượt quét chỉ trải ba ngày nên
+     * cùng lắm chạm hai tháng: không đệm thì mỗi buổi lại mở một giao dịch đọc riêng để hỏi lại
+     * đúng một câu trả lời.
+     */
+    private boolean kyDaChot(Map<String, Boolean> dem, Integer teacherId, LocalDate ngay) {
+        return dem.computeIfAbsent(
+                teacherId + "|" + ngay.getYear() + "-" + ngay.getMonthValue(),
+                k -> attendanceService.isPeriodLocked(teacherId, ngay));
     }
 
     private void notify(Map<Integer, Integer> byTeacher, String title, String tail) {

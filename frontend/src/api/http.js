@@ -2,8 +2,14 @@ import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 
 // Instance axios dùng chung. baseURL '/api/v1' -> vite proxy chuyển sang backend :8080.
+//
+// TIMEOUT là bắt buộc: mặc định của axios là CHỜ MÃI. Backend kẹt một lát (job nền đang giữ
+// khóa ghi, truy vấn nặng) là màn hình quay vô hạn, không báo lỗi, không có đường thoát — nhìn
+// y hệt hệ thống hỏng. 30 giây rộng hơn nhiều so với endpoint chậm nhất (~1,5s) nên không cắt
+// nhầm việc thật, mà vẫn đảm bảo mọi lần chờ đều kết thúc bằng một câu trả lời.
 const http = axios.create({
   baseURL: '/api/v1',
+  timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -57,6 +63,22 @@ http.interceptors.response.use(
   async (error) => {
     const auth = useAuthStore()
     const original = error.config
+
+    // Không có `response` = chưa chạm được tới server (backend chưa lên, mất mạng, quá hạn chờ).
+    // Hơn 80 chỗ trong app đọc lỗi qua `e.response.data.message`; dựng sẵn đúng hình dạng đó ở
+    // đây thì tất cả cùng hiện một câu tiếng Việt nói rõ bệnh, thay vì câu mặc định chung chung
+    // "Không tải được số liệu" hay chuỗi tiếng Anh của axios. status 0 = chưa có mã HTTP nào.
+    if (!error.response) {
+      error.response = {
+        status: 0,
+        data: {
+          message:
+            error.code === 'ECONNABORTED'
+              ? 'Máy chủ phản hồi quá lâu. Thử lại sau giây lát.'
+              : 'Không kết nối được tới máy chủ. Kiểm tra backend đã chạy chưa.',
+        },
+      }
+    }
 
     const canRetry = error.response?.status === 401 && !original?._retry && auth.refreshToken
     if (!canRetry) {
