@@ -2,7 +2,6 @@ package com.kdc.tsdms.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,7 +14,6 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -77,10 +75,12 @@ class AttendanceSweepServiceTest {
         return s;
     }
 
+    /** Job lấy chấm công của cả lô theo khoảng ngày, nên stub trả về danh sách chứ không phải Optional. */
     private void given(Schedule s, Attendance a) {
         when(scheduleRepo.findByStartTimeBetweenAndStatusAndDeletedFalseOrderByStartTime(any(), any(), any()))
                 .thenReturn(List.of(s));
-        when(attendanceRepo.findFirstByScheduleIdOrderByIdAsc(anyLong())).thenReturn(Optional.ofNullable(a));
+        when(attendanceRepo.findByWorkDateBetweenOrderByWorkDateDescIdDesc(any(), any()))
+                .thenReturn(a == null ? List.of() : List.of(a));
     }
 
     private Attendance checkedInOnly(Schedule s) {
