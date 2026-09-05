@@ -29,6 +29,17 @@ public final class AssignmentStatus {
     /** Admin chủ động hủy (khác REJECTED là do giáo viên từ chối). */
     public static final String CANCELLED = "CANCELLED";
 
+    /**
+     * KẾT THÚC SỚM — trạng thái chỉ để HIỂN THỊ, không bao giờ ghi xuống cột Status.
+     *
+     * <p>Phiếu đã chạy thật rồi bị dừng từ một ngày giữa chừng: các buổi trước ngày ấy vẫn phải
+     * dạy và vẫn tính công, nên dưới DB nó vẫn là {@link #ACTIVE} (và CK_Assignment_Status
+     * không phải nới thêm giá trị). Nhãn này do service tính tại chỗ từ
+     * {@code Assignment.cancelEffectiveDate} — cùng cách {@link #EXPIRED} được tính cho phiếu
+     * chờ đã quá hạn.
+     */
+    public static final String TERMINATED = "TERMINATED";
+
     /** Các trạng thái mà admin còn được sửa & gửi lại lời mời. */
     public static boolean isEditable(String status) {
         return PENDING.equals(status) || REJECTED.equals(status) || EXPIRED.equals(status);

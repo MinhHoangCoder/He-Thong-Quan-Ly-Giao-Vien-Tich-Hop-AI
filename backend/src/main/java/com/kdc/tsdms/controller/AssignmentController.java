@@ -1,8 +1,10 @@
 package com.kdc.tsdms.controller;
 
 import com.kdc.tsdms.common.Paging;
+import com.kdc.tsdms.dto.AssignmentBulkCancelRequest;
 import com.kdc.tsdms.dto.AssignmentBulkRequest;
 import com.kdc.tsdms.dto.AssignmentBulkResult;
+import com.kdc.tsdms.dto.AssignmentCancelRequest;
 import com.kdc.tsdms.dto.AssignmentCreateRequest;
 import com.kdc.tsdms.dto.AssignmentFormOptions;
 import com.kdc.tsdms.dto.AssignmentResponse;
@@ -126,10 +128,16 @@ public class AssignmentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(service.create(req));
     }
 
+    /**
+     * HỦY phân công kể từ một ngày (bỏ trống ngày = từ hôm nay), bắt buộc kèm lý do.
+     *
+     * <p>Hủy KHÁC xóa: phiếu đã hủy vẫn nằm trong danh sách để tra cứu và bỏ hủy được; muốn nó
+     * biến khỏi danh sách thì dùng {@link #delete} (đưa vào thùng rác).
+     */
     @PostMapping("/{id}/cancel")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
-    public AssignmentResponse cancel(@PathVariable Integer id) {
-        return service.cancel(id);
+    public AssignmentResponse cancel(@PathVariable Integer id, @Valid @RequestBody AssignmentCancelRequest req) {
+        return service.cancel(id, req.effectiveDate(), req.reason());
     }
 
     /**
@@ -175,18 +183,18 @@ public class AssignmentController {
 
     @PostMapping("/bulk/cancel")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
-    public AssignmentBulkResult bulkCancel(@Valid @RequestBody AssignmentBulkRequest body) {
-        return service.bulkCancel(body.ids());
+    public AssignmentBulkResult bulkCancel(@Valid @RequestBody AssignmentBulkCancelRequest body) {
+        return service.bulkCancel(body.ids(), body.effectiveDate(), body.reason());
     }
 
-    /** Bỏ hủy: đưa phân công đã hủy về lại ACTIVE (khôi phục khi lỡ bấm Hủy). */
+    /** Bỏ hủy: đưa phân công đã hủy / đã kết thúc sớm về lại như trước khi hủy. */
     @PostMapping("/{id}/reactivate")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
     public AssignmentResponse reactivate(@PathVariable Integer id) {
         return service.reactivate(id);
     }
 
-    /** Xóa mềm phân công đã hủy (đưa vào thùng rác). */
+    /** XÓA: đưa phân công vào thùng rác (hủy trước nếu phiếu còn đang chạy). */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('ASSIGNMENT_MANAGE')")
     public ResponseEntity<Void> delete(@PathVariable Integer id) {

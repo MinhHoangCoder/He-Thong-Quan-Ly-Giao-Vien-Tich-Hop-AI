@@ -46,6 +46,7 @@ import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -90,6 +91,11 @@ public class AssignmentService {
 
     /** Giáo viên đang làm việc (khác RETIRED / SUSPENDED). */
     private static final String TEACHER_ACTIVE = "ACTIVE";
+
+    /** Buổi dạy đã bị hủy — hằng dùng lại ở cả hủy, bỏ hủy và xóa mềm. */
+    private static final String SCHEDULE_CANCELLED = "CANCELLED";
+
+    private static final DateTimeFormatter NGAY_VN = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
     private final AssignmentRepository assignmentRepo;
     private final AssignmentSlotRepository slotRepo;
@@ -1072,15 +1078,19 @@ public class AssignmentService {
     }
 
     /**
-     * Hủy nhiều phiếu một lượt (đưa vào thùng rác). Không dừng ở phiếu lỗi đầu tiên — lỗi từng
-     * phiếu gom lại trả về để người dùng biết cái nào không hủy được và vì sao.
+     * HỦY nhiều phiếu một lượt, cùng một ngày hiệu lực và cùng một lý do (đầu kỳ trung tâm rút
+     * giáo viên khỏi cả chục lớp một lúc). Không dừng ở phiếu lỗi đầu tiên — lỗi từng phiếu gom
+     * lại trả về để người dùng biết cái nào không hủy được và vì sao.
+     *
+     * <p>Từ V39 việc này KHÔNG còn đưa phiếu vào thùng rác: hủy và xóa là hai việc khác nhau
+     * (xem {@link #cancel} và {@link #softDelete}).
      */
-    public AssignmentBulkResult bulkCancel(List<Integer> ids) {
+    public AssignmentBulkResult bulkCancel(List<Integer> ids, LocalDate effectiveDate, String reason) {
         AssignmentBulkResult result = new AssignmentBulkResult();
         AssignmentService proxy = applicationContext.getBean(AssignmentService.class);
         for (Integer id : ids) {
             try {
-                proxy.softDelete(id); // qua proxy để mỗi phiếu là một giao dịch riêng
+                proxy.cancel(id, effectiveDate, reason); // qua proxy để mỗi phiếu là một giao dịch riêng
                 result.ok();
             } catch (ApiException e) {
                 result.fail(id, e.getMessage());
@@ -1100,57 +1110,136 @@ public class AssignmentService {
     }
 
     /**
-     * Trạng thái NHÌN THẤY của phiếu: phiếu chờ đã quá hạn hiện ngay là "Hết hạn" dù tác vụ nền
-     * chưa kịp ghi lại DB — màn hình không được nói dối trong lúc chờ job chạy.
+     * Trạng thái NHÌN THẤY của phiếu, tính tại chỗ từ dữ liệu chứ không đợi tác vụ nền ghi lại DB
+     * — màn hình không được nói dối trong lúc chờ job chạy:
+     *
+     * <ul>
+     *   <li>phiếu chờ đã quá hạn trả lời → "Hết hạn";
+     *   <li>phiếu đã bị dừng từ một ngày giữa chừng → "Kết thúc sớm" (dưới DB vẫn là ACTIVE vì
+     *       nó còn buổi phải dạy tới trước ngày ấy, xem {@link AssignmentStatus#TERMINATED}).
+     * </ul>
      */
     private static String effectiveStatus(Assignment a) {
-        return a.isExpiredPending() ? AssignmentStatus.EXPIRED : a.getStatus();
+        if (a.isExpiredPending()) {
+            return AssignmentStatus.EXPIRED;
+        }
+        return a.isTerminated() ? AssignmentStatus.TERMINATED : a.getStatus();
     }
 
-    /* ─────────────────────────── CANCEL ─────────────────────────── */
+    /* ─────────────────── HỦY (kể từ một ngày) ─────────────────── */
 
+    /**
+     * HỦY phân công KỂ TỪ ngày {@code effectiveDate} — ngày ĐẦU TIÊN giáo viên không dạy nữa.
+     * Bỏ trống ngày = hủy từ hôm nay. Lý do BẮT BUỘC vì nó được gửi thẳng vào chuông của giáo
+     * viên: hủy lịch của người khác mà không nói vì sao thì họ chỉ thấy buổi dạy biến mất.
+     *
+     * <p><b>Hai nhánh, khác nhau ở chỗ có buổi nào từng có hiệu lực hay không:</b>
+     *
+     * <ul>
+     *   <li><b>Hủy toàn bộ</b> — phiếu CHƯA TỪNG được xác nhận (không buổi nào có hiệu lực), hoặc
+     *       ngày hủy rơi vào/trước ngày bắt đầu (không buổi nào sống sót). Phiếu chuyển
+     *       {@code CANCELLED}, mọi buổi bị hủy kể cả buổi quá khứ.
+     *   <li><b>Kết thúc sớm</b> — phiếu đã chạy thật và ngày hủy nằm giữa giai đoạn. Buổi trước
+     *       ngày ấy GIỮ NGUYÊN (bằng chứng chấm công/lương), buổi từ ngày ấy trở đi bị hủy, và
+     *       {@code EndDate} bị THU HẸP về hôm trước ngày hủy.
+     * </ul>
+     *
+     * <p><b>Vì sao phải thu hẹp EndDate:</b> chính cặp StartDate/EndDate là thứ
+     * {@link TeacherTimeConflictChecker} dùng để nói "khung Thứ+Tiết này đã có người". Giữ mốc cũ
+     * thì hủy xong khung giờ VẪN bị coi là đang bị chiếm, và admin không xếp được giáo viên thay
+     * vào đúng lớp vừa trống — lỗi còn nặng hơn cái đang định sửa. Mốc gốc cất ở
+     * {@code originalEndDate} để {@link #reactivate} biết trả về đâu.
+     *
+     * <p><b>Buổi ĐANG DẠY DỞ được chừa lại</b>, thay cho hàng rào cũ chặn cứng cả thao tác: mốc
+     * cắt không bao giờ lùi về trước thời điểm hiện tại, nên buổi đã bắt đầu — kể cả buổi vừa dạy
+     * xong sáng nay đã có chấm công — không bị đụng tới. Nhờ vậy admin xử lý được ca gấp ngay
+     * giữa buổi mà người đang đứng lớp vẫn khép sổ và vẫn được tính công bình thường.
+     */
     @Transactional
-    public AssignmentResponse cancel(Integer id) {
+    public AssignmentResponse cancel(Integer id, LocalDate effectiveDate, String reason) {
         Assignment a = getOrThrow(id);
-        // Giáo viên đang đứng lớp thì KHÔNG hủy. Hủy giữa tiết để lại một dòng chấm công không
-        // bao giờ khép được: người dạy bấm check-out thì buổi đã bị đánh CANCELLED nên hệ thống
-        // từ chối, và cuối tháng buổi ấy biến mất khỏi phiếu lương của người đã dạy thật. Đợi
-        // hết tiết rồi hủy thì buổi đó khép sổ bình thường, các buổi còn lại vẫn hủy được.
-        if (attendanceRepo.countDangDayDoTheoPhanCong(id) > 0) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Giáo viên đang trong tiết dạy của phân công này (đã điểm danh vào, chưa điểm danh ra). "
-                            + "Vui lòng đợi buổi dạy kết thúc rồi hủy.");
+        String lyDo = reason == null ? "" : reason.trim();
+        if (lyDo.isEmpty()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng nhập lý do hủy phân công.");
         }
+        LocalDate homNay = BusinessTime.today();
+        LocalDate tuNgay = effectiveDate != null ? effectiveDate : homNay;
+        if (tuNgay.isBefore(homNay)) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Ngày hủy không được nằm trong quá khứ — buổi đã dạy phải giữ nguyên để không mất "
+                            + "chấm công và lương của giáo viên.");
+        }
+        if (a.getEndDate() != null && tuNgay.isAfter(a.getEndDate())) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Phân công này kết thúc ngày " + a.getEndDate().format(NGAY_VN) + " nên hủy từ "
+                            + tuNgay.format(NGAY_VN) + " thì không còn buổi nào để hủy.");
+        }
+
         Integer userId = SecurityUtils.currentUserId();
-        // Phiếu CHƯA từng được xác nhận thì không buổi nào có hiệu lực → hủy sạch, kể cả buổi
-        // quá khứ. Chỉ phiếu đã chạy mới phải giữ buổi đã dạy để không mất chấm công/lương.
-        boolean neverConfirmed = a.getConfirmedAt() == null;
-        a.setStatus(AssignmentStatus.CANCELLED);
+        // Phiếu CHƯA từng được xác nhận thì không buổi nào có hiệu lực → hủy sạch, kể cả buổi quá
+        // khứ. Chỉ phiếu đã chạy mới phải giữ buổi đã dạy để không mất chấm công/lương.
+        boolean huyToanBo = a.getConfirmedAt() == null || !tuNgay.isAfter(a.getStartDate());
+        if (huyToanBo) {
+            tuNgay = a.getStartDate();
+        }
+
+        LocalDateTime bayGio = BusinessTime.now();
+        LocalDateTime dauNgayHuy = tuNgay.atStartOfDay();
+        LocalDateTime mocCat = dauNgayHuy.isAfter(bayGio) ? dauNgayHuy : bayGio;
+        int soBuoiHuy = 0;
+        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
+            if (SCHEDULE_CANCELLED.equals(s.getStatus())) {
+                continue;
+            }
+            if (!huyToanBo && s.getStartTime().isBefore(mocCat)) {
+                continue; // buổi đã dạy xong hoặc đang dạy dở — giữ nguyên
+            }
+            s.setUpdatedBy(userId); // trigger TR_Schedule_StatusLog đọc cột này
+            s.setStatus(SCHEDULE_CANCELLED);
+            s.setUpdatedAt(Instant.now());
+            scheduleRepo.save(s);
+            soBuoiHuy++;
+        }
+
+        // Chỉ ghi mốc gốc ở lần thu hẹp ĐẦU TIÊN: hủy lần hai (vd dời ngày hủy sớm hơn nữa) mà ghi
+        // đè thì "Bỏ hủy" trả EndDate về đúng mốc đã bị thu hẹp, mất hẳn phần đuôi của phiếu.
+        if (a.getOriginalEndDate() == null) {
+            a.setOriginalEndDate(a.getEndDate());
+        }
+        a.setCancelEffectiveDate(tuNgay);
+        a.setCancelReason(lyDo);
+        a.setCancelledAt(Instant.now());
+        a.setCancelledByUserId(userId);
+        if (huyToanBo) {
+            a.setStatus(AssignmentStatus.CANCELLED);
+        } else {
+            a.setEndDate(tuNgay.minusDays(1)); // nhả khung giờ ra cho người xếp lịch thay
+        }
         a.setUpdatedAt(Instant.now());
         a.setUpdatedBy(userId);
         assignmentRepo.save(a);
-        LocalDateTime now = BusinessTime.now();
-        for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
-            if (!"CANCELLED".equals(s.getStatus())
-                    && (neverConfirmed || s.getStartTime().isAfter(now))) {
-                s.setUpdatedBy(userId);
-                s.setStatus("CANCELLED");
-                s.setUpdatedAt(Instant.now());
-                scheduleRepo.save(s);
-            }
-        }
+
         // Đóng lời mời còn treo trong chuông của giáo viên. Thiếu bước này thì admin hủy phiếu
         // xong giáo viên VẪN thấy nút "Xác nhận" cho một phân công không còn tồn tại — bấm vào
         // chỉ nhận lỗi, và tệ hơn là họ tưởng mình vẫn phải đi dạy buổi đó.
         approvalService.closeOpenInvites(id, "CANCELLED");
+        // ...rồi BÁO cho giáo viên. Bản cũ chỉ tắt nút bấm mà không nói gì: màn giáo viên chỉ hiện
+        // buổi APPROVED nên các buổi bị hủy lặng lẽ biến mất khỏi lịch, hôm sau người ta vẫn tới
+        // trường dạy một lớp đã giao cho người khác.
+        approvalService.notifyTeacherCancelled(a, tuNgay, lyDo, soBuoiHuy, huyToanBo);
         return toResponse(a);
     }
 
     /**
-     * BỎ HỦY: khôi phục phân công ĐÃ HỦY (khi lỡ bấm Hủy). Đảo ngược {@link #cancel(Integer)}.
-     * Trước khi bật lại phải DÒ TRÙNG LỊCH: khung Thứ+Tiết có thể đã bị phiếu khác chiếm mất
-     * trong lúc nó đang bị hủy.
+     * BỎ HỦY: khôi phục phân công đã hủy hoặc đã kết thúc sớm (khi lỡ bấm Hủy, hoặc giáo viên xin
+     * nghỉ rồi lại đi dạy được). Đảo ngược {@link #cancel(Integer, LocalDate, String)}: trả
+     * {@code EndDate} về mốc gốc, xóa dấu vết hủy, bật lại các buổi đã bị lần hủy đó tắt.
+     *
+     * <p>Trước khi bật lại phải DÒ TRÙNG LỊCH trên GIAI ĐOẠN ĐẦY ĐỦ sắp khôi phục (tới mốc gốc,
+     * không phải mốc đã bị thu hẹp): khung Thứ+Tiết có thể đã bị phiếu khác chiếm mất đúng ở phần
+     * đuôi vừa được nhả ra.
      *
      * <p>Phiếu về đúng chỗ trước khi hủy: từng được xác nhận thì về ACTIVE (buổi lên APPROVED),
      * chưa xác nhận thì về CHỜ XÁC NHẬN (buổi giữ PENDING) — không cho lịch chưa ai đồng ý chạy.
@@ -1158,9 +1247,16 @@ public class AssignmentService {
     @Transactional
     public AssignmentResponse reactivate(Integer id) {
         Assignment a = getOrThrow(id);
-        if (!AssignmentStatus.CANCELLED.equals(a.getStatus())) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy.");
+        if (!AssignmentStatus.CANCELLED.equals(a.getStatus()) && !a.isTerminated()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chỉ khôi phục được phân công đã hủy hoặc đã kết thúc sớm.");
         }
+        // Mốc gốc trước khi bị thu hẹp; phiếu cũ (hủy trước V39) không có mốc này thì giữ nguyên.
+        LocalDate ngayKetThucGoc = a.getOriginalEndDate() != null ? a.getOriginalEndDate() : a.getEndDate();
+        // Buổi nào bị CHÍNH lần hủy đó tắt: từ ngày hiệu lực trở đi. Phiếu cũ không có mốc thì
+        // xét từ ngày bắt đầu (đúng như hành vi trước đây).
+        LocalDate tuNgayHuy = a.getCancelEffectiveDate() != null ? a.getCancelEffectiveDate() : a.getStartDate();
+
+        Map<Integer, Integer> truongCuaO = new HashMap<>();
         for (AssignmentSlot slot : slotRepo.findByAssignmentIdAndDeletedFalse(id)) {
             Period p = periodRepo
                     .findById(slot.getPeriodId())
@@ -1168,33 +1264,55 @@ public class AssignmentService {
                             HttpStatus.CONFLICT, "Không thể khôi phục — tiết của phân công không còn tồn tại."));
             // Cùng luật trùng giờ với lúc tạo mới (so giờ thật, mọi trường), nhưng bỏ qua
             // chính phân công đang khôi phục.
-            checkTeacherTimeConflict(a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), id);
-            // Và soát cả phía LỚP. Lúc phiếu nằm trong thùng rác, ô lịch của nó bị xóa mềm nên
-            // khung giờ được nhả ra — lớp hoàn toàn có thể đã được giao cho giáo viên khác.
-            // Chỉ hỏi "giáo viên này có bận không" thì khôi phục xong lớp có hai giáo viên
-            // cùng một tiết, cả hai đều sinh buổi dạy và đều được tính công.
+            checkTeacherTimeConflict(a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), ngayKetThucGoc, id);
+            // Và soát cả phía LỚP. Lúc phiếu bị hủy, khung giờ của nó được nhả ra — lớp hoàn toàn
+            // có thể đã được giao cho giáo viên khác. Chỉ hỏi "giáo viên này có bận không" thì
+            // khôi phục xong lớp có hai giáo viên cùng một tiết, cả hai đều sinh buổi dạy và đều
+            // được tính công.
             conflictChecker.checkClass(
-                    slot.getClassId(), a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), a.getEndDate(), id);
+                    slot.getClassId(), a.getTeacherId(), slot.getDayOfWeek(), p, a.getStartDate(), ngayKetThucGoc, id);
+            truongCuaO.put(slot.getId(), slot.getSchoolId() != null ? slot.getSchoolId() : a.getSchoolId());
         }
+
         Integer userId = SecurityUtils.currentUserId();
         boolean wasConfirmed = a.getConfirmedAt() != null;
         a.setStatus(wasConfirmed ? AssignmentStatus.ACTIVE : AssignmentStatus.PENDING);
+        a.setEndDate(ngayKetThucGoc);
+        a.setOriginalEndDate(null);
+        a.setCancelEffectiveDate(null);
+        a.setCancelReason(null);
+        a.setCancelledAt(null);
+        a.setCancelledByUserId(null);
         if (!wasConfirmed) {
             a.setConfirmDeadline(computeConfirmDeadline(id)); // hạn trả lời tính lại từ bây giờ
         }
         a.setUpdatedAt(Instant.now());
         a.setUpdatedBy(userId);
         assignmentRepo.save(a);
-        // Đưa lại các buổi đã bị hủy theo phân công (đảo ngược cancel()) — về APPROVED nếu
-        // phiếu đã được xác nhận, ngược lại chỉ về PENDING chờ giáo viên đồng ý.
+
+        // Đưa lại các buổi đã bị hủy theo phân công (đảo ngược cancel()) — về APPROVED nếu phiếu
+        // đã được xác nhận, ngược lại chỉ về PENDING chờ giáo viên đồng ý.
+        //
+        // HAI HÀNG RÀO, đều để không hồi sinh nhầm buổi thuộc về một quyết định khác:
+        //   · chỉ buổi TỪ ngày hiệu lực trở đi — buổi trước đó bị hủy vì lý do khác (vd đúng vào
+        //     kỳ nghỉ) thì không liên quan gì đến lần hủy này;
+        //   · và bỏ qua NGÀY NGHỈ. Bật lại một buổi rơi vào ngày lễ là dựng lại đúng buổi "ma" mà
+        //     V29 sinh ra để chặn: AttendanceSweepService quét buổi đã qua không ai chấm rồi tự
+        //     ghi VẮNG, trừ thẳng vào lương của người không hề được gọi đi dạy.
         String restored = wasConfirmed ? "APPROVED" : "PENDING";
+        HolidayCalendar holidays = loadHolidays(tuNgayHuy, ngayKetThucGoc != null ? ngayKetThucGoc : tuNgayHuy);
         for (Schedule s : scheduleRepo.findByAssignmentIdAndDeletedFalse(id)) {
-            if ("CANCELLED".equals(s.getStatus())) {
-                s.setUpdatedBy(userId);
-                s.setStatus(restored);
-                s.setUpdatedAt(Instant.now());
-                scheduleRepo.save(s);
+            if (!SCHEDULE_CANCELLED.equals(s.getStatus())) {
+                continue;
             }
+            LocalDate ngay = s.getStartTime().toLocalDate();
+            if (ngay.isBefore(tuNgayHuy) || holidays.isOff(ngay, truongCuaO.get(s.getSourceSlotId()))) {
+                continue;
+            }
+            s.setUpdatedBy(userId);
+            s.setStatus(restored);
+            s.setUpdatedAt(Instant.now());
+            scheduleRepo.save(s);
         }
         return toResponse(a);
     }
@@ -1228,8 +1346,9 @@ public class AssignmentService {
     public void softDelete(Integer id) {
         Assignment a = getOrThrow(id);
         // Phiếu còn "sống" (đang dạy HOẶC đang chờ xác nhận) phải hủy trước khi vào thùng rác.
+        // Hiệu lực NGAY: người bấm Xóa muốn phiếu biến khỏi danh sách chứ không phải hẹn ngày.
         if (AssignmentStatus.ACTIVE.equals(a.getStatus()) || AssignmentStatus.PENDING.equals(a.getStatus())) {
-            cancel(id); // hủy trước: đổi CANCELLED + hủy các buổi tương lai
+            cancel(id, BusinessTime.today(), "Phiếu bị xóa khỏi danh sách phân công.");
         }
         Integer userId = SecurityUtils.currentUserId();
         Instant now = Instant.now();
@@ -1307,9 +1426,10 @@ public class AssignmentService {
                 scheduleRepo.save(s);
             }
         }
-        // Bỏ hủy → Đang chạy (nếu đang CANCELLED). Dò trùng lịch bên trong reactivate; nếu
-        // đụng lịch sẽ ném lỗi và rollback cả thao tác bỏ cờ deleted ở trên.
-        if ("CANCELLED".equals(a.getStatus())) {
+        // Bỏ hủy → Đang chạy (phiếu đã hủy hẳn, hoặc mới bị kết thúc sớm nên dưới DB vẫn ACTIVE).
+        // Dò trùng lịch bên trong reactivate; nếu đụng lịch sẽ ném lỗi và rollback cả thao tác bỏ
+        // cờ deleted ở trên.
+        if (AssignmentStatus.CANCELLED.equals(a.getStatus()) || a.isTerminated()) {
             return reactivate(id);
         }
         return toResponse(a);

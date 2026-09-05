@@ -16,6 +16,7 @@ import { scheduleApi } from '@/api/schedules'
 import { tietLabel, periodRows } from '@/utils/period'
 import SvgIcon from '@/components/ui/SvgIcon.vue'
 import Pagination from '@/components/ui/Pagination.vue'
+import LeaveRequestModal from '@/components/LeaveRequestModal.vue'
 
 const DOW_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'] // index 0 = Thứ 2, cuối là Chủ nhật
 
@@ -308,6 +309,15 @@ onMounted(() => {
   loadToday()
 })
 onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
+
+/* ── Xin nghỉ dạy (V39) ──
+   Đặt ở ĐÂY chứ không ở trang khác: giáo viên nhìn thấy lịch của mình rồi mới quyết định xin
+   nghỉ buổi/giai đoạn nào. Đơn gửi xong lịch chưa đổi gì — phải đợi trung tâm duyệt — nên
+   không cần tải lại dữ liệu trang. */
+const leaveOpen = ref(false)
+function onLeaveSent() {
+  window.alert('Đã gửi đơn xin nghỉ. Lịch dạy giữ nguyên cho tới khi trung tâm duyệt đơn.')
+}
 </script>
 
 <template>
@@ -321,6 +331,13 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
           <button :class="{ on: view === 'week' }" @click="setView('week')">Tuần</button>
           <button :class="{ on: view === 'month' }" @click="setView('month')">Tháng</button>
         </div>
+        <button
+          class="btn btn-outline"
+          title="Gửi đơn xin nghỉ dạy tới trung tâm"
+          @click="leaveOpen = true"
+        >
+          Xin nghỉ dạy
+        </button>
         <button class="btn btn-primary btn-print" @click="printSchedule">
           <SvgIcon name="payroll" :size="16" /> In / Xuất PDF
         </button>
@@ -505,6 +522,8 @@ onBeforeUnmount(() => document.body.classList.remove('tsched-printing'))
         <Pagination v-model="detailPage" :total-pages="detailTotalPages" class="tsched__noprint" />
       </div>
     </div>
+
+    <LeaveRequestModal v-if="leaveOpen" @close="leaveOpen = false" @sent="onLeaveSent" />
   </div>
 </template>
 

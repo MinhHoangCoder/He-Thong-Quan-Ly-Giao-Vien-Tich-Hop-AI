@@ -46,27 +46,6 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
     long countByStatusAndWorkDateBetween(String status, LocalDate from, LocalDate to);
 
     /**
-     * Buổi của một phân công mà giáo viên ĐANG DẠY DỞ: đã check-in, chưa check-out.
-     *
-     * <p>Chặn hủy phiếu ngay giữa tiết. Hủy lúc này để lại một dòng chấm công không bao giờ
-     * khép được — giáo viên đang đứng lớp, bấm check-out thì buổi dạy đã bị đánh CANCELLED nên
-     * hệ thống không nhận, và cuối tháng buổi ấy biến mất khỏi phiếu lương của người đã dạy
-     * thật. Đợi hết tiết rồi hủy thì buổi đó khép sổ bình thường, các buổi sau vẫn hủy được.
-     *
-     * <p>Không lọc theo ngày: một dòng check-in bỏ quên từ hôm trước cũng là "chưa khép", và
-     * bỏ qua nó là mở lại đúng cái lỗ vừa bịt.
-     */
-    @Query(value = """
-                    SELECT COUNT(*)
-                    FROM Attendance a
-                    JOIN Schedule s ON s.Id = a.ScheduleId
-                    WHERE s.AssignmentId = :assignmentId
-                      AND a.CheckIn IS NOT NULL
-                      AND a.CheckOut IS NULL
-                    """, nativeQuery = true)
-    long countDangDayDoTheoPhanCong(@Param("assignmentId") Integer assignmentId);
-
-    /**
      * MỌI dòng chấm công gắn với các buổi của một phân công, không lọc trạng thái gì cả.
      *
      * <p>Dùng làm rào chắn cho {@code AssignmentService.update} — luồng đó XÓA CỨNG toàn bộ

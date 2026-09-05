@@ -1,6 +1,7 @@
 package com.kdc.tsdms.dto;
 
 import com.kdc.tsdms.entity.Assignment;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -39,8 +40,19 @@ public class AssignmentResponse {
     public LocalDate startDate;
     public LocalDate endDate;
 
-    /** PENDING | ACTIVE | REJECTED | EXPIRED | COMPLETED | CANCELLED. */
+    /** PENDING | ACTIVE | REJECTED | EXPIRED | COMPLETED | CANCELLED | TERMINATED (kết thúc sớm). */
     public String status;
+
+    // ── Dấu vết hủy (V39) ────────────────────────────────────────────────
+    /** Ngày đầu tiên GV không dạy nữa; null = phiếu chưa từng bị hủy. */
+    public LocalDate cancelEffectiveDate;
+
+    /** Ngày kết thúc GỐC trước khi bị thu hẹp — để màn hình nói "đáng lẽ đến …". */
+    public LocalDate originalEndDate;
+
+    public String cancelReason;
+
+    public Instant cancelledAt;
 
     // ── Luồng xác nhận của giáo viên (V17) ───────────────────────────────
     /** Hạn giáo viên phải trả lời; null với phiếu cũ tạo trước khi có luồng xác nhận. */
@@ -116,6 +128,10 @@ public class AssignmentResponse {
         r.confirmSource = a.getConfirmSource();
         r.rejectionReason = a.getRejectionReason();
         r.approvalNote = a.getApprovalNote();
+        r.cancelEffectiveDate = a.getCancelEffectiveDate();
+        r.originalEndDate = a.getOriginalEndDate();
+        r.cancelReason = a.getCancelReason();
+        r.cancelledAt = a.getCancelledAt();
         r.slots = slots;
         return r;
     }

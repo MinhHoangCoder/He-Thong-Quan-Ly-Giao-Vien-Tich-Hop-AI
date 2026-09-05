@@ -7,6 +7,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -83,6 +84,37 @@ public class Assignment extends SoftDeletableEntity {
     @Column(name = "ApprovalNote")
     private String approvalNote;
 
+    /* ── Dấu vết HỦY có ngày hiệu lực (V39) ── */
+
+    /**
+     * Ngày ĐẦU TIÊN giáo viên không dạy nữa. Buổi trước ngày này giữ nguyên (bằng chứng chấm
+     * công/lương), buổi từ ngày này trở đi bị hủy. null = phiếu chưa từng bị hủy.
+     */
+    @Column(name = "CancelEffectiveDate")
+    private LocalDate cancelEffectiveDate;
+
+    /**
+     * {@link #endDate} TRƯỚC khi bị thu hẹp về {@code cancelEffectiveDate - 1}.
+     *
+     * <p>Phải thu hẹp EndDate vì chính cặp StartDate/EndDate là thứ luật chống trùng lịch dùng
+     * để nói "khung Thứ+Tiết này đã có người" — để nguyên mốc cũ thì hủy xong khung giờ vẫn bị
+     * coi là đang bị chiếm và admin không xếp được giáo viên thay vào lớp đó. Cột này giữ mốc
+     * gốc để "Bỏ hủy" biết trả EndDate về đâu.
+     */
+    @Column(name = "OriginalEndDate")
+    private LocalDate originalEndDate;
+
+    /** Lý do hủy — bắt buộc nhập, hiện nguyên văn trong thông báo gửi giáo viên. */
+    @Column(name = "CancelReason")
+    private String cancelReason;
+
+    @Column(name = "CancelledAt")
+    private Instant cancelledAt;
+
+    /** Tài khoản bấm hủy (→ AppUser). */
+    @Column(name = "CancelledByUserId")
+    private Integer cancelledByUserId;
+
     /**
      * Phiếu đang chờ mà ĐÃ quá hạn — tính tại chỗ, không đợi tác vụ nền chạy. Nhờ vậy dù
      * backend vừa khởi động lại hay job lỡ nhịp thì màn hình và luật giữ chỗ vẫn đúng.
@@ -101,5 +133,14 @@ public class Assignment extends SoftDeletableEntity {
     public boolean holdsTimeSlot() {
         return AssignmentStatus.ACTIVE.equals(status)
                 || (AssignmentStatus.PENDING.equals(status) && !isExpiredPending());
+    }
+
+    /**
+     * Phiếu bị KẾT THÚC SỚM: còn buổi phải dạy tới trước ngày hiệu lực nên trạng thái dưới DB
+     * vẫn là ACTIVE, nhưng đã có mốc dừng. Màn hình hiện nhãn riêng cho loại này thay vì "Đang
+     * dạy" — người xếp lịch phải thấy ngay là lớp sắp trống người.
+     */
+    public boolean isTerminated() {
+        return cancelEffectiveDate != null && AssignmentStatus.ACTIVE.equals(status);
     }
 }

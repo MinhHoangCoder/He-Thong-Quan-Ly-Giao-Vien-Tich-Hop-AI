@@ -469,7 +469,7 @@ public class DashboardQueryRepository {
                     a.Id,
                     giaoVien = t.LastName + N' ' + t.FirstName,
                     mon      = sj.Name,
-                    a.StartDate, a.EndDate, a.Status,
+                    a.StartDate, a.EndDate, a.Status, a.CancelEffectiveDate,
                     truong   = STUFF((
                                 SELECT DISTINCT N', ' + sc3.Name
                                 FROM AssignmentSlot s3
@@ -492,7 +492,10 @@ public class DashboardQueryRepository {
             LocalDate batDau = rs.getDate("StartDate").toLocalDate();
             LocalDate ketThuc =
                     rs.getDate("EndDate") == null ? null : rs.getDate("EndDate").toLocalDate();
-            String[] trangThai = nhanTrangThaiPhanCong(rs.getString("Status"), batDau, ketThuc);
+            LocalDate dungTuNgay = rs.getDate("CancelEffectiveDate") == null
+                    ? null
+                    : rs.getDate("CancelEffectiveDate").toLocalDate();
+            String[] trangThai = nhanTrangThaiPhanCong(rs.getString("Status"), batDau, ketThuc, dungTuNgay);
             return new DongPhanCong(
                     rs.getInt("Id"),
                     rs.getString("giaoVien"),
@@ -513,11 +516,21 @@ public class DashboardQueryRepository {
         return phan.length <= 2 ? danhSach : phan[0] + " +" + (phan.length - 1);
     }
 
-    /** Trạng thái hiển thị của phân công: mã màu + nhãn tiếng Việt. */
-    private static String[] nhanTrangThaiPhanCong(String status, LocalDate batDau, LocalDate ketThuc) {
+    /**
+     * Trạng thái hiển thị của phân công: mã màu + nhãn tiếng Việt.
+     *
+     * <p>{@code dungTuNgay} = {@code Assignment.CancelEffectiveDate} (V39). Phiếu bị dừng giữa kỳ
+     * vẫn mang Status = ACTIVE dưới DB nên nếu chỉ nhìn Status thì dashboard nói "Đang dạy" trong
+     * khi màn Phân công nói "Kết thúc sớm" — hai màn hình cãi nhau về cùng một phiếu.
+     */
+    private static String[] nhanTrangThaiPhanCong(
+            String status, LocalDate batDau, LocalDate ketThuc, LocalDate dungTuNgay) {
         LocalDate homNay = com.kdc.tsdms.common.BusinessTime.today();
         if ("CANCELLED".equals(status)) {
             return new String[] {"no", "Đã huỷ"};
+        }
+        if (dungTuNgay != null) {
+            return new String[] {"no", "Kết thúc sớm"};
         }
         if ("COMPLETED".equals(status)) {
             return new String[] {"done", "Đã hoàn thành"};

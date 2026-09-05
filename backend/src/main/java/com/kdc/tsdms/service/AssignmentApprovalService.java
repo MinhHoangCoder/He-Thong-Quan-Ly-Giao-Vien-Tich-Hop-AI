@@ -5,7 +5,6 @@ import com.kdc.tsdms.dto.AssignmentBulkResult;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.AssignmentStatus;
-import com.kdc.tsdms.entity.Notification;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -14,7 +13,6 @@ import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
-import com.kdc.tsdms.repository.NotificationRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
@@ -59,7 +57,6 @@ public class AssignmentApprovalService {
     private final AssignmentRepository assignmentRepo;
     private final AssignmentSlotRepository slotRepo;
     private final ScheduleRepository scheduleRepo;
-    private final NotificationRepository notificationRepo;
     private final TeacherRepository teacherRepo;
     private final SchoolRepository schoolRepo;
     private final SubjectRepository subjectRepo;
@@ -72,7 +69,6 @@ public class AssignmentApprovalService {
             AssignmentRepository assignmentRepo,
             AssignmentSlotRepository slotRepo,
             ScheduleRepository scheduleRepo,
-            NotificationRepository notificationRepo,
             TeacherRepository teacherRepo,
             SchoolRepository schoolRepo,
             SubjectRepository subjectRepo,
@@ -83,7 +79,6 @@ public class AssignmentApprovalService {
         this.assignmentRepo = assignmentRepo;
         this.slotRepo = slotRepo;
         this.scheduleRepo = scheduleRepo;
-        this.notificationRepo = notificationRepo;
         this.teacherRepo = teacherRepo;
         this.schoolRepo = schoolRepo;
         this.subjectRepo = subjectRepo;
@@ -358,16 +353,68 @@ public class AssignmentApprovalService {
      * chuông của giáo viên không còn nút bấm cho việc đã xong.
      */
     public void closeOpenInvites(Integer assignmentId, String actionStatus) {
-        List<Notification> open = notificationRepo.findByRefEntityAndRefIdAndActionStatus(
-                "Assignment", assignmentId.longValue(), "PENDING");
-        for (Notification n : open) {
-            n.setActionStatus(actionStatus);
-            if (!n.isRead()) {
-                n.setRead(true);
-                n.setReadAt(Instant.now());
-            }
-            notificationRepo.save(n);
-        }
+        notificationService.closePendingActions("Assignment", assignmentId.longValue(), actionStatus);
+    }
+
+    /* ═══════════ Báo cho GIÁO VIÊN khi lịch bị hủy / đơn xin nghỉ được quyết ═══════════ */
+
+    /**
+     * Báo cho giáo viên biết phân công của mình vừa bị dừng: từ ngày nào, mất bao nhiêu buổi và
+     * VÌ SAO.
+     *
+     * <p>Bản trước V39 chỉ tắt nút "Xác nhận" trong chuông rồi thôi. Mà lịch dạy của màn giáo viên
+     * chỉ hiện buổi APPROVED, nên buổi bị hủy lặng lẽ biến mất — người ta không có cách nào biết
+     * mình vừa bị cắt lịch, hôm sau vẫn tới trường dạy một lớp đã giao cho người khác.
+     */
+    public void notifyTeacherCancelled(
+            Assignment a, LocalDate effectiveDate, String reason, int cancelledCount, boolean huyToanBo) {
+        String noiDung = huyToanBo
+                ? "Toàn bộ " + describe(a) + " đã bị hủy."
+                : describe(a) + " dừng từ ngày " + fmtDate(effectiveDate)
+                        + ". Các buổi TRƯỚC ngày này thầy/cô vẫn dạy và vẫn được tính công.";
+        notificationService.publishToTeacher(
+                a.getTeacherId(),
+                huyToanBo ? "Phân công của bạn đã bị hủy" : "Lịch dạy của bạn kết thúc sớm",
+                noiDung + " " + cancelledCount + " buổi đã bị hủy. Lý do: " + reason,
+                "ASSIGNMENT",
+                "Assignment",
+                a.getId().longValue(),
+                false);
+    }
+
+    /** Báo cho giáo viên kết quả đơn xin nghỉ của mình (duyệt hay từ chối, kèm ghi chú của admin). */
+    public void notifyTeacherLeaveDecision(Assignment a, LocalDate effectiveDate, boolean approved, String note) {
+        String noiDung = approved
+                ? "Đơn xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
+                        + " đã được duyệt. Lịch dạy của thầy/cô dừng từ ngày này."
+                : "Đơn xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
+                        + " KHÔNG được duyệt — thầy/cô vẫn dạy theo lịch cũ.";
+        notificationService.publishToTeacher(
+                a.getTeacherId(),
+                approved ? "Đơn xin nghỉ đã được duyệt" : "Đơn xin nghỉ bị từ chối",
+                note == null || note.isBlank() ? noiDung : noiDung + " Ghi chú: " + note,
+                "ASSIGNMENT",
+                "Assignment",
+                a.getId().longValue(),
+                false);
+    }
+
+    /**
+     * Báo cho người phụ trách phân công rằng có đơn xin nghỉ mới, KÈM NÚT Duyệt/Từ chối ngay trên
+     * chuông — đơn nằm im chờ ai đó nhớ mở màn hình ra xem thì giáo viên không biết bao giờ mới có
+     * câu trả lời.
+     */
+    public void notifyAdminsLeaveRequested(
+            Assignment a, Integer leaveRequestId, LocalDate effectiveDate, String reason) {
+        notificationService.publishToPermission(
+                "ASSIGNMENT_MANAGE",
+                "Giáo viên xin nghỉ dạy",
+                teacherName(a.getTeacherId()) + " xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
+                        + ". Lý do: " + reason,
+                "ASSIGNMENT",
+                "AssignmentLeaveRequest",
+                leaveRequestId.longValue(),
+                true);
     }
 
     /** Duyệt phiếu: phiếu ACTIVE + mọi buổi chưa duyệt lên APPROVED (gồm cả buổi đã qua). */
