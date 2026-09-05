@@ -25,6 +25,7 @@ const STATUS_LABEL = {
   EXPIRED: 'Hết hạn',
   COMPLETED: 'Hoàn thành',
   CANCELLED: 'Đã hủy',
+  TERMINATED: 'Kết thúc sớm',
 }
 /* Tab lọc theo trạng thái — thứ tự theo mức độ cần xử lý, việc gấp nhất đứng trước. */
 const STATUS_TABS = [
@@ -33,8 +34,11 @@ const STATUS_TABS = [
   { code: 'EXPIRED', label: 'Hết hạn' },
   { code: 'REJECTED', label: 'Bị từ chối' },
   { code: 'ACTIVE', label: 'Đang dạy' },
+  { code: 'TERMINATED', label: 'Kết thúc sớm' },
   { code: 'CANCELLED', label: 'Đã hủy' },
 ]
+/* Phiếu đã bị dừng (hủy hẳn hoặc kết thúc sớm) — bỏ hủy được, và xóa được. */
+const DA_DUNG = ['CANCELLED', 'TERMINATED']
 /* Còn dưới ngần này tiếng là "sắp hết hạn" → tô vàng, nhắc admin xử lý trước khi phiếu chết. */
 const DEADLINE_WARN_HOURS = 12
 
@@ -69,7 +73,12 @@ const pagedItems = computed(() => {
   return trashItems.value.slice(start, start + PAGE_SIZE)
 })
 
-const cancelTarget = ref(null) // Hủy → đưa vào thùng rác
+/* Modal HỦY dùng chung cho một phiếu và cho hàng loạt: ids nào, hủy từ ngày nào, vì sao.
+   Gộp làm một vì hai đường hỏi đúng ba thứ giống hệt nhau. */
+const cancelForm = ref(null)
+const cancelBusy = ref(false)
+/* Modal XÓA (đưa vào thùng rác) — tách hẳn khỏi Hủy từ V39. */
+const deleteTarget = ref(null)
 
 /**
  * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
@@ -202,8 +211,11 @@ function deadlineFull(a) {
 
 /* ── Tích chọn + thao tác hàng loạt ── */
 
+/* Chọn được để thao tác hàng loạt. Có cả ĐANG DẠY vì hủy hàng loạt chính là lúc cần nhất:
+   một giáo viên nghỉ việc là rút khỏi cả chục lớp cùng lúc. Nhắc / ép duyệt trên phiếu không
+   hợp lệ thì server trả lỗi theo TỪNG phiếu, không làm hỏng cả lượt. */
 const actionableItems = computed(() =>
-  pagedItems.value.filter((a) => ['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)),
+  pagedItems.value.filter((a) => ['PENDING', 'EXPIRED', 'REJECTED', 'ACTIVE'].includes(a.status)),
 )
 const allSelected = computed(
   () =>
@@ -213,7 +225,7 @@ function toggleAll() {
   selectedIds.value = allSelected.value ? [] : actionableItems.value.map((a) => a.id)
 }
 function isSelectable(a) {
-  return ['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)
+  return ['PENDING', 'EXPIRED', 'REJECTED', 'ACTIVE'].includes(a.status)
 }
 
 const bulkBusy = ref(false)
@@ -261,18 +273,92 @@ async function confirmForceApprove() {
   }
 }
 
-/* Hủy phân công = đưa thẳng vào thùng rác (một thao tác). */
-async function confirmCancel() {
-  if (!cancelTarget.value) return
-  try {
-    await assignmentApi.remove(cancelTarget.value.id)
-    cancelTarget.value = null
-    load()
-  } catch (e) {
-    alert(e.response?.data?.message ?? 'Hủy thất bại')
-    cancelTarget.value = null
+/* ── Hủy / Bỏ hủy / Xóa ──
+   Từ V39 HỦY và XÓA là hai việc khác nhau: hủy = dừng dạy kể từ một ngày, phiếu VẪN nằm
+   trong danh sách để tra cứu và bỏ hủy được; xóa = đưa vào thùng rác. */
+
+/** Hôm nay dạng yyyy-MM-dd cho ô <input type="date">. */
+function todayIso() {
+  const d = new Date()
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+function openCancelOne(a) {
+  cancelForm.value = {
+    ids: [a.id],
+    label: `phân công của ${a.teacherName} tại ${a.schoolName}`,
+    // Phiếu đã có ngày dừng thì điền sẵn ngày đó — bấm lại là để DỜI ngày, không phải nhập lại từ đầu.
+    effectiveDate: a.cancelEffectiveDate || todayIso(),
+    reason: a.cancelReason || '',
   }
 }
+
+function openCancelBulk() {
+  if (!selectedIds.value.length) return
+  cancelForm.value = {
+    ids: [...selectedIds.value],
+    label: `${selectedIds.value.length} phiếu đã chọn`,
+    effectiveDate: todayIso(),
+    reason: '',
+  }
+}
+
+async function submitCancel() {
+  const f = cancelForm.value
+  if (!f || cancelBusy.value) return
+  const reason = f.reason.trim()
+  if (!reason) {
+    alert('Vui lòng nhập lý do hủy — lý do này được gửi vào thông báo của giáo viên.')
+    return
+  }
+  cancelBusy.value = true
+  try {
+    const body = { effectiveDate: f.effectiveDate, reason }
+    if (f.ids.length === 1) {
+      await assignmentApi.cancel(f.ids[0], body)
+    } else {
+      const { data } = await assignmentApi.bulkCancel(f.ids, body)
+      if (data.errors?.length) {
+        alert(`Đã hủy ${data.succeeded} phiếu.\nKhông hủy được:\n` + data.errors.join('\n'))
+      }
+    }
+    cancelForm.value = null
+    load(true)
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Hủy thất bại')
+  } finally {
+    cancelBusy.value = false
+  }
+}
+
+/** Bỏ hủy — có dò trùng lịch ở server nên khung giờ đã bị người khác chiếm sẽ báo lỗi. */
+async function reactivateItem(a) {
+  try {
+    await assignmentApi.reactivate(a.id)
+    load(true)
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Bỏ hủy thất bại')
+  }
+}
+
+/* Xóa = đưa vào thùng rác (khôi phục lại được). */
+async function confirmDelete() {
+  if (!deleteTarget.value) return
+  try {
+    await assignmentApi.remove(deleteTarget.value.id)
+    deleteTarget.value = null
+    load(true)
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Xóa thất bại')
+    deleteTarget.value = null
+  }
+}
+
+/* ── Thao tác nào hiện trên dòng nào ── */
+const canCancel = (a) => ['ACTIVE', 'PENDING', 'TERMINATED'].includes(a.status)
+const canReactivate = (a) => DA_DUNG.includes(a.status)
+const canDelete = (a) => !['ACTIVE', 'PENDING'].includes(a.status)
 
 /* Khôi phục từ thùng rác (có thể bị chặn nếu trùng lịch / trùng lớp). */
 async function restoreItem(a) {
@@ -346,11 +432,7 @@ async function restoreItem(a) {
       >
         Ép duyệt
       </button>
-      <button
-        class="btn btn-sm btn-danger"
-        :disabled="bulkBusy"
-        @click="runBulk('cancel', `Hủy ${selectedIds.length} phiếu và đưa vào thùng rác?`)"
-      >
+      <button class="btn btn-sm btn-danger" :disabled="bulkBusy" @click="openCancelBulk">
         Hủy phiếu
       </button>
       <button class="btn btn-sm btn-outline" @click="selectedIds = []">Bỏ chọn</button>
@@ -427,7 +509,7 @@ async function restoreItem(a) {
                 class="badge"
                 :class="{
                   'badge-green': a.status === 'ACTIVE',
-                  'badge-gray': a.status === 'CANCELLED',
+                  'badge-gray': a.status === 'CANCELLED' || a.status === 'TERMINATED',
                   'badge-blue': a.status === 'COMPLETED',
                   'badge-amber': a.status === 'PENDING',
                   'badge-red': a.status === 'REJECTED' || a.status === 'EXPIRED',
@@ -446,6 +528,16 @@ async function restoreItem(a) {
               <div v-if="a.status === 'REJECTED' && a.rejectionReason" class="reject-why">
                 “{{ a.rejectionReason }}”
               </div>
+              <!-- Dấu vết hủy: dừng từ ngày nào, đáng lẽ chạy tới đâu, và vì sao -->
+              <template v-if="DA_DUNG.includes(a.status) && a.cancelEffectiveDate">
+                <div class="cancel-when">
+                  Dừng từ {{ fmtDate(a.cancelEffectiveDate) }}
+                  <template v-if="a.originalEndDate">
+                    (đáng lẽ đến {{ fmtDate(a.originalEndDate) }})
+                  </template>
+                </div>
+                <div v-if="a.cancelReason" class="reject-why">“{{ a.cancelReason }}”</div>
+              </template>
             </td>
             <td class="col-actions">
               <template v-if="!inTrash">
@@ -474,12 +566,34 @@ async function restoreItem(a) {
                 >
                   Sửa
                 </button>
+                <!-- Hủy: dừng dạy kể từ một ngày. Phiếu vẫn ở lại danh sách, bỏ hủy được. -->
                 <button
-                  v-if="a.status !== 'COMPLETED'"
+                  v-if="canCancel(a)"
                   class="btn btn-sm btn-danger"
-                  @click="cancelTarget = a"
+                  :title="
+                    a.status === 'TERMINATED'
+                      ? 'Dời ngày kết thúc sớm'
+                      : 'Dừng dạy kể từ một ngày (buổi đã dạy vẫn được giữ)'
+                  "
+                  @click="openCancelOne(a)"
                 >
-                  Hủy
+                  {{ a.status === 'TERMINATED' ? 'Đổi ngày dừng' : 'Hủy' }}
+                </button>
+                <button
+                  v-if="canReactivate(a)"
+                  class="btn btn-sm btn-outline"
+                  title="Bật lại phân công như trước khi hủy"
+                  @click="reactivateItem(a)"
+                >
+                  Bỏ hủy
+                </button>
+                <button
+                  v-if="canDelete(a)"
+                  class="btn btn-sm btn-outline"
+                  title="Đưa phiếu vào thùng rác"
+                  @click="deleteTarget = a"
+                >
+                  Xóa
                 </button>
               </template>
               <template v-else>
@@ -517,18 +631,50 @@ async function restoreItem(a) {
       </div>
     </div>
 
-    <!-- Confirm hủy → đưa vào thùng rác -->
-    <div v-if="cancelTarget" class="modal-overlay" @click.self="cancelTarget = null">
+    <!-- Hủy phân công: hỏi DỪNG TỪ NGÀY NÀO và VÌ SAO (lý do đi thẳng vào thông báo của GV) -->
+    <div v-if="cancelForm" class="modal-overlay" @click.self="cancelForm = null">
       <div class="modal-box modal-sm">
-        <h3>Xác nhận hủy</h3>
+        <h3>Hủy phân công</h3>
         <p>
-          Hủy phân công của <strong>{{ cancelTarget.teacherName }}</strong> tại
-          {{ cancelTarget.schoolName }} và đưa vào <strong>thùng rác</strong>? Các buổi chưa diễn ra
-          sẽ bị hủy theo. Bạn có thể khôi phục lại từ thùng rác.
+          Dừng {{ cancelForm.label }} kể từ ngày chọn bên dưới. Các buổi
+          <strong>trước ngày này vẫn được giữ nguyên</strong> để không mất chấm công và lương; buổi
+          từ ngày này trở đi sẽ bị hủy. Phiếu vẫn nằm trong danh sách và có thể bỏ hủy.
+        </p>
+        <div class="form-group">
+          <label>Dừng dạy từ ngày</label>
+          <input v-model="cancelForm.effectiveDate" type="date" :min="todayIso()" />
+        </div>
+        <div class="form-group">
+          <label>Lý do hủy <span class="req">*</span></label>
+          <textarea
+            v-model="cancelForm.reason"
+            rows="2"
+            placeholder="vd: giáo viên nghỉ việc từ giữa kỳ"
+          />
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-outline" :disabled="cancelBusy" @click="cancelForm = null">
+            Không
+          </button>
+          <button class="btn btn-danger" :disabled="cancelBusy" @click="submitCancel">
+            Hủy phân công
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Xóa → đưa vào thùng rác (khác hẳn Hủy) -->
+    <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
+      <div class="modal-box modal-sm">
+        <h3>Đưa vào thùng rác</h3>
+        <p>
+          Xóa phân công của <strong>{{ deleteTarget.teacherName }}</strong> tại
+          {{ deleteTarget.schoolName }} khỏi danh sách? Các buổi đã dạy vẫn được giữ lại để tra cứu
+          chấm công và lương. Bạn có thể khôi phục lại từ thùng rác.
         </p>
         <div class="modal-actions">
-          <button class="btn btn-outline" @click="cancelTarget = null">Không</button>
-          <button class="btn btn-danger" @click="confirmCancel">Hủy phân công</button>
+          <button class="btn btn-outline" @click="deleteTarget = null">Không</button>
+          <button class="btn btn-danger" @click="confirmDelete">Xóa</button>
         </div>
       </div>
     </div>
@@ -687,11 +833,15 @@ async function restoreItem(a) {
   font-style: italic;
   color: var(--c-text-muted);
 }
-.badge-blue {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
+/* Mốc dừng của phiếu đã hủy / kết thúc sớm — đậm hơn lý do vì đây là con số phải nhìn ra ngay. */
+.cancel-when {
+  margin-top: 0.2rem;
+  max-width: 190px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
 }
-:root[data-theme='dark'] .badge-blue {
-  color: #93c5fd;
+.req {
+  color: var(--c-danger);
 }
 </style>

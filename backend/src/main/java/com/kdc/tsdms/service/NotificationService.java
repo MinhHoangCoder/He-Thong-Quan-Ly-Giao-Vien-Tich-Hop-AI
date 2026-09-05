@@ -168,10 +168,48 @@ public class NotificationService {
      */
     public void publishToPermission(
             String permissionCode, String title, String content, String type, String refEntity, Long refId) {
+        publishToPermission(permissionCode, title, content, type, refEntity, refId, false);
+    }
+
+    /**
+     * Như trên nhưng nói rõ thông báo có CẦN HÀNH ĐỘNG hay không.
+     *
+     * <p>{@code requiresAction = true} dùng cho việc phải quyết ngay trên chuông (vd đơn xin nghỉ
+     * của giáo viên: admin bấm Duyệt/Từ chối tại chỗ). Mọi người nhận đều có nút, ai xử lý trước
+     * thì {@link #closePendingActions} tắt nút của những người còn lại.
+     */
+    public void publishToPermission(
+            String permissionCode,
+            String title,
+            String content,
+            String type,
+            String refEntity,
+            Long refId,
+            boolean requiresAction) {
         Set<Integer> recipients = new LinkedHashSet<>(userRoleRepo.findAppUserIdsByPermissionCode(permissionCode));
         recipients.addAll(userRoleRepo.findAppUserIdsByRoleName("ADMIN"));
         for (Integer userId : recipients) {
-            publish(userId, title, content, type, refEntity, refId, false);
+            publish(userId, title, content, type, refEntity, refId, requiresAction);
+        }
+    }
+
+    /**
+     * Đóng mọi thông báo CÒN CHỜ HÀNH ĐỘNG trỏ tới một bản ghi (việc đã được quyết hoặc đã bị thay
+     * thế) — để chuông không còn nút bấm cho việc đã xong.
+     *
+     * <p>Đóng cho MỌI người nhận, không riêng người vừa bấm: một đơn xin nghỉ được phát cho tất cả
+     * người có quyền quản lý phân công, người thứ hai bấm Duyệt là duyệt vào khoảng không.
+     */
+    @Transactional
+    public void closePendingActions(String refEntity, Long refId, String actionStatus) {
+        Instant now = Instant.now();
+        for (Notification n : repo.findByRefEntityAndRefIdAndActionStatus(refEntity, refId, "PENDING")) {
+            n.setActionStatus(actionStatus);
+            if (!n.isRead()) {
+                n.setRead(true);
+                n.setReadAt(now);
+            }
+            repo.save(n);
         }
     }
 

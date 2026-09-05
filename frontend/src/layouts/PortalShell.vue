@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useLogout } from '@/composables/useLogout'
 import { notificationApi } from '@/api/notifications'
+import { leaveRequestApi } from '@/api/leaveRequests'
 import AssignmentInviteModal from '@/components/AssignmentInviteModal.vue'
 import { roleHome } from '@/router/roleHome'
 import { ROLE_LABELS } from '@/utils/labels'
@@ -241,19 +242,38 @@ function openInviteSchedule() {
   if (to) router.push(to)
 }
 
-/* ── Thông báo có hành động: Xác nhận / Hủy (phân công lịch dạy) ── */
+/* ── Thông báo có hành động ──
+   Hai loại đi chung một khung nút:
+     · lời mời dạy (RefEntity = Assignment) — GIÁO VIÊN bấm Xác nhận / Từ chối;
+     · đơn xin nghỉ (RefEntity = AssignmentLeaveRequest, V39) — ADMIN bấm Duyệt / Từ chối.
+   Khác nhau ở endpoint và ở chữ trên nút, còn luồng bấm thì giống hệt nên dùng lại chỗ này
+   thay vì dựng một khung nút thứ hai. */
 const actionBusy = ref(false) // khóa nút khi đang gọi API
 const cancelingId = ref(null) // id thông báo đang mở ô nhập lý do từ chối
 const cancelReason = ref('')
 
-// Xác nhận nhận lịch dạy.
+const isLeaveRequest = (n) => n.refEntity === 'AssignmentLeaveRequest'
+
+/** Đơn xin nghỉ trả về DTO của đơn, không phải DTO thông báo → tự cập nhật trạng thái tại chỗ. */
+function markActionDone(n, actionStatus) {
+  if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+  n.read = true
+  n.actionStatus = actionStatus
+}
+
+// Xác nhận nhận lịch dạy (giáo viên) — hoặc DUYỆT đơn xin nghỉ (admin).
 async function confirmNotif(n) {
   if (actionBusy.value) return
   actionBusy.value = true
   try {
-    const { data } = await notificationApi.confirm(n.id)
-    Object.assign(n, data)
-    if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+    if (isLeaveRequest(n)) {
+      await leaveRequestApi.approve(n.refId)
+      markActionDone(n, 'CONFIRMED')
+    } else {
+      const { data } = await notificationApi.confirm(n.id)
+      Object.assign(n, data)
+      if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+    }
   } catch (e) {
     window.alert(e?.response?.data?.message || 'Không xác nhận được. Vui lòng thử lại.')
   } finally {
@@ -271,7 +291,7 @@ function abortCancel() {
   cancelReason.value = ''
 }
 
-// Gửi từ chối kèm lý do.
+// Gửi từ chối kèm lý do (giáo viên từ chối lịch dạy, hoặc admin từ chối đơn xin nghỉ).
 async function submitCancel(n) {
   const reason = cancelReason.value.trim()
   if (!reason) {
@@ -281,9 +301,14 @@ async function submitCancel(n) {
   if (actionBusy.value) return
   actionBusy.value = true
   try {
-    const { data } = await notificationApi.cancel(n.id, reason)
-    Object.assign(n, data)
-    if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+    if (isLeaveRequest(n)) {
+      await leaveRequestApi.reject(n.refId, reason)
+      markActionDone(n, 'CANCELLED')
+    } else {
+      const { data } = await notificationApi.cancel(n.id, reason)
+      Object.assign(n, data)
+      if (!n.read) unreadCount.value = Math.max(0, unreadCount.value - 1)
+    }
     abortCancel()
   } catch (e) {
     window.alert(e?.response?.data?.message || 'Không gửi được từ chối. Vui lòng thử lại.')
@@ -447,7 +472,11 @@ function switchTo(acc) {
                               v-model="cancelReason"
                               class="notif__reason"
                               rows="2"
-                              placeholder="Nhập lý do từ chối…"
+                              :placeholder="
+                                isLeaveRequest(n)
+                                  ? 'Nhập lý do không duyệt đơn…'
+                                  : 'Nhập lý do từ chối…'
+                              "
                             />
                             <div class="notif__btnrow">
                               <button
@@ -472,14 +501,15 @@ function switchTo(acc) {
                               :disabled="actionBusy"
                               @click="confirmNotif(n)"
                             >
-                              <SvgIcon name="check-all" :size="14" /> Xác nhận
+                              <SvgIcon name="check-all" :size="14" />
+                              {{ isLeaveRequest(n) ? 'Duyệt' : 'Xác nhận' }}
                             </button>
                             <button
                               class="notif__btn notif__btn--danger"
                               :disabled="actionBusy"
                               @click="startCancel(n)"
                             >
-                              Hủy
+                              {{ isLeaveRequest(n) ? 'Không duyệt' : 'Hủy' }}
                             </button>
                           </div>
                         </template>
@@ -487,13 +517,13 @@ function switchTo(acc) {
                           v-else-if="n.actionStatus === 'CONFIRMED'"
                           class="notif__tag notif__tag--ok"
                         >
-                          ✓ Đã xác nhận
+                          ✓ {{ isLeaveRequest(n) ? 'Đã duyệt' : 'Đã xác nhận' }}
                         </span>
                         <span
                           v-else-if="n.actionStatus === 'CANCELLED'"
                           class="notif__tag notif__tag--no"
                         >
-                          ✕ Đã từ chối
+                          ✕ {{ isLeaveRequest(n) ? 'Đã không duyệt' : 'Đã từ chối' }}
                         </span>
                       </div>
                     </div>

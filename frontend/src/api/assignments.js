@@ -43,9 +43,18 @@ export const assignmentApi = {
     return http.post(`/assignments/${id}/remind`)
   },
 
-  /** Thao tác hàng loạt: action = 'remind' | 'force-approve' | 'cancel'. */
+  /** Thao tác hàng loạt: action = 'remind' | 'force-approve'. Hủy hàng loạt xem bulkCancel. */
   bulk(action, ids, note) {
     return http.post(`/assignments/bulk/${action}`, { ids, note: note || null })
+  },
+
+  /** Hủy hàng loạt — cùng ngày hiệu lực, cùng lý do (lý do bắt buộc). */
+  bulkCancel(ids, { effectiveDate, reason }) {
+    return http.post('/assignments/bulk/cancel', {
+      ids,
+      effectiveDate: effectiveDate || null,
+      reason,
+    })
   },
 
   detail(id) {
@@ -98,6 +107,22 @@ export const assignmentApi = {
   /** Danh sách phân công trong thùng rác (đã xóa mềm). */
   trash() {
     return http.get('/assignments/trash')
+  },
+
+  /**
+   * HỦY phân công kể từ một ngày (bỏ trống = từ hôm nay), bắt buộc kèm lý do.
+   * Khác remove(): phiếu vẫn nằm trong danh sách để tra cứu và bỏ hủy được.
+   */
+  cancel(id, { effectiveDate, reason }) {
+    return http.post(`/assignments/${id}/cancel`, {
+      effectiveDate: effectiveDate || null,
+      reason,
+    })
+  },
+
+  /** Bỏ hủy: đưa phiếu đã hủy / đã kết thúc sớm về lại như trước khi hủy. */
+  reactivate(id) {
+    return http.post(`/assignments/${id}/reactivate`)
   },
 
   /** Khôi phục phân công từ thùng rác. */

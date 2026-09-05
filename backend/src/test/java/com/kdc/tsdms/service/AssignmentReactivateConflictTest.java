@@ -12,10 +12,13 @@ import static org.mockito.Mockito.when;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.AssignmentStatus;
+import com.kdc.tsdms.entity.Holiday;
 import com.kdc.tsdms.entity.Period;
+import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.exception.ApiException;
 import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
+import com.kdc.tsdms.repository.HolidayRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
@@ -23,6 +26,7 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
@@ -84,6 +88,13 @@ class AssignmentReactivateConflictTest {
 
     @Mock
     private PeriodRepository periodRepo;
+
+    /**
+     * Từ V39 {@code reactivate} phải hỏi lịch nghỉ (xem test cuối file) — thiếu mock này thì
+     * Mockito tiêm null và luồng khôi phục nổ NullPointerException trước khi kiểm được gì.
+     */
+    @Mock
+    private HolidayRepository holidayRepo;
 
     @Mock
     private AssignmentApprovalService approvalService;
@@ -149,5 +160,41 @@ class AssignmentReactivateConflictTest {
 
         // Luật cũ không được rơi mất khi thêm luật mới.
         verify(conflictChecker).check(TEACHER_ID, "MON", p, START, END, ASSIGNMENT_ID);
+    }
+
+    /**
+     * BỎ HỦY KHÔNG ĐƯỢC HỒI SINH BUỔI RƠI VÀO NGÀY NGHỈ.
+     *
+     * <p>Buổi ngày lễ bị {@code HolidayService} đánh CANCELLED, cùng trạng thái với buổi bị hủy
+     * theo phiếu — nên vòng lặp khôi phục nhìn hai loại đó y hệt nhau. Bật lại buổi ngày lễ là
+     * dựng lại đúng buổi "ma" mà V29 sinh ra để chặn: {@code AttendanceSweepService} quét buổi đã
+     * qua mà không ai chấm rồi tự ghi VẮNG, trừ thẳng vào lương của người không hề được gọi đi dạy.
+     */
+    @Test
+    void boHuy_khongHoiSinhBuoiRoiVaoNgayNghi() {
+        givenCancelledAssignmentWithOneSlot();
+        Schedule trongKyNghi = buoiDaHuy(LocalDateTime.of(2026, 12, 25, 7, 30));
+        Schedule ngayThuong = buoiDaHuy(LocalDateTime.of(2026, 12, 28, 7, 30));
+        when(scheduleRepo.findByAssignmentIdAndDeletedFalse(ASSIGNMENT_ID))
+                .thenReturn(List.of(trongKyNghi, ngayThuong));
+
+        Holiday nghiTet = new Holiday();
+        nghiTet.setFromDate(LocalDate.of(2026, 12, 24));
+        nghiTet.setToDate(LocalDate.of(2026, 12, 26));
+        when(holidayRepo.findOverlapping(any(), any())).thenReturn(List.of(nghiTet));
+
+        service.reactivate(ASSIGNMENT_ID);
+
+        assertThat(trongKyNghi.getStatus()).isEqualTo("CANCELLED");
+        assertThat(ngayThuong.getStatus()).isEqualTo("PENDING");
+    }
+
+    /** Buổi đã bị hủy theo phiếu — thứ mà "Bỏ hủy" phải cân nhắc có bật lại hay không. */
+    private static Schedule buoiDaHuy(LocalDateTime batDau) {
+        Schedule s = new Schedule();
+        s.setStatus("CANCELLED");
+        s.setStartTime(batDau);
+        s.setEndTime(batDau.plusMinutes(45));
+        return s;
     }
 }

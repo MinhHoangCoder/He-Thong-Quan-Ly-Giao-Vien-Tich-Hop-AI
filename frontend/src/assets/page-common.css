@@ -168,6 +168,10 @@
   background: rgba(239, 68, 68, 0.12);
   color: #991b1b;
 }
+.badge-blue {
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+}
 :root[data-theme='dark'] .badge-green {
   color: #4ade80;
 }
@@ -176,6 +180,9 @@
 }
 :root[data-theme='dark'] .badge-red {
   color: #f87171;
+}
+:root[data-theme='dark'] .badge-blue {
+  color: #93c5fd;
 }
 
 /* ── Form ── */

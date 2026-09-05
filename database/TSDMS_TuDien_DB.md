@@ -73,6 +73,7 @@
 | Holiday | Lịch nghỉ (ngày lễ / kỳ nghỉ) |
 | Assignment | Phân công |
 | AssignmentSlot | Mẫu lặp tuần của phân công (thứ + tiết) |
+| AssignmentLeaveRequest | Đơn xin nghỉ dạy do giáo viên gửi |
 | Schedule | Lịch dạy (từng buổi) |
 | Attendance | Chấm công |
 | PartTimeShiftRequest | Đăng ký ca làm (nhân viên bán thời gian) |
@@ -147,6 +148,8 @@ Employee (TRUNG TÂM) ─tạo─► Assignment ─có nhiều─► AssignmentS
 19. **Assignment** — phân công giáo viên (mức KỲ).
     - **19b. AssignmentSlot** *(Flyway V9)* — mẫu lặp tuần của phân công (thứ + tiết[+ phòng]); generator nở ra `Schedule`.
     - **19c. Holiday** *(Flyway V29)* — lịch nghỉ: ngày lễ & kỳ nghỉ lưu theo KHOẢNG `[FromDate, ToDate]`, `SchoolId` null = toàn hệ thống. Generator KHÔNG sinh buổi dạy vào những ngày này — trước V29 buổi "ma" ngày lễ bị job chấm công tự ghi Vắng rồi trừ thẳng vào lương.
+    - **19d. Hủy có NGÀY HIỆU LỰC** *(Flyway V39)* — `Assignment` mang thêm `CancelEffectiveDate` (ngày đầu tiên không dạy nữa), `OriginalEndDate`, `CancelReason`, `CancelledAt`, `CancelledByUserId`. Hủy giữa kỳ giữ nguyên buổi trước ngày hiệu lực (bằng chứng chấm công/lương) và THU HẸP `EndDate` về hôm trước ngày ấy — bắt buộc, vì chính cặp `StartDate`/`EndDate` là thứ luật chống trùng lịch dùng để nói "khung Thứ+Tiết này đã có người"; giữ mốc cũ thì hủy xong vẫn không xếp được giáo viên thay. `OriginalEndDate` giữ mốc gốc để "Bỏ hủy" trả về đúng chỗ. Trạng thái DB vẫn `ACTIVE` (không nới `CK_Assignment_Status`); nhãn "Kết thúc sớm" do tầng service tính tại chỗ.
+    - **19e. AssignmentLeaveRequest** *(Flyway V39)* — đơn xin nghỉ dạy giáo viên tự gửi: phân công nào, nghỉ từ ngày nào, lý do gì; admin duyệt/từ chối ngay trên chuông thông báo. Đơn được duyệt thì gọi đúng luồng hủy ở trên chứ không tự sửa dữ liệu, nên hủy tay và duyệt đơn không thể lệch nhau. Index lọc `UX_AssignmentLeaveRequest_Pending` cho mỗi phân công đúng MỘT đơn đang chờ.
 20. **Schedule** — lịch dạy từng buổi (bảng trung tâm); thêm `PeriodId` + `SourceSlotId` ở V9.
 21. **ScheduleStatusLog** — nhật ký đổi trạng thái lịch.
 22. **Attendance** — chấm công.
