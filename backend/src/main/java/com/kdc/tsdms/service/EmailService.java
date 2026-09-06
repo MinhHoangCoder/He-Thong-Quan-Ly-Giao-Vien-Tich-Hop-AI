@@ -14,6 +14,15 @@ public class EmailService {
 
     private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
+    /**
+     * Chữ ký cuối mọi email hệ thống gửi đi.
+     *
+     * <p>Hằng số chứ không gõ lại trong từng mẫu: thêm mẫu email thứ hai mà quên chữ ký là hai
+     * email cùng hệ thống ký tên khác nhau. Trùng với tên hiển thị người gửi ở {@code
+     * tsdms.mail.from} — người nhận thấy một cái tên nhất quán từ hòm thư đến cuối thư.
+     */
+    private static final String CHU_KY = "Trung tâm Sao Việt";
+
     private final JavaMailSender mailSender;
     private final String from;
     private final ResetProperties resetProps;
@@ -42,7 +51,8 @@ public class EmailService {
                 + "Bạn (hoặc ai đó) vừa yêu cầu đặt lại mật khẩu. Nhấp vào liên kết sau để đặt"
                 + " lại (hết hạn sau " + ttlMinutes + " phút):\n\n"
                 + resetLink
-                + "\n\nNếu bạn không yêu cầu, hãy bỏ qua email này.");
+                + "\n\nNếu bạn không yêu cầu, hãy bỏ qua email này."
+                + "\n\nTrân trọng,\n" + CHU_KY);
         try {
             mailSender.send(message);
             log.info("Đã gửi email đặt lại mật khẩu tới {}", to);
