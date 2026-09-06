@@ -2,6 +2,8 @@
 
 > Bảo vệ ĐATN · 8:00 ngày 07/09/2026 · phần "Hủy phân công + Đơn xin nghỉ".
 > Mọi con số trong file đo được từ chính máy demo (DB có 86.745 buổi dạy), không phải ví dụ.
+> **Đã diễn tập trọn một lượt ngày 05/09** — các bước dưới đây là bản đã sửa theo những gì
+> thực tế chạy ra, không phải bản viết trên giấy.
 
 | | |
 |---|---|
@@ -25,8 +27,10 @@
       cả kịch bản mất điểm nhấn.
 - [ ] **Cửa sổ A** — đăng nhập `admin`, mở **Phân công**, bấm tab **Đang dạy**, gõ "Tô Bảo Mai"
       vào ô tìm kiếm rồi bấm **Lọc** để dòng đó nằm ngay đầu bảng.
-- [ ] **Cửa sổ B (ẩn danh)** — đăng nhập `gv.tobaomai`, mở **Lịch dạy của tôi**. Phải là cửa sổ
-      ẩn danh, nếu không phiên giáo viên sẽ đá phiên admin ra.
+- [ ] **Cửa sổ B (ẩn danh)** — đăng nhập `gv.tobaomai`, mở **Lịch dạy của tôi**, rồi
+      **chọn sẵn bộ lọc Trường = TH Đằng Giang** (bước 3 cần).
+      Phải là cửa sổ ẩn danh: đã thử, app lưu phiên vào **một khoá `tsdms.session` duy nhất**
+      nên đăng nhập giáo viên là **đá văng phiên admin**, kể cả khi vào bằng `/login?add=1`.
 - [ ] **Diễn tập trọn vẹn một lượt, kể cả bước 5.** Bước 5 phải đi qua ba màn của form tạo phân
       công — đây là chỗ duy nhất có thể lúng túng vì *thao tác*, không phải vì code.
 
@@ -52,6 +56,8 @@ kiểm — đúng thì đi tiếp, sai thì sang mục 4).
 ### Bước 1 — Đặt vấn đề trước khi bấm bất cứ thứ gì · 0:00 · 20 giây
 
 - **Làm:** cửa sổ A, chỉ vào dòng **Tô Bảo Mai** trên bảng Phân công.
+  ⚠️ Lọc theo tên ra **3 dòng** (cô Mai còn phiếu Tiếng Anh 8 tiết ở 4 trường). Dòng cần dùng là
+  **dòng đầu tiên — môn *Kĩ năng quản lý thời gian & tài chính cá nhân*, TH Đằng Giang**.
 - **Nói:** "Trong điều phối giáo viên, việc khó không phải là xếp lịch mà là *rút* lịch. Cô Mai
   đang dạy ba lớp ở TH Đằng Giang, phân công kéo tới tháng 8 sang năm. Bây giờ cô xin nghỉ từ đầu
   tháng 10 — hệ thống phải xử lý thế nào để không mất công đã dạy?"
@@ -69,12 +75,13 @@ kiểm — đúng thì đi tiếp, sai thì sang mục 4).
 
 ### Bước 3 — Chứng minh dữ liệu cũ không mất · 1:00 · 35 giây
 
-- **Làm:** sang cửa sổ B, F5. Ở **Lịch dạy của tôi** lùi về **tháng 9/2026** rồi tiến tới
-  **tháng 11/2026**.
-- **Nói:** "Tháng 9 — trước ngày hủy — *12 buổi ở TH Đằng Giang vẫn còn nguyên*, vì đó là bằng
-  chứng để chấm công và tính lương. Tháng 11 thì 15 buổi ở trường đó đã biến mất. Các buổi ở
-  trường khác của cô vẫn giữ, nên tháng 11 còn 32 buổi chứ không trống."
-- **Phải hiện:** tháng 9 vẫn có buổi ở TH Đằng Giang; tháng 11 không còn buổi nào của trường đó.
+- **Làm:** sang cửa sổ B, **F5**. Bấm **Tháng**. Kiểm bộ lọc **Trường = TH Đằng Giang** đã bật
+  (không bật thì lưới trộn cả buổi ở trường khác và **không nhìn ra điều đang nói**). Lịch mở
+  sẵn ở **tháng 9** — chỉ cần bấm **›** hai lần sang **tháng 11**.
+- **Nói:** "Tháng 9 — trước ngày hủy — bốn thứ Hai vẫn còn nguyên, mỗi buổi 3 tiết, tổng 12 buổi.
+  Đó là bằng chứng để chấm công và tính lương, hệ thống không được phép xóa. Còn tháng 11, sau
+  ngày dừng — trống trơn."
+- **Phải hiện:** tháng 9 có **4 ngày, mỗi ngày "3 Tiết"**; tháng 11 **không còn ô nào**.
 
 ### Bước 4 — Giáo viên được báo, không phải tự đoán · 1:35 · 25 giây
 
@@ -100,12 +107,13 @@ kiểm — đúng thì đi tiếp, sai thì sang mục 4).
 
 ### Bước 6 — Bỏ hủy, và nói rõ nó không chỉ là đổi lại trạng thái · 2:50 · 30 giây
 
-- **Làm:** ở dòng #445 bấm **Bỏ hủy**.
+- **Làm:** bấm tab **"Kết thúc sớm"** — đúng **một dòng** hiện ra, không phải cuộn tìm.
+  Ở dòng đó bấm **Bỏ hủy**.
 - **Nói:** "Bỏ hủy trả ngày kết thúc về mốc gốc 22/08/2027 — đó là lý do phải lưu thêm cột *ngày
   kết thúc gốc*. Và nó có dò trùng lịch: nếu trong lúc phiếu bị hủy mà lớp đã giao cho giáo viên
   khác thì hệ thống chặn, chứ không tạo ra hai người cùng một tiết."
-- **Phải hiện:** nhãn về **Đang dạy**, cột Giai đoạn về 23/08/2026 → 22/08/2027, dòng "Dừng từ…"
-  biến mất.
+- **Phải hiện:** tab "Kết thúc sớm" **trống trở lại**; sang tab **Đang dạy** thấy phiếu với giai
+  đoạn 23/08/2026 → 22/08/2027 và dòng "Dừng từ…" đã biến mất.
 
 ### Bước 7 (tùy chọn) — Đơn xin nghỉ do giáo viên tự gửi
 
@@ -164,6 +172,7 @@ công rồi tự ghi vắng, và giáo viên bị trừ lương cho một ngày 
 
 | Triệu chứng | Xử lý |
 |---|---|
+| Form **Tạo phân công** kẹt ở "Đang tải…" | Đã gặp một lần, ngay sau khi đăng nhập. API `/assignments/options` đo được chỉ **0,4 giây** nên không phải chậm — **F5 là xong**. Đừng ngồi chờ. |
 | Trang trắng, gọi API lỗi mạng | Backend chưa lên. Kiểm tra cổng 8080 có ai nghe không **trước đã** — đừng đi tìm lỗi trong phần đăng nhập. |
 | Flyway báo *checksum mismatch* | Đừng xóa dòng nào trong bảng lịch sử migration và đừng tắt kiểm tra. Bỏ demo phần này, chuyển sang chức năng khác — sửa sai lúc đang bị chấm còn tốn điểm hơn là không demo. |
 | Trang 5173 trắng, báo lỗi *optimize dep* | Do chạy `npm run dev` lần thứ hai khi đã có server chạy. Tắt tiến trình nghe cổng 5173 rồi chạy lại **đúng một lần**. |
