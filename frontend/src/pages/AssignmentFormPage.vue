@@ -44,7 +44,7 @@ const DAYS = [
 const STEPS = [
   { n: 1, label: 'Thông tin chung' },
   { n: 2, label: 'Xếp tiết dạy' },
-  { n: 3, label: 'Xem lại & gửi' },
+  { n: 3, label: 'Xong' },
 ]
 
 // Hôm nay theo GIỜ ĐỊA PHƯƠNG. Tránh toISOString() vì nó quy về UTC → ở VN (UTC+7) lúc
@@ -878,9 +878,7 @@ function cancel() {
 
       <div class="modal-actions">
         <button class="btn btn-outline" @click="goStep(1)">← Quay lại</button>
-        <button class="btn btn-primary" :disabled="!step2Valid" @click="goStep(3)">
-          Xem lại →
-        </button>
+        <button class="btn btn-primary" :disabled="!step2Valid" @click="goStep(3)">Xong →</button>
       </div>
     </div>
 
@@ -917,12 +915,6 @@ function cancel() {
           </span>
         </div>
       </div>
-
-      <p class="afp__note">
-        Sau khi gửi, phiếu ở trạng thái <b>Chờ xác nhận</b> — giáo viên nhận lời mời qua chuông
-        thông báo và có 48 giờ để trả lời. Lịch chỉ có hiệu lực khi được xác nhận hoặc admin ép
-        duyệt.
-      </p>
 
       <div class="modal-actions">
         <button class="btn btn-outline" @click="goStep(2)">← Sửa tiết dạy</button>
@@ -1233,13 +1225,6 @@ function cancel() {
   border-radius: 9999px;
   background: var(--c-surface);
   font-size: 0.78rem;
-}
-.afp__note {
-  padding: 0.7rem 0.9rem;
-  border-radius: 8px;
-  background: var(--c-bg);
-  font-size: 0.83rem;
-  color: var(--c-text-muted);
 }
 
 @media (max-width: 720px) {
