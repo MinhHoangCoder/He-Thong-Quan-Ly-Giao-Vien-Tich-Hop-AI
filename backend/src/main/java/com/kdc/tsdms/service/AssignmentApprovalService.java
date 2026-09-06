@@ -382,13 +382,20 @@ public class AssignmentApprovalService {
                 false);
     }
 
-    /** Báo cho giáo viên kết quả đơn xin nghỉ của mình (duyệt hay từ chối, kèm ghi chú của admin). */
-    public void notifyTeacherLeaveDecision(Assignment a, LocalDate effectiveDate, boolean approved, String note) {
+    /**
+     * Báo cho giáo viên kết quả đơn xin nghỉ MỘT BUỔI của mình (duyệt hay từ chối, kèm ghi chú
+     * của admin).
+     *
+     * <p>Nói rõ "chỉ buổi hôm đó" ở cả hai nhánh: giáo viên vừa xin nghỉ một hôm mà nhận tin
+     * nhắn cụt lủn thì rất dễ tưởng mình đã bị cắt cả lớp.
+     */
+    public void notifyTeacherLeaveDecision(Assignment a, LocalDate leaveDate, boolean approved, String note) {
         String noiDung = approved
-                ? "Đơn xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
-                        + " đã được duyệt. Lịch dạy của thầy/cô dừng từ ngày này."
-                : "Đơn xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
-                        + " KHÔNG được duyệt — thầy/cô vẫn dạy theo lịch cũ.";
+                ? "Đơn xin nghỉ buổi ngày " + fmtDate(leaveDate) + " (" + describe(a)
+                        + ") đã được duyệt. Buổi hôm đó chuyển thành NGHỈ CÓ PHÉP và không tính công;"
+                        + " các buổi khác của phân công giữ nguyên."
+                : "Đơn xin nghỉ buổi ngày " + fmtDate(leaveDate) + " (" + describe(a)
+                        + ") KHÔNG được duyệt — thầy/cô vẫn dạy buổi này theo lịch.";
         notificationService.publishToTeacher(
                 a.getTeacherId(),
                 approved ? "Đơn xin nghỉ đã được duyệt" : "Đơn xin nghỉ bị từ chối",
@@ -400,17 +407,21 @@ public class AssignmentApprovalService {
     }
 
     /**
-     * Báo cho người phụ trách phân công rằng có đơn xin nghỉ mới, KÈM NÚT Duyệt/Từ chối ngay trên
-     * chuông — đơn nằm im chờ ai đó nhớ mở màn hình ra xem thì giáo viên không biết bao giờ mới có
-     * câu trả lời.
+     * Báo cho người phụ trách phân công rằng có đơn xin nghỉ mới.
+     *
+     * <p>Vẫn gắn cờ {@code requiresAction} để chuông biết đây là việc CHƯA XONG và tự chuyển
+     * sang "đã duyệt / đã không duyệt" khi có người quyết
+     * ({@code NotificationService.closePendingActions}). Nhưng nút bấm thì không đặt trong dòng
+     * thông báo nữa: duyệt một đơn nghỉ là quyết định phải nhìn thấy buổi nào, lớp nào, xin từ
+     * bao giờ — bấm Duyệt trên một dòng chữ hai câu là quyết định mù. Bấm vào dòng sẽ mở trang
+     * Phân công đã lọc sẵn đúng đơn đó kèm hộp thoại duyệt đầy đủ thông tin.
      */
-    public void notifyAdminsLeaveRequested(
-            Assignment a, Integer leaveRequestId, LocalDate effectiveDate, String reason) {
+    public void notifyAdminsLeaveRequested(Assignment a, Integer leaveRequestId, LocalDate leaveDate, String reason) {
         notificationService.publishToPermission(
                 "ASSIGNMENT_MANAGE",
                 "Giáo viên xin nghỉ dạy",
-                teacherName(a.getTeacherId()) + " xin nghỉ " + describe(a) + " từ ngày " + fmtDate(effectiveDate)
-                        + ". Lý do: " + reason,
+                teacherName(a.getTeacherId()) + " xin nghỉ buổi ngày " + fmtDate(leaveDate) + " · " + describe(a)
+                        + ". Lý do: " + reason + " — Bấm để xem đơn và duyệt.",
                 "ASSIGNMENT",
                 "AssignmentLeaveRequest",
                 leaveRequestId.longValue(),

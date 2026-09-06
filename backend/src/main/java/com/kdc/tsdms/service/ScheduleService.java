@@ -294,9 +294,34 @@ public class ScheduleService {
                 }
             }
             e.status = s.getStatus();
+            e.statusLabel = statusLabel(s);
             out.add(e);
         }
         return out;
+    }
+
+    /**
+     * Nhãn tiếng Việt của một buổi dạy — chỗ DUY NHẤT trong hệ thống dịch trạng thái buổi.
+     *
+     * <p>Chỉ buổi CANCELLED mới phải hỏi thêm {@code CancelKind} (V40): "nghỉ có phép" của
+     * giáo viên, "nghỉ lễ" theo kỳ nghỉ và "admin hủy" đều dừng buổi lại, nhưng kế toán đọc ba
+     * dòng đó theo ba cách khác nhau. V40 cố ý KHÔNG nới CK_Schedule_Status thêm giá trị mới —
+     * mọi câu đang lọc {@code Status <> 'CANCELLED'} sẽ đếm sai — nên nhãn phải ghép ở đây.
+     */
+    private static String statusLabel(Schedule s) {
+        if (!"CANCELLED".equals(s.getStatus())) {
+            return switch (s.getStatus()) {
+                case APPROVED -> "Đã duyệt";
+                case "PENDING" -> "Chờ duyệt";
+                case "REJECTED" -> "Bị từ chối";
+                default -> s.getStatus();
+            };
+        }
+        return switch (String.valueOf(s.getCancelKind())) {
+            case "LEAVE" -> "Nghỉ có phép";
+            case "HOLIDAY" -> "Nghỉ lễ";
+            default -> "Đã hủy";
+        };
     }
 
     /** Options lọc: GV + trường (chỉ staff cần; giáo viên xem lịch của mình). */

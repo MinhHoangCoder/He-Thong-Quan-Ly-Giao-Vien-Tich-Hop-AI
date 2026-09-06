@@ -110,52 +110,76 @@ class DeleteRestrictTest {
         @InjectMocks
         private SchoolService service;
 
+        /**
+         * Trường đã NGỪNG hợp tác — mốc xuất phát của mọi ca xóa.
+         *
+         * <p>Từ V40 trường còn hợp tác là một rào xóa, nên muốn kiểm các rào KHÁC thì phải dựng
+         * trường ở trạng thái đã ngừng; để mặc {@code new School()} là dính ngay rào đầu tiên và
+         * không bao giờ chạm tới phần đang muốn kiểm.
+         */
         private void givenSchool() {
             School s = new School();
             s.setId(1);
             s.setName("THCS Ba Đình");
+            s.setStatus(School.INACTIVE);
             when(schoolRepo.findByIdAndDeletedFalse(1)).thenReturn(Optional.of(s));
         }
 
         @Test
-        void conLopHoc_thiCam() {
-            givenSchool();
-            when(classRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(3L);
+        void truongDangHoatDong_thiCam() {
+            School s = new School();
+            s.setId(1);
+            s.setName("THCS Ba Đình");
+            s.setStatus(School.ACTIVE); // còn hợp tác
+            when(schoolRepo.findByIdAndDeletedFalse(1)).thenReturn(Optional.of(s));
 
             assertThatThrownBy(() -> service.delete(1))
                     .satisfies(DeleteRestrictTest::assertConflict)
                     .hasMessageContaining("THCS Ba Đình")
-                    .hasMessageContaining("3 lớp học");
+                    .hasMessageContaining("đang hoạt động");
             verify(schoolRepo, never()).save(any());
         }
 
         @Test
-        void conPhanCongDangChay_thiCam() {
+        void conLopDangHoatDong_thiCam() {
+            givenSchool();
+            when(classRepo.countBySchoolIdAndDeletedFalseAndStatus(1, "ACTIVE")).thenReturn(3L);
+
+            assertThatThrownBy(() -> service.delete(1))
+                    .satisfies(DeleteRestrictTest::assertConflict)
+                    .hasMessageContaining("THCS Ba Đình")
+                    .hasMessageContaining("3 lớp đang hoạt động");
+            verify(schoolRepo, never()).save(any());
+        }
+
+        @Test
+        void conPhanCongConHieuLuc_thiCam() {
             givenSchool();
             when(assignmentRepo.countBySchoolIdAndStatusInAndDeletedFalse(anyInt(), any()))
                     .thenReturn(2L);
 
-            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("2 phân công đang chạy");
+            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("2 phân công còn hiệu lực");
         }
 
         @Test
         void nhieuRaoCungLuc_thiKeHET_trongMotLan() {
             // Người dùng phải thấy hết trong một lần, không phải sửa xong bấm lại rồi gặp rào mới.
-            givenSchool();
-            when(classRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(3L);
+            // Kể cả rào "trường đang hoạt động" cũng nằm chung danh sách, không chặn sớm.
+            School s = new School();
+            s.setId(1);
+            s.setName("THCS Ba Đình");
+            s.setStatus(School.ACTIVE);
+            when(schoolRepo.findByIdAndDeletedFalse(1)).thenReturn(Optional.of(s));
+            when(classRepo.countBySchoolIdAndDeletedFalseAndStatus(1, "ACTIVE")).thenReturn(3L);
             when(assignmentRepo.countBySchoolIdAndStatusInAndDeletedFalse(anyInt(), any()))
                     .thenReturn(2L);
-            when(serviceContractRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(1L);
-            when(studentRepo.countBySchoolIdAndDeletedFalse(1)).thenReturn(40L);
-            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
-                    .thenReturn(9L);
+            when(schoolRepo.demOLichConHieuLuc(anyInt(), any())).thenReturn(9L);
 
             assertThatThrownBy(() -> service.delete(1))
-                    .hasMessageContaining("3 lớp học")
-                    .hasMessageContaining("2 phân công đang chạy")
-                    .hasMessageContaining("1 hợp đồng dịch vụ")
-                    .hasMessageContaining("40 hồ sơ học sinh")
-                    .hasMessageContaining("9 ô thời khóa biểu");
+                    .hasMessageContaining("đang hoạt động")
+                    .hasMessageContaining("3 lớp đang hoạt động")
+                    .hasMessageContaining("2 phân công còn hiệu lực")
+                    .hasMessageContaining("9 ô thời khóa biểu còn hiệu lực");
         }
 
         @Test
@@ -164,10 +188,9 @@ class DeleteRestrictTest {
             // phụ không xuất hiện ở Assignment.SchoolId nào cả. Chỉ đếm cấp phiếu là chặn hụt —
             // đo trên dữ liệu demo có 8 trường lọt lưới đúng kiểu này.
             givenSchool();
-            when(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(1))
-                    .thenReturn(12L);
+            when(schoolRepo.demOLichConHieuLuc(anyInt(), any())).thenReturn(12L);
 
-            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("12 ô thời khóa biểu");
+            assertThatThrownBy(() -> service.delete(1)).hasMessageContaining("12 ô thời khóa biểu còn hiệu lực");
             verify(schoolRepo, never()).save(any());
         }
 

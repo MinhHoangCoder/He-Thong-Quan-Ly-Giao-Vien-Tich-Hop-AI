@@ -40,7 +40,22 @@ public record SchoolRequest(
          * thì không được đổi ngầm.
          */
         @Pattern(regexp = "^$|^(TH|THCS)$", message = "Cấp học chỉ nhận TH hoặc THCS")
-        String educationLevel) {
+        String educationLevel,
+
+        /**
+         * Lý do đổi {@code contractEndDate} — BẮT BUỘC khi ngày hết hạn thay đổi so với ngày
+         * đang lưu, mọi hướng (kéo dài, rút ngắn, điền lần đầu, xoá trắng). Xem V40 mục (1).
+         *
+         * <p>KHÔNG validate được ở đây bằng {@code @AssertTrue}: DTO chỉ nhìn thấy giá trị MỚI,
+         * còn "có đổi hay không" phải so với dòng đang nằm trong DB. Vì vậy luật nằm ở
+         * {@code SchoolService.update} và trả 400; chỗ này chỉ chặn độ dài cho khớp cột
+         * {@code SchoolContractChangeLog.Reason NVARCHAR(500)}.
+         *
+         * <p>Bỏ qua hoàn toàn lúc TẠO MỚI: hồ sơ vừa lập thì ngày hết hạn là một phần của chính
+         * nó, và ai lập đã có sẵn ở {@code School.CreatedBy}. Bắt nhập lý do cho lần đầu chỉ
+         * làm người dùng gõ cho có, khiến những dòng lý do THẬT về sau mất giá trị.
+         */
+        @Size(max = 500, message = "Lý do đổi hạn hợp đồng tối đa 500 ký tự") String contractEndReason) {
 
     /**
      * Ngày hết hạn không được trước ngày bắt đầu.

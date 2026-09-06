@@ -61,19 +61,83 @@ public interface HolidayRepository extends JpaRepository<Holiday, Integer> {
     Page<Holiday> searchTrash(@Param("keyword") String keyword, Pageable pageable);
 
     /**
-     * Buổi dạy ĐÃ HỦY nằm trong khoảng ngày — dùng để ước lượng hậu quả trước khi xóa kỳ nghỉ.
+     * Các buổi dạy mà CHÍNH kỳ nghỉ này đã hủy — nguyên liệu để trả chúng về lịch khi kỳ nghỉ
+     * bị xóa.
      *
-     * <p>Là ƯỚC LƯỢNG chứ không phải con số chính xác: buổi bị hủy không lưu lại nó bị hủy vì
-     * kỳ nghỉ nào. Nhưng đủ để người dùng biết thao tác này đang đụng tới cái gì, và câu chữ
-     * trên giao diện nói rõ đây là số buổi hủy trong khoảng ngày đó.
+     * <p>Trước V40 chỗ này phải quét theo KHOẢNG NGÀY vì buổi bị hủy không ghi lại ai hủy nó,
+     * nên chỉ dám đưa ra một con số ước lượng chứ không dám khôi phục: trả mù cả khoảng thì
+     * buổi admin hủy tay hôm đó cũng sống lại. Có cột {@code HolidayId} thì câu hỏi trở nên
+     * chính xác tuyệt đối, và {@code IX_Schedule_Holiday} (index lọc) seek thẳng tới đúng
+     * chừng ấy dòng.
+     *
+     * <p>Vì sao câu này nằm ở HolidayRepository chứ không ở ScheduleRepository: nó chỉ có
+     * nghĩa trong nghiệp vụ lịch nghỉ, và {@code sessionDaysInRange} bên dưới đã đặt sẵn tiền
+     * lệ hỏi bảng Schedule từ đây.
      */
+    @Query("""
+            SELECT s FROM Schedule s
+            WHERE s.deleted = false
+              AND s.holidayId = :holidayId
+            """)
+    List<com.kdc.tsdms.entity.Schedule> sessionsCancelledByHoliday(@Param("holidayId") Integer holidayId);
+
+    /** Như trên nhưng chỉ đếm — hộp thoại xác nhận xóa không cần nạp cả danh sách entity. */
     @Query("""
             SELECT COUNT(s) FROM Schedule s
             WHERE s.deleted = false
-              AND s.status = 'CANCELLED'
-              AND s.startTime >= :from
-              AND s.startTime < :to
+              AND s.holidayId = :holidayId
             """)
-    long countCancelledSessionsInRange(
+    long countSessionsCancelledByHoliday(@Param("holidayId") Integer holidayId);
+
+    /**
+     * Những NGÀY còn có buổi dạy chưa hủy, kèm trường của buổi — nguyên liệu để biết kỳ nghỉ nào
+     * còn việc phải xử lý ở hộp thoại "Buổi dạy".
+     *
+     * <p>VÌ SAO KHÔNG NỐI THẲNG VỚI BẢNG Holiday TRONG SQL: đã thử ba cách (truy vấn con tương
+     * quan, JOIN + GROUP BY, CTE gom trước) và cả ba đều nổ khi chạy THẬT qua JDBC. Lý do: driver
+     * JDBC để {@code ARITHABORT OFF} còn sqlcmd để ON, hai chế độ cho hai kế hoạch khác nhau —
+     * cùng một câu JOIN + GROUP BY chạy 0,5 giây trong sqlcmd nhưng 147 GIÂY qua ứng dụng (đo
+     * thật, không phải ước lượng). Bản CTE cũng 26 giây vì SQL Server bung CTE ra chứ không
+     * hiện thực hóa nó.
+     *
+     * <p>Câu này thì không có gì để optimizer bóp méo: một lượt quét, gom trùng, xong. Đo qua
+     * chế độ của JDBC: ~230 ms cho 5.200 dòng trên bộ 86.865 buổi. Việc đối chiếu ngày với
+     * khoảng của từng kỳ nghỉ làm bên Java — vài trăm nghìn phép so sánh, tính bằng micro giây.
+     *
+     * <p>Trường lấy từ ô thời khóa biểu sinh ra buổi, NULL nếu buổi không gắn ô nào — kỳ nghỉ
+     * toàn hệ thống nhận mọi ngày, kỳ nghỉ của một trường chỉ nhận ngày của trường đó.
+     *
+     * @return các dòng {ngày, schoolId}
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT DISTINCT CAST(s.StartTime AS DATE) AS Ngay, sl.SchoolId
+              FROM Schedule s
+              LEFT JOIN AssignmentSlot sl ON sl.Id = s.SourceSlotId
+             WHERE s.IsDeleted = 0
+               AND s.Status <> 'CANCELLED'
+               AND s.StartTime >= :from
+               AND s.StartTime < :to
+            """)
+    List<Object[]> sessionDaysInRange(
             @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+
+    /**
+     * Những NGÀY có dòng chấm công VẮNG do hệ thống tự ghi, kèm trường — nửa còn lại của phép
+     * kiểm tra ở {@link #sessionDaysInRange}.
+     *
+     * <p>Phải hỏi riêng chứ không suy ra từ buổi dạy: hủy buổi KHÔNG xóa dòng vắng đã ghi, nên
+     * một kỳ nghỉ đã hủy sạch buổi vẫn còn việc phải dọn.
+     *
+     * @return các dòng {ngày, schoolId}
+     */
+    @Query(nativeQuery = true, value = """
+            SELECT DISTINCT a.WorkDate AS Ngay, sl.SchoolId
+              FROM Attendance a
+              LEFT JOIN Schedule s ON s.Id = a.ScheduleId
+              LEFT JOIN AssignmentSlot sl ON sl.Id = s.SourceSlotId
+             WHERE a.Status = 'ABSENT'
+               AND a.CheckInMethod = 'SYSTEM'
+               AND a.WorkDate BETWEEN :from AND :to
+            """)
+    List<Object[]> systemAbsenceDaysInRange(@Param("from") LocalDate from, @Param("to") LocalDate to);
 }

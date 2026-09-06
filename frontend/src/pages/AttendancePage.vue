@@ -145,33 +145,13 @@ async function load() {
   } finally {
     loading.value = false
   }
-  loadAttention()
   loadSummary()
 }
 
 // Bấm số trang → nạp lại từ server (khác bản cũ: cắt sẵn trong mảng đã tải).
 watch(page, load)
 
-/* ── Cần xử lý + nhật ký thay đổi ── */
-const attention = ref([])
-const attnOpen = ref(false)
-
-async function loadAttention() {
-  try {
-    const { data } = await attendanceApi.attention({ from: filter.from, to: filter.to })
-    attention.value = data
-  } catch {
-    attention.value = []
-  }
-}
-
-/** Vì sao dòng này lọt vào "Cần xử lý" — nói thẳng lý do thay vì bắt kế toán tự đoán. */
-function attentionReason(r) {
-  if (r.checkInMethod === 'SYSTEM') return 'Hệ thống ghi Vắng — hết buổi không có check-in'
-  if (r.autoCheckOut) return 'Hệ thống chốt hộ giờ ra — giáo viên quên check-out'
-  return 'Đã vào lớp nhưng chưa có giờ ra'
-}
-
+/* ── Nhật ký thay đổi của một dòng chấm công ── */
 const logRow = ref(null)
 const logItems = ref([])
 const logLoading = ref(false)
@@ -484,23 +464,6 @@ async function loadSummary() {
         <span v-if="info" class="info-text">{{ info }}</span>
       </div>
 
-      <!-- Cần xử lý: gom sẵn dòng bất thường thay vì bắt kế toán dò cả bảng bằng mắt -->
-      <section v-if="attention.length" class="attn card">
-        <button class="attn__head" @click="attnOpen = !attnOpen">
-          <strong>Cần xử lý</strong>
-          <span class="attn__count">{{ attention.length }}</span>
-          <span class="attn__toggle">{{ attnOpen ? 'Thu gọn' : 'Xem' }}</span>
-        </button>
-        <ul v-if="attnOpen" class="attn__list">
-          <li v-for="r in attention" :key="r.id">
-            <span class="mono">{{ r.workDate }}</span>
-            <span class="font-medium">{{ r.teacherName }}</span>
-            <span class="attn__why">{{ attentionReason(r) }}</span>
-            <button class="attn__link" @click="openLogs(r)">Nhật ký</button>
-          </li>
-        </ul>
-      </section>
-
       <div class="table-wrap">
         <table class="table">
           <thead>
@@ -561,6 +524,10 @@ async function loadSummary() {
               <td class="text-muted small">{{ r.note ?? '—' }}</td>
               <td class="actions">
                 <button class="btn btn-sm btn-outline" @click="openEdit(r)">Sửa</button>
+                <!-- Nhật ký mở từ chính dòng đang xem: khối "Cần xử lý" trước đây là lối vào
+                     duy nhất, bỏ nó đi mà không chuyển nút thì không còn đường nào truy được
+                     ai đã sửa dòng chấm công nào. -->
+                <button class="btn btn-sm btn-outline" @click="openLogs(r)">Nhật ký</button>
               </td>
             </tr>
           </tbody>
@@ -868,63 +835,6 @@ async function loadSummary() {
 .amend__note {
   margin-top: 0.2rem;
   font-style: italic;
-}
-
-/* ── Cần xử lý ── */
-.attn {
-  margin-bottom: 1rem;
-  padding: 0.6rem 0.9rem;
-  border-left: 3px solid var(--c-amber);
-}
-.attn__head {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  border: 0;
-  background: none;
-  color: var(--c-text);
-  font-size: 0.9rem;
-  cursor: pointer;
-}
-.attn__count {
-  min-width: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--c-amber);
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-.attn__toggle {
-  margin-left: auto;
-  color: var(--c-primary);
-  font-size: 0.8rem;
-}
-.attn__list {
-  list-style: none;
-  margin: 0.6rem 0 0;
-  padding: 0;
-  display: grid;
-  gap: 0.35rem;
-}
-.attn__list li {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  font-size: 0.83rem;
-}
-.attn__why {
-  color: var(--c-text-muted);
-}
-.attn__link {
-  margin-left: auto;
-  border: 0;
-  background: none;
-  color: var(--c-primary);
-  font-size: 0.8rem;
-  cursor: pointer;
 }
 
 /* ── Nhật ký ── */

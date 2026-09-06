@@ -9,6 +9,7 @@ import com.kdc.tsdms.dto.AttendanceSummaryResponse;
 import com.kdc.tsdms.entity.Assignment;
 import com.kdc.tsdms.entity.AssignmentSlot;
 import com.kdc.tsdms.entity.Attendance;
+import com.kdc.tsdms.entity.Contract;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.School;
@@ -21,6 +22,8 @@ import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.AttendanceChangeLogRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayRateRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
@@ -29,6 +32,7 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.SubjectRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
 import com.kdc.tsdms.security.SecurityUtils;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -61,6 +65,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Số giờ dạy tự tính từ giờ vào/ra. Lưu ý: Bảng lương KHÔNG cộng số giờ đó — nó đếm mỗi
  * dòng PRESENT/LATE là một tiết.
+ *
+ * <p>Từ V40, mọi đường ghi công đều ĐÓNG BĂNG đơn giá tiết dạy vào dòng chấm công ({@link
+ * #dongBangDonGia}): buổi đã dạy mang theo giá của chính nó nên sửa bảng đơn giá về sau không
+ * làm lệch số lương đã trả.
  */
 @Service
 public class AttendanceService {
@@ -75,6 +83,8 @@ public class AttendanceService {
     private final SubjectRepository subjectRepo;
     private final PeriodRepository periodRepo;
     private final PayrollRepository payrollRepo;
+    private final PayRateRepository payRateRepo;
+    private final ContractRepository contractRepo;
     private final AttendanceChangeLogRepository changeLogRepo;
     private final AppUserRepository userRepo;
     private final DisplayNameResolver displayNameResolver;
@@ -91,6 +101,8 @@ public class AttendanceService {
             SubjectRepository subjectRepo,
             PeriodRepository periodRepo,
             PayrollRepository payrollRepo,
+            PayRateRepository payRateRepo,
+            ContractRepository contractRepo,
             AttendanceChangeLogRepository changeLogRepo,
             AppUserRepository userRepo,
             DisplayNameResolver displayNameResolver,
@@ -105,6 +117,8 @@ public class AttendanceService {
         this.subjectRepo = subjectRepo;
         this.periodRepo = periodRepo;
         this.payrollRepo = payrollRepo;
+        this.payRateRepo = payRateRepo;
+        this.contractRepo = contractRepo;
         this.changeLogRepo = changeLogRepo;
         this.userRepo = userRepo;
         this.displayNameResolver = displayNameResolver;
@@ -587,6 +601,8 @@ public class AttendanceService {
         if (req.note() != null && !req.note().isBlank()) {
             a.setNote(req.note().trim());
         }
+        // Đóng băng SAU khi đã chốt trạng thái — hàm này đọc status để biết buổi có ra tiền không.
+        dongBangDonGia(a, s);
         try {
             // flush ngay để unique index UX_Attendance_ScheduleId (V16) bắt được
             // 2 request check-in đồng thời cùng vượt qua bước kiểm tra ở trên.
@@ -729,7 +745,8 @@ public class AttendanceService {
     public AttendanceResponse create(AttendanceRequest req) {
         Teacher teacher = validate(req);
         assertPeriodOpen(req.teacherId(), req.workDate());
-        assertMatchesSession(assertSessionStarted(req.scheduleId()), req);
+        Schedule s = assertSessionStarted(req.scheduleId());
+        assertMatchesSession(s, req);
         // UX_Attendance_Schedule: mỗi buổi dạy tối đa 1 dòng — tạo trùng thì sửa dòng cũ thay vì thêm.
         if (attendanceRepo.existsByScheduleId(req.scheduleId())) {
             throw new ApiException(HttpStatus.CONFLICT, "Buổi dạy này đã có dòng chấm công — hãy sửa dòng hiện có");
@@ -737,6 +754,7 @@ public class AttendanceService {
         Attendance a = new Attendance();
         a.setCreatedBy(SecurityUtils.currentUserId());
         apply(a, req);
+        dongBangDonGia(a, s);
         attendanceRepo.save(a);
         notifyTeacherOfAttendance(a, teacher, "Bạn có kết quả chấm công mới");
         return AttendanceResponse.fromEntity(a, fullName(teacher));
@@ -752,7 +770,8 @@ public class AttendanceService {
         // Khóa cả kỳ CŨ lẫn kỳ MỚI: chuyển một dòng ra/vào tháng đã chốt cũng là làm lệch sổ.
         assertPeriodOpen(a.getTeacherId(), a.getWorkDate());
         assertPeriodOpen(req.teacherId(), req.workDate());
-        assertMatchesSession(assertSessionStarted(req.scheduleId()), req);
+        Schedule s = assertSessionStarted(req.scheduleId());
+        assertMatchesSession(s, req);
         // Không cho trỏ sang buổi đã có dòng chấm công khác (vỡ unique index).
         if (!req.scheduleId().equals(a.getScheduleId())) {
             attendanceRepo.findFirstByScheduleIdOrderByIdAsc(req.scheduleId()).ifPresent(other -> {
@@ -761,6 +780,9 @@ public class AttendanceService {
             });
         }
         apply(a, req);
+        // Tính lại đơn giá đóng băng: sửa tay có thể lật Vắng ↔ Có mặt, hoặc trỏ dòng sang một
+        // buổi khác cấp lớp — giữ nguyên con số cũ là để lại một mức giá không còn căn cứ nào.
+        dongBangDonGia(a, s);
         // Ghi lại AI sửa — trigger TR_Attendance_ChangeLog đọc hai cột này để vào nhật ký.
         a.setUpdatedAt(java.time.Instant.now());
         a.setUpdatedBy(SecurityUtils.currentUserId());
@@ -808,12 +830,62 @@ public class AttendanceService {
         a.setStatus(statusOverride != null && !statusOverride.isBlank() ? statusOverride : deriveStatus(s, checkIn));
         a.setCheckInMethod("EMPLOYEE");
         a.setAdjustReason(reason);
+        // Dòng Vắng do job ghi trước đó chưa có đơn giá; vừa được xác nhận là CÓ dạy thì phải
+        // đóng băng giá ngay tại đây, nếu không buổi này lại đi tra bảng lúc tính lương.
+        dongBangDonGia(a, s);
         // Dòng Vắng cũ có thể đang mang cờ hệ thống chốt hộ — công đã được người duyệt xác
         // nhận thì không còn là dòng "cần soát lại" nữa.
         a.setAutoCheckOut(false);
         a.setUpdatedAt(java.time.Instant.now());
         a.setUpdatedBy(SecurityUtils.currentUserId());
         return attendanceRepo.save(a);
+    }
+
+    /**
+     * ĐÓNG BĂNG đơn giá tiết dạy vào chính dòng chấm công (V40).
+     *
+     * <p>V38 đã đưa đơn giá ra khỏi code và cho {@code PayrollService} tra theo NGÀY DẠY, nên
+     * tính lại một kỳ cũ vẫn ra đúng — với điều kiện không ai đụng vào bảng {@code PayRate}.
+     * Nhưng sửa một dòng giá cũ (gõ nhầm số, nhập sai ngày hiệu lực) thì mọi phiếu lương từng
+     * tính theo dòng đó đổi số mà không để lại dấu. Chép con số vào ngay lúc ghi công thì buổi
+     * đã dạy mang theo giá của chính nó; bảng giá từ đó chỉ còn phục vụ buổi CHƯA chấm.
+     *
+     * <p>Gọi ở CẢ BỐN đường ghi công (giáo viên tự check-in, kế toán tạo/sửa tay, duyệt yêu cầu
+     * bổ sung) chứ không riêng đường nào — bỏ sót một đường là dòng đó rơi về cách tra bảng cũ
+     * và lại lệch được.
+     *
+     * <p>Thứ tự ưu tiên GIỮ NGUYÊN luật của V38: đơn giá riêng trong hợp đồng thắng barem chung.
+     * Không tra ra mức nào (khối rỗng, ngày nằm ngoài mọi khoảng hiệu lực) thì để TRỐNG chứ
+     * không đoán một con số — {@code PayrollService} gặp trống sẽ tra bảng và tự ghi cảnh báo,
+     * đúng hành vi đang có.
+     */
+    private void dongBangDonGia(Attendance a, Schedule s) {
+        // Chỉ buổi CÓ CÔNG mới ra tiền. Vắng/Nghỉ phép để trống hai cột: ghi một con số vào
+        // dòng không được trả tiền chỉ làm người đối soát tưởng còn khoản chưa thanh toán.
+        // Xóa hẳn (chứ không giữ giá trị cũ) vì kế toán lật một dòng Có mặt thành Vắng thì con
+        // số đóng băng của lần trước không còn nghĩa gì.
+        if (!"PRESENT".equals(a.getStatus()) && !"LATE".equals(a.getStatus())) {
+            a.setRateAmount(null);
+            a.setRateSource(null);
+            return;
+        }
+        Contract hopDong =
+                contractRepo.findByTeacherIdAndDeletedFalse(a.getTeacherId()).orElse(null);
+        if (hopDong != null && hopDong.getRatePerPeriod() != null) {
+            a.setRateAmount(hopDong.getRatePerPeriod());
+            a.setRateSource("CONTRACT");
+            return;
+        }
+        // Khối lấy theo lớp của Ô THỜI KHÓA BIỂU sinh ra buổi — từ V16 một phiếu trải nhiều
+        // lớp, mà lớp 5 và lớp 6 khác giá. Dùng lại classOfSession để không viết luật lần hai.
+        SchoolClass lop =
+                classOfSession(s, assignmentRepo.findById(s.getAssignmentId()).orElse(null));
+        Integer khoi = lop == null ? null : PayrollService.parseGrade(lop.getGradeLevel(), lop.getName());
+        // Truyền null ở chỗ hợp đồng: nhánh hợp đồng đã xử lý ở trên, đây chỉ hỏi barem chung.
+        BigDecimal donGia = PayrollService.resolveRate(
+                null, khoi, a.getWorkDate(), payRateRepo.findAllByOrderByEffectiveFromDescGradeFromAsc());
+        a.setRateAmount(donGia);
+        a.setRateSource(donGia == null ? null : "PAY_RATE");
     }
 
     /** PRESENT hay LATE — cùng công thức với check-in thật để hai đường ghi không lệch nhau. */

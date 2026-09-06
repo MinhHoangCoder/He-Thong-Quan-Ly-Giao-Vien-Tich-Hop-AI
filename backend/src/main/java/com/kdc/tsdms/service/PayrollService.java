@@ -170,10 +170,18 @@ public class PayrollService {
      * Sinh/tính lại bảng lương một kỳ từ chấm công: đếm SỐ TIẾT mỗi GV và cộng tiền theo
      * đơn giá của từng buổi. Chỉ ghi đè các dòng NHÁP (DRAFT).
      *
-     * <p>Đơn giá tra theo BA thứ, đúng thứ tự: đơn giá riêng trong hợp đồng của giáo viên →
-     * barem chung theo khối và theo NGÀY DẠY ({@code PayRate}) → không tra ra thì bỏ qua và
-     * ghi cảnh báo. Tra theo ngày dạy chứ không theo hôm nay: tính lại tháng 7 sau khi tăng
-     * giá từ 1/9 phải ra đúng số của tháng 7.
+     * <p>Đơn giá lấy theo thứ tự: {@code Attendance.RateAmount} — mức ĐÃ ĐÓNG BĂNG vào buổi
+     * lúc chấm công (V40) → hết đường đó (dòng cũ trước V40 để NULL) mới tra như cũ: đơn giá
+     * riêng trong hợp đồng của giáo viên → barem chung theo khối và theo NGÀY DẠY ({@code
+     * PayRate}) → không tra ra thì bỏ qua và ghi cảnh báo.
+     *
+     * <p>Vì sao ưu tiên số đã đóng băng: bảng {@code PayRate} vẫn sửa được, mà sửa một dòng giá
+     * cũ là mọi phiếu lương từng tính theo dòng đó đổi số. Buổi đã chấm mang theo giá của chính
+     * nó thì tính lại bao nhiêu lần cũng ra đúng số đã trả. Nhánh tra bảng giữ nguyên chứ không
+     * bỏ: dữ liệu có trước V40 không có gì để đọc, bỏ đi là những kỳ đó về 0đ.
+     *
+     * <p>Tra theo ngày dạy chứ không theo hôm nay: tính lại tháng 7 sau khi tăng giá từ 1/9
+     * phải ra đúng số của tháng 7.
      *
      * <p>Lương cứng đọc từ hợp đồng và CHỈ áp cho giáo viên cơ hữu — thỉnh giảng chỉ ăn tiền
      * tiết. Trước V38 cột này luôn bằng 0 trừ khi kế toán gõ tay.
@@ -201,7 +209,11 @@ public class PayrollService {
             boolean late = "LATE".equals(r[2]);
             Integer grade = parseGrade((String) r[3], (String) r[4]);
 
-            BigDecimal rate = resolveRate(contracts.get(teacherId), grade, workDate, rateTable);
+            // Mức đóng băng lúc chấm công thắng mọi thứ khác — xem javadoc của hàm này.
+            BigDecimal rate = toAmount(r[5]);
+            if (rate == null) {
+                rate = resolveRate(contracts.get(teacherId), grade, workDate, rateTable);
+            }
             if (rate == null) {
                 log.warn(
                         "Không tra được đơn giá cho GV id={} ngày {} (khối {}) — bỏ qua tiết này."
@@ -597,8 +609,21 @@ public class PayrollService {
         return v instanceof LocalDate d ? d : null;
     }
 
-    /** Lấy số khối từ "Khối 6" / tên lớp "6A"… (1–9). */
-    private static Integer parseGrade(String gradeLevel, String className) {
+    /** Cột DECIMAL(18,2) của SQL Server; NULL = dòng chấm công chưa đóng băng đơn giá. */
+    private static BigDecimal toAmount(Object v) {
+        if (v instanceof BigDecimal d) {
+            return d;
+        }
+        return v instanceof Number n ? BigDecimal.valueOf(n.doubleValue()) : null;
+    }
+
+    /**
+     * Lấy số khối từ "Khối 6" / tên lớp "6A"… (1–9).
+     *
+     * <p>Để mức gói (package-private) chứ không private: {@code AttendanceService} phải bóc khối
+     * đúng cùng một luật lúc đóng băng đơn giá, mà chép lại luật là hai bản dần dần lệch nhau.
+     */
+    static Integer parseGrade(String gradeLevel, String className) {
         Integer g = firstInt(gradeLevel);
         if (g == null) {
             g = firstInt(className);

@@ -33,7 +33,8 @@ async function onBulkCreated(ketQua) {
   bulkOpen.value = false
   await load()
   await loadExistingGrades()
-  window.alert(`Đã tạo ${ketQua.daTao} lớp${ketQua.boQua ? `, bỏ qua ${ketQua.boQua} dòng` : ''}.`)
+  // Chỉ còn một con số: luồng hàng loạt là được ăn cả ngã về không, không có dòng bị bỏ qua.
+  window.alert(`Đã tạo ${ketQua.daTao} lớp.`)
 }
 
 const filterSchoolId = ref('')
@@ -74,7 +75,24 @@ const modal = reactive({
   errors: {},
   error: '',
   saving: false,
+  /** Kết quả hỏi backend "lớp này chuyển sang Ngừng được chưa" — null khi chưa hỏi. */
+  ngungCheck: null,
 })
+
+/**
+ * Lớp còn buổi dạy từ hôm nay trở đi thì không được chuyển sang "Ngừng".
+ *
+ * Câu chữ lấy nguyên từ backend chứ không tự soạn lại ở đây: cùng một luật mà hai nơi diễn
+ * đạt hai kiểu thì người dùng tưởng là hai lỗi khác nhau. Backend vẫn trả 409 nếu ai gọi
+ * thẳng API — chỗ này chỉ để họ biết trước lúc còn đang điền form.
+ */
+const chanNgungLop = computed(
+  () =>
+    modal.mode === 'edit' &&
+    modal.form.status === 'INACTIVE' &&
+    !!modal.ngungCheck &&
+    !modal.ngungCheck.chuyenDuoc,
+)
 
 const deleteTarget = ref(null)
 const batchDeleteOpen = ref(false)
@@ -513,6 +531,7 @@ function openCreate() {
     errors: {},
     error: '',
     saving: false,
+    ngungCheck: null,
   })
 }
 
@@ -543,7 +562,26 @@ function openEdit(item) {
     errors: {},
     error: '',
     saving: false,
+    ngungCheck: null,
   })
+  loadNgungCheck(item.id)
+}
+
+/**
+ * Hỏi trước, ngay lúc mở modal, thay vì đợi người dùng đổi ô Trạng thái mới hỏi.
+ *
+ * Hỏi lúc đổi ô thì giữa cú bấm và câu trả lời có một khoảng trống mà nút Lưu vẫn bấm được —
+ * đúng khoảng trống đó là lúc lỗi lọt qua. Một request lúc mở modal thì rẻ hơn và luôn kịp.
+ */
+async function loadNgungCheck(id) {
+  try {
+    const { data } = await classApi.deactivateCheck(id)
+    // Modal có thể đã đóng hoặc chuyển sang lớp khác trong lúc chờ — bỏ kết quả lạc hậu.
+    if (modal.open && modal.id === id) modal.ngungCheck = data
+  } catch {
+    // Không hỏi được thì để backend chặn bằng 409 lúc lưu, đừng khóa nhầm nút Lưu.
+    if (modal.open && modal.id === id) modal.ngungCheck = null
+  }
 }
 
 function clearFieldError(field) {
@@ -561,6 +599,7 @@ function onClassSuffixInput() {
 async function saveModal() {
   modal.errors = validateForm(modal.form)
   if (Object.keys(modal.errors).length) return
+  if (chanNgungLop.value) return
 
   const name = composeClassName(modal.form.gradeNum, modal.form.classSuffix)
   const schoolId = Number(modal.form.schoolId)
@@ -595,8 +634,11 @@ async function saveModal() {
     await loadExistingGrades()
   } catch (e) {
     const msg = e.response?.data?.message ?? 'Lỗi không xác định'
-    // Map lỗi trùng từ backend về field tên lớp
-    if (e.response?.status === 409 || /đã tồn tại/i.test(msg)) {
+    // Đưa lỗi về ĐÚNG ô đã gây ra nó: lỗi "còn buổi dạy" là chuyện của ô Trạng thái, lỗi trùng
+    // là chuyện của ô tên lớp. Cùng là 409 mà dồn hết vào một ô thì người dùng sửa nhầm chỗ.
+    if (/^Lớp đang hoạt động/.test(msg)) {
+      modal.errors = { ...modal.errors, status: msg }
+    } else if (e.response?.status === 409 || /đã tồn tại/i.test(msg)) {
       modal.errors = { ...modal.errors, classSuffix: msg }
     } else {
       modal.error = msg
@@ -643,9 +685,21 @@ function toggleSelect(id) {
   else selectedIds.value.splice(idx, 1)
 }
 
-/** Chọn/bỏ chọn chỉ các dòng trang hiện tại — giữ nguyên lựa chọn các trang khác. */
+/**
+ * Lớp ĐANG HOẠT ĐỘNG không xóa được (cùng luật với nút Xóa từng dòng), nên cũng không cho
+ * chọn để xóa hàng loạt.
+ *
+ * Xóa hàng loạt chạy trong một transaction ở backend: lỡ chọn một lớp ACTIVE thì cả lô 20 lớp
+ * bị rollback và người dùng chỉ nhận được một câu 409 duy nhất, phải tự dò xem lớp nào vướng.
+ * Chặn ngay từ ô tích thì họ thấy được cái vướng đó trước khi bấm.
+ */
+function coTheChon(item) {
+  return viewMode.value === 'trash' || item.status !== 'ACTIVE'
+}
+
+/** Chọn/bỏ chọn chỉ các dòng CHỌN ĐƯỢC của trang hiện tại — giữ nguyên lựa chọn trang khác. */
 function toggleSelectAll() {
-  const pageIds = items.value.map((i) => i.id)
+  const pageIds = items.value.filter(coTheChon).map((i) => i.id)
   if (!pageIds.length) return
   const allPageSelected = pageIds.every((id) => selectedIds.value.includes(id))
   if (allPageSelected) {
@@ -657,9 +711,10 @@ function toggleSelectAll() {
   }
 }
 
-const allSelected = computed(
-  () => items.value.length > 0 && items.value.every((i) => selectedIds.value.includes(i.id)),
-)
+const allSelected = computed(() => {
+  const chonDuoc = items.value.filter(coTheChon)
+  return chonDuoc.length > 0 && chonDuoc.every((i) => selectedIds.value.includes(i.id))
+})
 
 /** Chọn tất cả trong thùng rác (list 1 trang, không phân trang). */
 function toggleSelectAllTrash() {
@@ -899,13 +954,19 @@ function formatDeletedAt(iso) {
               v-for="item in items"
               :key="item.id"
               :class="{ 'row--selected': deleteMode && selectedIds.includes(item.id) }"
-              @click="deleteMode && toggleSelect(item.id)"
+              @click="deleteMode && coTheChon(item) && toggleSelect(item.id)"
             >
-              <td v-if="deleteMode" class="col-check" @click.stop="toggleSelect(item.id)">
+              <td
+                v-if="deleteMode"
+                class="col-check"
+                @click.stop="coTheChon(item) && toggleSelect(item.id)"
+              >
                 <input
                   type="checkbox"
                   :checked="selectedIds.includes(item.id)"
-                  @click.stop="toggleSelect(item.id)"
+                  :disabled="!coTheChon(item)"
+                  :title="coTheChon(item) ? '' : 'Lớp đang hoạt động — không thể xóa'"
+                  @click.stop="coTheChon(item) && toggleSelect(item.id)"
                 />
               </td>
               <td class="col-title">
@@ -923,7 +984,16 @@ function formatDeletedAt(iso) {
               </td>
               <td class="col-actions" @click.stop>
                 <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
-                <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
+                <!-- Lớp đang hoạt động phải được TẮT trước rồi mới xóa — cùng cách trang Nhóm
+                     môn học chặn xóa nhóm còn bật. Backend chặn lại lần nữa bằng 409. -->
+                <button
+                  class="act-btn act-btn--del"
+                  :title="
+                    item.status === 'ACTIVE' ? 'Lớp đang hoạt động — không thể xóa' : 'Xóa'
+                  "
+                  :disabled="item.status === 'ACTIVE'"
+                  @click="deleteTarget = item"
+                >
                   Xóa
                 </button>
               </td>
@@ -1193,17 +1263,25 @@ function formatDeletedAt(iso) {
 
         <div class="form-group">
           <label>Trạng thái</label>
-          <select v-model="modal.form.status">
+          <select
+            v-model="modal.form.status"
+            :class="{ 'input-error': chanNgungLop || modal.errors.status }"
+          >
             <option value="ACTIVE">Hoạt động</option>
             <option value="INACTIVE">Ngừng</option>
           </select>
+          <!-- Lý do lấy nguyên câu backend trả về, đặt ngay dưới ô đã gây ra nó -->
+          <small v-if="chanNgungLop" class="field-error">{{ modal.ngungCheck.lyDo }}</small>
+          <small v-else-if="modal.errors.status" class="field-error">{{
+            modal.errors.status
+          }}</small>
         </div>
 
         <p v-if="modal.error" class="msg msg--error">{{ modal.error }}</p>
 
         <div class="modal__actions">
           <button class="btn btn--ghost" @click="modal.open = false">Hủy</button>
-          <button class="btn" :disabled="modal.saving" @click="saveModal">
+          <button class="btn" :disabled="modal.saving || chanNgungLop" @click="saveModal">
             {{ modal.saving ? 'Đang lưu...' : 'Lưu' }}
           </button>
         </div>

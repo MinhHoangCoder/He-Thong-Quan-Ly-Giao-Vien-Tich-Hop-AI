@@ -78,6 +78,31 @@ public interface SchoolRepository extends JpaRepository<School, Integer> {
     boolean existsByBranchIdAndNameAndDeletedFalseAndIdNot(Integer branchId, String name, Integer id);
 
     /**
+     * Đếm Ô THỜI KHÓA BIỂU của một trường mà phiếu phân công CHA còn hiệu lực — rào chắn thứ hai
+     * khi xóa mềm trường.
+     *
+     * <p>Vì sao không đếm thẳng {@code AssignmentSlot.SchoolId} như trước: từ V27 một phiếu phân
+     * công trải được nhiều trường, trường thật nằm ở TỪNG Ô LỊCH. Đếm ở cấp phiếu
+     * ({@code Assignment.SchoolId}) thì các trường phụ lọt lưới; đếm ở cấp ô mà không nhìn trạng
+     * thái phiếu thì ngược lại — ô của phiếu đã hết hạn/đã hủy vẫn nằm nguyên trong bảng và chặn
+     * vĩnh viễn một trường đã ngừng hợp tác. Câu này lấy đúng phần giao: ô của trường NÀY, thuộc
+     * phiếu CÒN hiệu lực.
+     *
+     * <p>Viết bằng JPQL chứ không phải native để dùng lại đúng bộ trạng thái
+     * {@code SchoolService.PHAN_CONG_CON_HIEU_LUC} mà rào chắn cấp phiếu đang dùng — hai rào
+     * chắn của cùng một luật mà lệch danh sách trạng thái là loại lỗi không ai phát hiện được.
+     */
+    @Query("""
+            SELECT COUNT(o) FROM AssignmentSlot o, Assignment pc
+            WHERE o.assignmentId = pc.id
+              AND o.schoolId = :schoolId
+              AND o.deleted = false
+              AND pc.deleted = false
+              AND pc.status IN :statuses
+            """)
+    long demOLichConHieuLuc(@Param("schoolId") Integer schoolId, @Param("statuses") List<String> statuses);
+
+    /**
      * Đếm dòng con của MỘT trường ở mọi bảng trỏ vào School, gom trong một câu — dùng trước khi
      * XÓA CỨNG (xóa vĩnh viễn từ thùng rác).
      *

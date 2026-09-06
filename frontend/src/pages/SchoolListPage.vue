@@ -52,6 +52,8 @@ const emptyForm = () => ({
   // Chỉ dùng lúc THÊM MỚI: quyết định bộ khung tiết sinh sẵn cho trường.
   // Không gửi khi SỬA — backend suy cấp học từ chính tên trường.
   educationLevel: '',
+  // Chỉ dùng lúc SỬA, và chỉ khi ngày hết hạn thật sự đổi. Xem V40 mục (1).
+  contractEndReason: '',
 })
 
 const modal = reactive({
@@ -62,6 +64,16 @@ const modal = reactive({
   errors: {},
   error: '',
   saving: false,
+  /**
+   * Ngày hết hạn ĐANG LƯU dưới DB, giữ riêng ngoài form.
+   *
+   * Ô lý do chỉ bật lên khi người dùng thật sự đổi ngày, mà "có đổi hay không" thì phải
+   * so với giá trị gốc — form thì bị chính người dùng ghi đè ngay khi họ gõ.
+   */
+  contractEndOriginal: '',
+  /** Lịch sử đổi hạn hợp đồng của trường đang sửa (SchoolDetailResponse.contractChanges). */
+  contractChanges: [],
+  historyLoading: false,
 })
 
 const deleteTarget = ref(null)
@@ -70,6 +82,14 @@ const trashBusy = ref(false)
 const trashError = ref('')
 
 const STATUS_LABEL = { ACTIVE: 'Hoạt động', INACTIVE: 'Ngừng hoạt động', EXPIRED: 'Hết hạn' }
+
+/** Hướng đổi hạn hợp đồng — khớp cột SchoolContractChangeLog.ChangeKind (V40). */
+const CHANGE_KIND_LABEL = {
+  EXTEND: 'Gia hạn',
+  SHORTEN: 'Rút ngắn',
+  SET: 'Điền lần đầu',
+  CLEAR: 'Xóa ngày',
+}
 
 /** Trạng thái hợp đồng dịch vụ (bảng ServiceContract) — bộ mã khác với trạng thái trường. */
 const CONTRACT_STATUS_LABEL = {
@@ -266,6 +286,9 @@ function openCreate() {
     errors: {},
     error: '',
     saving: false,
+    contractEndOriginal: '',
+    contractChanges: [],
+    historyLoading: false,
   })
 }
 
@@ -287,12 +310,43 @@ function openEdit(item) {
       // đang hiện "Hết hạn" vì quá ngày mà nạp nhầm là bấm Lưu xong nó thành
       // INACTIVE/EXPIRED thật, gia hạn hợp đồng cũng không sống lại được.
       status: item.status,
+      contractEndReason: '',
     },
     errors: {},
     error: '',
     saving: false,
+    contractEndOriginal: item.contractEndDate ?? '',
+    contractChanges: [],
+    historyLoading: true,
   })
+  loadContractHistory(item.id)
 }
+
+/**
+ * Nạp lịch sử đổi hạn hợp đồng cho modal đang mở.
+ *
+ * Không chặn việc sửa nếu gọi hỏng: nhật ký là thứ để ĐỐI CHIẾU, mất nó không có nghĩa
+ * là người dùng phải ngồi chờ. Hỏng thì mục lịch sử tự ẩn, phần còn lại của form vẫn dùng được.
+ */
+async function loadContractHistory(id) {
+  try {
+    const { data } = await schoolApi.summary(id)
+    // Modal có thể đã bị đóng hoặc chuyển sang trường khác trong lúc chờ mạng.
+    if (modal.id !== id) return
+    modal.contractChanges = data.contractChanges ?? []
+  } catch {
+    if (modal.id === id) modal.contractChanges = []
+  } finally {
+    if (modal.id === id) modal.historyLoading = false
+  }
+}
+
+/** Người dùng có đang đổi ngày hết hạn so với ngày đang lưu không — quyết định bật ô lý do. */
+const doiHanHopDong = computed(
+  () =>
+    modal.mode === 'edit' &&
+    (modal.form.contractEndDate ?? '') !== (modal.contractEndOriginal ?? ''),
+)
 
 function clearFieldError(field) {
   if (modal.errors[field]) delete modal.errors[field]
@@ -316,6 +370,12 @@ function onNameInput() {
 
 async function saveModal() {
   modal.errors = validateForm(modal.form, modal.mode === 'create')
+  // Luật này nằm ngoài validateForm vì nó cần biết ngày CŨ, mà validateForm chỉ thấy form.
+  // Backend cũng chặn lại lần nữa (SchoolService.update trả 400) — chỗ này chỉ để người
+  // dùng khỏi phải bấm Lưu mới biết mình còn thiếu gì.
+  if (doiHanHopDong.value && !modal.form.contractEndReason.trim()) {
+    modal.errors.contractEndReason = 'Đổi ngày hết hạn hợp đồng thì phải ghi rõ lý do'
+  }
   if (Object.keys(modal.errors).length) return
 
   modal.saving = true
@@ -335,8 +395,11 @@ async function saveModal() {
   // payload: khung tiết đã dùng xếp lịch, không được đổi ngầm qua form sửa.
   if (modal.mode === 'create') {
     body.educationLevel = modal.form.educationLevel || null
+    // Hồ sơ vừa lập thì ngày hết hạn là một phần của chính nó, không có gì để giải trình.
+    delete body.contractEndReason
   } else {
     delete body.educationLevel
+    body.contractEndReason = doiHanHopDong.value ? modal.form.contractEndReason.trim() : null
   }
 
   try {
@@ -563,7 +626,18 @@ async function confirmRestore() {
 
                 <td class="col-actions" @click.stop>
                   <button class="act-btn" title="Sửa" @click="openEdit(item)">Sửa</button>
-                  <button class="act-btn act-btn--del" title="Xóa" @click="deleteTarget = item">
+                  <!-- Trường đang hợp tác thì không cho xóa: còn lớp, còn phân công, còn
+                       lương chưa chốt treo vào nó. Muốn xóa thì chấm dứt hợp đồng trước. -->
+                  <button
+                    class="act-btn act-btn--del"
+                    :disabled="item.effectiveStatus === 'ACTIVE'"
+                    :title="
+                      item.effectiveStatus === 'ACTIVE'
+                        ? 'Trường đang hoạt động — không thể xóa'
+                        : 'Xóa'
+                    "
+                    @click="deleteTarget = item"
+                  >
                     Xóa
                   </button>
                 </td>
@@ -796,6 +870,55 @@ async function confirmRestore() {
               modal.errors.contractEndDate
             }}</small>
           </div>
+        </div>
+
+        <!-- Chỉ hiện khi ngày hết hạn thật sự bị đổi. Kéo dài hạn hợp đồng là gia hạn dịch
+             vụ cho trường, nên phải có người đứng tên chịu trách nhiệm cho con số đó. -->
+        <div v-if="doiHanHopDong" class="form-group">
+          <label>Lý do đổi ngày hết hạn <span class="req">*</span></label>
+          <input
+            v-model="modal.form.contractEndReason"
+            maxlength="500"
+            placeholder="VD: Ký phụ lục gia hạn số 12/2026 ngày 01/09/2026"
+            :class="{ 'input-error': modal.errors.contractEndReason }"
+            @input="clearFieldError('contractEndReason')"
+          />
+          <small v-if="modal.errors.contractEndReason" class="field-error">{{
+            modal.errors.contractEndReason
+          }}</small>
+          <small v-else>
+            Từ
+            {{ modal.contractEndOriginal ? formatDate(modal.contractEndOriginal) : 'chưa đặt' }}
+            →
+            {{
+              modal.form.contractEndDate ? formatDate(modal.form.contractEndDate) : 'xóa trắng'
+            }}. Lần đổi này được ghi lại kèm tên người sửa.
+          </small>
+        </div>
+
+        <!-- Lịch sử đổi hạn: đặt ngay trong modal sửa thay vì một trang riêng, vì người cần
+             đọc nó chính là người đang định sửa tiếp. -->
+        <div v-if="modal.mode === 'edit'" class="form-group">
+          <label>Lịch sử hợp đồng</label>
+          <p v-if="modal.historyLoading" class="desc-text">Đang tải...</p>
+          <p v-else-if="!modal.contractChanges.length" class="desc-text">
+            Chưa có lần đổi ngày hết hạn nào.
+          </p>
+          <ul v-else class="ct-history">
+            <li v-for="(c, i) in modal.contractChanges" :key="i">
+              <span class="ct-history__head">
+                <span class="badge" :class="c.changeKind === 'EXTEND' ? 'badge--warn' : ''">
+                  {{ CHANGE_KIND_LABEL[c.changeKind] ?? c.changeKind }}
+                </span>
+                {{ c.oldEndDate ? formatDate(c.oldEndDate) : 'chưa đặt' }}
+                → {{ c.newEndDate ? formatDate(c.newEndDate) : 'xóa trắng' }}
+              </span>
+              <span class="ct-history__meta">
+                {{ formatDate(c.changedAt) }} · {{ c.changedByName ?? 'Hệ thống' }}
+              </span>
+              <span class="ct-history__reason">{{ c.reason }}</span>
+            </li>
+          </ul>
         </div>
 
         <div class="form-group">
@@ -1044,6 +1167,50 @@ tbody tr:hover {
 .desc-text {
   margin-top: 2px;
   color: var(--c-text-muted);
+  font-size: 12px;
+}
+
+.req {
+  color: var(--c-danger);
+}
+
+/* Lịch sử đổi hạn hợp đồng trong modal sửa trường. */
+.ct-history {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 168px;
+  overflow-y: auto;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+}
+
+.ct-history li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.ct-history li:last-child {
+  border-bottom: none;
+}
+
+.ct-history__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ct-history__meta {
+  color: var(--c-text-muted);
+  font-size: 11px;
+}
+
+.ct-history__reason {
   font-size: 12px;
 }
 

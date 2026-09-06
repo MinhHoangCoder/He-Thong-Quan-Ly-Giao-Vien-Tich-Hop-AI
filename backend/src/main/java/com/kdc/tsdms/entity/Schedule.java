@@ -53,6 +53,28 @@ public class Schedule {
     @Column(name = "Status", nullable = false)
     private String status = "PENDING";
 
+    /**
+     * LÝ DO buổi bị hủy — LEAVE = nghỉ có phép | HOLIDAY = nghỉ lễ | NULL = admin hủy hành
+     * chính (V40).
+     *
+     * <p>Tách khỏi {@code status} thay vì nới CK_Schedule_Status thêm giá trị mới: mọi câu
+     * truy vấn đang lọc {@code Status <> 'CANCELLED'} để đếm buổi thật sẽ lặng lẽ đếm sai
+     * nếu có giá trị thứ năm. Status trả lời "buổi còn hiệu lực không", cột này trả lời "vì
+     * sao không" — hai câu hỏi khác nhau thì hai cột.
+     */
+    @Column(name = "CancelKind")
+    private String cancelKind;
+
+    /**
+     * Kỳ nghỉ đã làm buổi này rơi (→ Holiday) — chỉ có giá trị khi {@code cancelKind =
+     * 'HOLIDAY'} (V40).
+     *
+     * <p>Có cột này thì lúc xoá kỳ nghỉ mới trả lại được ĐÚNG những buổi kỳ nghỉ đó đã đụng
+     * vào; quét mù theo khoảng ngày sẽ trả nhầm cả buổi admin hủy tay trong cùng khoảng.
+     */
+    @Column(name = "HolidayId")
+    private Integer holidayId;
+
     /** MANUAL = nhập tay | AI = do AI xếp. */
     @Column(name = "Source", nullable = false)
     private String source = "MANUAL";

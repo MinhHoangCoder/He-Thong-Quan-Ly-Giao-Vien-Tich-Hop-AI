@@ -15,12 +15,33 @@ export const holidayApi = {
   },
 
   /**
+   * Trong các kỳ nghỉ được hỏi, kỳ nào còn việc phải xử lý ở hộp thoại "Buổi dạy" — trả về
+   * mảng id.
+   *
+   * Gọi RIÊNG sau khi bảng đã hiện, không gộp vào list(): câu này quét cả bảng buổi dạy nên
+   * mất khoảng nửa giây, gộp vào là bắt cả bảng kỳ nghỉ chờ theo.
+   */
+  withIssues(ids) {
+    return http.get('/holidays/with-issues', { params: { ids: ids.join(',') } })
+  },
+
+  /**
    * Số buổi dạy ĐÃ SINH đang rơi vào kỳ nghỉ này.
    * Generator chỉ bỏ ngày nghỉ lúc sinh buổi, nên kỳ nghỉ khai báo SAU đó không tự dọn
    * lịch cũ — màn hình phải hỏi rồi mới hủy.
    */
   impact(id) {
     return http.get(`/holidays/${id}/impact`)
+  },
+
+  /**
+   * Kỳ nghỉ SẮP khai báo sẽ đụng vào bao nhiêu buổi dạy — hỏi TRƯỚC khi lưu.
+   *
+   * POST tuy chỉ đọc: tham số là nguyên form kỳ nghỉ (khoảng ngày + phạm vi trường), nhét
+   * chừng đó vào query string là khai cùng một cấu trúc ở hai nơi rồi để chúng lệch nhau.
+   */
+  previewImpact(body) {
+    return http.post('/holidays/preview-impact', body)
   },
 
   create(body) {

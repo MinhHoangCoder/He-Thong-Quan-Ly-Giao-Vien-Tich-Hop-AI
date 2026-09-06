@@ -62,6 +62,7 @@ mail-local.properties
 ### Claude — folder ngữ cảnh cá nhân (chỉ ở máy bạn, không đẩy lên git) ###
 # Toàn bộ folder claude-context/ chỉ tồn tại local — KHÔNG track gì, kể cả README.
 claude-context/
+
 # .claude/ là cấu hình công cụ của riêng từng máy (cổng dev, worktree tạm) — mỗi người
 # một kiểu, đẩy lên chỉ tổ conflict.
 .claude/

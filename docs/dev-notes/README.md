@@ -72,6 +72,7 @@ Quy ước đặt tên: `YYYY-MM-DD-<phần>-<chủ-đề>.md`
 | 2026-08-24 | fullstack | ⭐⭐ **Ràng buộc xóa Đợt 5 — những chỗ còn sót**: xóa nhóm môn học quét sạch kho bài giảng (đi vòng qua DeleteGuard), phân công vào thùng rác kéo theo cả buổi ĐÃ DẠY, thùng rác + khôi phục cho Kho bài giảng, dọn 5 câu xóa cứng nằm chờ | [2026-08-24-fullstack-rang-buoc-xoa-dot-5.md](2026-08-24-fullstack-rang-buoc-xoa-dot-5.md) |
 
 | 2026-09-05 | fullstack | ⭐ **Hủy phân công kể từ MỘT NGÀY** (V39) — vì sao buộc phải thu hẹp `EndDate` (luật chống trùng lịch đọc cột đó), nhãn "Kết thúc sớm" tính tại chỗ nên không nới `CK_Assignment_Status`, bỏ hàng rào 409 "đang đứng lớp" thay bằng mốc cắt, bỏ hủy không hồi sinh buổi ngày nghỉ · Đơn xin nghỉ do GV tự gửi, duyệt ngay trên chuông | [2026-09-05-fullstack-huy-phan-cong-ngay-hieu-luc.md](2026-09-05-fullstack-huy-phan-cong-ngay-hieu-luc.md) |
+| 2026-09-06 | fullstack | Lịch nghỉ: nút "Buổi dạy" chỉ hiện ở dòng thật sự còn việc — **bẫy `ARITHABORT` của JDBC** làm câu JOIN 0,5 giây trong sqlcmd chạy mất 147 giây qua ứng dụng, phải đổi sang hai câu quét phẳng rồi đối chiếu bên Java · hỏng thì hiện hết nút chứ không ẩn hết · trang bám `page-common.css` | [2026-09-06-fullstack-lich-nghi-nut-buoi-day-va-page-common.md](2026-09-06-fullstack-lich-nghi-nut-buoi-day-va-page-common.md) |
 
 Ghi chú không gắn ngày (tổng hợp theo chủ đề):
 [fe-dark-mode-va-tien-ich-cai-dat.md](fe-dark-mode-va-tien-ich-cai-dat.md) — FE dark mode & bộ tiện ích trang Cài đặt.

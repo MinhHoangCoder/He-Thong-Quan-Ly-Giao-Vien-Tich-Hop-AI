@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -91,4 +92,30 @@ public class Attendance {
      */
     @Column(name = "AdjustReason")
     private String adjustReason;
+
+    /**
+     * ĐƠN GIÁ MỘT TIẾT ĐÃ ĐÓNG BĂNG vào buổi này lúc chấm công (V40), đồng.
+     *
+     * <p>V38 đã đưa đơn giá ra khỏi code và tra theo NGÀY DẠY, nhưng bảng {@code PayRate} vẫn
+     * sửa được: gõ nhầm một dòng cũ là mọi phiếu lương từng tính theo dòng đó đổi số. Chép con
+     * số vào ngay lúc ghi công thì buổi đã dạy mang theo giá của chính nó, sửa bảng giá không
+     * còn chạm được tới quá khứ.
+     *
+     * <p>NULL với dòng cũ trước V40 và với dòng không ra tiền (Vắng / Nghỉ phép) — {@code
+     * PayrollService} gặp NULL thì tra bảng {@code PayRate} như trước, nên cột này không làm
+     * lệch phiếu lương nào đang có.
+     */
+    @Column(name = "RateAmount")
+    private BigDecimal rateAmount;
+
+    /**
+     * Đơn giá trên lấy từ đâu: {@code PAY_RATE} = barem chung theo khối | {@code CONTRACT} =
+     * đơn giá riêng thương lượng trong hợp đồng của giáo viên.
+     *
+     * <p>Ghi lại NGUỒN chứ không chỉ con số: hai nguồn cùng ra 120.000đ nhưng khi đối soát thì
+     * phải biết nên đi hỏi bảng giá hay hỏi bản hợp đồng. Ràng buộc CK_Attendance_RateSource
+     * chỉ cho hai giá trị này.
+     */
+    @Column(name = "RateSource")
+    private String rateSource;
 }

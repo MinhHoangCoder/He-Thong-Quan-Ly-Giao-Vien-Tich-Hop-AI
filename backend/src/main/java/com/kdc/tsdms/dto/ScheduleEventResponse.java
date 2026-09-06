@@ -38,4 +38,14 @@ public class ScheduleEventResponse {
 
     /** PENDING | APPROVED | REJECTED | CANCELLED */
     public String status;
+
+    /**
+     * Nhãn tiếng Việt của trạng thái, TÍNH Ở SERVICE và không lưu trong DB.
+     *
+     * <p>Ba buổi cùng mang chữ CANCELLED có ba nghĩa khác nhau — "Nghỉ có phép", "Nghỉ lễ",
+     * "Đã hủy" — phân biệt bằng {@code Schedule.CancelKind} (V40). Ghép nhãn ở đây chứ không
+     * để frontend tự suy: luật ghép là nghiệp vụ (dòng nào kế toán được trừ lương), mà nghiệp
+     * vụ nằm rải ở hai màn hình thì hai màn hình sẽ lệch nhau.
+     */
+    public String statusLabel;
 }

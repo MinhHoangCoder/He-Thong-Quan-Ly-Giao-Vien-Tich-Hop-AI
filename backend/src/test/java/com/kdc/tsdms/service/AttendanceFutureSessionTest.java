@@ -11,7 +11,10 @@ import com.kdc.tsdms.dto.AttendanceRequest;
 import com.kdc.tsdms.entity.Schedule;
 import com.kdc.tsdms.entity.Teacher;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AssignmentRepository;
 import com.kdc.tsdms.repository.AttendanceRepository;
+import com.kdc.tsdms.repository.ContractRepository;
+import com.kdc.tsdms.repository.PayRateRepository;
 import com.kdc.tsdms.repository.PayrollRepository;
 import com.kdc.tsdms.repository.ScheduleRepository;
 import com.kdc.tsdms.repository.TeacherRepository;
@@ -57,6 +60,21 @@ class AttendanceFutureSessionTest {
 
     @Mock
     private NotificationService notificationService;
+
+    /*
+     * Ba kho dưới đây phục vụ việc ĐÓNG BĂNG ĐƠN GIÁ vào dòng chấm công (V40): hợp đồng có đơn
+     * giá riêng thì thắng, không thì tra barem theo khối của lớp. Lớp test này không kiểm phần
+     * tiền nong, nhưng thiếu mock là create() ném NullPointerException trước khi tới được điều
+     * cần kiểm — mock rỗng cho ra "không tra được đơn giá", đúng thứ ta muốn ở đây.
+     */
+    @Mock
+    private ContractRepository contractRepo;
+
+    @Mock
+    private AssignmentRepository assignmentRepo;
+
+    @Mock
+    private PayRateRepository payRateRepo;
 
     @InjectMocks
     private AttendanceService service;

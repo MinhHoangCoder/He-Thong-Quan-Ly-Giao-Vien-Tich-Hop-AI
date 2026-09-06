@@ -10,13 +10,15 @@ import com.kdc.tsdms.entity.AssignmentStatus;
 import com.kdc.tsdms.entity.Branch;
 import com.kdc.tsdms.entity.Period;
 import com.kdc.tsdms.entity.School;
+import com.kdc.tsdms.entity.SchoolContractChangeLog;
 import com.kdc.tsdms.exception.ApiException;
+import com.kdc.tsdms.repository.AppUserRepository;
 import com.kdc.tsdms.repository.AssignmentRepository;
-import com.kdc.tsdms.repository.AssignmentSlotRepository;
 import com.kdc.tsdms.repository.BranchRepository;
 import com.kdc.tsdms.repository.PeriodRepository;
 import com.kdc.tsdms.repository.RoomRepository;
 import com.kdc.tsdms.repository.SchoolClassRepository;
+import com.kdc.tsdms.repository.SchoolContractChangeLogRepository;
 import com.kdc.tsdms.repository.SchoolRepository;
 import com.kdc.tsdms.repository.ServiceContractRepository;
 import com.kdc.tsdms.repository.StudentRepository;
@@ -25,6 +27,7 @@ import java.text.Normalizer;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -43,6 +46,9 @@ public class SchoolService {
     /** Trạng thái phân công còn GIỮ CHỖ khung giờ — xem {@code Assignment.holdsTimeSlot()}. */
     private static final List<String> PHAN_CONG_CON_HIEU_LUC =
             List.of(AssignmentStatus.ACTIVE, AssignmentStatus.PENDING);
+
+    /** Lớp còn dạy (cột SchoolClass.Status) — lớp INACTIVE không chặn xóa trường. */
+    private static final String LOP_DANG_HOAT_DONG = "ACTIVE";
 
     /** Buổi sáng trong khung tiết (cột Period.SessionType). */
     private static final String BUOI_SANG = "MORNING";
@@ -70,7 +76,9 @@ public class SchoolService {
     private final StudentRepository studentRepo;
     private final PeriodRepository periodRepo;
     private final RoomRepository roomRepo;
-    private final AssignmentSlotRepository slotRepo;
+    private final SchoolContractChangeLogRepository contractLogRepo;
+    private final AppUserRepository userRepo;
+    private final DisplayNameResolver displayNameResolver;
     private final PeriodService periodService;
 
     public SchoolService(
@@ -82,7 +90,9 @@ public class SchoolService {
             StudentRepository studentRepo,
             PeriodRepository periodRepo,
             RoomRepository roomRepo,
-            AssignmentSlotRepository slotRepo,
+            SchoolContractChangeLogRepository contractLogRepo,
+            AppUserRepository userRepo,
+            DisplayNameResolver displayNameResolver,
             PeriodService periodService) {
         this.sRepo = schoolRepo;
         this.bRepo = branchRepo;
@@ -92,7 +102,9 @@ public class SchoolService {
         this.studentRepo = studentRepo;
         this.periodRepo = periodRepo;
         this.roomRepo = roomRepo;
-        this.slotRepo = slotRepo;
+        this.contractLogRepo = contractLogRepo;
+        this.userRepo = userRepo;
+        this.displayNameResolver = displayNameResolver;
         this.periodService = periodService;
     }
 
@@ -135,6 +147,9 @@ public class SchoolService {
      * ngày hợp đồng nằm ngay trên bảng School mà form này sửa được. Hai nguồn đó không tự đồng bộ
      * với nhau, nên hiện cả hai để người dùng thấy ngay khi chúng lệch, thay vì mỗi màn hình tin
      * một con số.
+     *
+     * <p>Kèm luôn LỊCH SỬ ĐỔI HẠN (V40) để modal sửa trường không phải gọi thêm một endpoint nữa
+     * — xem {@code SchoolDetailResponse.ContractChangeRow}.
      */
     @Transactional(readOnly = true)
     public SchoolDetailResponse detail(Integer id) {
@@ -149,6 +164,17 @@ public class SchoolService {
                                 c.getContractValue(),
                                 c.getStatus()))
                         .toList();
+        Map<Integer, String> tenNguoi = new HashMap<>();
+        List<SchoolDetailResponse.ContractChangeRow> doiHan =
+                contractLogRepo.findBySchoolIdOrderByChangedAtDescIdDesc(id).stream()
+                        .map(l -> new SchoolDetailResponse.ContractChangeRow(
+                                l.getChangedAt(),
+                                l.getOldEndDate(),
+                                l.getNewEndDate(),
+                                l.getChangeKind(),
+                                l.getReason(),
+                                tenNguoiSua(l.getChangedByUserId(), tenNguoi)))
+                        .toList();
         return new SchoolDetailResponse(
                 s.getId(),
                 classRepo.countBySchoolIdAndDeletedFalse(id),
@@ -158,7 +184,8 @@ public class SchoolService {
                 (int) khungTiet.stream()
                         .filter(p -> BUOI_SANG.equals(p.getSessionType()))
                         .count(),
-                hopDong);
+                hopDong,
+                doiHan);
     }
 
     /* ── Tạo mới ── */
@@ -178,13 +205,31 @@ public class SchoolService {
         return toResponse(saved, tenChiNhanhCua(List.of(saved)), soTietCua(List.of(saved)), BusinessTime.today());
     }
 
-    /* ── Cập nhật ── */
+    /**
+     * Cập nhật một trường.
+     *
+     * <p>Đổi {@code contractEndDate} thì BẮT BUỘC nhập lý do và để lại một dòng ở
+     * {@code SchoolContractChangeLog} — xem {@link #ghiNhatKyDoiHanHopDong}.
+     */
     @Transactional
     public SchoolResponse update(Integer id, SchoolRequest req) {
         School s = findActiveOrThrow(id);
         validateBranch(req.branchId());
 
+        // Đọc hạn CŨ trước khi apply() ghi đè, để còn so được hai đầu.
+        LocalDate hanCu = s.getContractEndDate();
         apply(s, req);
+        String loaiDoiHan = SchoolContractChangeLog.phanLoai(hanCu, s.getContractEndDate());
+        String lyDoDoiHan =
+                req.contractEndReason() == null ? "" : req.contractEndReason().trim();
+        // Chặn TRƯỚC khi lưu: giao dịch có rollback thật, nhưng ném lỗi sau khi đã UPDATE thì
+        // người đọc code phải tự chứng minh điều đó mỗi lần đọc lại hàm này.
+        if (loaiDoiHan != null && lyDoDoiHan.isBlank()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "Đổi ngày hết hạn hợp đồng thì phải ghi lý do — đây là căn cứ để trường"
+                            + " được nhận lớp và phân công mới.");
+        }
         // Form SỬA không có ô Cấp học (khung tiết đã dùng xếp lịch, không đổi ngầm được) nên cấp
         // học lấy từ chính cái tên đang nhập. Cùng MỘT luật ghép tên cho cả tạo lẫn sửa: trước
         // đây update lưu thẳng chuỗi người dùng gõ, nên mở "THCS Ban Mai" ra sửa số điện thoại
@@ -194,49 +239,65 @@ public class SchoolService {
         s.setUpdatedAt(Instant.now());
         s.setUpdatedBy(SecurityUtils.currentUserId());
         School saved = sRepo.save(s);
+        if (loaiDoiHan != null) {
+            ghiNhatKyDoiHanHopDong(saved.getId(), hanCu, saved.getContractEndDate(), loaiDoiHan, lyDoDoiHan);
+        }
         return toResponse(saved, tenChiNhanhCua(List.of(saved)), soTietCua(List.of(saved)), BusinessTime.today());
     }
 
     /**
      * Xóa mềm một trường.
      *
-     * <p>Luật RESTRICT: còn lớp, phân công đang chạy, hợp đồng dịch vụ hoặc hồ sơ học sinh thì
-     * CẤM xóa. Trước đây hàm này không kiểm gì cả — xóa xong thì lớp, lịch dạy, hợp đồng của
-     * trường vẫn sống nguyên và vẫn hiện ở mọi màn hình, chỉ là trỏ vào một cái tên đã biến mất
-     * (không query nào trong dự án lọc theo cờ xóa của bảng CHA). Buổi dạy vẫn được chấm công,
-     * vẫn vào lương, cho một trường về mặt sổ sách đã không còn.
+     * <p>Hai tầng rào, theo đúng thứ tự người dùng gặp:
+     *
+     * <ol>
+     *   <li><b>Trường CÒN HỢP TÁC thì không xóa được, chấm hết.</b> Xóa một trường đang dạy là
+     *       thao tác không bao giờ đúng — nó luôn là nhầm dòng. Bắt người dùng chuyển trạng thái
+     *       sang "Ngừng hoạt động" trước, để việc dừng hợp tác là một quyết định có ý thức chứ
+     *       không phải hệ quả phụ của một cú bấm nhầm. Nút Xóa ở màn danh sách cũng đã bị khóa
+     *       cho những dòng này, nhưng khóa ở giao diện chỉ là tiện lợi — gọi thẳng API vẫn phải
+     *       chặn được.
+     *   <li><b>Trường đã hết hạn/ngừng hợp tác thì xóa được, TRỪ KHI còn việc đang treo:</b> lớp
+     *       đang hoạt động, hoặc phân công còn hiệu lực (đếm cả ở cấp phiếu lẫn cấp ô lịch, xem
+     *       {@code SchoolRepository.demOLichConHieuLuc}). Xóa lúc đó thì lớp và lịch dạy vẫn
+     *       sống nguyên, vẫn được chấm công, vẫn vào lương — cho một trường mà về mặt sổ sách đã
+     *       không còn (không query nào trong dự án lọc theo cờ xóa của bảng CHA).
+     * </ol>
+     *
+     * <p>ĐỢT 6 THU HẸP rào chắn: hợp đồng dịch vụ, hồ sơ học sinh và ô lịch của phiếu đã kết
+     * thúc KHÔNG còn chặn nữa. Lý do: đó là LỊCH SỬ, không phải nghĩa vụ đang treo — cùng lý lẽ
+     * đợt 5 đã dùng để không chặn theo {@code TeacherEvaluation}. Chặn theo lịch sử thì một
+     * trường từng hợp tác là vĩnh viễn không dọn được khỏi danh sách, mà đó chính là việc màn
+     * này sinh ra để làm. Dữ liệu cũ không mất đi đâu: xóa mềm chỉ là một cờ, và
+     * {@code countChildRowsBySchoolId} vẫn đếm ĐỦ mọi bảng con trước khi xóa VĨNH VIỄN.
      *
      * <p>CỐ Ý KHÔNG chặn theo Room và Period: đó là cấu hình thuộc về chính trường (phòng học,
      * khung tiết), không phải dữ liệu nghiệp vụ độc lập — chặn theo chúng thì mọi trường đã
-     * seed đều không bao giờ xóa được.
-     *
-     * <p>ĐỢT 5 đã cân nhắc và CỐ Ý KHÔNG thêm hai rào nữa, ghi lại để lần sau khỏi bàn lại:
-     *
-     * <ul>
-     *   <li><b>Holiday.SchoolId</b> — lịch nghỉ là cấu hình riêng của trường, cùng loại với
-     *       Room/Period, nên theo đúng lý lẽ ở trên thì không chặn.
-     *   <li><b>TeacherEvaluation.SchoolId</b> — phiếu đánh giá là LỊCH SỬ, không phải nghĩa vụ
-     *       đang treo. Chặn theo lịch sử thì một trường từng hợp tác là vĩnh viễn không xóa
-     *       được, đúng cái bẫy mà rào "phân công ĐANG CHẠY" ở trên đã tránh bằng cách chỉ đếm
-     *       phiếu còn hiệu lực.
-     * </ul>
-     *
-     * <p>Cả hai đều chỉ để lại dòng trỏ vào một trường ở thùng rác, mà mọi chỗ hiển thị tên
-     * trường đều tra bằng {@code findById} (không lọc cờ xóa) nên tên vẫn hiện đúng.
+     * seed đều không bao giờ xóa được. Holiday.SchoolId cùng loại, cũng không chặn.
      */
     @Transactional
     public void delete(Integer id) {
         School s = findActiveOrThrow(id);
         DeleteGuard.of("trường " + s.getName())
-                .blockIf(classRepo.countBySchoolIdAndDeletedFalse(id), "lớp học")
+                // Trạng thái SUY RA chứ không phải cột Status: trường quá hạn hợp đồng hiện
+                // "Hết hạn" ở bảng thì phải xóa được, dù cột Status vẫn còn ghi ACTIVE (xem
+                // School.effectiveStatus).
+                //
+                // Là MỘT RÀO trong danh sách chứ không phải cửa chặn sớm: bản đầu ném lỗi ngay
+                // tại đây, và thế là người dùng chuyển trạng thái sang "Ngừng" xong bấm lại mới
+                // lòi ra còn 3 lớp đang hoạt động — đúng cái kiểu "sửa xong lại gặp rào mới" mà
+                // DeleteGuard sinh ra để dẹp.
+                .blockWhen(
+                        s.conHopTac(BusinessTime.today()),
+                        "trường đang hoạt động (chuyển trạng thái sang \"Ngừng hoạt động\" trước)")
+                .blockIf(
+                        classRepo.countBySchoolIdAndDeletedFalseAndStatus(id, LOP_DANG_HOAT_DONG), "lớp đang hoạt động")
                 .blockIf(
                         assignmentRepo.countBySchoolIdAndStatusInAndDeletedFalse(id, PHAN_CONG_CON_HIEU_LUC),
-                        "phân công đang chạy")
-                .blockIf(serviceContractRepo.countBySchoolIdAndDeletedFalse(id), "hợp đồng dịch vụ")
-                .blockIf(studentRepo.countBySchoolIdAndDeletedFalse(id), "hồ sơ học sinh")
+                        "phân công còn hiệu lực")
                 // Từ V27 trường thật nằm ở TỪNG Ô LỊCH, không chỉ ở cấp phiếu: một phiếu trải
                 // nhiều trường thì các trường phụ không xuất hiện ở Assignment.SchoolId nào cả.
-                .blockIf(slotRepo.countBySchoolIdAndDeletedFalseAndTeacherIdIsNotNull(id), "ô thời khóa biểu")
+                .blockIf(sRepo.demOLichConHieuLuc(id, PHAN_CONG_CON_HIEU_LUC), "ô thời khóa biểu còn hiệu lực")
                 .check();
         s.setDeleted(true);
         s.setDeletedAt(Instant.now());
@@ -273,6 +334,44 @@ public class SchoolService {
     }
 
     /* ── PRIVATE ── */
+
+    /**
+     * Ghi MỘT dòng nhật ký cho một lần đổi ngày hết hạn hợp đồng (V40 mục 1).
+     *
+     * <p>Chỉ ghi thêm, không bao giờ sửa dòng cũ: chính chuỗi nhiều lần kéo ngày mới là thứ nhìn
+     * ra được ý đồ, gộp lại thành "lý do lần cuối" là mất hết. Vì vậy bảng riêng chứ không phải
+     * một cột trên School.
+     *
+     * <p>{@code changedByUserId} có thể null (thao tác không đi từ người đăng nhập) nhưng
+     * {@code reason} thì không — bên gọi đã chặn rỗng trước khi tới đây, và cột cũng NOT NULL để
+     * không ai ghi chui một dòng trống bằng SQL.
+     */
+    private void ghiNhatKyDoiHanHopDong(Integer schoolId, LocalDate hanCu, LocalDate hanMoi, String loai, String lyDo) {
+        SchoolContractChangeLog l = new SchoolContractChangeLog();
+        l.setSchoolId(schoolId);
+        l.setOldEndDate(hanCu);
+        l.setNewEndDate(hanMoi);
+        l.setChangeKind(loai);
+        l.setReason(lyDo);
+        l.setChangedByUserId(SecurityUtils.currentUserId());
+        l.setChangedAt(Instant.now());
+        contractLogRepo.save(l);
+    }
+
+    /**
+     * Tên người sửa, tra một lần cho mỗi tài khoản trong cùng một lượt gọi.
+     *
+     * <p>Cùng khuôn với {@code PayrollService.actorName}: nhật ký của một trường thường do đúng
+     * một người ghi, tra lại tên cho từng dòng là lặp vô ích.
+     */
+    private String tenNguoiSua(Integer userId, Map<Integer, String> cache) {
+        if (userId == null) {
+            return null;
+        }
+        return cache.computeIfAbsent(
+                userId,
+                uid -> userRepo.findById(uid).map(displayNameResolver::resolve).orElse("(user #" + uid + ")"));
+    }
 
     /**
      * Các cụm từ chỉ cấp học có thể đứng đầu tên trường, viết KHÔNG DẤU và tách sẵn thành token.
