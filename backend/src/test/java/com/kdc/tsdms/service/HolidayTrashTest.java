@@ -123,7 +123,10 @@ class HolidayTrashTest {
     @Test
     void canh_bao_truoc_khi_xoa_ke_du_buoi_da_huy_dong_nghi_phep_va_buoi_sap_toi() {
         when(holidayRepo.findById(ID)).thenReturn(Optional.of(holiday));
-        when(holidayRepo.countCancelledSessionsInRange(any(), any())).thenReturn(128L);
+        // Đếm theo CHÍNH kỳ nghỉ này (Schedule.HolidayId của V40), không còn quét mù theo
+        // khoảng ngày: buổi admin hủy tay trong cùng khoảng đó không phải việc của kỳ nghỉ,
+        // và xóa kỳ nghỉ cũng không được trả chúng về lịch.
+        when(holidayRepo.countSessionsCancelledByHoliday(ID)).thenReturn(128L);
         when(attendanceRepo.countByStatusAndWorkDateBetween("LEAVE", FROM, TO)).thenReturn(40L);
         // Một buổi ở quá khứ và một buổi ở tương lai: chỉ buổi tương lai được đếm, vì chỉ nó
         // mới "chạy lại bình thường" sau khi kỳ nghỉ bị xóa.
@@ -134,7 +137,7 @@ class HolidayTrashTest {
 
         HolidayDeleteImpactResponse r = service.deleteImpact(ID);
 
-        assertThat(r.cancelledSessions()).isEqualTo(128);
+        assertThat(r.restorableSessions()).isEqualTo(128);
         assertThat(r.leaveAttendances()).isEqualTo(40);
         assertThat(r.futureSessions()).isEqualTo(1);
     }

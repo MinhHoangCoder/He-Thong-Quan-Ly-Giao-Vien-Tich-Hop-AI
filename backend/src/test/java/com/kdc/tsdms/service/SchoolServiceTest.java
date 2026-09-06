@@ -235,7 +235,10 @@ class SchoolServiceTest {
         }
 
         private SchoolRequest request(String name, String capHoc) {
-            return new SchoolRequest(1, name, null, null, null, null, null, null, School.ACTIVE, capHoc);
+            // contractEndReason = null: mấy ca này không đụng tới ngày hết hạn hợp đồng nên
+            // không có gì để giải trình. Luật "đổi ngày thì phải ghi lý do" (V40) chỉ nổ khi
+            // ngày MỚI khác ngày đang lưu.
+            return new SchoolRequest(1, name, null, null, null, null, null, null, School.ACTIVE, capHoc, null);
         }
     }
 

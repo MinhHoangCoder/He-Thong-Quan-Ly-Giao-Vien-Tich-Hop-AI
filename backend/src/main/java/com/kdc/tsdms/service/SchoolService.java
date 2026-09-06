@@ -278,15 +278,18 @@ public class SchoolService {
     @Transactional
     public void delete(Integer id) {
         School s = findActiveOrThrow(id);
-        // Trạng thái SUY RA chứ không phải cột Status: trường quá hạn hợp đồng hiện "Hết hạn" ở
-        // bảng thì phải xóa được, dù cột Status vẫn còn ghi ACTIVE (xem School.effectiveStatus).
-        if (s.conHopTac(BusinessTime.today())) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "Trường " + s.getName() + " đang hoạt động — không thể xóa."
-                            + " Hãy chuyển trạng thái sang \"Ngừng hoạt động\" trước.");
-        }
         DeleteGuard.of("trường " + s.getName())
+                // Trạng thái SUY RA chứ không phải cột Status: trường quá hạn hợp đồng hiện
+                // "Hết hạn" ở bảng thì phải xóa được, dù cột Status vẫn còn ghi ACTIVE (xem
+                // School.effectiveStatus).
+                //
+                // Là MỘT RÀO trong danh sách chứ không phải cửa chặn sớm: bản đầu ném lỗi ngay
+                // tại đây, và thế là người dùng chuyển trạng thái sang "Ngừng" xong bấm lại mới
+                // lòi ra còn 3 lớp đang hoạt động — đúng cái kiểu "sửa xong lại gặp rào mới" mà
+                // DeleteGuard sinh ra để dẹp.
+                .blockWhen(
+                        s.conHopTac(BusinessTime.today()),
+                        "trường đang hoạt động (chuyển trạng thái sang \"Ngừng hoạt động\" trước)")
                 .blockIf(
                         classRepo.countBySchoolIdAndDeletedFalseAndStatus(id, LOP_DANG_HOAT_DONG), "lớp đang hoạt động")
                 .blockIf(
