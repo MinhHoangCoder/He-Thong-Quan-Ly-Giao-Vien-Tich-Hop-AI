@@ -22,7 +22,7 @@ const props = defineProps({
   actionable: { type: Boolean, default: false },
   busy: { type: Boolean, default: false },
 })
-const emit = defineEmits(['close', 'confirm', 'cancel', 'open-schedule'])
+const emit = defineEmits(['close', 'confirm', 'cancel'])
 
 const DAY_ORDER = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']
 const DAY_LABEL = {
@@ -137,30 +137,16 @@ function submitReject() {
   emit('cancel', value)
 }
 
-// window không có trong scope template của <script setup> nên phải bọc lại.
-function printTable() {
-  window.print()
-}
-
 function onKey(e) {
   if (e.key === 'Escape') emit('close')
 }
 onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
-
-/*
- * Cờ cho phép luật in "ẩn mọi thứ trừ bảng" — CHỈ bật khi bảng đang mở.
- * Không có cờ này thì người dùng bấm Ctrl+P ở bất kỳ trang nào cũng ra giấy trắng,
- * vì luật kia là CSS toàn cục (phải toàn cục mới với tới được các thẻ anh em của body).
- */
-const PRINT_FLAG = 'inv-printing'
-onMounted(() => document.body.classList.add(PRINT_FLAG))
-onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
 </script>
 
 <template>
-  <!-- Teleport ra body: bảng phải là con TRỰC TIẾP của body thì luật in mới ẩn được
-       sidebar / chuông / nội dung trang phía sau bằng một selector anh-em duy nhất. -->
+  <!-- Teleport ra body: nằm trong bảng chuông thì lớp phủ bị kẹt trong ngăn xếp z-index
+       của bảng đó, không phủ nổi phần còn lại của trang. -->
   <Teleport to="body">
     <div class="inv-overlay" @click.self="emit('close')">
       <div class="inv" role="dialog" aria-label="Lịch dạy chi tiết">
@@ -249,9 +235,6 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
           </div>
 
           <div class="inv__foot">
-            <button class="inv__link" @click="emit('open-schedule')">Xem trên lịch dạy</button>
-            <button class="inv__link" @click="printTable">In bảng</button>
-            <span class="inv__spacer" />
             <template v-if="actionable">
               <template v-if="rejecting">
                 <button
@@ -488,23 +471,10 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
 .inv__foot {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.5rem;
   margin-top: 1rem;
   flex-wrap: wrap;
-}
-.inv__spacer {
-  flex: 1;
-}
-.inv__link {
-  border: 0;
-  background: none;
-  padding: 0.2rem 0;
-  color: var(--c-primary);
-  font-size: 0.82rem;
-  cursor: pointer;
-}
-.inv__link:hover {
-  text-decoration: underline;
 }
 .inv__btn {
   display: inline-flex;
@@ -533,82 +503,5 @@ onBeforeUnmount(() => document.body.classList.remove(PRINT_FLAG))
   border-color: var(--c-border);
   background: var(--c-surface);
   color: var(--c-text);
-}
-
-/* ══ IN RA GIẤY ══
-   Trải bảng thành nội dung thường của trang: bỏ lớp phủ, bỏ khung nổi, bỏ mọi thứ chỉ
-   có nghĩa trên màn hình (nút bấm, đếm ngược, ô nhập lý do). Giữ lại đúng ba phần:
-   tiêu đề — tóm tắt — lưới. */
-@media print {
-  .inv-overlay {
-    position: static;
-    display: block;
-    padding: 0;
-    background: none;
-  }
-  .inv {
-    max-width: none;
-    max-height: none;
-    padding: 0;
-    border-radius: 0;
-    box-shadow: none;
-    overflow: visible;
-  }
-  .inv__x,
-  .inv__foot,
-  .inv__reject,
-  .inv__deadline {
-    display: none !important;
-  }
-  /* Khối tóm tắt bỏ nền xám: máy in mặc định KHÔNG in nền, để lại thì ra một mảng trắng
-     lệch hẳn so với phần còn lại. */
-  .inv__sum {
-    padding: 0 0 0.4rem;
-    background: none;
-  }
-  .inv__chip {
-    padding: 0;
-    background: none;
-  }
-  .inv__chip::after {
-    content: ' · ';
-  }
-  .inv__chip:last-child::after {
-    content: '';
-  }
-  /* Viền đen mảnh thay cho màu token — bản in không phụ thuộc chế độ sáng/tối. */
-  .inv__grid th,
-  .inv__grid td {
-    border-color: #999;
-  }
-  .inv__grid thead th {
-    background: none;
-    border-bottom-width: 2px;
-  }
-  .inv__cell {
-    background: none !important;
-  }
-  .inv__grid {
-    page-break-inside: avoid;
-  }
-}
-</style>
-
-<!-- KHÔNG scoped: luật dưới đây phải với tới các thẻ ANH EM của bảng (sidebar, chuông,
-     nội dung trang) — thứ mà CSS scoped của component không chạm được. -->
-<style>
-@media print {
-  @page {
-    size: A4 portrait;
-    margin: 14mm;
-  }
-  /* Chỉ áp khi bảng ĐANG MỞ (component tự gắn/gỡ class inv-printing lên body). Không có
-     điều kiện này thì mọi lần Ctrl+P ở trang bất kỳ đều ra giấy trắng. */
-  body.inv-printing > *:not(.inv-overlay) {
-    display: none !important;
-  }
-  body.inv-printing {
-    background: #fff;
-  }
 }
 </style>
