@@ -238,24 +238,66 @@ function validate() {
   return Object.keys(e).length === 0
 }
 
+/** Gom form thành payload gửi backend — dùng chung cho xem trước và cho lưu thật. */
+function buildBody() {
+  return {
+    fromDate: modal.form.fromDate,
+    toDate: modal.oneDay ? modal.form.fromDate : modal.form.toDate,
+    name: modal.form.name.trim(),
+    kind: modal.form.kind,
+    schoolId: modal.form.schoolId === '' ? null : Number(modal.form.schoolId),
+    note: modal.form.note.trim() || null,
+  }
+}
+
+/**
+ * Hộp xác nhận "kỳ nghỉ này sẽ đụng vào N buổi dạy".
+ *
+ * Hỏi TRƯỚC khi lưu chứ không phải sau: gõ nhầm 2026 thành 2025 mà hỏi sau thì kỳ nghỉ đã
+ * nằm trong DB, người dùng phải nhớ đi xóa nó đi — còn hỏi trước thì chỉ việc bấm Quay lại.
+ */
+const preview = reactive({ open: false, data: null, body: null })
+
 async function save() {
   if (!validate()) return
+  const body = buildBody()
+
+  // Sửa kỳ nghỉ đã có thì đi thẳng: màn "Buổi dạy rơi vào kỳ nghỉ" sẵn có vẫn lo phần dọn lịch.
+  if (modal.mode === 'edit') {
+    await luuThat(body)
+    return
+  }
+
   modal.saving = true
   modal.error = ''
   try {
-    const body = {
-      fromDate: modal.form.fromDate,
-      toDate: modal.oneDay ? modal.form.fromDate : modal.form.toDate,
-      name: modal.form.name.trim(),
-      kind: modal.form.kind,
-      schoolId: modal.form.schoolId === '' ? null : Number(modal.form.schoolId),
-      note: modal.form.note.trim() || null,
+    const { data } = await holidayApi.previewImpact(body)
+    if (data.sessionCount > 0 || data.pastSessionCount > 0) {
+      preview.data = data
+      preview.body = body
+      preview.open = true
+      return
     }
+    await luuThat(body)
+  } catch (e) {
+    modal.error = e.response?.data?.message || 'Không kiểm tra được ảnh hưởng. Thử lại.'
+  } finally {
+    modal.saving = false
+  }
+}
+
+/** Ghi kỳ nghỉ xuống DB. Tách khỏi save() vì có hai đường tới đây: không ảnh hưởng gì, và đã xác nhận. */
+async function luuThat(body) {
+  modal.saving = true
+  modal.error = ''
+  try {
     if (modal.mode === 'create') {
       const res = await holidayApi.create(body)
+      preview.open = false
       modal.open = false
       await load()
-      // Kỳ nghỉ vừa khai báo có thể trùm lên lịch đã sinh trước đó → hỏi ngay.
+      // Kỳ nghỉ vừa khai báo có thể trùm lên cả buổi ĐÃ diễn ra — phần đó hủy không cứu được,
+      // phải chuyển dòng vắng sang nghỉ phép, nên vẫn mở tiếp hộp thoại xử lý.
       await checkImpact(res.data)
     } else {
       await holidayApi.update(modal.id, body)
@@ -264,6 +306,7 @@ async function save() {
     }
   } catch (e) {
     modal.error = e.response?.data?.message || 'Không lưu được. Thử lại.'
+    preview.open = false
   } finally {
     modal.saving = false
   }
@@ -701,6 +744,53 @@ onMounted(async () => {
       </div>
     </div>
 
+    <!-- ============ Modal: xác nhận trước khi lưu kỳ nghỉ ============ -->
+    <div v-if="preview.open" class="modal-overlay" @click.self="preview.open = false">
+      <div class="modal-box">
+        <h3 class="title-tight">Kỳ nghỉ này ảnh hưởng {{ preview.data.sessionCount }} buổi dạy</h3>
+        <p class="modal-sub">
+          {{ preview.body.name }} ·
+          {{ fmt(preview.body.fromDate) }} – {{ fmt(preview.body.toDate) }}
+        </p>
+
+        <p v-if="preview.data.sessionCount > 0" class="note note--warn">
+          <strong>{{ preview.data.sessionCount }}</strong> buổi dạy chưa diễn ra của
+          <strong>{{ preview.data.teacherCount }}</strong> giáo viên sẽ chuyển sang
+          <strong>Nghỉ lễ</strong>: không chấm công, không tính lương. Phân công của giáo viên giữ
+          nguyên, xóa kỳ nghỉ thì các buổi này tự trở lại.
+        </p>
+        <p v-else class="note note--ok">Không có buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.</p>
+
+        <!-- Vài dòng thật thay vì mỗi con số: gõ nhầm năm thì nhìn danh sách là biết ngay. -->
+        <ul v-if="preview.data.samples?.length" class="preview-list">
+          <li v-for="(s, i) in preview.data.samples" :key="i">
+            {{ fmt(s.date) }} · {{ (s.startTime ?? '').slice(0, 5) }} · {{ s.teacherName }} ·
+            {{ s.schoolName }}
+          </li>
+          <li v-if="preview.data.sessionCount > preview.data.samples.length" class="text-muted">
+            … và {{ preview.data.sessionCount - preview.data.samples.length }} buổi khác
+          </li>
+        </ul>
+
+        <p v-if="preview.data.pastSessionCount > 0" class="small text-muted">
+          Ngoài ra có {{ preview.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này — giữ
+          nguyên, không hủy, vì chúng có thể đã gắn chấm công và đã vào bảng lương. Sau khi lưu,
+          hệ thống sẽ hỏi tiếp về những dòng chấm công Vắng của các buổi đó.
+        </p>
+
+        <p v-if="modal.error" class="error-msg">{{ modal.error }}</p>
+
+        <div class="modal-actions">
+          <button class="btn btn-outline" :disabled="modal.saving" @click="preview.open = false">
+            Quay lại sửa
+          </button>
+          <button class="btn btn-primary" :disabled="modal.saving" @click="luuThat(preview.body)">
+            {{ modal.saving ? 'Đang lưu...' : 'Xác nhận và lưu' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ============ Modal: buổi dạy vướng kỳ nghỉ ============ -->
     <div v-if="impact.open" class="modal-overlay" @click.self="closeImpact">
       <div class="modal-box modal-lg">
@@ -835,8 +925,10 @@ onMounted(async () => {
       @confirm="confirmDelete"
       @cancel="deleteTarget = null"
     >
-      Lịch dạy sinh ra sau đó sẽ lại có buổi vào những ngày này. Khôi phục lại được ở tab Thùng rác,
-      nhưng những gì kỳ nghỉ đã ghi vào dữ liệu thì không tự hoàn lại:
+      Các buổi dạy mà kỳ nghỉ này đã chuyển sang "Nghỉ lễ" sẽ tự trở lại lịch — hệ thống nhớ đúng
+      những buổi do chính kỳ nghỉ này đụng vào, không trả nhầm buổi bị hủy vì lý do khác. Lịch dạy
+      sinh ra sau đó cũng sẽ lại có buổi vào những ngày này. Kỳ nghỉ khôi phục lại được ở tab Thùng
+      rác.
     </ConfirmDialog>
 
     <ConfirmDialog
@@ -980,6 +1072,22 @@ onMounted(async () => {
   margin: 0 0 1rem;
   font-size: 0.85rem;
   color: var(--c-text-muted);
+}
+
+/* Danh sách rút gọn vài buổi sẽ bị ảnh hưởng, trong hộp xác nhận trước khi lưu. */
+.preview-list {
+  margin: 0.6rem 0;
+  padding: 0.4rem 0.6rem;
+  list-style: none;
+  font-size: 0.8rem;
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.preview-list li + li {
+  margin-top: 0.25rem;
 }
 
 /* ── Hai phần của hộp thoại "Buổi dạy" ── */

@@ -67,6 +67,9 @@ public class HolidayService {
     /** Kỳ nghỉ dài hơn ngần này gần như chắc chắn là gõ nhầm ngày, không phải nghỉ thật. */
     private static final int MAX_DAYS = 120;
 
+    /** Số dòng làm mẫu trong hộp xác nhận — vừa đủ nhìn ra mình đang hủy cái gì, không phải cuộn. */
+    private static final int SAMPLE_SIZE = 5;
+
     private final HolidayRepository holidayRepo;
     private final SchoolRepository schoolRepo;
     private final ScheduleRepository scheduleRepo;
@@ -170,36 +173,120 @@ public class HolidayService {
         return HolidayResponse.fromEntity(h, schoolNameOf(h.getSchoolId()));
     }
 
+    /**
+     * Kỳ nghỉ SẮP khai báo sẽ đụng vào những buổi dạy nào — màn hình hỏi TRƯỚC khi lưu.
+     *
+     * <p>Nhận nguyên {@link HolidayRequest} chứ không nhận id: lúc này kỳ nghỉ chưa tồn tại
+     * trong DB. Đây chính là điểm khác với {@link #impact(Integer)} — cùng một phép đếm nhưng
+     * một cái hỏi về kỳ nghỉ đã có, một cái hỏi về kỳ nghỉ chưa có.
+     *
+     * <p>Vì sao phải hỏi trước khi lưu chứ không lưu rồi hỏi sau: từ V40 việc thêm kỳ nghỉ TỰ
+     * hủy các buổi trùng ngày. Một thao tác hủy hàng loạt phải cho người dùng nhìn thấy nó
+     * chạm vào cái gì trước khi nó chạy, không phải sau.
+     */
+    @Transactional(readOnly = true)
+    public HolidayImpactResponse previewImpact(HolidayRequest req) {
+        assertHopLe(req);
+        return summarize(affectedSchedules(req.fromDate(), req.toDate(), req.schoolId()));
+    }
+
     /* ─────────────────────────── GHI ─────────────────────────── */
 
+    /**
+     * Thêm kỳ nghỉ, rồi HỦY LUÔN các buổi dạy chưa diễn ra rơi vào những ngày đó.
+     *
+     * <p>Trước V40 bước hủy là một nút riêng người dùng phải nhớ bấm, vì buổi bị hủy không ghi
+     * lại nó bị hủy vì cớ gì — tự động hủy thì không có đường lùi. Nay mỗi buổi mang theo
+     * {@code CancelKind='HOLIDAY'} và {@code HolidayId}, nên xóa kỳ nghỉ trả lại được đúng
+     * chừng ấy buổi ({@link #delete(Integer)}). Thao tác đã lùi được thì không có lý do bắt
+     * người dùng làm hai bước cho một ý định.
+     *
+     * <p>Vẫn KHÔNG đụng buổi đã diễn ra — xem {@link #cancelSessions(Integer)}.
+     */
     @Transactional
     public HolidayResponse create(HolidayRequest req) {
         Holiday h = new Holiday();
         apply(h, req);
         h.setCreatedBy(SecurityUtils.currentUserId());
-        return HolidayResponse.fromEntity(holidayRepo.save(h), schoolNameOf(h.getSchoolId()));
+        Holiday saved = holidayRepo.save(h);
+        cancelFutureSessions(saved);
+        return HolidayResponse.fromEntity(saved, schoolNameOf(saved.getSchoolId()));
     }
 
+    /**
+     * Sửa kỳ nghỉ. Buổi nào bị chính kỳ này hủy mà nay đã RA NGOÀI khoảng ngày mới thì được
+     * trả lại lịch.
+     *
+     * <p>Không làm bước đó thì rút ngắn kỳ nghỉ để lại một vệt buổi hủy vĩnh viễn ở phần vừa
+     * cắt bỏ — mà rút ngắn chính là cách người dùng sửa lỗi gõ nhầm ngày. Chiều ngược lại (nới
+     * rộng kỳ nghỉ) KHÔNG tự hủy thêm: đó là hủy hàng loạt, phải đi qua hộp thoại "Buổi dạy"
+     * để người dùng nhìn con số trước.
+     */
     @Transactional
     public HolidayResponse update(Integer id, HolidayRequest req) {
         Holiday h = getOrThrow(id);
         apply(h, req);
         h.setUpdatedAt(Instant.now());
         h.setUpdatedBy(SecurityUtils.currentUserId());
-        return HolidayResponse.fromEntity(holidayRepo.save(h), schoolNameOf(h.getSchoolId()));
+        Holiday saved = holidayRepo.save(h);
+        restoreSessionsOutsideRange(saved);
+        return HolidayResponse.fromEntity(saved, schoolNameOf(saved.getSchoolId()));
     }
 
     /**
-     * Xóa mềm. KHÔNG dựng lại các buổi dạy đã hủy theo kỳ nghỉ này: buổi đã hủy có thể đã được
-     * xếp bù bằng phiếu khác, hồi sinh hàng loạt sẽ đẻ ra trùng lịch.
+     * Xóa mềm kỳ nghỉ, và TRẢ LẠI LỊCH các buổi mà chính nó đã hủy.
+     *
+     * <p>Bản trước V40 cố ý KHÔNG trả lại, vì buổi bị hủy chỉ có mỗi chữ CANCELLED: muốn khôi
+     * phục thì phải quét cả khoảng ngày, mà làm vậy là dựng dậy luôn cả buổi admin hủy tay
+     * hôm đó — sai còn tệ hơn không làm gì. Cột {@code HolidayId} lật ngược cán cân: hỏi đúng
+     * được thì trả đúng được, và khai nhầm một kỳ nghỉ không còn là vết thương vĩnh viễn trên
+     * thời khóa biểu.
+     *
+     * <p>Trả về {@code APPROVED} chứ không về trạng thái cũ: buổi chỉ bị kỳ nghỉ đụng vào khi
+     * nó đang có hiệu lực, mà buổi có hiệu lực trong hệ thống này chỉ có một trạng thái. Lưu
+     * thêm một cột "trạng thái trước khi hủy" chỉ để diễn tả lại đúng điều đó là thừa.
      */
     @Transactional
     public void delete(Integer id) {
         Holiday h = getOrThrow(id);
+        Integer userId = SecurityUtils.currentUserId();
+        restoreSessions(holidayRepo.sessionsCancelledByHoliday(id), userId);
+
         h.setDeleted(true);
         h.setDeletedAt(Instant.now());
-        h.setDeletedBy(SecurityUtils.currentUserId());
+        h.setDeletedBy(userId);
         holidayRepo.save(h);
+    }
+
+    /** Trả lại lịch những buổi kỳ nghỉ đã hủy mà nay không còn nằm trong khoảng ngày của nó. */
+    private void restoreSessionsOutsideRange(Holiday h) {
+        List<Schedule> ngoaiKhoang = holidayRepo.sessionsCancelledByHoliday(h.getId()).stream()
+                .filter(s -> {
+                    LocalDate d = s.getStartTime().toLocalDate();
+                    return d.isBefore(h.getFromDate()) || d.isAfter(h.getToDate());
+                })
+                .toList();
+        restoreSessions(ngoaiKhoang, SecurityUtils.currentUserId());
+    }
+
+    /**
+     * Gỡ dấu nghỉ lễ khỏi các buổi đã cho: về {@code APPROVED}, xóa {@code CancelKind} và
+     * {@code HolidayId}.
+     *
+     * @return số buổi đã trả lại lịch
+     */
+    private int restoreSessions(List<Schedule> sessions, Integer userId) {
+        for (Schedule s : sessions) {
+            s.setStatus("APPROVED");
+            s.setCancelKind(null);
+            s.setHolidayId(null);
+            s.setUpdatedAt(Instant.now());
+            // Trigger TR_Schedule_StatusLog đọc UpdatedBy để ghi nhật ký đổi trạng thái —
+            // phải set TRƯỚC khi lưu, nếu không nhật ký ghi người thao tác là NULL.
+            s.setUpdatedBy(userId);
+            scheduleRepo.save(s);
+        }
+        return sessions.size();
     }
 
     /* ──────────────── THÙNG RÁC ──────────────── */
@@ -244,27 +331,78 @@ public class HolidayService {
     @Transactional(readOnly = true)
     public HolidayDeleteImpactResponse deleteImpact(Integer id) {
         Holiday h = getOrThrow(id);
-        LocalDateTime from = h.getFromDate().atStartOfDay();
-        LocalDateTime to = h.getToDate().plusDays(1).atStartOfDay();
         LocalDateTime now = BusinessTime.now();
-        long future = affectedSchedules(h).stream()
+        long future = affectedSchedules(h.getFromDate(), h.getToDate(), h.getSchoolId()).stream()
                 .filter(s -> s.getStartTime().isAfter(now))
                 .count();
         return new HolidayDeleteImpactResponse(
-                holidayRepo.countCancelledSessionsInRange(from, to),
+                holidayRepo.countSessionsCancelledByHoliday(id),
                 attendanceRepo.countByStatusAndWorkDateBetween("LEAVE", h.getFromDate(), h.getToDate()),
                 future);
     }
 
     /* ──────────────── DỌN BUỔI DẠY ĐÃ SINH TRƯỚC ĐÓ ──────────────── */
 
-    /** Đếm buổi dạy đang rơi vào kỳ nghỉ — để màn hình hỏi trước khi hủy. */
+    /**
+     * Đếm buổi dạy đang rơi vào kỳ nghỉ — để màn hình hỏi trước khi hủy.
+     *
+     * <p>Còn cần đến sau khi {@link #create} đã tự hủy: kỳ nghỉ khai từ trước vẫn gặp buổi mới
+     * sinh sau đó (sửa phân công, xếp bù), và người dùng vẫn sửa được KHOẢNG NGÀY của kỳ nghỉ
+     * đã lưu.
+     */
     @Transactional(readOnly = true)
     public HolidayImpactResponse impact(Integer id) {
         Holiday h = getOrThrow(id);
-        List<Schedule> affected = affectedSchedules(h);
-        LocalDateTime now = BusinessTime.now();
+        return summarize(affectedSchedules(h.getFromDate(), h.getToDate(), h.getSchoolId()));
+    }
 
+    /**
+     * Hủy các buổi CHƯA diễn ra rơi vào kỳ nghỉ.
+     *
+     * <p>Cố ý không đụng buổi đã qua: chúng có thể đã gắn dòng chấm công và đã vào bảng lương
+     * của kỳ trước. Hủy chúng là sửa lại quá khứ và làm lệch số tiền đã trả.
+     *
+     * @return số buổi đã hủy
+     */
+    @Transactional
+    public int cancelSessions(Integer id) {
+        return cancelFutureSessions(getOrThrow(id));
+    }
+
+    /**
+     * Ruột chung của {@link #create} và {@link #cancelSessions(Integer)}: đóng dấu HOLIDAY lên
+     * các buổi chưa diễn ra của kỳ nghỉ.
+     *
+     * <p>Ba cột đi liền một khối — {@code Status} nói buổi hết hiệu lực, {@code CancelKind} nói
+     * vì sao, {@code HolidayId} nói vì kỳ nào. Thiếu cột thứ ba thì bảng lương phân biệt được
+     * "nghỉ lễ" với "admin hủy" nhưng xóa kỳ nghỉ vẫn không biết đường lùi.
+     */
+    private int cancelFutureSessions(Holiday h) {
+        LocalDateTime now = BusinessTime.now();
+        Integer userId = SecurityUtils.currentUserId();
+        int count = 0;
+        for (Schedule s : affectedSchedules(h.getFromDate(), h.getToDate(), h.getSchoolId())) {
+            if (!s.getStartTime().isAfter(now)) {
+                continue;
+            }
+            s.setStatus("CANCELLED");
+            s.setCancelKind("HOLIDAY");
+            s.setHolidayId(h.getId());
+            s.setUpdatedAt(Instant.now());
+            // Trigger TR_Schedule_StatusLog ghi nhật ký theo UpdatedBy — set TRƯỚC khi lưu.
+            s.setUpdatedBy(userId);
+            scheduleRepo.save(s);
+            count++;
+        }
+        return count;
+    }
+
+    /**
+     * Gộp danh sách buổi bị ảnh hưởng thành con số cho màn hình: chưa diễn ra / đã diễn ra /
+     * số giáo viên / khoảng ngày / vài dòng làm mẫu.
+     */
+    private HolidayImpactResponse summarize(List<Schedule> affected) {
+        LocalDateTime now = BusinessTime.now();
         List<Schedule> future =
                 affected.stream().filter(s -> s.getStartTime().isAfter(now)).toList();
         int past = affected.size() - future.size();
@@ -282,34 +420,46 @@ public class HolidayService {
                 last = d;
             }
         }
-        return new HolidayImpactResponse(future.size(), teachers.size(), first, last, past);
+        return new HolidayImpactResponse(future.size(), teachers.size(), first, last, past, samplesOf(future));
     }
 
     /**
-     * Hủy các buổi CHƯA diễn ra rơi vào kỳ nghỉ.
+     * {@value #SAMPLE_SIZE} buổi sớm nhất, đã ghép tên giáo viên và tên trường.
      *
-     * <p>Cố ý không đụng buổi đã qua: chúng có thể đã gắn dòng chấm công và đã vào bảng lương
-     * của kỳ trước. Hủy chúng là sửa lại quá khứ và làm lệch số tiền đã trả.
-     *
-     * @return số buổi đã hủy
+     * <p>Chỉ tra tên cho ĐÚNG chừng ấy dòng: danh sách đầy đủ có thể là vài trăm buổi, mà hộp
+     * thoại chỉ đọc được vài dòng đầu — nạp hết chỉ để vứt đi là trả tiền cho thứ không ai thấy.
      */
-    @Transactional
-    public int cancelSessions(Integer id) {
-        Holiday h = getOrThrow(id);
-        LocalDateTime now = BusinessTime.now();
-        Integer userId = SecurityUtils.currentUserId();
-        int count = 0;
-        for (Schedule s : affectedSchedules(h)) {
-            if (!s.getStartTime().isAfter(now)) {
-                continue;
-            }
-            s.setStatus("CANCELLED");
-            s.setUpdatedAt(Instant.now());
-            s.setUpdatedBy(userId);
-            scheduleRepo.save(s);
-            count++;
+    private List<HolidayImpactResponse.Session> samplesOf(List<Schedule> future) {
+        List<Schedule> head = future.stream()
+                .sorted(java.util.Comparator.comparing(Schedule::getStartTime))
+                .limit(SAMPLE_SIZE)
+                .toList();
+        if (head.isEmpty()) {
+            return List.of();
         }
-        return count;
+        Map<Integer, String> names = new HashMap<>();
+        for (Teacher t : teacherRepo.findAllById(
+                head.stream().map(Schedule::getTeacherId).distinct().toList())) {
+            names.put(t.getId(), (t.getLastName() + " " + t.getFirstName()).trim());
+        }
+        Map<Long, Integer> schoolBySchedule = schoolOfSchedules(head);
+        Map<Integer, String> schoolNames = new HashMap<>();
+        for (School s : schoolRepo.findAllById(schoolBySchedule.values().stream()
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .toList())) {
+            schoolNames.put(s.getId(), s.getName());
+        }
+
+        List<HolidayImpactResponse.Session> out = new ArrayList<>();
+        for (Schedule s : head) {
+            out.add(new HolidayImpactResponse.Session(
+                    s.getStartTime().toLocalDate(),
+                    s.getStartTime().toLocalTime(),
+                    names.getOrDefault(s.getTeacherId(), "(GV #" + s.getTeacherId() + ")"),
+                    schoolNames.getOrDefault(schoolBySchedule.get(s.getId()), "(không rõ trường)")));
+        }
+        return out;
     }
 
     /* ──────────────── SỬA DÒNG VẮNG GIẢ CỦA BUỔI ĐÃ QUA ──────────────── */
@@ -470,35 +620,50 @@ public class HolidayService {
     /**
      * Buổi dạy còn hiệu lực nằm trong khoảng ngày của kỳ nghỉ, đã lọc theo phạm vi trường.
      *
+     * <p>Nhận thẳng ba giá trị thay vì nhận một {@link Holiday}: hộp xác nhận lúc THÊM kỳ nghỉ
+     * phải hỏi được câu này khi kỳ nghỉ chưa có trong DB. Truyền entity thì chỗ đó buộc phải
+     * dựng một Holiday giả chỉ để gọi hàm — một đối tượng không tương ứng với dòng nào.
+     *
      * <p>Trường của một buổi lấy từ Ô THỜI KHÓA BIỂU sinh ra nó (V27), không phải trường cấp
      * phiếu: một phiếu nay trải được nhiều trường, mà kỳ nghỉ riêng chỉ thuộc về một trường.
+     *
+     * @param schoolId phạm vi kỳ nghỉ; {@code null} = toàn hệ thống
      */
-    private List<Schedule> affectedSchedules(Holiday h) {
-        LocalDateTime from = h.getFromDate().atStartOfDay();
+    private List<Schedule> affectedSchedules(LocalDate fromDate, LocalDate toDate, Integer schoolId) {
+        LocalDateTime from = fromDate.atStartOfDay();
         // findBy...Between sinh ra SQL BETWEEN, tức là ĐÓNG CẢ HAI ĐẦU. Dùng
-        // toDate.plusDays(1).atStartOfDay() như câu đếm bên deleteImpact (câu đó là >= AND <)
-        // thì buổi bắt đầu đúng 00:00:00 của NGÀY SAU kỳ nghỉ cũng bị tính là bị ảnh hưởng.
-        LocalDateTime to = h.getToDate().atTime(LocalTime.MAX);
+        // toDate.plusDays(1).atStartOfDay() thì buổi bắt đầu đúng 00:00:00 của NGÀY SAU kỳ
+        // nghỉ cũng bị tính là bị ảnh hưởng.
+        LocalDateTime to = toDate.atTime(LocalTime.MAX);
         List<Schedule> inRange = scheduleRepo.findByStartTimeBetweenAndDeletedFalse(from, to).stream()
                 .filter(s -> !"CANCELLED".equals(s.getStatus()))
                 .toList();
-        if (h.getSchoolId() == null || inRange.isEmpty()) {
+        if (schoolId == null || inRange.isEmpty()) {
             return inRange;
         }
+        Map<Long, Integer> schoolBySchedule = schoolOfSchedules(inRange);
+        List<Schedule> out = new ArrayList<>();
+        for (Schedule s : inRange) {
+            if (schoolId.equals(schoolBySchedule.get(s.getId()))) {
+                out.add(s);
+            }
+        }
+        return out;
+    }
+
+    /** scheduleId → trường của buổi, đi qua ô thời khóa biểu sinh ra nó (V27). */
+    private Map<Long, Integer> schoolOfSchedules(List<Schedule> rows) {
         Map<Integer, Integer> schoolBySlot = new HashMap<>();
-        for (AssignmentSlot slot : slotRepo.findAllById(inRange.stream()
+        for (AssignmentSlot slot : slotRepo.findAllById(rows.stream()
                 .map(Schedule::getSourceSlotId)
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList())) {
             schoolBySlot.put(slot.getId(), slot.getSchoolId());
         }
-        List<Schedule> out = new ArrayList<>();
-        for (Schedule s : inRange) {
-            Integer schoolId = s.getSourceSlotId() == null ? null : schoolBySlot.get(s.getSourceSlotId());
-            if (h.getSchoolId().equals(schoolId)) {
-                out.add(s);
-            }
+        Map<Long, Integer> out = new HashMap<>();
+        for (Schedule s : rows) {
+            out.put(s.getId(), s.getSourceSlotId() == null ? null : schoolBySlot.get(s.getSourceSlotId()));
         }
         return out;
     }
@@ -560,7 +725,12 @@ public class HolidayService {
         return out;
     }
 
-    private void apply(Holiday h, HolidayRequest req) {
+    /**
+     * Ba rào chắn của một kỳ nghỉ hợp lệ. Tách khỏi {@link #apply} vì hộp xác nhận trước khi
+     * lưu cũng phải chạy qua chúng: đếm hậu quả cho một khoảng ngày ngược đầu hay dài 400 ngày
+     * là trả lời một câu hỏi vô nghĩa, và người dùng sẽ gặp lỗi ở bước sau khi đã bấm đồng ý.
+     */
+    private void assertHopLe(HolidayRequest req) {
         if (req.toDate().isBefore(req.fromDate())) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Ngày kết thúc phải từ ngày bắt đầu trở đi.");
         }
@@ -578,6 +748,10 @@ public class HolidayService {
                         .isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không tìm thấy trường đã chọn.");
         }
+    }
+
+    private void apply(Holiday h, HolidayRequest req) {
+        assertHopLe(req);
         h.setFromDate(req.fromDate());
         h.setToDate(req.toDate());
         h.setName(req.name().trim());

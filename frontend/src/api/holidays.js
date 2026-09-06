@@ -34,6 +34,16 @@ export const holidayApi = {
     return http.get(`/holidays/${id}/impact`)
   },
 
+  /**
+   * Kỳ nghỉ SẮP khai báo sẽ đụng vào bao nhiêu buổi dạy — hỏi TRƯỚC khi lưu.
+   *
+   * POST tuy chỉ đọc: tham số là nguyên form kỳ nghỉ (khoảng ngày + phạm vi trường), nhét
+   * chừng đó vào query string là khai cùng một cấu trúc ở hai nơi rồi để chúng lệch nhau.
+   */
+  previewImpact(body) {
+    return http.post('/holidays/preview-impact', body)
+  },
+
   create(body) {
     return http.post('/holidays', body)
   },

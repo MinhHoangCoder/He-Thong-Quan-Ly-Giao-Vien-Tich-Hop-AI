@@ -61,21 +61,33 @@ public interface HolidayRepository extends JpaRepository<Holiday, Integer> {
     Page<Holiday> searchTrash(@Param("keyword") String keyword, Pageable pageable);
 
     /**
-     * Buổi dạy ĐÃ HỦY nằm trong khoảng ngày — dùng để ước lượng hậu quả trước khi xóa kỳ nghỉ.
+     * Các buổi dạy mà CHÍNH kỳ nghỉ này đã hủy — nguyên liệu để trả chúng về lịch khi kỳ nghỉ
+     * bị xóa.
      *
-     * <p>Là ƯỚC LƯỢNG chứ không phải con số chính xác: buổi bị hủy không lưu lại nó bị hủy vì
-     * kỳ nghỉ nào. Nhưng đủ để người dùng biết thao tác này đang đụng tới cái gì, và câu chữ
-     * trên giao diện nói rõ đây là số buổi hủy trong khoảng ngày đó.
+     * <p>Trước V40 chỗ này phải quét theo KHOẢNG NGÀY vì buổi bị hủy không ghi lại ai hủy nó,
+     * nên chỉ dám đưa ra một con số ước lượng chứ không dám khôi phục: trả mù cả khoảng thì
+     * buổi admin hủy tay hôm đó cũng sống lại. Có cột {@code HolidayId} thì câu hỏi trở nên
+     * chính xác tuyệt đối, và {@code IX_Schedule_Holiday} (index lọc) seek thẳng tới đúng
+     * chừng ấy dòng.
+     *
+     * <p>Vì sao câu này nằm ở HolidayRepository chứ không ở ScheduleRepository: nó chỉ có
+     * nghĩa trong nghiệp vụ lịch nghỉ, và {@code sessionDaysInRange} bên dưới đã đặt sẵn tiền
+     * lệ hỏi bảng Schedule từ đây.
      */
+    @Query("""
+            SELECT s FROM Schedule s
+            WHERE s.deleted = false
+              AND s.holidayId = :holidayId
+            """)
+    List<com.kdc.tsdms.entity.Schedule> sessionsCancelledByHoliday(@Param("holidayId") Integer holidayId);
+
+    /** Như trên nhưng chỉ đếm — hộp thoại xác nhận xóa không cần nạp cả danh sách entity. */
     @Query("""
             SELECT COUNT(s) FROM Schedule s
             WHERE s.deleted = false
-              AND s.status = 'CANCELLED'
-              AND s.startTime >= :from
-              AND s.startTime < :to
+              AND s.holidayId = :holidayId
             """)
-    long countCancelledSessionsInRange(
-            @Param("from") java.time.LocalDateTime from, @Param("to") java.time.LocalDateTime to);
+    long countSessionsCancelledByHoliday(@Param("holidayId") Integer holidayId);
 
     /**
      * Những NGÀY còn có buổi dạy chưa hủy, kèm trường của buổi — nguyên liệu để biết kỳ nghỉ nào

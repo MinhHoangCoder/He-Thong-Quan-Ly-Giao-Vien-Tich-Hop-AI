@@ -135,6 +135,25 @@ public class HolidayController {
         return service.impact(id);
     }
 
+    /**
+     * Kỳ nghỉ SẮP khai báo sẽ đụng vào bao nhiêu buổi dạy — hộp xác nhận hỏi trước khi lưu.
+     *
+     * <p>Là POST tuy chỉ ĐỌC, vì tham số là nguyên một {@link HolidayRequest} (khoảng ngày +
+     * phạm vi trường) chứ không phải một id: nhét chừng đó vào query string thì cùng một cấu
+     * trúc dữ liệu phải khai hai lần, hai chỗ, và lệch nhau lúc nào không biết. Đặt TRƯỚC
+     * {@code POST /} chỉ để đọc liền mạch với nó — Spring khớp theo đường dẫn, không theo thứ
+     * tự khai báo.
+     */
+    @PostMapping("/preview-impact")
+    @PreAuthorize(CAN_MANAGE)
+    public HolidayImpactResponse previewImpact(@Valid @RequestBody HolidayRequest req) {
+        return service.previewImpact(req);
+    }
+
+    /**
+     * Thêm kỳ nghỉ. Các buổi dạy chưa diễn ra rơi vào những ngày đó bị hủy NGAY trong cùng
+     * giao dịch — màn hình đã hỏi qua {@link #previewImpact} trước khi gọi tới đây.
+     */
     @PostMapping
     @PreAuthorize(CAN_MANAGE)
     public ResponseEntity<HolidayResponse> create(@Valid @RequestBody HolidayRequest req) {
@@ -174,6 +193,10 @@ public class HolidayController {
         return Map.of("fixed", service.fixAbsences(id, req));
     }
 
+    /**
+     * Xóa mềm kỳ nghỉ, đồng thời trả lại lịch những buổi mà chính nó đã hủy (nhận ra nhau qua
+     * {@code Schedule.HolidayId}, V40). Màn hình hỏi qua {@link #deleteImpact} trước.
+     */
     @DeleteMapping("/{id}")
     @PreAuthorize(CAN_MANAGE)
     public ResponseEntity<Void> delete(@PathVariable Integer id) {
