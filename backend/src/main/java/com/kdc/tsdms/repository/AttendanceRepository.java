@@ -170,10 +170,14 @@ public interface AttendanceRepository extends JpaRepository<Attendance, Long> {
      * <p>Trả về khối dưới dạng CHUỖI (cột GradeLevel và tên lớp) để tầng service dùng lại
      * đúng hàm bóc số đang có, thay vì viết luật bóc số lần thứ hai trong SQL.
      *
-     * @return các dòng {teacherId, workDate, status, gradeLevel, className}
+     * <p>{@code RateAmount} là đơn giá ĐÃ ĐÓNG BĂNG lúc chấm công (V40). Lấy kèm ở đây để
+     * service không phải hỏi lại từng dòng: có số thì dùng thẳng, NULL (dòng cũ trước V40) mới
+     * đi tra bảng {@code PayRate} theo khối và ngày dạy như trước.
+     *
+     * @return các dòng {teacherId, workDate, status, gradeLevel, className, rateAmount}
      */
     @Query(nativeQuery = true, value = """
-            SELECT a.TeacherId, a.WorkDate, a.Status, c.GradeLevel, c.Name AS ClassName
+            SELECT a.TeacherId, a.WorkDate, a.Status, c.GradeLevel, c.Name AS ClassName, a.RateAmount
             FROM Attendance a
             JOIN Schedule s ON s.Id = a.ScheduleId
             LEFT JOIN Assignment asg ON asg.Id = s.AssignmentId

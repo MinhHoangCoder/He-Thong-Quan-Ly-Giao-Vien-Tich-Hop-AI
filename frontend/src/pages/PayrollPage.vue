@@ -744,12 +744,6 @@ const totalNet = computed(() => rows.value.reduce((s, r) => s + Number(r.netAmou
     <div v-if="rateModal.open" class="modal-overlay" @click.self="rateModal.open = false">
       <div class="modal-box modal-lg">
         <h3>Đơn giá tiết dạy</h3>
-        <p class="text-muted small">
-          Đơn giá tra theo <strong>ngày dạy</strong> của từng buổi, không theo hôm nay — nhờ vậy
-          tính lại một kỳ cũ vẫn ra đúng số đã trả. Tăng giá thì thêm mức mới, mức cũ tự được đóng
-          lại ở ngày liền trước. Giáo viên có đơn giá riêng trong hợp đồng thì hợp đồng thắng bảng
-          này.
-        </p>
 
         <p v-if="rateModal.error" class="msg msg--error">{{ rateModal.error }}</p>
         <p v-if="rateModal.loading" class="text-muted small">Đang tải…</p>
