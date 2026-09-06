@@ -12,16 +12,21 @@ import lombok.Getter;
 import lombok.Setter;
 
 /**
- * ĐƠN XIN NGHỈ DẠY do giáo viên gửi (bảng AssignmentLeaveRequest, V39) — "tôi xin nghỉ phân
- * công này TỪ ngày…, vì…".
- *
- * <p>Đơn tự nó không hủy gì cả: admin duyệt thì service gọi đúng luồng hủy có ngày hiệu lực
- * ({@code AssignmentService.cancel}), nên hủy tay và duyệt đơn chạy qua cùng một đoạn mã và
- * không thể lệch nhau.
+ * ĐƠN XIN NGHỈ DẠY do giáo viên gửi (bảng AssignmentLeaveRequest, V39) — "hôm ấy tôi xin
+ * nghỉ BUỔI này, vì…".
  *
  * <p>Bảng riêng chứ không thêm cột vào {@link Assignment}: một phiếu có thể bị xin nghỉ, bị
  * từ chối, rồi xin lại — nhét vào phiếu là lần sau ghi đè lần trước, mất đúng phần lịch sử
  * cần để đối chiếu.
+ *
+ * <p><b>Phạm vi đơn đã thu hẹp so với V39.</b> Bản V39 hiểu đơn là "nghỉ TỪ ngày X trở đi" và
+ * duyệt đơn thì gọi thẳng {@code AssignmentService.cancel} — tức là cả phân công dài hạn dừng
+ * lại. Thực tế xin nghỉ của giáo viên gần như luôn là nghỉ MỘT BUỔI (ốm, việc gia đình, đi
+ * họp) rồi tuần sau vẫn dạy lớp đó; dùng luồng hủy phân công cho việc này là lấy dao mổ trâu
+ * cắt tiết gà — mất luôn phiếu, mất luôn khung giờ đã giữ, và bỏ hủy được thì cũng phải dò
+ * lại trùng lịch. Nay duyệt đơn chỉ tắt đúng buổi dạy hôm đó
+ * ({@code Schedule.Status = 'CANCELLED'}, {@code CancelKind = 'LEAVE'}) còn phân công GIỮ
+ * NGUYÊN.
  */
 @Entity
 @Table(name = "AssignmentLeaveRequest")
@@ -32,7 +37,7 @@ public class AssignmentLeaveRequest extends AuditableEntity {
     /** Chờ admin xử lý. */
     public static final String PENDING = "PENDING";
 
-    /** Đã duyệt — phân công đã bị hủy từ {@link #effectiveDate}. */
+    /** Đã duyệt — buổi dạy ngày {@link #leaveDate} đã chuyển sang nghỉ có phép. */
     public static final String APPROVED = "APPROVED";
 
     /** Admin từ chối (kèm {@link #decisionNote}); phân công giữ nguyên. */
@@ -50,9 +55,20 @@ public class AssignmentLeaveRequest extends AuditableEntity {
     @Column(name = "TeacherId", nullable = false)
     private Integer teacherId;
 
-    /** Xin nghỉ TỪ ngày này (ngày đầu tiên không dạy nữa). */
+    /**
+     * NGÀY CỦA BUỔI xin nghỉ.
+     *
+     * <p>Vẫn nằm ở cột {@code EffectiveDate} của V39 — cột đó khi ấy mang nghĩa "nghỉ từ ngày
+     * này". Không đẻ thêm migration chỉ để đổi tên một cột: kiểu dữ liệu, ràng buộc NOT NULL và
+     * mọi dòng dữ liệu đang có đều đúng nguyên, chỉ có PHẠM VI nghiệp vụ là hẹp lại. Đổi tên ở
+     * tầng Java để người đọc mã không hiểu nhầm, giữ tên cột để không đụng vào DB.
+     *
+     * <p>Không có cột {@code ScheduleId}: buổi cần tắt được suy ra từ cặp (phân công, ngày) lúc
+     * duyệt. Cặp đó đủ để chỉ đúng buổi vì một phân công hiếm khi có hai tiết cùng một ngày;
+     * nếu có thì cả hai tiết hôm đó cùng nghỉ — người ốm không dạy tiết 1 rồi lại dạy tiết 3.
+     */
     @Column(name = "EffectiveDate", nullable = false)
-    private LocalDate effectiveDate;
+    private LocalDate leaveDate;
 
     @Column(name = "Reason", nullable = false)
     private String reason;

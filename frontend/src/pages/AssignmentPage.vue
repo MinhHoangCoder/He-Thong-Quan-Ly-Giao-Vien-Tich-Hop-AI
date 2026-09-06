@@ -11,6 +11,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { assignmentApi } from '@/api/assignments'
+import { leaveRequestApi } from '@/api/leaveRequests'
 import { tietShort } from '@/utils/period'
 import Pagination from '@/components/ui/Pagination.vue'
 import FilterBar from '@/components/ui/FilterBar.vue'
@@ -79,6 +80,8 @@ const cancelForm = ref(null)
 const cancelBusy = ref(false)
 /* Modal XÓA (đưa vào thùng rác) — tách hẳn khỏi Hủy từ V39. */
 const deleteTarget = ref(null)
+/** Phiếu hết hạn / bị từ chối đang mở xem lại — chỉ đọc, không sửa được gì. */
+const detailTarget = ref(null)
 
 /**
  * @param giuTrang true = giữ nguyên trang đang xem (bấm sang trang khác), false = về trang
@@ -150,7 +153,68 @@ function showList() {
   load()
 }
 
-onMounted(load)
+/* ── Đơn xin nghỉ một buổi của giáo viên (V39) ──
+   Dòng thông báo trong chuông KHÔNG mang nút bấm: nó chỉ báo có việc. Bấm vào dòng đó là
+   nhảy sang đúng trang nghiệp vụ này kèm ?leaveRequestId=..., rồi hộp thoại duyệt mở ở đây
+   — nơi admin đã có sẵn cả bảng phân công để đối chiếu trước khi quyết định. */
+const leaveTarget = ref(null)
+const leaveNote = ref('')
+const leaveBusy = ref(false)
+const leaveError = ref('')
+/** Bật lên sau một lần bấm Từ chối hụt vì chưa ghi lý do — để đánh dấu ô ghi chú là bắt buộc. */
+const leaveRejecting = ref(false)
+
+async function openLeaveRequest(id) {
+  leaveNote.value = ''
+  leaveError.value = ''
+  leaveRejecting.value = false
+  try {
+    const { data } = await leaveRequestApi.detail(id)
+    leaveTarget.value = data
+  } catch (e) {
+    alert(e.response?.data?.message ?? 'Không mở được đơn xin nghỉ')
+  }
+}
+
+function closeLeaveModal() {
+  leaveTarget.value = null
+  // Gỡ tham số khỏi URL, nếu không thì bấm F5 là hộp thoại đã xử lý xong lại bật lên.
+  if (router.currentRoute.value.query.leaveRequestId) {
+    router.replace({ query: {} })
+  }
+}
+
+async function decideLeave(approve) {
+  const note = leaveNote.value.trim()
+  if (!approve && !note) {
+    leaveRejecting.value = true
+    leaveError.value = 'Từ chối đơn thì phải ghi lý do để giáo viên còn biết vì sao.'
+    return
+  }
+  leaveBusy.value = true
+  leaveError.value = ''
+  try {
+    if (approve) {
+      await leaveRequestApi.approve(leaveTarget.value.id, note)
+    } else {
+      await leaveRequestApi.reject(leaveTarget.value.id, note)
+    }
+    closeLeaveModal()
+    // Duyệt nghỉ đổi trạng thái buổi dạy chứ không đổi phiếu phân công, nhưng vẫn nạp lại
+    // cho chắc: admin thường duyệt xong là soi ngay dòng phân công tương ứng.
+    load()
+  } catch (e) {
+    leaveError.value = e.response?.data?.message ?? 'Không lưu được quyết định'
+  } finally {
+    leaveBusy.value = false
+  }
+}
+
+onMounted(() => {
+  load()
+  const id = Number(router.currentRoute.value.query.leaveRequestId)
+  if (id) openLeaveRequest(id)
+})
 
 /* ── Điều hướng sang trang tạo/sửa ── */
 function openCreate() {
@@ -166,6 +230,13 @@ function openEdit(a) {
 function fmtDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? '')
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'
+}
+
+/** Dấu thời gian ISO của backend → "17/08/2026 09:41". Dùng cho lúc giáo viên gửi đơn. */
+function fmtDateTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '—' : d.toLocaleString('vi-VN', { dateStyle: 'short', timeStyle: 'short' })
 }
 
 /**
@@ -550,8 +621,13 @@ async function restoreItem(a) {
                 >
                   Nhắc
                 </button>
+                <!-- Ép duyệt và Sửa chỉ còn ở phiếu ĐANG CHỜ.
+                     Phiếu đã hết hạn hoặc bị giáo viên từ chối là một câu trả lời đã chốt:
+                     ép duyệt lên đó là ghi đè ý kiến của giáo viên, còn sửa rồi gửi lại thì
+                     phiếu cũ mất dấu vết mà lời mời mới lại đội lốt lời mời cũ. Muốn mời lại
+                     thì tạo phiếu mới; hai nhánh này chỉ còn xem lại và dọn đi. -->
                 <button
-                  v-if="a.status === 'PENDING' || a.status === 'EXPIRED'"
+                  v-if="a.status === 'PENDING'"
                   class="btn btn-sm btn-outline"
                   title="Duyệt thay giáo viên — lịch có hiệu lực ngay"
                   @click="((approveTarget = a), (approveNote = ''))"
@@ -559,12 +635,20 @@ async function restoreItem(a) {
                   Ép duyệt
                 </button>
                 <button
-                  v-if="['PENDING', 'EXPIRED', 'REJECTED'].includes(a.status)"
+                  v-if="a.status === 'PENDING'"
                   class="btn btn-sm btn-outline"
                   title="Sửa rồi gửi lại lời mời (đổi được giáo viên và trường)"
                   @click="openEdit(a)"
                 >
                   Sửa
+                </button>
+                <button
+                  v-if="['EXPIRED', 'REJECTED'].includes(a.status)"
+                  class="btn btn-sm btn-outline"
+                  title="Xem lại nội dung phiếu và lý do"
+                  @click="detailTarget = a"
+                >
+                  Chi tiết
                 </button>
                 <!-- Hủy: dừng dạy kể từ một ngày. Phiếu vẫn ở lại danh sách, bỏ hủy được. -->
                 <button
@@ -675,6 +759,105 @@ async function restoreItem(a) {
         <div class="modal-actions">
           <button class="btn btn-outline" @click="deleteTarget = null">Không</button>
           <button class="btn btn-danger" @click="confirmDelete">Xóa</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Xem lại phiếu đã hết hạn / bị từ chối. Thuần đọc: nút duy nhất là Đóng. -->
+    <div v-if="detailTarget" class="modal-overlay" @click.self="detailTarget = null">
+      <div class="modal-box">
+        <h3>Chi tiết phân công</h3>
+        <dl class="detail-grid">
+          <dt>Giáo viên</dt>
+          <dd>{{ detailTarget.teacherName }}</dd>
+          <dt>Trường</dt>
+          <dd>{{ nameList(detailTarget.schoolName) }}</dd>
+          <dt>Lớp</dt>
+          <dd>{{ nameList(detailTarget.className) }}</dd>
+          <dt>Môn</dt>
+          <dd>{{ detailTarget.subjectName }}</dd>
+          <dt>Giai đoạn</dt>
+          <dd>{{ fmtDate(detailTarget.startDate) }} → {{ fmtDate(detailTarget.endDate) }}</dd>
+          <dt>Lịch trong tuần</dt>
+          <dd>
+            <span v-for="s in detailTarget.slots" :key="s.id" class="chip">
+              {{ s.dayOfWeekLabel }} ·
+              {{ tietShort(s.periodNumber, s.sessionType, s.indexInSession) }}
+              <template v-if="s.className"> · {{ s.className }}</template>
+            </span>
+            <span v-if="!detailTarget.slots?.length" class="text-muted">—</span>
+          </dd>
+          <dt>Trạng thái</dt>
+          <dd>{{ STATUS_LABEL[detailTarget.status] ?? detailTarget.status }}</dd>
+          <template v-if="detailTarget.status === 'REJECTED'">
+            <dt>Lý do từ chối</dt>
+            <dd>{{ detailTarget.rejectionReason || 'Giáo viên không ghi lý do' }}</dd>
+          </template>
+          <template v-else>
+            <dt>Vì sao hết hạn</dt>
+            <dd>Quá hạn trả lời — giáo viên không xác nhận lời mời.</dd>
+          </template>
+        </dl>
+        <div class="modal-actions">
+          <button class="btn btn-outline" @click="detailTarget = null">Đóng</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Duyệt đơn xin nghỉ một buổi của giáo viên. Mở từ chuông thông báo hoặc từ hàng đợi. -->
+    <div v-if="leaveTarget" class="modal-overlay" @click.self="closeLeaveModal">
+      <div class="modal-box">
+        <h3>Đơn xin nghỉ dạy</h3>
+        <dl class="detail-grid">
+          <dt>Giáo viên</dt>
+          <dd>{{ leaveTarget.teacherName }}</dd>
+          <dt>Buổi xin nghỉ</dt>
+          <dd>
+            <template v-if="leaveTarget.sessionFound">{{ leaveTarget.sessionText }}</template>
+            <template v-else>
+              {{ fmtDate(leaveTarget.leaveDate) }} —
+              <span class="text-danger">buổi dạy này không còn trên lịch</span>
+            </template>
+          </dd>
+          <dt>Trường</dt>
+          <dd>{{ leaveTarget.schoolName }}</dd>
+          <dt>Lớp</dt>
+          <dd>{{ leaveTarget.className ?? '—' }}</dd>
+          <dt>Môn</dt>
+          <dd>{{ leaveTarget.subjectName ?? '—' }}</dd>
+          <dt>Lý do nghỉ</dt>
+          <dd>{{ leaveTarget.reason }}</dd>
+          <dt>Gửi lúc</dt>
+          <dd>{{ fmtDateTime(leaveTarget.createdAt) }}</dd>
+        </dl>
+
+        <div class="form-group">
+          <label>
+            Ghi chú của quản trị viên
+            <span v-if="leaveRejecting" class="req">*</span>
+          </label>
+          <textarea
+            v-model="leaveNote"
+            rows="2"
+            :placeholder="
+              leaveRejecting
+                ? 'Bắt buộc khi từ chối — giáo viên sẽ đọc được câu này'
+                : 'Không bắt buộc khi duyệt'
+            "
+          ></textarea>
+          <small v-if="leaveError" class="field-error">{{ leaveError }}</small>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn btn-outline" :disabled="leaveBusy" @click="closeLeaveModal">
+            Đóng
+          </button>
+          <button class="btn btn-danger" :disabled="leaveBusy" @click="decideLeave(false)">
+            Từ chối
+          </button>
+          <button class="btn btn-primary" :disabled="leaveBusy" @click="decideLeave(true)">
+            {{ leaveBusy ? 'Đang lưu…' : 'Duyệt nghỉ' }}
+          </button>
         </div>
       </div>
     </div>
@@ -843,5 +1026,45 @@ async function restoreItem(a) {
 }
 .req {
   color: var(--c-danger);
+}
+
+.field-error,
+.text-danger {
+  color: var(--c-danger);
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.78rem;
+}
+
+/* Bảng nhãn – giá trị dùng chung cho hai hộp thoại chỉ-đọc (chi tiết phiếu, đơn xin nghỉ). */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 0.45rem 0.9rem;
+  margin: 0 0 1rem;
+}
+
+.detail-grid dt {
+  color: var(--c-text-muted);
+  font-size: 0.82rem;
+}
+
+.detail-grid dd {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 600px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .detail-grid dd {
+    margin-bottom: 0.5rem;
+  }
 }
 </style>

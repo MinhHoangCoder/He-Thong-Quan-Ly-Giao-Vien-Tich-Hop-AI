@@ -1,16 +1,22 @@
 <script setup>
 /**
- * ĐƠN XIN NGHỈ DẠY — giáo viên tự gửi (V39).
+ * ĐƠN XIN NGHỈ MỘT BUỔI DẠY — giáo viên tự gửi.
  *
- * Một hộp thoại làm hai việc: GỬI đơn mới (chọn phân công + ngày bắt đầu nghỉ + lý do) và
- * XEM các đơn đã gửi kèm kết quả. Gộp lại vì đó đúng là hai câu hỏi liên tiếp của người dùng
- * ("tôi xin nghỉ được không" và "đơn hôm trước ra sao rồi"), tách thành hai màn chỉ tổ bắt
- * họ đi tìm.
+ * Một hộp thoại làm hai việc: GỬI đơn mới (chọn buổi + lý do) và XEM các đơn đã gửi kèm kết
+ * quả. Gộp lại vì đó đúng là hai câu hỏi liên tiếp của người dùng ("tôi xin nghỉ được không"
+ * và "đơn hôm trước ra sao rồi"), tách thành hai màn chỉ tổ bắt họ đi tìm.
  *
- * Đơn KHÔNG tự hủy lịch: trung tâm duyệt thì hệ thống mới dừng phân công kể từ ngày đã xin.
+ * Ô chọn là DANH SÁCH BUỔI CÓ THẬT trong lịch, không phải ô ngày để gõ: đơn phải trỏ đúng một
+ * buổi thì trung tâm duyệt xong mới có cái để tắt, mà gõ ngày thì rất dễ trỏ vào hôm mình vốn
+ * không có tiết. Dùng SearchSelect như các ô chọn khác trong hệ thống — danh sách bốn tuần
+ * của người dạy dày lịch là vài chục dòng, gõ để tìm nhanh hơn cuộn.
+ *
+ * Đơn KHÔNG tự tắt buổi: trung tâm duyệt thì buổi hôm đó mới chuyển "Nghỉ có phép" (không tính
+ * công, không tính lương). Phân công dài hạn giữ nguyên — tuần sau vẫn dạy lớp ấy.
  */
 import { computed, onMounted, ref } from 'vue'
 import { leaveRequestApi } from '@/api/leaveRequests'
+import SearchSelect from '@/components/ui/SearchSelect.vue'
 
 const emit = defineEmits(['close', 'sent'])
 
@@ -20,41 +26,45 @@ const STATUS_LABEL = {
   REJECTED: 'Bị từ chối',
 }
 
-const assignments = ref([])
+const sessions = ref([])
 const requests = ref([])
 const loading = ref(false)
 const busy = ref(false)
 const errorMsg = ref('')
 
-const form = ref({ assignmentId: '', effectiveDate: todayIso(), reason: '' })
-
-/** Hôm nay dạng yyyy-MM-dd — vừa làm giá trị mặc định vừa làm chặn dưới cho ô ngày. */
-function todayIso() {
-  const d = new Date()
-  const p = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
-}
+const form = ref({ key: '', reason: '' })
 
 function fmtDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso ?? '')
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—'
 }
 
-/** Phân công đang chọn — để hiện lại giai đoạn và chặn ngày nghỉ vượt ra ngoài. */
-const selected = computed(() =>
-  assignments.value.find((a) => String(a.id) === String(form.value.assignmentId)),
+/**
+ * SearchSelect đòi mỗi mục có { id, name }. Khoá của một buổi là cặp (phân công, ngày) nên
+ * backend đã ghép sẵn thành chuỗi `key` — dùng thẳng làm id, khỏi tự ghép lần thứ hai ở đây
+ * rồi lệch quy ước với server.
+ */
+const options = computed(() =>
+  sessions.value.map((s) => ({ ...s, id: s.key, name: `${s.sessionText} · ${s.className || '—'}` })),
 )
+
+/** Buổi đang chọn — hiện lại trường/lớp/môn để người gửi soát trước khi bấm. */
+const selected = computed(() => sessions.value.find((s) => s.key === form.value.key))
+
+/** Buổi thuộc phân công đã có đơn chờ thì khoá lại: mỗi phân công chỉ được một đơn chờ. */
+function optionDisabled(item) {
+  return item.pending ? 'Phân công này đang có một đơn chờ trung tâm xử lý' : ''
+}
 
 async function load() {
   loading.value = true
   errorMsg.value = ''
   try {
-    const [opts, mine] = await Promise.all([leaveRequestApi.myAssignments(), leaveRequestApi.mine()])
-    assignments.value = opts.data ?? []
+    const [opts, mine] = await Promise.all([leaveRequestApi.mySessions(), leaveRequestApi.mine()])
+    sessions.value = opts.data ?? []
     requests.value = mine.data ?? []
-    if (assignments.value.length === 1) form.value.assignmentId = assignments.value[0].id
   } catch (e) {
-    errorMsg.value = e?.response?.data?.message || 'Không tải được danh sách phân công.'
+    errorMsg.value = e?.response?.data?.message || 'Không tải được danh sách buổi dạy.'
   } finally {
     loading.value = false
   }
@@ -64,8 +74,9 @@ onMounted(load)
 async function submit() {
   if (busy.value) return
   errorMsg.value = ''
-  if (!form.value.assignmentId) {
-    errorMsg.value = 'Vui lòng chọn phân công cần xin nghỉ.'
+  const buoi = selected.value
+  if (!buoi) {
+    errorMsg.value = 'Vui lòng chọn buổi cần xin nghỉ.'
     return
   }
   if (!form.value.reason.trim()) {
@@ -75,11 +86,11 @@ async function submit() {
   busy.value = true
   try {
     await leaveRequestApi.create({
-      assignmentId: Number(form.value.assignmentId),
-      effectiveDate: form.value.effectiveDate,
+      assignmentId: buoi.assignmentId,
+      leaveDate: buoi.date,
       reason: form.value.reason.trim(),
     })
-    form.value = { assignmentId: '', effectiveDate: todayIso(), reason: '' }
+    form.value = { key: '', reason: '' }
     await load()
     emit('sent')
   } catch (e) {
@@ -88,58 +99,44 @@ async function submit() {
     busy.value = false
   }
 }
-
-/** Mô tả một phân công trong ô chọn: trường · môn · giai đoạn. */
-function optionLabel(a) {
-  return `${a.schoolName || '—'} · ${a.subjectName || '—'} · ${fmtDate(a.startDate)}–${fmtDate(a.endDate)}`
-}
 </script>
 
 <template>
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal-box lr">
-      <h3>Xin nghỉ dạy</h3>
+      <h3>Xin nghỉ một buổi dạy</h3>
 
       <p class="lr__hint">
-        Đơn sẽ được gửi tới trung tâm. Khi được duyệt, lịch dạy của thầy/cô
-        <strong>dừng từ ngày đã chọn</strong>; các buổi trước ngày đó vẫn dạy bình thường và vẫn
-        được tính công.
+        Đơn được gửi tới trung tâm. Khi được duyệt, <strong>chỉ buổi đã chọn</strong> chuyển sang
+        “Nghỉ có phép” và không tính công; các buổi khác của phân công vẫn giữ nguyên.
       </p>
 
       <div v-if="loading" class="lr__state">Đang tải…</div>
 
       <template v-else>
-        <div v-if="!assignments.length" class="lr__state">
-          Thầy/cô hiện không có phân công nào đang dạy.
+        <div v-if="!sessions.length" class="lr__state">
+          Bốn tuần tới thầy/cô không có buổi dạy nào đã được duyệt.
         </div>
 
         <template v-else>
           <div class="form-group">
-            <label>Phân công cần nghỉ <span class="req">*</span></label>
-            <select v-model="form.assignmentId">
-              <option value="">— Chọn phân công —</option>
-              <option v-for="a in assignments" :key="a.id" :value="a.id">
-                {{ optionLabel(a) }}
-              </option>
-            </select>
-          </div>
-
-          <div class="form-group">
-            <label>Nghỉ từ ngày <span class="req">*</span></label>
-            <input
-              v-model="form.effectiveDate"
-              type="date"
-              :min="todayIso()"
-              :max="selected?.endDate || undefined"
+            <label>Buổi cần nghỉ <span class="req">*</span></label>
+            <SearchSelect
+              v-model="form.key"
+              :options="options"
+              :option-disabled="optionDisabled"
+              placeholder="— Chọn buổi dạy —"
+              search-placeholder="Gõ ngày, lớp hoặc trường…"
             />
             <small v-if="selected">
-              Phân công này chạy tới {{ fmtDate(selected.endDate) }}.
+              {{ selected.schoolName || '—' }} · lớp {{ selected.className || '—' }} ·
+              {{ selected.subjectName || '—' }}
             </small>
           </div>
 
           <div class="form-group">
             <label>Lý do <span class="req">*</span></label>
-            <textarea v-model="form.reason" rows="2" placeholder="vd: nghỉ chế độ thai sản" />
+            <textarea v-model="form.reason" rows="2" placeholder="vd: đi khám bệnh theo lịch hẹn" />
           </div>
         </template>
       </template>
@@ -152,7 +149,7 @@ function optionLabel(a) {
         <ul>
           <li v-for="r in requests" :key="r.id">
             <span class="lr__row">
-              Nghỉ từ <b>{{ fmtDate(r.effectiveDate) }}</b> · {{ r.schoolName || '—' }}
+              Nghỉ buổi <b>{{ fmtDate(r.leaveDate) }}</b> · {{ r.schoolName || '—' }}
               <span
                 class="badge"
                 :class="{
@@ -170,12 +167,7 @@ function optionLabel(a) {
 
       <div class="modal-actions">
         <button class="btn btn-outline" :disabled="busy" @click="emit('close')">Đóng</button>
-        <button
-          v-if="assignments.length"
-          class="btn btn-primary"
-          :disabled="busy"
-          @click="submit"
-        >
+        <button v-if="sessions.length" class="btn btn-primary" :disabled="busy" @click="submit">
           Gửi đơn
         </button>
       </div>

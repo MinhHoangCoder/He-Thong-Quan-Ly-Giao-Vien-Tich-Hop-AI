@@ -191,6 +191,14 @@ async function openNotification(n) {
     openInvite(n)
     return
   }
+  // Đơn xin nghỉ của giáo viên: đá sang trang Phân công kèm id đơn, hộp thoại duyệt bật lên
+  // ở đó. Không mở thẳng tại chuông như lời mời dạy, vì trước khi cho một giáo viên nghỉ thì
+  // admin còn phải nhìn cả bảng phân công hôm đó xem có ai trống lịch không.
+  if (n.refEntity === 'AssignmentLeaveRequest' && !isTeacher.value && n.refId) {
+    notifOpen.value = false
+    router.push({ path: '/assignments', query: { leaveRequestId: n.refId } })
+    return
+  }
   const to = ENTITY_ROUTES.value[n.refEntity] || TYPE_ROUTES.value[n.type]
   notifOpen.value = false
   if (to) router.push(to)
@@ -464,8 +472,16 @@ function switchTo(acc) {
                       <small v-if="n.content">{{ n.content }}</small>
                       <span class="notif__time">{{ timeAgo(n.createdAt) }}</span>
 
-                      <!-- Thông báo phân công: cần Xác nhận / Hủy -->
-                      <div v-if="n.requiresAction" class="notif__action" @click.stop>
+                      <!-- Thông báo phân công: cần Xác nhận / Hủy.
+                           ĐƠN XIN NGHỈ cố tình KHÔNG có nút ở đây: duyệt cho một giáo viên
+                           nghỉ là quyết định cần nhìn cả buổi dạy, lớp, trường và lịch hôm đó,
+                           mà dòng thông báo thì chỉ đủ chỗ cho một câu. Bấm vào dòng sẽ sang
+                           trang Phân công, nơi hộp thoại duyệt bày đủ thông tin. -->
+                      <div
+                        v-if="n.requiresAction && !isLeaveRequest(n)"
+                        class="notif__action"
+                        @click.stop
+                      >
                         <template v-if="n.actionStatus === 'PENDING'">
                           <template v-if="cancelingId === n.id">
                             <textarea
