@@ -1,22 +1,22 @@
 <script setup>
 /**
- * THÊM LỚP HÀNG LOẠT — hai tab, một luồng.
+ * THÊM LỚP HÀNG LOẠT — một bảng nhập, một nút lưu.
  *
  * Vì sao có màn này: mở một trường mới là phải nhập 12-15 lớp, mỗi lớp một lần bấm "Thêm" rồi
  * điền form rồi lưu. Nhân với vài chục trường thì đó là hàng trăm lần thao tác giống hệt nhau.
  *
- * TAB "SINH THEO MẪU" là cách chính xác tuyệt đối: chọn khối và số lớp mỗi khối, máy tự đặt
- * tên 1A1, 1A2… Không có file trung gian nên không có chỗ nào để gõ sai.
+ * Thân hộp thoại là BẢNG NHIỀU DÒNG (Tên lớp · Khối · Năm học) — gõ thẳng vào đó, hoặc bấm
+ * "Nạp từ file" để đổ sẵn một file Excel mẫu 3 cột rồi sửa tiếp tại chỗ. File chỉ là cách điền
+ * bảng nhanh hơn, không phải một luồng riêng, nên không có bước "xem trước" tách rời: bảng
+ * đang nhìn CHÍNH LÀ bản xem trước, sửa được ngay chứ không phải quay về nguồn nhập.
  *
- * TAB "NHẬP DỮ LIỆU" cho hai nguồn — dán từ Excel hoặc tải file .xlsx/.csv. Hai nguồn này dùng
- * CHUNG một bộ đọc, một bộ kiểm và một đường ghi ở backend.
- *
- * LUÔN XEM TRƯỚC RỒI MỚI LƯU. Bảng xem trước kể rõ từng dòng bị loại vì lý do gì ("dòng 7: lớp
- * 5A1 đã có ở trường"). Nhập 100 dòng sai 2 dòng mà bắt làm lại từ đầu là cách nhanh nhất để
- * người dùng quay về nhập tay.
+ * ĐƯỢC ĂN CẢ, NGÃ VỀ KHÔNG. Một dòng trùng là cả lô dừng và không lớp nào được tạo. Trùng ngay
+ * trong bảng thì chặn tại chỗ (thấy được thì không cần hỏi server); trùng với lớp đã có ở
+ * trường thì chỉ server biết, nên nó trả về câu kể đích danh dòng nào trùng và hiện ở đây.
  */
 import { computed, reactive, ref } from 'vue'
 import { classApi } from '@/api/classes'
+import SearchSelect from '@/components/ui/SearchSelect.vue'
 
 const props = defineProps({
   /** Danh sách trường cho ô chọn. */
@@ -28,87 +28,123 @@ const emit = defineEmits(['close', 'created'])
 
 const KHOI = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-const tab = ref('mau') // 'mau' | 'nhap'
-const nguon = ref('dan') // 'dan' | 'file'
+/** Số dòng trống mở sẵn — đủ để gõ ngay mà không phải bấm "Thêm dòng" trước. */
+const SO_DONG_MO_SAN = 3
+
 const busy = ref(false)
 const error = ref('')
 
 const form = reactive({
   schoolId: props.defaultSchoolId || '',
   schoolYear: '',
-  grades: [],
-  soLopMoiKhoi: 3,
-  duLieu: '',
+  rows: Array.from({ length: SO_DONG_MO_SAN }, dongTrong),
 })
-const file = ref(null)
 
-/** Kết quả xem trước từ server ({ rows, soHopLe, soDaTonTai, soLoi }). */
-const xemTruoc = ref(null)
-
-const coTheLuu = computed(() => !!xemTruoc.value && xemTruoc.value.soHopLe > 0)
-
-const NHAN_TRANG_THAI = {
-  HOP_LE: 'Sẽ tạo',
-  DA_TON_TAI: 'Bỏ qua',
-  LOI: 'Lỗi',
+function dongTrong() {
+  return { name: '', gradeLevel: '', schoolYear: '' }
 }
 
-function toggleKhoi(k) {
-  const i = form.grades.indexOf(k)
-  if (i >= 0) form.grades.splice(i, 1)
-  else form.grades.push(k)
+function themDong() {
+  form.rows.push(dongTrong())
 }
 
-function chonHetKhoi(tu, den) {
-  form.grades = KHOI.filter((k) => k >= tu && k <= den)
-}
-
-function onFile(e) {
-  file.value = e.target.files?.[0] ?? null
-  xemTruoc.value = null
-}
-
-/** Bước 1: hỏi server xem danh sách sắp tạo trông thế nào. */
-async function layXemTruoc() {
+/** Xóa dòng — luôn chừa lại ít nhất một dòng để bảng không rỗng trơ. */
+function xoaDong(i) {
+  form.rows.splice(i, 1)
+  if (!form.rows.length) form.rows.push(dongTrong())
   error.value = ''
-  xemTruoc.value = null
+}
+
+/** Dòng có nhập gì đó — dòng để trống hoàn toàn thì bỏ qua, không coi là lỗi. */
+function coDuLieu(r) {
+  return (r.name || '').trim() !== ''
+}
+
+const dongCoDuLieu = computed(() => form.rows.filter(coDuLieu))
+
+/** Khóa trùng = Tên lớp + Năm học (trong cùng một trường đã chọn ở trên). */
+function khoaTrung(r) {
+  const nam = (r.schoolYear || form.schoolYear || '').trim().toUpperCase()
+  return `${(r.name || '').trim().toUpperCase()}|${nam}`
+}
+
+/**
+ * Các dòng trùng NGAY TRONG BẢNG — chỉ số của dòng thứ hai trở đi mang cùng khóa.
+ *
+ * Bắt tại chỗ vì đây là lỗi nhìn thấy được ngay trên màn hình: nạp một file có hai dòng 7A1 mà
+ * phải bấm Lưu, chờ server, rồi mới biết là một vòng đi thừa.
+ */
+const trungTrongBang = computed(() => {
+  const daGap = new Map()
+  const trung = new Set()
+  form.rows.forEach((r, i) => {
+    if (!coDuLieu(r)) return
+    const k = khoaTrung(r)
+    if (daGap.has(k)) trung.add(i)
+    else daGap.set(k, i)
+  })
+  return trung
+})
+
+const canhBaoTrung = computed(() => {
+  if (!trungTrongBang.value.size) return ''
+  const so = [...trungTrongBang.value].map((i) => i + 1).join(', ')
+  return `Trùng ngay trong bảng: dòng ${so}. Sửa hoặc xóa các dòng đó rồi mới lưu được.`
+})
+
+const coTheLuu = computed(
+  () => !!form.schoolId && dongCoDuLieu.value.length > 0 && !trungTrongBang.value.size,
+)
+
+/** Nạp file Excel/CSV mẫu 3 cột — server đọc và tự bỏ dòng tiêu đề. */
+async function onFile(e) {
+  const file = e.target.files?.[0]
+  // Reset ngay để chọn lại đúng file vừa nạp vẫn kích hoạt được sự kiện change.
+  e.target.value = ''
+  if (!file) return
+  error.value = ''
+  busy.value = true
+  try {
+    const { data } = await classApi.bulkReadFile(file)
+    if (!data.length) {
+      error.value = 'File không có dòng lớp nào — kiểm tra lại cột Tên lớp.'
+      return
+    }
+    form.rows = data.map((d) => ({
+      name: d.name || '',
+      gradeLevel: d.gradeLevel || '',
+      schoolYear: d.schoolYear || '',
+    }))
+  } catch (err) {
+    error.value = err.response?.data?.message || 'Không đọc được file.'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function luu() {
+  error.value = ''
   if (!form.schoolId) {
     error.value = 'Vui lòng chọn trường.'
     return
   }
   busy.value = true
   try {
-    const { data } =
-      tab.value === 'nhap' && nguon.value === 'file'
-        ? await classApi.bulkPreviewFile({
-            schoolId: form.schoolId,
-            schoolYear: form.schoolYear,
-            file: file.value,
-          })
-        : await classApi.bulkPreview({
-            schoolId: Number(form.schoolId),
-            mode: tab.value === 'mau' ? 'GENERATE' : 'TEXT',
-            schoolYear: form.schoolYear || undefined,
-            grades: form.grades,
-            soLopMoiKhoi: form.soLopMoiKhoi,
-            duLieu: form.duLieu,
-          })
-    xemTruoc.value = data
-  } catch (e) {
-    error.value = e.response?.data?.message || 'Không đọc được dữ liệu.'
-  } finally {
-    busy.value = false
-  }
-}
-
-/** Bước 2: ghi. Server kiểm lại từ đầu nên danh sách gửi lên chỉ là đề nghị. */
-async function luu() {
-  error.value = ''
-  busy.value = true
-  try {
+    // Đánh số dòng theo ĐÚNG vị trí trên bảng để câu báo lỗi của server chỉ được đúng dòng
+    // người dùng đang nhìn, kể cả khi giữa bảng có dòng trống bị bỏ qua.
+    const rows = form.rows
+      .map((r, i) => ({ ...r, dong: i + 1 }))
+      .filter(coDuLieu)
+      .map((r) => ({
+        dong: r.dong,
+        name: r.name.trim(),
+        gradeLevel: r.gradeLevel || null,
+        schoolYear: r.schoolYear?.trim() || null,
+      }))
     const { data } = await classApi.bulkCreate({
       schoolId: Number(form.schoolId),
-      rows: xemTruoc.value.rows.filter((r) => r.trangThai === 'HOP_LE'),
+      schoolYear: form.schoolYear.trim() || null,
+      rows,
     })
     emit('created', data)
   } catch (e) {
@@ -117,156 +153,97 @@ async function luu() {
     busy.value = false
   }
 }
-
-function doiTab(t) {
-  tab.value = t
-  xemTruoc.value = null
-  error.value = ''
-}
 </script>
 
 <template>
-  <div class="modal" @click.self="emit('close')">
+  <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal-box bulk">
-      <h2 class="modal-title">Thêm lớp hàng loạt</h2>
-
-      <div class="tabs">
-        <button :class="{ on: tab === 'mau' }" @click="doiTab('mau')">Sinh theo mẫu</button>
-        <button :class="{ on: tab === 'nhap' }" @click="doiTab('nhap')">Nhập dữ liệu</button>
-      </div>
+      <h3>Thêm lớp hàng loạt</h3>
 
       <div class="grid2">
-        <label class="field">
-          <span>Trường *</span>
-          <select v-model="form.schoolId" @change="xemTruoc = null">
-            <option value="">-- Chọn trường --</option>
-            <option v-for="s in schools" :key="s.id" :value="s.id">{{ s.name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>Năm học</span>
-          <input v-model="form.schoolYear" placeholder="2026-2027 (bỏ trống = năm học hiện tại)" />
-        </label>
+        <div class="form-group">
+          <label>Trường <span class="req">*</span></label>
+          <SearchSelect
+            v-model="form.schoolId"
+            :options="schools"
+            placeholder="Chọn trường"
+            search-placeholder="Gõ tên trường…"
+            empty-text="Chưa có trường nào"
+          />
+        </div>
+        <div class="form-group">
+          <label>Năm học</label>
+          <input v-model="form.schoolYear" placeholder="2026-2027" />
+        </div>
       </div>
 
-      <!-- ═══════ TAB SINH THEO MẪU ═══════ -->
-      <template v-if="tab === 'mau'">
-        <div class="block">
-          <div class="block__head">
-            <span>Khối cần mở lớp</span>
-            <span class="quick">
-              <button class="link" @click="chonHetKhoi(1, 5)">Tiểu học (1–5)</button>
-              <button class="link" @click="chonHetKhoi(6, 9)">THCS (6–9)</button>
-              <button class="link" @click="form.grades = []">Bỏ chọn</button>
-            </span>
-          </div>
-          <div class="khoi-list">
-            <button
-              v-for="k in KHOI"
-              :key="k"
-              class="khoi"
-              :class="{ on: form.grades.includes(k) }"
-              @click="toggleKhoi(k)"
+      <div class="bulk__bar">
+        <span class="text-muted small">{{ dongCoDuLieu.length }} dòng sẽ được tạo</span>
+        <span class="bulk__bar-actions">
+          <label class="btn btn-outline btn-sm bulk__file">
+            Nạp từ file
+            <input type="file" accept=".xlsx,.xls,.csv" :disabled="busy" @change="onFile" />
+          </label>
+          <button type="button" class="btn btn-outline btn-sm" @click="themDong">Thêm dòng</button>
+        </span>
+      </div>
+
+      <div class="table-wrap bulk__table">
+        <table class="table">
+          <thead>
+            <tr>
+              <th width="46">#</th>
+              <th>Tên lớp</th>
+              <th width="120">Khối</th>
+              <th width="150">Năm học</th>
+              <th width="70"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(r, i) in form.rows"
+              :key="i"
+              :class="{ 'bulk__row--dup': trungTrongBang.has(i) }"
             >
-              Khối {{ k }}
-            </button>
-          </div>
-        </div>
-
-        <label class="field field--sm">
-          <span>Số lớp mỗi khối</span>
-          <input v-model.number="form.soLopMoiKhoi" type="number" min="1" max="20" />
-        </label>
-        <p class="hint">
-          Ví dụ: chọn khối 1–5, mỗi khối 3 lớp → sinh 15 lớp tên 1A1, 1A2, 1A3, 2A1…
-        </p>
-      </template>
-
-      <!-- ═══════ TAB NHẬP DỮ LIỆU ═══════ -->
-      <template v-else>
-        <div class="tabs tabs--sub">
-          <button :class="{ on: nguon === 'dan' }" @click="((nguon = 'dan'), (xemTruoc = null))">
-            Dán từ Excel
-          </button>
-          <button :class="{ on: nguon === 'file' }" @click="((nguon = 'file'), (xemTruoc = null))">
-            Tải file
-          </button>
-        </div>
-
-        <template v-if="nguon === 'dan'">
-          <label class="field">
-            <span>Dán dữ liệu</span>
-            <textarea
-              v-model="form.duLieu"
-              rows="8"
-              placeholder="1A1&#9;1&#9;2026-2027&#10;1A2&#9;1&#10;2A1"
-            ></textarea>
-          </label>
-          <p class="hint">
-            Mỗi dòng một lớp, cột cách nhau bằng Tab hoặc dấu phẩy, theo thứ tự
-            <strong>Tên lớp · Khối · Năm học</strong>. Khối và Năm học bỏ trống được — khối suy từ
-            chữ số đầu tên lớp, năm học lấy theo ô ở trên.
-          </p>
-        </template>
-
-        <template v-else>
-          <label class="field">
-            <span>File .xlsx hoặc .csv</span>
-            <input type="file" accept=".xlsx,.xls,.csv" @change="onFile" />
-          </label>
-          <p class="hint">
-            Cột A là <strong>Tên lớp</strong>, cột B là <strong>Khối</strong>, cột C là
-            <strong>Năm học</strong>. Có dòng tiêu đề cũng được, hệ thống tự bỏ qua.
-          </p>
-        </template>
-      </template>
-
-      <p v-if="error" class="msg msg--error">{{ error }}</p>
-
-      <!-- ═══════ XEM TRƯỚC ═══════ -->
-      <div v-if="xemTruoc" class="preview">
-        <p class="preview__sum">
-          <strong>{{ xemTruoc.soHopLe }}</strong> lớp sẽ được tạo ·
-          <strong>{{ xemTruoc.soDaTonTai }}</strong> bỏ qua ·
-          <strong>{{ xemTruoc.soLoi }}</strong> lỗi
-        </p>
-        <div class="preview__wrap">
-          <table>
-            <thead>
-              <tr>
-                <th width="52">Dòng</th>
-                <th>Tên lớp</th>
-                <th width="70">Khối</th>
-                <th width="110">Năm học</th>
-                <th width="90">Kết quả</th>
-                <th>Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="r in xemTruoc.rows"
-                :key="r.dong"
-                :class="'row--' + r.trangThai.toLowerCase()"
-              >
-                <td>{{ r.dong }}</td>
-                <td>{{ r.name }}</td>
-                <td>{{ r.gradeLevel }}</td>
-                <td>{{ r.schoolYear }}</td>
-                <td>{{ NHAN_TRANG_THAI[r.trangThai] }}</td>
-                <td class="note">{{ r.message }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              <td class="text-muted">{{ i + 1 }}</td>
+              <td>
+                <input v-model="r.name" placeholder="7A1" maxlength="20" @input="error = ''" />
+              </td>
+              <td>
+                <select v-model="r.gradeLevel">
+                  <option value="">Theo tên lớp</option>
+                  <option v-for="k in KHOI" :key="k" :value="String(k)">{{ k }}</option>
+                </select>
+              </td>
+              <td>
+                <input
+                  v-model="r.schoolYear"
+                  :placeholder="form.schoolYear || '2026-2027'"
+                  maxlength="20"
+                />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-outline btn-sm"
+                  title="Xóa dòng"
+                  @click="xoaDong(i)"
+                >
+                  Xóa
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      <p v-if="canhBaoTrung" class="error-msg">{{ canhBaoTrung }}</p>
+      <p v-if="error" class="error-msg">{{ error }}</p>
 
       <div class="modal-actions">
-        <button class="btn btn--ghost" @click="emit('close')">Đóng</button>
-        <button class="btn btn--ghost" :disabled="busy" @click="layXemTruoc">
-          {{ busy ? 'Đang đọc…' : 'Xem trước' }}
-        </button>
-        <button class="btn" :disabled="busy || !coTheLuu" @click="luu">
-          Tạo {{ xemTruoc ? xemTruoc.soHopLe : '' }} lớp
+        <button class="btn btn-outline" :disabled="busy" @click="emit('close')">Đóng</button>
+        <button class="btn btn-primary" :disabled="busy || !coTheLuu" @click="luu">
+          {{ busy ? 'Đang lưu…' : `Tạo ${dongCoDuLieu.length} lớp` }}
         </button>
       </div>
     </div>
@@ -274,222 +251,61 @@ function doiTab(t) {
 </template>
 
 <style scoped>
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
+/* Khung hộp thoại, nút, bảng và ô nhập đều lấy từ assets/page-common.css — ở đây chỉ còn
+   phần riêng của bảng nhập nhiều dòng. */
+.bulk {
+  max-width: 760px;
+}
+.bulk__bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  z-index: 60;
-  padding: 20px;
-}
-.modal-box.bulk {
-  background: var(--c-surface);
-  border-radius: 14px;
-  padding: 22px;
-  width: min(860px, 100%);
-  max-height: 90vh;
-  overflow-y: auto;
-  border: 1px solid var(--c-border);
-}
-.modal-title {
-  margin: 0 0 14px;
-  font-size: 1.15rem;
-  font-weight: 700;
-  color: var(--c-text);
-}
-.tabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-.tabs button {
-  padding: 7px 14px;
-  border: 1px solid var(--c-border);
-  background: transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.88rem;
-  color: var(--c-text-muted);
-}
-.tabs button.on {
-  background: var(--c-primary);
-  border-color: var(--c-primary);
-  color: #fff;
-  font-weight: 600;
-}
-.tabs--sub button {
-  font-size: 0.82rem;
-  padding: 5px 11px;
-}
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.field--sm {
-  max-width: 200px;
-}
-.field > span {
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.field input,
-.field select,
-.field textarea {
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--c-border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: var(--c-bg);
-  color: var(--c-text);
-  font-family: inherit;
-}
-.block {
-  margin-bottom: 14px;
-}
-.block__head {
-  display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--c-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-  margin-bottom: 8px;
+  gap: 0.6rem;
+  margin: 0.4rem 0 0.6rem;
 }
-.quick {
+.bulk__bar-actions {
   display: flex;
-  gap: 12px;
+  gap: 0.5rem;
 }
-.link {
-  background: none;
-  border: none;
-  color: var(--c-primary);
+/* Ô chọn file mặc định của trình duyệt trông lạc lõng giữa các nút — bọc trong <label> rồi
+   giấu input đi để nó dùng đúng kiểu nút của hệ thống. */
+.bulk__file {
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
-  font-size: 0.76rem;
-  text-transform: none;
-  letter-spacing: 0;
-  padding: 0;
 }
-.khoi-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+.bulk__file input {
+  display: none;
 }
-.khoi {
-  padding: 6px 13px;
-  border: 1px solid var(--c-border);
-  background: transparent;
-  border-radius: 20px;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--c-text);
-}
-.khoi.on {
-  background: var(--c-primary);
-  border-color: var(--c-primary);
-  color: #fff;
-  font-weight: 600;
-}
-.hint {
-  font-size: 0.82rem;
-  color: var(--c-text-muted);
-  margin: 8px 0 0;
-  line-height: 1.5;
-}
-.preview {
-  margin-top: 18px;
-  border-top: 1px solid var(--c-border);
-  padding-top: 14px;
-}
-.preview__sum {
-  font-size: 0.9rem;
-  margin: 0 0 10px;
-  color: var(--c-text);
-}
-.preview__wrap {
-  max-height: 320px;
+.bulk__table {
+  max-height: 46vh;
   overflow-y: auto;
-  border: 1px solid var(--c-border);
-  border-radius: 10px;
 }
-.preview table {
+.bulk__table td {
+  padding: 0.35rem 0.5rem;
+}
+.bulk__table input,
+.bulk__table select {
   width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-.preview th,
-.preview td {
-  padding: 7px 10px;
-  text-align: left;
-  border-bottom: 1px solid var(--c-border);
-  color: var(--c-text);
-}
-.preview th {
-  position: sticky;
-  top: 0;
-  background: var(--c-surface);
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  color: var(--c-text-muted);
-}
-/* Ba trạng thái phải phân biệt được bằng MÀU NỀN chứ không chỉ bằng chữ: bảng 100 dòng thì
-   mắt quét màu nhanh hơn đọc cột "Kết quả" từng dòng. */
-.row--da_ton_tai td {
-  background: color-mix(in srgb, var(--c-warning, #f59e0b) 12%, transparent);
-}
-.row--loi td {
-  background: color-mix(in srgb, var(--c-danger, #ef4444) 12%, transparent);
-}
-.note {
-  color: var(--c-text-muted);
-  font-size: 0.8rem;
-}
-.msg--error {
-  color: var(--c-danger, #ef4444);
-  font-size: 0.88rem;
-  margin: 10px 0 0;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
-}
-.btn {
-  padding: 0.5rem 1.05rem;
-  border-radius: 8px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: none;
-  background: var(--c-primary);
-  color: #fff;
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.btn--ghost {
-  background: transparent;
+  padding: 0.35rem 0.5rem;
   border: 1px solid var(--c-border);
+  border-radius: 6px;
+  font-size: 0.88rem;
+  box-sizing: border-box;
+  background: var(--c-surface);
   color: var(--c-text);
 }
-@media (max-width: 640px) {
-  .grid2 {
-    grid-template-columns: 1fr;
-  }
+.bulk__table input:focus,
+.bulk__table select:focus {
+  outline: none;
+  border-color: var(--c-primary);
+}
+/* Dòng trùng phải nhận ra bằng MÀU chứ không chỉ bằng câu chữ bên dưới: bảng 40 dòng thì mắt
+   quét màu nhanh hơn đọc danh sách số dòng rồi đếm ngược lên. */
+.bulk__row--dup td {
+  background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+}
+.req {
+  color: var(--c-danger);
 }
 </style>

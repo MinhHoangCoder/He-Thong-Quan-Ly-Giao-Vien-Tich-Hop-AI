@@ -4,6 +4,7 @@ import com.kdc.tsdms.common.BusinessTime;
 import com.kdc.tsdms.common.DeleteGuard;
 import com.kdc.tsdms.common.SearchText;
 import com.kdc.tsdms.dto.OptionItem;
+import com.kdc.tsdms.dto.SchoolClassDeactivateCheck;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
 import com.kdc.tsdms.entity.School;
@@ -159,10 +160,46 @@ public class SchoolClassService {
                                 + " phân công gắn với lớp — gỡ hết trước khi chuyển");
             }
         }
+        // Đóng lớp trong khi thời khóa biểu của nó vẫn chạy → chặn. Chỉ hỏi khi thật sự ĐANG
+        // chuyển sang INACTIVE: lớp vốn đã ngừng mà sửa lại tên thì không có lý do bắt kiểm.
+        if ("INACTIVE".equals(fields.status()) && !"INACTIVE".equals(sc.getStatus())) {
+            SchoolClassDeactivateCheck check = kiemTraNgungHoatDong(id);
+            if (!check.chuyenDuoc()) {
+                throw new ApiException(HttpStatus.CONFLICT, check.lyDo());
+            }
+        }
         apply(sc, req.schoolId(), fields);
         sc.setUpdatedAt(Instant.now());
         sc.setUpdatedBy(SecurityUtils.currentUserId());
         return SchoolClassResponse.fromEntity(classRepo.save(sc), schoolName(sc.getSchoolId()));
+    }
+
+    /**
+     * Lớp còn buổi dạy TỪ HÔM NAY TRỞ ĐI thì không cho chuyển sang "Ngừng".
+     *
+     * <p>Mốc là ĐẦU NGÀY hôm nay chứ không phải giờ hiện tại: buổi sáng nay đã dạy xong vẫn là
+     * buổi của hôm nay, và người dùng đọc "còn 3 buổi từ hôm nay" thì đếm cả nó. Lấy giờ qua
+     * {@code BusinessTime} vì JVM bị ghim về UTC — {@code LocalDate.now()} trần lệch 7 tiếng,
+     * đủ để một buổi tối nay rơi sang "ngày mai" và con số đếm ra sai.
+     *
+     * <p>Trả về DTO thay vì boolean để form và backend dùng CHUNG một câu chữ: form gọi hàm
+     * này lúc mở modal rồi in {@code lyDo} ngay dưới ô Trạng thái, còn {@link #update} ném
+     * đúng câu đó dưới dạng 409 cho ai gọi thẳng API.
+     */
+    @Transactional(readOnly = true)
+    public SchoolClassDeactivateCheck kiemTraNgungHoatDong(Integer id) {
+        SchoolClass sc = getOrThrow(id);
+        long soBuoi =
+                classRepo.countUpcomingSessionsByClass(id, BusinessTime.today().atStartOfDay());
+        if (soBuoi == 0) {
+            return new SchoolClassDeactivateCheck(0, true, "");
+        }
+        return new SchoolClassDeactivateCheck(
+                soBuoi,
+                false,
+                "Lớp đang hoạt động — lớp " + sc.getName() + " còn " + soBuoi
+                        + " buổi dạy từ hôm nay trở đi nên chưa chuyển sang trạng thái Ngừng được. "
+                        + "Hãy hủy hoặc dời các buổi đó trước.");
     }
 
     @Transactional
@@ -227,9 +264,20 @@ public class SchoolClassService {
      * chặn hụt: đo trên dữ liệu demo có 674 lớp đang nằm trong thời khóa biểu nhưng không phải
      * lớp đại diện của phiếu nào — bấm Xóa là mất sạch, giáo viên vẫn tới trường dạy còn ô
      * lịch thì trỏ vào một cái tên không còn tồn tại.
+     *
+     * <p>CỬA ĐẦU TIÊN LÀ TRẠNG THÁI, giống hệt luật xóa nhóm môn học ({@code
+     * SubjectCategoryService.delete}): phải TẮT lớp rồi mới được xóa. Nút Xóa ở màn danh sách
+     * đã khóa với lớp ACTIVE, nhưng nút bị khóa không phải là một ràng buộc — xóa hàng loạt và
+     * lời gọi API thẳng vẫn đi qua đây. Đặt cửa ở service thì cả ba đường vào cùng một luật.
      */
     private void softDelete(SchoolClass sc) {
         Integer id = sc.getId();
+        if (!"INACTIVE".equals(sc.getStatus())) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Không thể xóa: lớp " + sc.getName()
+                            + " đang hoạt động. Hãy chuyển lớp sang trạng thái Ngừng trước khi xóa.");
+        }
         DeleteGuard.of("lớp " + sc.getName())
                 .blockIf(enrollmentRepo.countByClassId(id), "học sinh")
                 .blockIf(assignmentRepo.countByClassIdAndDeletedFalse(id), "phân công")

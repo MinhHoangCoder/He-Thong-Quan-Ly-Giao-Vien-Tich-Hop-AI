@@ -10,9 +10,11 @@ import com.kdc.tsdms.repository.SchoolRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellType;
@@ -32,31 +34,25 @@ import org.springframework.web.multipart.MultipartFile;
  * form rồi lưu. Nhân với 27 trường thì đó là vài trăm lần thao tác giống hệt nhau — công việc
  * mà máy làm đúng hơn người.
  *
- * <p>BA LỐI VÀO, MỘT ĐƯỜNG CODE
+ * <p>MỘT BẢNG NHẬP, MỘT ĐƯỜNG GHI. Người dùng gõ thẳng vào bảng nhiều dòng trên màn hình, hoặc
+ * bấm nạp file Excel mẫu 3 cột để đổ sẵn vào chính bảng đó rồi sửa tiếp. File chỉ là cách điền
+ * bảng nhanh hơn, không phải một luồng nghiệp vụ riêng, nên {@link #docFile} chỉ đọc chữ và
+ * mọi luật kiểm dồn hết vào {@link #tao}.
  *
- * <ol>
- *   <li><b>Sinh theo mẫu</b> — chọn khối và số lớp mỗi khối, máy tự đặt tên 1A1, 1A2… Đây là
- *       cách CHÍNH XÁC NHẤT vì không có file trung gian để gõ sai.
- *   <li><b>Dán từ Excel</b> — copy vùng ô rồi dán vào ô văn bản. Không cần lưu file, không cần
- *       tải lên.
- *   <li><b>Tải file .xlsx / .csv</b> — cho trường hợp danh sách do nhà trường gửi sang.
- * </ol>
- *
- * Cả ba đều dựng ra cùng một danh sách {@link BulkClassDto.Dong}, rồi qua cùng một bộ kiểm
- * ({@link SchoolClassService#kiemTraMotDong}) và cùng một đường ghi.
- *
- * <p>LUÔN XEM TRƯỚC RỒI MỚI GHI. Người dùng nhìn thấy từng dòng cùng lý do bị loại ("dòng 7:
- * lớp 5A1 đã tồn tại") trước khi bấm lưu. Nhập 100 dòng sai 2 dòng mà bắt làm lại từ đầu là
- * cách nhanh nhất để người ta quay về nhập tay.
+ * <p>ĐƯỢC ĂN CẢ, NGÃ VỀ KHÔNG. Chỉ cần một dòng trùng hoặc sai là cả lô dừng, không lớp nào
+ * được tạo, và câu báo lỗi chỉ đích danh dòng nào hỏng vì cớ gì. Bản cũ ghi được dòng nào hay
+ * dòng ấy rồi báo "đã tạo 37, bỏ qua 3" — người dùng phải tự dò xem 3 dòng nào bị bỏ, và nếu
+ * nạp lại cả file thì 37 dòng kia lại báo trùng. Toàn bộ nằm trong một {@code @Transactional}
+ * nên "không tạo dòng nào" là thật, không phải dọn tay.
  */
 @Service
 public class BulkClassService {
 
-    /** Trần số dòng một lần nhập — chặn file rác và chặn cả cú dán nhầm cả bảng tính. */
+    /** Trần số dòng một lần nhập — chặn file rác và chặn cả cú nạp nhầm cả bảng tính. */
     private static final int SO_DONG_TOI_DA = 500;
 
-    /** Số lớp nhiều nhất một khối, khớp giới hạn tên lớp ở {@link SchoolClassService}. */
-    private static final int SO_LOP_MOI_KHOI_TOI_DA = 20;
+    /** Số dòng lỗi kể ra trong một câu báo — kể hết 200 dòng thì không ai đọc nổi. */
+    private static final int SO_DONG_KE_TOI_DA = 10;
 
     private final SchoolClassService classService;
     private final SchoolClassRepository classRepo;
@@ -69,130 +65,36 @@ public class BulkClassService {
         this.schoolRepo = schoolRepo;
     }
 
-    /* ─────────────────────────── XEM TRƯỚC ─────────────────────────── */
+    /* ─────────────────────────── ĐỌC FILE ─────────────────────────── */
 
-    @Transactional(readOnly = true)
-    public BulkClassDto.XemTruocResponse xemTruoc(BulkClassDto.XemTruocRequest req) {
-        School school = requireSchool(req.schoolId());
-        List<BulkClassDto.Dong> tho =
-                "TEXT".equalsIgnoreCase(req.mode()) ? docVanBan(req.duLieu(), req.schoolYear()) : sinhTheoMau(req);
-        return kiemTra(school, tho);
-    }
-
-    @Transactional(readOnly = true)
-    public BulkClassDto.XemTruocResponse xemTruocFile(Integer schoolId, String schoolYear, MultipartFile file) {
-        School school = requireSchool(schoolId);
+    /**
+     * Đọc file mẫu 3 cột {@code Tên lớp | Khối | Năm học} thành các dòng cho bảng nhập.
+     *
+     * <p>Nhận cả .xlsx/.xls (Apache POI) lẫn .csv: file nhà trường gửi sang có đủ hai kiểu, mà
+     * bắt người dùng tự đổi định dạng trước khi nạp là một bước thừa hoàn toàn.
+     *
+     * <p>KHÔNG kiểm gì ở đây — kể cả tên lớp rỗng hay khối sai. Bảng nhập là chỗ sửa, nên đọc
+     * được chữ gì thì đổ lên chữ đó để người dùng nhìn thấy và sửa tại chỗ; chặn ngay lúc đọc
+     * thì họ phải quay về Excel sửa rồi nạp lại từ đầu.
+     */
+    public List<BulkClassDto.Dong> docFile(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Chưa chọn file.");
         }
         String ten = file.getOriginalFilename() == null
                 ? ""
                 : file.getOriginalFilename().toLowerCase(Locale.ROOT);
-        List<BulkClassDto.Dong> tho =
-                ten.endsWith(".csv") ? docVanBan(docTextCsv(file), schoolYear) : docExcel(file, schoolYear);
-        return kiemTra(school, tho);
-    }
-
-    /* ─────────────────────────── ĐỌC NGUỒN ─────────────────────────── */
-
-    /**
-     * Sinh tên lớp theo mẫu {@code <khối>A<số>}: khối 1 với 3 lớp ra 1A1, 1A2, 1A3.
-     *
-     * <p>Đây là lối vào duy nhất KHÔNG có bước gõ tay nào, nên cũng là lối duy nhất không thể
-     * sai chính tả tên lớp.
-     */
-    private List<BulkClassDto.Dong> sinhTheoMau(BulkClassDto.XemTruocRequest req) {
-        List<Integer> khoi = req.grades() == null ? List.of() : req.grades();
-        int soLop = req.soLopMoiKhoi() == null ? 0 : req.soLopMoiKhoi();
-        if (khoi.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Vui lòng chọn ít nhất một khối.");
-        }
-        if (soLop < 1 || soLop > SO_LOP_MOI_KHOI_TOI_DA) {
-            throw new ApiException(
-                    HttpStatus.BAD_REQUEST, "Số lớp mỗi khối phải từ 1 đến " + SO_LOP_MOI_KHOI_TOI_DA + ".");
-        }
-        List<BulkClassDto.Dong> out = new ArrayList<>();
-        int dong = 0;
-        // LinkedHashSet: người dùng tick trùng khối thì cũng chỉ sinh một lần, và giữ thứ tự đã chọn.
-        for (Integer k : new LinkedHashSet<>(khoi)) {
-            for (int i = 1; i <= soLop; i++) {
-                out.add(new BulkClassDto.Dong(
-                        ++dong, k + "A" + i, String.valueOf(k), req.schoolYear(), BulkClassDto.TrangThai.HOP_LE, null));
-            }
-        }
-        return out;
-    }
-
-    /**
-     * Đọc văn bản dán từ Excel: mỗi dòng một lớp, cột cách nhau bằng Tab hoặc dấu phẩy, thứ tự
-     * {@code Tên lớp, Khối, Năm học}.
-     *
-     * <p>Khối và Năm học đều CÓ THỂ BỎ TRỐNG: khối suy từ chữ số đầu tên lớp ("7A1" → 7), năm
-     * học lấy theo ô đã chọn trên màn hình. Bắt điền đủ ba cột chỉ để máy suy được thứ nó tự
-     * suy được là bắt người dùng làm việc hộ máy.
-     */
-    private List<BulkClassDto.Dong> docVanBan(String raw, String schoolYearMacDinh) {
-        if (raw == null || raw.isBlank()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Chưa có dữ liệu để đọc.");
-        }
-        List<BulkClassDto.Dong> out = new ArrayList<>();
-        int dong = 0;
-        for (String line : raw.split("\\r?\\n")) {
-            if (line.isBlank()) {
-                continue;
-            }
-            dong++;
-            String[] cot = line.split("\\t|,|;");
-            String ten = o(cot, 0);
-            // Bỏ dòng tiêu đề nếu người dùng copy cả header từ Excel.
-            if (dong == 1 && ten != null && ten.toLowerCase(Locale.ROOT).startsWith("tên")) {
-                dong--;
-                continue;
-            }
-            out.add(new BulkClassDto.Dong(
-                    dong,
-                    ten,
-                    o(cot, 1),
-                    o(cot, 2) != null ? o(cot, 2) : schoolYearMacDinh,
-                    BulkClassDto.TrangThai.HOP_LE,
-                    null));
-            if (out.size() > SO_DONG_TOI_DA) {
-                throw new ApiException(
-                        HttpStatus.BAD_REQUEST, "Một lần chỉ nhập được tối đa " + SO_DONG_TOI_DA + " dòng.");
-            }
-        }
-        return out;
+        return ten.endsWith(".csv") ? docCsv(file) : docExcel(file);
     }
 
     /** Đọc file .xlsx / .xls bằng Apache POI, lấy sheet đầu tiên. */
-    private List<BulkClassDto.Dong> docExcel(MultipartFile file, String schoolYearMacDinh) {
+    private List<BulkClassDto.Dong> docExcel(MultipartFile file) {
         List<BulkClassDto.Dong> out = new ArrayList<>();
         try (InputStream in = file.getInputStream();
                 Workbook wb = WorkbookFactory.create(in)) {
             Sheet sheet = wb.getSheetAt(0);
-            int dong = 0;
             for (Row r : sheet) {
-                String ten = oCell(r, 0);
-                if (ten == null || ten.isBlank()) {
-                    continue;
-                }
-                dong++;
-                if (dong == 1 && ten.toLowerCase(Locale.ROOT).startsWith("tên")) {
-                    dong--;
-                    continue;
-                }
-                String nam = oCell(r, 2);
-                out.add(new BulkClassDto.Dong(
-                        dong,
-                        ten,
-                        oCell(r, 1),
-                        nam != null ? nam : schoolYearMacDinh,
-                        BulkClassDto.TrangThai.HOP_LE,
-                        null));
-                if (out.size() > SO_DONG_TOI_DA) {
-                    throw new ApiException(
-                            HttpStatus.BAD_REQUEST, "Một lần chỉ nhập được tối đa " + SO_DONG_TOI_DA + " dòng.");
-                }
+                themDong(out, oCell(r, 0), oCell(r, 1), oCell(r, 2));
             }
         } catch (IOException | org.apache.poi.EncryptedDocumentException e) {
             throw new ApiException(
@@ -201,15 +103,46 @@ public class BulkClassService {
         return out;
     }
 
-    private String docTextCsv(MultipartFile file) {
+    /** Đọc .csv: mỗi dòng một lớp, cột cách nhau bằng dấu phẩy, chấm phẩy hoặc Tab. */
+    private List<BulkClassDto.Dong> docCsv(MultipartFile file) {
+        String raw;
         try {
             // CSV do Excel xuất ra hay có BOM ở đầu; không cắt thì tên lớp dòng đầu mang thêm
             // một ký tự vô hình và bộ kiểm tên lớp từ chối nó với lý do khó hiểu.
             String s = new String(file.getBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            return s.startsWith("﻿") ? s.substring(1) : s;
+            raw = s.startsWith("﻿") ? s.substring(1) : s;
         } catch (IOException e) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Không đọc được file CSV.");
         }
+        List<BulkClassDto.Dong> out = new ArrayList<>();
+        for (String line : raw.split("\\r?\\n")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            String[] cot = line.split("\\t|,|;");
+            themDong(out, o(cot, 0), o(cot, 1), o(cot, 2));
+        }
+        return out;
+    }
+
+    /**
+     * Thêm một dòng đọc được vào danh sách — bỏ dòng trống và bỏ DÒNG TIÊU ĐỀ của file mẫu.
+     *
+     * <p>Nhận diện tiêu đề bằng chữ "tên" ở ô đầu (file mẫu ghi "Tên lớp") và chỉ xét ở dòng
+     * đầu tiên: không lớp nào tên bắt đầu bằng chữ cái, nên không có nguy cơ nuốt nhầm dữ liệu
+     * thật, còn xét mọi dòng thì một ngày nào đó sẽ nuốt nhầm.
+     */
+    private void themDong(List<BulkClassDto.Dong> out, String ten, String khoi, String namHoc) {
+        if (ten == null || ten.isBlank()) {
+            return;
+        }
+        if (out.isEmpty() && ten.toLowerCase(Locale.ROOT).startsWith("tên")) {
+            return;
+        }
+        if (out.size() >= SO_DONG_TOI_DA) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Một lần chỉ nhập được tối đa " + SO_DONG_TOI_DA + " dòng.");
+        }
+        out.add(new BulkClassDto.Dong(out.size() + 1, ten.trim(), khoi, namHoc));
     }
 
     private static String o(String[] arr, int i) {
@@ -234,110 +167,144 @@ public class BulkClassService {
         return v.isEmpty() ? null : v;
     }
 
-    /* ─────────────────────────── KIỂM & GHI ─────────────────────────── */
+    /* ─────────────────────────── GHI CẢ LÔ ─────────────────────────── */
 
     /**
-     * Chấm từng dòng: hợp lệ / đã tồn tại / lỗi (kèm lý do).
+     * Ghi cả lô lớp — kiểm sạch trước, ghi sau.
      *
-     * <p>Dùng LẠI đúng bộ kiểm của luồng thêm một lớp ({@link SchoolClassService#kiemTraMotDong})
-     * chứ không viết bản thứ hai: hai bộ kiểm sẽ trôi ra khác nhau, và người dùng sẽ gặp cảnh
-     * một cái tên lớp bị từ chối khi thêm lẻ nhưng lọt qua khi nhập hàng loạt.
-     */
-    private BulkClassDto.XemTruocResponse kiemTra(School school, List<BulkClassDto.Dong> tho) {
-        // Tên lớp đã có ở trường này — nạp một lần, so không phân biệt hoa thường.
-        Set<String> daCo = new java.util.HashSet<>();
-        for (SchoolClass c : classRepo.findBySchoolIdAndDeletedFalseOrderByName(school.getId())) {
-            daCo.add((c.getName() + "|" + c.getSchoolYear()).toUpperCase(Locale.ROOT));
-        }
-        // Trùng NGAY TRONG danh sách đang nhập cũng phải bắt: file Excel có hai dòng 5A1 thì
-        // dòng thứ hai không được lọt, dù lúc kiểm nó chưa nằm trong DB.
-        Set<String> trongLo = new java.util.HashSet<>();
-
-        List<BulkClassDto.Dong> rows = new ArrayList<>();
-        int hopLe = 0;
-        int tonTai = 0;
-        int loi = 0;
-        for (BulkClassDto.Dong d : tho) {
-            BulkClassDto.Dong ketQua;
-            try {
-                SchoolClassRequest req =
-                        new SchoolClassRequest(school.getId(), d.name(), d.gradeLevel(), d.schoolYear(), "ACTIVE");
-                var chuan = classService.kiemTraMotDong(req);
-                String khoa = (chuan.name() + "|" + chuan.year()).toUpperCase(Locale.ROOT);
-                if (daCo.contains(khoa)) {
-                    ketQua = new BulkClassDto.Dong(
-                            d.dong(),
-                            chuan.name(),
-                            chuan.gradeLevel(),
-                            chuan.year(),
-                            BulkClassDto.TrangThai.DA_TON_TAI,
-                            "Lớp này đã có ở trường — bỏ qua");
-                    tonTai++;
-                } else if (!trongLo.add(khoa)) {
-                    ketQua = new BulkClassDto.Dong(
-                            d.dong(),
-                            chuan.name(),
-                            chuan.gradeLevel(),
-                            chuan.year(),
-                            BulkClassDto.TrangThai.DA_TON_TAI,
-                            "Trùng với một dòng phía trên trong cùng lần nhập");
-                    tonTai++;
-                } else {
-                    ketQua = new BulkClassDto.Dong(
-                            d.dong(),
-                            chuan.name(),
-                            chuan.gradeLevel(),
-                            chuan.year(),
-                            BulkClassDto.TrangThai.HOP_LE,
-                            null);
-                    hopLe++;
-                }
-            } catch (ApiException e) {
-                ketQua = BulkClassDto.Dong.loi(d.dong(), d.name(), d.gradeLevel(), d.schoolYear(), e.getMessage());
-                loi++;
-            }
-            rows.add(ketQua);
-        }
-        return new BulkClassDto.XemTruocResponse(school.getId(), school.getName(), rows, hopLe, tonTai, loi);
-    }
-
-    /**
-     * Ghi các dòng người dùng đã duyệt.
+     * <p>BA VÒNG TÁCH BẠCH, KHÔNG GỘP: (1) chuẩn hóa và kiểm từng dòng, (2) soi trùng, (3) mới
+     * ghi. Gộp lại thành một vòng "kiểm rồi ghi luôn" thì dòng 1-5 đã nằm trong DB lúc dòng 6
+     * mới lộ ra là trùng; rollback gỡ được dữ liệu nhưng câu báo lỗi thì vẫn phải kể một danh
+     * sách mà nửa sau chưa ai buồn kiểm. Kiểm trọn trước thì câu báo lỗi kể ĐỦ mọi dòng hỏng,
+     * người dùng sửa một lượt là xong.
      *
-     * <p>KIỂM LẠI TỪ ĐẦU chứ không tin danh sách client gửi lên: giữa lúc xem trước và lúc bấm
-     * lưu, người khác có thể đã tạo đúng lớp đó, và không có gì ngăn ai đó gọi thẳng endpoint
-     * này với một danh sách tự bịa.
+     * <p>Bộ kiểm dùng lại đúng của luồng thêm một lớp ({@link SchoolClassService#kiemTraMotDong})
+     * chứ không viết bản thứ hai: hai bộ kiểm sẽ trôi ra khác nhau, và người dùng gặp cảnh một
+     * cái tên lớp bị từ chối khi thêm lẻ nhưng lọt qua khi nhập hàng loạt.
      */
     @Transactional
     public BulkClassDto.TaoResponse tao(BulkClassDto.TaoRequest req) {
         School school = requireSchool(req.schoolId());
         List<BulkClassDto.Dong> rows = req.rows() == null ? List.of() : req.rows();
         if (rows.isEmpty()) {
-            throw new ApiException(HttpStatus.BAD_REQUEST, "Không có dòng nào để tạo.");
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Chưa có dòng nào để tạo lớp.");
         }
         if (rows.size() > SO_DONG_TOI_DA) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "Một lần chỉ tạo được tối đa " + SO_DONG_TOI_DA + " lớp.");
         }
-        BulkClassDto.XemTruocResponse soat = kiemTra(school, rows);
 
-        int daTao = 0;
-        for (BulkClassDto.Dong d : soat.rows()) {
-            if (d.trangThai() != BulkClassDto.TrangThai.HOP_LE) {
-                continue;
+        // ── Vòng 1: chuẩn hóa + kiểm nghiệp vụ từng dòng, gom hết lỗi rồi mới báo ──
+        List<String> loi = new ArrayList<>();
+        Map<Integer, SchoolClassService.ValidatedClassFields> hopLe = new HashMap<>();
+        for (BulkClassDto.Dong d : rows) {
+            try {
+                SchoolClassRequest mot = new SchoolClassRequest(
+                        school.getId(), d.name(), khoiCuaDong(d), namHocCuaDong(d, req.schoolYear()), "ACTIVE");
+                hopLe.put(d.dong(), classService.kiemTraMotDong(mot));
+            } catch (ApiException e) {
+                loi.add(moTaDong(d) + ": " + e.getMessage());
             }
-            classService.create(
-                    new SchoolClassRequest(school.getId(), d.name(), d.gradeLevel(), d.schoolYear(), "ACTIVE"));
-            daTao++;
         }
-        return new BulkClassDto.TaoResponse(daTao, soat.rows().size() - daTao);
+        if (!loi.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST, "Chưa tạo lớp nào — sửa các dòng sau rồi bấm lại. " + gop(loi));
+        }
+
+        // ── Vòng 2: soi trùng theo khóa (Trường + Tên lớp + Năm học) ──
+        List<String> trung = soiTrung(school, rows, hopLe);
+        if (!trung.isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "Trùng lớp — chưa tạo dòng nào ở trường " + school.getName() + ". " + gop(trung));
+        }
+
+        // ── Vòng 3: ghi ──
+        for (BulkClassDto.Dong d : rows) {
+            SchoolClassService.ValidatedClassFields chuan = hopLe.get(d.dong());
+            classService.create(
+                    new SchoolClassRequest(school.getId(), chuan.name(), chuan.gradeLevel(), chuan.year(), "ACTIVE"));
+        }
+        return new BulkClassDto.TaoResponse(rows.size());
+    }
+
+    /**
+     * Liệt kê ĐÍCH DANH những dòng trùng — trùng với lớp đã có ở trường, hoặc trùng lẫn nhau
+     * ngay trong lô đang nhập.
+     *
+     * <p>Phải soi CẢ HAI phía: file Excel có hai dòng 7A1 thì dòng thứ hai chưa nằm trong DB
+     * lúc kiểm, mà để nó lọt thì đúng lúc ghi mới nổ ở chỉ mục {@code
+     * UX_SchoolClass_SchoolNameYear} (V40) với một câu lỗi SQL không ai đọc được.
+     *
+     * <p>Khóa gồm CẢ NĂM HỌC: "7A1" của 2025-2026 và "7A1" của 2026-2027 là hai lớp khác nhau,
+     * chặn cả hai là chặn nhầm. Lớp đã xóa mềm không tính — đúng như điều kiện lọc {@code WHERE
+     * IsDeleted = 0} của chỉ mục, nếu không thì xóa nhầm một lớp là vĩnh viễn không tạo lại
+     * được tên đó.
+     */
+    private List<String> soiTrung(
+            School school, List<BulkClassDto.Dong> rows, Map<Integer, SchoolClassService.ValidatedClassFields> hopLe) {
+        Set<String> daCoTrongDb = new HashSet<>();
+        for (SchoolClass c : classRepo.findBySchoolIdAndDeletedFalseOrderByName(school.getId())) {
+            daCoTrongDb.add(khoaTrung(c.getName(), c.getSchoolYear()));
+        }
+        // Dòng đầu tiên giữ mỗi khóa — dòng sau mới là dòng "trùng với dòng trên".
+        Map<String, Integer> dongDauTien = new HashMap<>();
+        List<String> ketQua = new ArrayList<>();
+        for (BulkClassDto.Dong d : rows) {
+            SchoolClassService.ValidatedClassFields chuan = hopLe.get(d.dong());
+            String khoa = khoaTrung(chuan.name(), chuan.year());
+            Integer truoc = dongDauTien.putIfAbsent(khoa, d.dong());
+            if (daCoTrongDb.contains(khoa)) {
+                ketQua.add(
+                        "dòng " + d.dong() + " (" + chuan.name() + " · năm học " + chuan.year() + ") đã có ở trường");
+            } else if (truoc != null) {
+                ketQua.add("dòng " + d.dong() + " (" + chuan.name() + " · năm học " + chuan.year() + ") trùng với dòng "
+                        + truoc + " trong cùng lần nhập");
+            }
+        }
+        return ketQua;
+    }
+
+    private static String khoaTrung(String name, String schoolYear) {
+        return (name + "|" + schoolYear).toUpperCase(Locale.ROOT);
+    }
+
+    /**
+     * Khối của dòng: lấy cột Khối nếu có, không thì suy từ chữ số đầu tên lớp ("7A1" → "7").
+     *
+     * <p>Cột Khối trong file mẫu hay bị bỏ trống vì nó vốn nằm sẵn trong tên lớp. Bắt điền một
+     * thứ máy tự suy được là bắt người dùng làm việc hộ máy — mà bộ kiểm vẫn đối chiếu số khối
+     * với chữ số đầu tên lớp, nên suy như vậy không nới lỏng luật nào cả.
+     */
+    private static String khoiCuaDong(BulkClassDto.Dong d) {
+        if (d.gradeLevel() != null && !d.gradeLevel().isBlank()) {
+            return d.gradeLevel();
+        }
+        String ten = d.name() == null ? "" : d.name().trim();
+        return ten.isEmpty() ? null : ten.substring(0, 1);
+    }
+
+    /** Năm học của dòng, lùi về năm học chung của cả lô khi dòng bỏ trống. */
+    private static String namHocCuaDong(BulkClassDto.Dong d, String namChung) {
+        return d.schoolYear() != null && !d.schoolYear().isBlank() ? d.schoolYear() : namChung;
+    }
+
+    private static String moTaDong(BulkClassDto.Dong d) {
+        String ten = d.name() == null || d.name().isBlank() ? "chưa có tên lớp" : d.name();
+        return "dòng " + d.dong() + " (" + ten + ")";
+    }
+
+    /** Gộp danh sách lý do thành một câu, cắt bớt khi quá dài nhưng vẫn nói còn bao nhiêu. */
+    private static String gop(List<String> lyDo) {
+        List<String> ke = lyDo.size() <= SO_DONG_KE_TOI_DA ? lyDo : lyDo.subList(0, SO_DONG_KE_TOI_DA);
+        String s = String.join("; ", ke);
+        return lyDo.size() > ke.size() ? s + "; … và " + (lyDo.size() - ke.size()) + " dòng nữa." : s + ".";
     }
 
     /**
      * Trường phải tồn tại VÀ còn hợp tác.
      *
-     * <p>Kiểm ngay từ bước XEM TRƯỚC chứ không đợi tới lúc ghi: để người dùng chọn khối, xem
-     * danh sách 15 lớp "hợp lệ" rồi mới báo "trường này đã ngừng hợp tác" là bắt họ làm việc
-     * thừa rồi mới nói không.
+     * <p>Kiểm ngay từ đầu chứ không đợi tới lúc ghi từng dòng: để người dùng gõ xong 15 dòng
+     * rồi mới báo "trường này đã ngừng hợp tác" là bắt họ làm việc thừa rồi mới nói không.
      */
     private School requireSchool(Integer id) {
         School s = schoolRepo

@@ -47,24 +47,23 @@ export const classApi = {
     return http.post('/classes/batch-delete', ids)
   },
 
-  /* ── Thêm lớp hàng loạt ── */
-
-  /** Xem trước danh sách lớp sắp tạo (sinh theo mẫu hoặc dán từ Excel). */
-  bulkPreview(body) {
-    return http.post('/classes/bulk/preview', body)
+  /** Lớp còn buổi dạy từ hôm nay trở đi không — form khóa nút Lưu theo kết quả này. */
+  deactivateCheck(id) {
+    return http.get(`/classes/${id}/deactivate-check`)
   },
 
-  /** Như trên nhưng nguồn là file .xlsx / .csv. */
-  bulkPreviewFile({ schoolId, schoolYear, file }) {
+  /* ── Thêm lớp hàng loạt ── */
+
+  /** Đọc file Excel/CSV mẫu 3 cột thành các dòng để đổ vào bảng nhập. */
+  bulkReadFile(file) {
     const fd = new FormData()
     fd.append('file', file)
-    return http.post('/classes/bulk/preview-file', fd, {
-      params: { schoolId, schoolYear: schoolYear || undefined },
+    return http.post('/classes/bulk/read-file', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
 
-  /** Tạo các lớp đã xem trước. */
+  /** Tạo cả lô lớp — được ăn cả ngã về không, một dòng trùng là cả lô dừng. */
   bulkCreate(body) {
     return http.post('/classes/bulk', body)
   },

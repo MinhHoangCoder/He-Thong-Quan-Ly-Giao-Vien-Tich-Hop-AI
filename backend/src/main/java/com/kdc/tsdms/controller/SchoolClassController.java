@@ -3,6 +3,7 @@ package com.kdc.tsdms.controller;
 import com.kdc.tsdms.common.Paging;
 import com.kdc.tsdms.dto.BulkClassDto;
 import com.kdc.tsdms.dto.OptionItem;
+import com.kdc.tsdms.dto.SchoolClassDeactivateCheck;
 import com.kdc.tsdms.dto.SchoolClassRequest;
 import com.kdc.tsdms.dto.SchoolClassResponse;
 import com.kdc.tsdms.service.BulkClassService;
@@ -39,32 +40,44 @@ public class SchoolClassController {
     /* ─────────────────── Thêm lớp hàng loạt ─────────────────── */
 
     /**
-     * XEM TRƯỚC danh sách lớp sắp tạo — sinh theo mẫu hoặc đọc từ văn bản dán vào.
+     * ĐỌC file Excel/CSV mẫu 3 cột (Tên lớp · Khối · Năm học) thành các dòng để đổ vào bảng
+     * nhập trên màn hình.
      *
-     * <p>Luôn có bước xem trước rồi mới ghi: nhập 100 dòng sai 2 dòng mà bắt làm lại từ đầu là
-     * cách nhanh nhất để người dùng quay về nhập tay từng lớp.
+     * <p>Chỉ ĐỌC, không kiểm và không ghi: người dùng còn sửa tiếp trong bảng trước khi bấm
+     * lưu, nên kiểm ở bước này là kiểm một danh sách chưa chốt. Toàn bộ luật nghiệp vụ dồn vào
+     * {@link #bulkCreate} — một chỗ chặn thay vì hai chỗ nói khác nhau.
      */
-    @PostMapping("/bulk/preview")
+    @PostMapping(value = "/bulk/read-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public BulkClassDto.XemTruocResponse bulkPreview(@Valid @RequestBody BulkClassDto.XemTruocRequest req) {
-        return bulkService.xemTruoc(req);
+    public List<BulkClassDto.Dong> bulkReadFile(@RequestPart("file") MultipartFile file) {
+        return bulkService.docFile(file);
     }
 
-    /** Như trên nhưng nguồn là file .xlsx / .csv tải lên. */
-    @PostMapping(value = "/bulk/preview-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
-    public BulkClassDto.XemTruocResponse bulkPreviewFile(
-            @RequestParam Integer schoolId,
-            @RequestParam(required = false) String schoolYear,
-            @RequestPart("file") MultipartFile file) {
-        return bulkService.xemTruocFile(schoolId, schoolYear, file);
-    }
-
-    /** GHI các dòng đã xem trước. Server kiểm lại từ đầu, không tin danh sách client gửi lên. */
+    /**
+     * GHI cả lô lớp — ĐƯỢC ĂN CẢ, NGÃ VỀ KHÔNG.
+     *
+     * <p>Một dòng trùng là cả lô dừng lại và không lớp nào được tạo, kèm câu nói rõ dòng nào
+     * trùng với cái gì. Ghi được bao nhiêu hay bấy nhiêu thì người dùng phải tự dò xem lô 40
+     * dòng của mình vào được những dòng nào để sửa file rồi nạp lại phần còn thiếu — việc đối
+     * chiếu đó tốn hơn hẳn việc sửa vài dòng rồi bấm lại.
+     */
     @PostMapping("/bulk")
     @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_MANAGE')")
     public BulkClassDto.TaoResponse bulkCreate(@Valid @RequestBody BulkClassDto.TaoRequest req) {
         return bulkService.tao(req);
+    }
+
+    /**
+     * Lớp này chuyển sang trạng thái "Ngừng" được chưa?
+     *
+     * <p>Form sửa lớp hỏi ngay lúc mở modal để báo đỏ dưới ô Trạng thái và khóa nút Lưu, thay
+     * vì để người dùng điền xong rồi mới ăn 409. Quyền CLASS_VIEW là đủ: câu trả lời chỉ là
+     * một con số đếm buổi dạy của chính lớp đang xem.
+     */
+    @GetMapping("/{id}/deactivate-check")
+    @PreAuthorize("hasRole('ADMIN') or hasAuthority('CLASS_VIEW')")
+    public SchoolClassDeactivateCheck deactivateCheck(@PathVariable Integer id) {
+        return service.kiemTraNgungHoatDong(id);
     }
 
     /** Dropdown trường cho form. */
