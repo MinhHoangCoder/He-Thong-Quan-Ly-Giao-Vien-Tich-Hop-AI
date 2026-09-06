@@ -63,5 +63,6 @@ mail-local.properties
 # Toàn bộ folder claude-context/ chỉ tồn tại local — KHÔNG track gì, kể cả README.
 claude-context/
 
-# Thu muc lam viec cua Claude Code (worktrees tam, cau hinh may ca nhan) — khong track.
+# .claude/ là cấu hình công cụ của riêng từng máy (cổng dev, worktree tạm) — mỗi người
+# một kiểu, đẩy lên chỉ tổ conflict.
 .claude/
