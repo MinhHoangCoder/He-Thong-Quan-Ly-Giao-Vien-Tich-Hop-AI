@@ -243,12 +243,6 @@ async function cancelInvite(reason) {
   await submitCancel(n)
   if (n.actionStatus !== 'PENDING') closeInvite()
 }
-function openInviteSchedule() {
-  const to = ENTITY_ROUTES.value.Assignment
-  closeInvite()
-  notifOpen.value = false
-  if (to) router.push(to)
-}
 
 /* ── Thông báo có hành động ──
    Hai loại đi chung một khung nút:
@@ -655,7 +649,6 @@ function switchTo(acc) {
       @close="closeInvite"
       @confirm="confirmInvite"
       @cancel="cancelInvite"
-      @open-schedule="openInviteSchedule"
     />
   </div>
 </template>
