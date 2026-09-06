@@ -105,6 +105,65 @@ public class HolidayService {
         return page.map(h -> HolidayResponse.fromEntity(h, schoolNames.get(h.getSchoolId())));
     }
 
+    /**
+     * Trong các kỳ nghỉ được hỏi, kỳ nào CÒN VIỆC phải xử lý ở hộp thoại "Buổi dạy" — để màn
+     * hình danh sách biết có vẽ nút đó cho dòng ấy hay không.
+     *
+     * <p>"Còn việc" định nghĩa đúng bằng thứ hộp thoại sẽ hiện: có buổi dạy chưa hủy rơi vào
+     * khoảng ngày, HOẶC có dòng chấm công VẮNG do máy tự ghi trong khoảng đó. Nhờ vậy giữ được
+     * một luật đơn giản: có nút ⇔ mở ra là có nội dung.
+     *
+     * <p>ĐỂ RIÊNG, KHÔNG GỘP VÀO {@link #search}: hai câu bên dưới quét toàn bảng Schedule và
+     * Attendance (~0,4 giây trên bộ 86.865 buổi) vì không có chỉ mục nào seek được theo
+     * StartTime — mà chỉ mục {@code (IsDeleted, StartTime)} thì đã thử rồi phải gỡ vì làm hỏng
+     * kế hoạch của truy vấn lịch sắp tới. Gộp vào danh sách là bắt bảng kỳ nghỉ chờ chừng đó
+     * mỗi lần mở trang, chỉ để biết có vẽ một cái nút hay không.
+     */
+    @Transactional(readOnly = true)
+    public List<Integer> holidaysWithIssues(List<Integer> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return List.of();
+        }
+        List<Holiday> holidays = holidayRepo.findAllById(ids);
+        if (holidays.isEmpty()) {
+            return List.of();
+        }
+        LocalDate from = holidays.stream()
+                .map(Holiday::getFromDate)
+                .min(LocalDate::compareTo)
+                .orElseThrow();
+        LocalDate to = holidays.stream()
+                .map(Holiday::getToDate)
+                .max(LocalDate::compareTo)
+                .orElseThrow();
+
+        // Một cửa sổ chung cho cả trang thay vì mỗi kỳ nghỉ một câu: cắt theo ngày ở đây chỉ để
+        // đỡ phải chuyển về những ngày chắc chắn không ai hỏi tới.
+        List<Object[]> days = new ArrayList<>(holidayRepo.sessionDaysInRange(
+                from.atStartOfDay(), to.plusDays(1).atStartOfDay()));
+        days.addAll(holidayRepo.systemAbsenceDaysInRange(from, to));
+
+        List<Integer> out = new ArrayList<>();
+        for (Holiday h : holidays) {
+            for (Object[] row : days) {
+                LocalDate day = toLocalDate(row[0]);
+                Integer school = (Integer) row[1];
+                boolean trongKhoang = !day.isBefore(h.getFromDate()) && !day.isAfter(h.getToDate());
+                boolean dungPhamVi = h.getSchoolId() == null || h.getSchoolId().equals(school);
+                if (trongKhoang && dungPhamVi) {
+                    out.add(h.getId());
+                    break;
+                }
+            }
+        }
+        return out;
+    }
+
+    /** Cột DATE của truy vấn native về dưới dạng nào là tùy driver — nhận cả hai kiểu. */
+    private static LocalDate toLocalDate(Object value) {
+        return value instanceof java.sql.Date sqlDate ? sqlDate.toLocalDate() : (LocalDate) value;
+    }
+
     @Transactional(readOnly = true)
     public HolidayResponse getById(Integer id) {
         Holiday h = getOrThrow(id);

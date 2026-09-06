@@ -21,6 +21,7 @@ import { useRoute } from 'vue-router'
 import { holidayApi } from '@/api/holidays'
 import { schoolApi } from '@/api/schools'
 import DateField from '@/components/ui/DateField.vue'
+import Pagination from '@/components/ui/Pagination.vue'
 import { PAGE_SIZE } from '@/utils/pagination'
 import { isoToday } from '@/utils/format'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
@@ -33,12 +34,13 @@ const { showToast } = useToast()
 /** 'active' = đang dùng · 'trash' = đã xóa. Hai danh sách dùng chung bảng bên dưới. */
 const tab = ref('active')
 
+/** badge: lớp màu lấy từ page-common.css, khỏi tự pha màu riêng cho trang này. */
 const KINDS = [
-  { value: 'NATIONAL', label: 'Lễ theo luật' },
-  { value: 'BREAK', label: 'Kỳ nghỉ của học sinh' },
-  { value: 'CENTER', label: 'Trung tâm nghỉ riêng' },
+  { value: 'NATIONAL', label: 'Lễ theo luật', badge: 'badge-red' },
+  { value: 'BREAK', label: 'Kỳ nghỉ của học sinh', badge: 'badge-blue' },
+  { value: 'CENTER', label: 'Trung tâm nghỉ riêng', badge: 'badge-amber' },
 ]
-const kindLabel = (v) => KINDS.find((k) => k.value === v)?.label ?? v
+const kindMeta = (v) => KINDS.find((k) => k.value === v) ?? { label: v, badge: 'badge-gray' }
 
 const loading = ref(false)
 const error = ref('')
@@ -54,12 +56,16 @@ const filter = reactive({ keyword: '', kind: '', schoolId: '', from: '', to: '' 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 
 /**
- * Kỳ nghỉ đã trôi qua hoàn toàn — làm mờ đi để mắt bám vào phần sắp tới.
+ * Kỳ nghỉ đang ở giai đoạn nào so với hôm nay: 'past' | 'now' | 'next'.
  *
  * Gọi isoToday() mỗi lần thay vì tính sẵn một hằng số lúc load: trang này hay được mở suốt
  * ngày, hằng số sẽ đứng yên qua nửa đêm.
  */
-const isPast = (h) => h.toDate < isoToday()
+function phase(h) {
+  const today = isoToday()
+  if (h.toDate < today) return 'past'
+  return h.fromDate <= today ? 'now' : 'next'
+}
 
 function fmt(iso) {
   if (!iso) return '—'
@@ -70,6 +76,60 @@ function fmt(iso) {
 /** "12/02/2026" cho nghỉ 1 ngày, "12/02/2026 → 22/02/2026" cho kỳ dài. */
 function fmtRange(h) {
   return h.fromDate === h.toDate ? fmt(h.fromDate) : `${fmt(h.fromDate)} → ${fmt(h.toDate)}`
+}
+
+/**
+ * Danh sách PHẲNG để bảng chỉ có một <tbody>: xen dòng mốc năm giữa các kỳ nghỉ.
+ *
+ * Server trả về đã sắp fromDate giảm dần nên các kỳ nghỉ cùng năm nằm liền nhau — chỉ cần
+ * cắt khúc, không phải sắp lại. Thùng rác sắp theo NGÀY XÓA nên bỏ qua mốc năm: chèn vào đó
+ * sẽ ra "2026 · 2025 · 2026" lộn xộn.
+ */
+const rows = computed(() => {
+  const out = []
+  let year = null
+  for (const h of items.value) {
+    if (tab.value === 'active') {
+      const y = h.fromDate.slice(0, 4)
+      if (y !== year) {
+        year = y
+        out.push({ type: 'year', key: `y${y}`, year: y })
+      }
+    }
+    out.push({ type: 'row', key: `h${h.id}`, h })
+  }
+  return out
+})
+
+/** Id các kỳ nghỉ đang hiện mà còn việc phải xử lý — quyết định có vẽ nút "Buổi dạy" ở dòng đó. */
+const issues = ref(new Set())
+/**
+ * Hỏi không được thì HIỆN HẾT nút, đừng ẩn hết. Ẩn nhầm là cắt mất đường vào chỗ duy nhất
+ * dọn được buổi dạy vướng kỳ nghỉ; hiện thừa thì cùng lắm bấm vào và nhận "không vướng gì".
+ */
+const issuesFailed = ref(false)
+
+/**
+ * Nạp số việc cho các dòng đang hiện — gọi RỜI, không chờ, sau khi bảng đã vẽ.
+ *
+ * Câu đếm bên server quét cả bảng buổi dạy nên mất khoảng nửa giây (nguội thì lâu hơn). Chờ
+ * nó rồi mới vẽ bảng là đánh đổi sai: người dùng vào đây để ĐỌC lịch nghỉ, còn nút kia chỉ
+ * cần cho vài dòng hiếm hoi.
+ */
+async function loadIssues() {
+  issues.value = new Set()
+  issuesFailed.value = false
+  // Thùng rác không có nút "Buổi dạy" nên khỏi hỏi.
+  if (tab.value !== 'active' || items.value.length === 0) return
+  const ids = items.value.map((h) => h.id)
+  try {
+    const res = await holidayApi.withIssues(ids)
+    // Danh sách có thể đã đổi trong lúc chờ (đổi trang, đổi bộ lọc) — kết quả cũ về sau thì bỏ.
+    if (items.value.some((h, i) => h.id !== ids[i])) return
+    issues.value = new Set(res.data ?? [])
+  } catch {
+    issuesFailed.value = true
+  }
 }
 
 async function load() {
@@ -90,6 +150,7 @@ async function load() {
       tab.value === 'trash' ? await holidayApi.trash(params) : await holidayApi.list(params)
     items.value = res.data?.content ?? []
     total.value = res.data?.totalElements ?? 0
+    loadIssues()
   } catch (e) {
     error.value = e.response?.data?.message || 'Không tải được lịch nghỉ.'
   } finally {
@@ -273,18 +334,39 @@ async function checkImpact(h) {
     absence.lockedCount = abs.data?.lockedCount ?? 0
     absence.lockedPeriods = abs.data?.lockedPeriods ?? []
     absence.rows.forEach((r) => absence.picked.add(r.attendanceId))
-    // Không có gì vướng thì đừng bắt người dùng đóng một hộp thoại rỗng.
+    // Không có gì vướng thì đừng bắt người dùng đóng một hộp thoại rỗng — nhưng phải NÓI RA.
+    // Đóng im lặng làm nút "Buổi dạy" trông y hệt một nút hỏng, và người dùng bỏ qua luôn
+    // kỳ nghỉ đó thay vì biết rằng hệ thống đã kiểm tra và không có gì phải sửa.
     const nothing =
       !imp.data?.sessionCount &&
       !imp.data?.pastSessionCount &&
       !absence.rows.length &&
       !absence.lockedCount
-    if (nothing) impact.open = false
-  } catch {
+    if (nothing) {
+      impact.open = false
+      showToast(`"${h.name}" không vướng buổi dạy nào — không phải xử lý gì.`)
+    }
+  } catch (e) {
+    // Mất quyền hoặc backend lỗi mà nuốt lặng còn tệ hơn: người dùng tưởng đã kiểm tra xong
+    // và yên tâm rằng lịch sạch, trong khi buổi dạy vẫn nằm nguyên trong kỳ nghỉ.
     impact.open = false
+    showToast(e.response?.data?.message || 'Không kiểm tra được buổi dạy của kỳ nghỉ này.', 'error')
   } finally {
     impact.loading = false
   }
+}
+
+/**
+ * Đóng hộp thoại, và nạp lại danh sách nếu vừa có thao tác.
+ *
+ * Nút "Buổi dạy" vẽ theo issueCount của lần tải trước. Dọn xong mà không tải lại thì nút vẫn
+ * nằm đó, người dùng bấm lại và chỉ nhận về "không vướng buổi nào" — trông như thao tác vừa
+ * rồi không ăn.
+ */
+function closeImpact() {
+  const worked = !!impact.done || !!absence.done
+  impact.open = false
+  if (worked) load()
 }
 
 async function doCancelSessions() {
@@ -414,11 +496,13 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page__head">
+    <div class="page-head">
       <div>
-        <h1 class="page__title">Lịch nghỉ</h1>
+        <h2 class="title">Lịch nghỉ</h2>
       </div>
-      <button v-if="tab === 'active'" class="btn" @click="openCreate">+ Thêm kỳ nghỉ</button>
+      <button v-if="tab === 'active'" class="btn btn-primary" @click="openCreate">
+        + Thêm kỳ nghỉ
+      </button>
     </div>
 
     <div class="tabs">
@@ -462,74 +546,94 @@ onMounted(async () => {
       </template>
     </FilterBar>
 
-    <p v-if="error" class="msg msg--error">{{ error }}</p>
+    <p v-if="error" class="error-msg">{{ error }}</p>
 
-    <p v-if="!loading" class="total">
+    <p v-if="!loading" class="total small text-muted">
       Tổng cộng <strong>{{ total }}</strong> kỳ nghỉ
     </p>
 
-    <p v-if="loading" class="empty-state">Đang tải...</p>
-    <p v-else-if="items.length === 0" class="empty-state">Chưa có kỳ nghỉ nào</p>
+    <p v-if="loading" class="card empty">Đang tải...</p>
+    <p v-else-if="items.length === 0" class="card empty">Chưa có kỳ nghỉ nào</p>
 
     <div v-else class="table-wrap">
-      <table>
+      <table class="table">
         <thead>
           <tr>
-            <th>Thời gian</th>
+            <th width="180">Thời gian</th>
             <th width="70">Số ngày</th>
             <th>Tên kỳ nghỉ</th>
-            <th width="150">Loại</th>
+            <th width="160">Loại</th>
             <th>Phạm vi</th>
             <th width="150">Thao tác</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="h in items" :key="h.id" :class="{ 'row--past': isPast(h) }">
-            <td class="col-range">{{ fmtRange(h) }}</td>
-            <td>{{ h.dayCount }}</td>
-            <td>
-              <div class="name-text">{{ h.name }}</div>
-              <div v-if="h.needsReview" class="warn-tag" :title="h.note">
-                Cần rà soát — ngày suy từ âm lịch hoặc do Chính phủ chốt từng năm
-              </div>
-              <div v-else-if="h.note" class="desc-text">{{ h.note }}</div>
-            </td>
-            <td>
-              <span class="badge" :class="'badge--' + h.kind.toLowerCase()">{{
-                kindLabel(h.kind)
-              }}</span>
-            </td>
-            <td>
-              <span v-if="h.schoolId" class="scope scope--school">{{
-                h.schoolName || '(trường đã xóa)'
-              }}</span>
-              <span v-else class="scope">Toàn hệ thống</span>
-            </td>
-            <td class="col-actions">
-              <template v-if="tab === 'active'">
-                <button class="link" @click="checkImpact(h)">Buổi dạy</button>
-                <button class="link" @click="openEdit(h)">Sửa</button>
-                <button class="link link--danger" @click="askDelete(h)">Xóa</button>
-              </template>
-              <button v-else class="link" @click="restoreTarget = h">Khôi phục</button>
-            </td>
-          </tr>
+          <template v-for="r in rows" :key="r.key">
+            <!-- Mốc năm: bảng dài thì đọc tới giữa không phải tự nhẩm "cái này của năm nào". -->
+            <tr v-if="r.type === 'year'" class="year-row">
+              <td colspan="6">Năm {{ r.year }}</td>
+            </tr>
+
+            <tr v-else :class="{ 'row--past': phase(r.h) === 'past' }">
+              <td class="col-range">
+                <div class="mono">{{ fmtRange(r.h) }}</div>
+                <span v-if="tab === 'active' && phase(r.h) === 'now'" class="badge badge-amber">
+                  Đang nghỉ
+                </span>
+                <span
+                  v-else-if="tab === 'active' && phase(r.h) === 'past'"
+                  class="badge badge-gray"
+                >
+                  Đã qua
+                </span>
+              </td>
+              <td>{{ r.h.dayCount }}</td>
+              <td>
+                <div class="font-medium">{{ r.h.name }}</div>
+                <div v-if="r.h.needsReview" class="warn-tag" :title="r.h.note">
+                  Cần rà soát — ngày suy từ âm lịch hoặc do Chính phủ chốt từng năm
+                </div>
+                <div v-else-if="r.h.note" class="desc-text">{{ r.h.note }}</div>
+              </td>
+              <td>
+                <span class="badge" :class="kindMeta(r.h.kind).badge">
+                  {{ kindMeta(r.h.kind).label }}
+                </span>
+              </td>
+              <td>
+                <span v-if="r.h.schoolId" class="small font-medium">
+                  {{ r.h.schoolName || '(trường đã xóa)' }}
+                </span>
+                <span v-else class="small text-muted">Toàn hệ thống</span>
+              </td>
+              <td class="col-actions">
+                <template v-if="tab === 'active'">
+                  <!-- Không vướng buổi nào thì không vẽ nút: bấm vào chỉ nhận về một câu
+                       "không có gì" — thà bỏ hẳn để mắt dừng đúng ở dòng cần xử lý. -->
+                  <button
+                    v-if="issuesFailed || issues.has(r.h.id)"
+                    class="link"
+                    @click="checkImpact(r.h)"
+                  >
+                    Buổi dạy
+                  </button>
+                  <button class="link" @click="openEdit(r.h)">Sửa</button>
+                  <button class="link link--danger" @click="askDelete(r.h)">Xóa</button>
+                </template>
+                <button v-else class="link" @click="restoreTarget = r.h">Khôi phục</button>
+              </td>
+            </tr>
+          </template>
         </tbody>
       </table>
     </div>
 
-    <div v-if="totalPages > 1" class="pagination">
-      <button class="btn btn--ghost" :disabled="page === 0" @click="goPage(page - 1)">Trước</button>
-      <span>Trang {{ page + 1 }} / {{ totalPages }}</span>
-      <button class="btn btn--ghost" :disabled="page + 1 >= totalPages" @click="goPage(page + 1)">
-        Sau
-      </button>
-    </div>
+    <Pagination :model-value="page" :total-pages="totalPages" @update:model-value="goPage" />
 
     <!-- ============ Modal thêm/sửa ============ -->
-    <div v-if="modal.open" class="modal" @click.self="modal.open = false">
+    <div v-if="modal.open" class="modal-overlay" @click.self="modal.open = false">
       <div class="modal-box">
-        <h2 class="modal-title">{{ modal.mode === 'create' ? 'Thêm kỳ nghỉ' : 'Sửa kỳ nghỉ' }}</h2>
+        <h3>{{ modal.mode === 'create' ? 'Thêm kỳ nghỉ' : 'Sửa kỳ nghỉ' }}</h3>
 
         <label class="check">
           <input v-model="modal.oneDay" type="checkbox" />
@@ -537,60 +641,60 @@ onMounted(async () => {
         </label>
 
         <div class="grid2">
-          <label class="field">
-            <span>{{ modal.oneDay ? 'Ngày nghỉ *' : 'Từ ngày *' }}</span>
+          <div class="form-group">
+            <label>{{ modal.oneDay ? 'Ngày nghỉ *' : 'Từ ngày *' }}</label>
             <DateField v-model="modal.form.fromDate" :invalid="!!modal.errors.fromDate" />
             <small v-if="modal.errors.fromDate" class="err">{{ modal.errors.fromDate }}</small>
-          </label>
+          </div>
 
-          <label v-if="!modal.oneDay" class="field">
-            <span>Đến ngày *</span>
+          <div v-if="!modal.oneDay" class="form-group">
+            <label>Đến ngày *</label>
             <DateField
               v-model="modal.form.toDate"
               :min="modal.form.fromDate"
               :invalid="!!modal.errors.toDate"
             />
             <small v-if="modal.errors.toDate" class="err">{{ modal.errors.toDate }}</small>
-          </label>
+          </div>
         </div>
 
-        <label class="field">
-          <span>Tên kỳ nghỉ *</span>
+        <div class="form-group">
+          <label>Tên kỳ nghỉ *</label>
           <input v-model="modal.form.name" placeholder="VD: Nghỉ Tết Nguyên đán" />
           <small v-if="modal.errors.name" class="err">{{ modal.errors.name }}</small>
-        </label>
+        </div>
 
         <div class="grid2">
-          <label class="field">
-            <span>Loại</span>
+          <div class="form-group">
+            <label>Loại</label>
             <select v-model="modal.form.kind">
               <option v-for="k in KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
             </select>
-          </label>
+          </div>
 
-          <label class="field">
-            <span>Phạm vi</span>
+          <div class="form-group">
+            <label>Phạm vi</label>
             <select v-model="modal.form.schoolId">
               <option value="">Toàn hệ thống</option>
               <option v-for="s in schools" :key="s.id" :value="s.id">Chỉ {{ s.name }}</option>
             </select>
-          </label>
+          </div>
         </div>
         <p class="hint">
           Để "Toàn hệ thống" cho ngày lễ và nghỉ hè. Chọn một trường khi chỉ trường đó nghỉ — ví dụ
           trường sửa chữa, tổ chức sự kiện riêng.
         </p>
 
-        <label class="field">
-          <span>Ghi chú</span>
+        <div class="form-group">
+          <label>Ghi chú</label>
           <input v-model="modal.form.note" placeholder="Nguồn thông báo, lý do nghỉ..." />
-        </label>
+        </div>
 
-        <p v-if="modal.error" class="msg msg--error">{{ modal.error }}</p>
+        <p v-if="modal.error" class="error-msg">{{ modal.error }}</p>
 
         <div class="modal-actions">
-          <button class="btn btn--ghost" @click="modal.open = false">Hủy</button>
-          <button class="btn" :disabled="modal.saving" @click="save">
+          <button class="btn btn-outline" @click="modal.open = false">Hủy</button>
+          <button class="btn btn-primary" :disabled="modal.saving" @click="save">
             {{ modal.saving ? 'Đang lưu...' : 'Lưu' }}
           </button>
         </div>
@@ -598,21 +702,21 @@ onMounted(async () => {
     </div>
 
     <!-- ============ Modal: buổi dạy vướng kỳ nghỉ ============ -->
-    <div v-if="impact.open" class="modal" @click.self="impact.open = false">
-      <div class="modal-box modal-box--lg">
-        <h2 class="modal-title">Buổi dạy rơi vào kỳ nghỉ</h2>
+    <div v-if="impact.open" class="modal-overlay" @click.self="closeImpact">
+      <div class="modal-box modal-lg">
+        <h3 class="title-tight">Buổi dạy rơi vào kỳ nghỉ</h3>
         <p class="modal-sub">
           {{ impact.holiday?.name }} · {{ impact.holiday && fmtRange(impact.holiday) }}
         </p>
 
-        <p v-if="impact.loading">Đang kiểm tra...</p>
+        <p v-if="impact.loading" class="text-muted">Đang kiểm tra...</p>
 
         <template v-else>
           <!-- ─── Phần 1: buổi CHƯA diễn ra — hủy là xong ─── -->
-          <h3 class="sec-title">1 · Buổi chưa diễn ra</h3>
+          <h4 class="sec-title">1 · Buổi chưa diễn ra</h4>
 
           <template v-if="impact.data">
-            <p v-if="impact.data.sessionCount > 0" class="impact-warn">
+            <p v-if="impact.data.sessionCount > 0" class="note note--warn">
               Có <strong>{{ impact.data.sessionCount }}</strong> buổi dạy chưa diễn ra của
               <strong>{{ impact.data.teacherCount }}</strong> giáo viên đang nằm trong kỳ nghỉ này
               (từ {{ fmt(impact.data.firstDate) }} đến {{ fmt(impact.data.lastDate) }}).
@@ -620,31 +724,33 @@ onMounted(async () => {
               Chúng được sinh ra TRƯỚC khi kỳ nghỉ được khai báo nên vẫn còn trong lịch. Không hủy
               thì hệ thống sẽ tự ghi vắng cho giáo viên vào ngày trường đóng cửa.
             </p>
-            <p v-else class="impact-ok">Không còn buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.</p>
+            <p v-else class="note note--ok">
+              Không còn buổi dạy nào chưa diễn ra vướng kỳ nghỉ này.
+            </p>
 
-            <p v-if="impact.data.pastSessionCount > 0" class="impact-note">
+            <p v-if="impact.data.pastSessionCount > 0" class="small text-muted">
               Ngoài ra có {{ impact.data.pastSessionCount }} buổi ĐÃ diễn ra trong khoảng này — giữ
               nguyên, không hủy: chúng có thể đã gắn chấm công và đã vào bảng lương.
             </p>
 
-            <p v-if="impact.done" class="msg">{{ impact.done }}</p>
+            <p v-if="impact.done" class="note">{{ impact.done }}</p>
 
             <div v-if="impact.data.sessionCount > 0" class="sec-actions">
-              <button class="btn btn--danger" :disabled="impact.working" @click="doCancelSessions">
+              <button class="btn btn-danger" :disabled="impact.working" @click="doCancelSessions">
                 {{ impact.working ? 'Đang hủy...' : `Hủy ${impact.data.sessionCount} buổi dạy` }}
               </button>
             </div>
           </template>
 
           <!-- ─── Phần 2: buổi ĐÃ diễn ra — hủy không cứu được, phải sửa chấm công ─── -->
-          <h3 class="sec-title">2 · Dòng chấm công Vắng của buổi đã qua</h3>
+          <h4 class="sec-title">2 · Dòng chấm công Vắng của buổi đã qua</h4>
 
-          <p v-if="!absence.rows.length && !absence.lockedCount" class="impact-ok">
+          <p v-if="!absence.rows.length && !absence.lockedCount" class="note note--ok">
             Không có dòng Vắng nào do hệ thống ghi nhầm trong kỳ nghỉ này.
           </p>
 
           <template v-if="absence.rows.length">
-            <p class="impact-warn">
+            <p class="note note--warn">
               <strong>{{ absence.rows.length }}</strong> dòng chấm công đang ghi
               <strong>Vắng</strong> cho buổi rơi vào kỳ nghỉ. Hủy buổi KHÔNG xóa được các dòng này —
               chúng nằm trong hồ sơ chuyên cần của giáo viên, và job nền đã nhắn cho họ là đã vắng
@@ -655,7 +761,7 @@ onMounted(async () => {
             </p>
 
             <div class="abs-wrap">
-              <table class="abs-table">
+              <table class="table abs-table">
                 <thead>
                   <tr>
                     <th width="36">
@@ -679,7 +785,7 @@ onMounted(async () => {
                         @change="togglePick(r.attendanceId)"
                       />
                     </td>
-                    <td>{{ fmt(r.workDate) }}</td>
+                    <td class="mono">{{ fmt(r.workDate) }}</td>
                     <td>{{ r.teacherName }}</td>
                     <td class="desc-text">{{ r.note || '—' }}</td>
                   </tr>
@@ -687,29 +793,27 @@ onMounted(async () => {
               </table>
             </div>
 
-            <label class="field">
-              <span>Lý do điều chỉnh *</span>
+            <div class="form-group">
+              <label>Lý do điều chỉnh *</label>
               <input v-model="absence.reason" placeholder="Vì sao sửa các dòng này..." />
-              <small class="hint-inline">
-                Ghi vào từng dòng chấm công và lưu vĩnh viễn trong nhật ký thay đổi.
-              </small>
-            </label>
+              <small>Ghi vào từng dòng chấm công và lưu vĩnh viễn trong nhật ký thay đổi.</small>
+            </div>
           </template>
 
-          <p v-if="absence.lockedCount > 0" class="impact-note">
+          <p v-if="absence.lockedCount > 0" class="small text-muted">
             Còn <strong>{{ absence.lockedCount }}</strong> dòng thuộc kỳ lương ĐÃ CHỐT ({{
               absence.lockedPeriods.join(', ')
             }}) nên chưa sửa được. Vào Bảng lương mở lại kỳ đó rồi quay lại đây.
           </p>
 
-          <p v-if="absence.done" class="msg">{{ absence.done }}</p>
+          <p v-if="absence.done" class="note">{{ absence.done }}</p>
         </template>
 
         <div class="modal-actions">
-          <button class="btn btn--ghost" @click="impact.open = false">Đóng</button>
+          <button class="btn btn-outline" @click="closeImpact">Đóng</button>
           <button
             v-if="absence.rows.length"
-            class="btn"
+            class="btn btn-primary"
             :disabled="absence.working || !pickedCount || !absence.reason.trim()"
             @click="doFixAbsences"
           >
@@ -751,37 +855,13 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.page {
-  max-width: 1280px;
-  margin: auto;
-}
+/* Khung trang, nút, bảng, badge, form và modal đều lấy từ assets/page-common.css — ở đây
+   chỉ khai những gì RIÊNG của Lịch nghỉ. */
 
-/* ================= Header ================= */
-.page__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  margin-bottom: 22px;
-}
-.page__title {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--c-text);
-}
-.page__desc {
-  margin: 6px 0 0;
-  max-width: 640px;
-  font-size: 13px;
-  line-height: 1.55;
-  color: var(--c-text-muted);
-}
-
-/* ================= Tabs ================= */
+/* ── Tab Đang dùng / Thùng rác ── */
 .tabs {
   display: inline-flex;
-  margin-bottom: 16px;
+  margin-bottom: 1rem;
   border: 1px solid var(--c-border);
   border-radius: 10px;
   overflow: hidden;
@@ -790,8 +870,8 @@ onMounted(async () => {
 .tabs button {
   border: none;
   background: transparent;
-  padding: 8px 18px;
-  font-size: 14px;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.88rem;
   font-weight: 600;
   color: var(--c-text-muted);
   cursor: pointer;
@@ -801,39 +881,68 @@ onMounted(async () => {
   color: #fff;
 }
 
-/* ================= Buttons ================= */
-.btn {
-  border: none;
-  cursor: pointer;
-  border-radius: 8px;
-  padding: 10px 18px;
+.total {
+  margin: 0 0 0.6rem;
+}
+.empty {
+  padding: 2.2rem;
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+/* ── Bảng ── */
+/* Nhãn cột, cột ngày, cụm thao tác và badge đều không được xuống dòng: viên thuốc gãy
+   đôi trông như lỗi hiển thị, còn ngày tháng bẻ dòng thì khó đọc. */
+.table th,
+.col-range,
+.col-actions,
+.badge {
+  white-space: nowrap;
+}
+/* Mốc năm là dòng phân cách chứ không phải dữ liệu: nền phẳng và không sáng lên khi rê
+   chuột (luật hover của .table trong page-common). */
+.year-row td {
+  padding: 0.4rem 1rem;
+  background: var(--c-bg);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--c-text-muted);
+}
+.table tbody .year-row:hover td {
+  background: var(--c-bg);
+}
+
+.col-range .badge {
+  margin-top: 0.25rem;
+}
+/* Kỳ nghỉ đã qua vẫn phải giữ lại (là căn cứ của lịch cũ) nhưng không cần bắt mắt. Làm
+   nhạt CHỮ chứ không hạ opacity cả dòng: nhãn "Đã qua" phải còn đọc được. */
+.row--past {
+  color: var(--c-text-muted);
+}
+.desc-text {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--c-text-muted);
+}
+.warn-tag {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  background: var(--c-primary);
-  color: #fff;
-  transition: 0.2s;
+  color: #b45309;
 }
-.btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-}
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.btn--ghost {
-  background: var(--c-surface-2);
-  color: var(--c-text);
-}
-.btn--danger {
-  background: var(--c-danger);
-  color: #fff;
+:root[data-theme='dark'] .warn-tag {
+  color: var(--c-amber);
 }
 
 .link {
   border: none;
   background: none;
   cursor: pointer;
-  padding: 0 6px;
-  font-size: 13px;
+  padding: 0 0.35rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--c-accent);
 }
@@ -844,234 +953,61 @@ onMounted(async () => {
   color: var(--c-danger);
 }
 
-/* ================= Table ================= */
-.total {
-  color: var(--c-text-muted);
-  font-size: 14px;
-  margin: 0 0 10px;
-}
-.table-wrap {
-  overflow-x: auto;
-  background: var(--c-surface);
-  border-radius: 14px;
-  border: 1px solid var(--c-border);
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-thead {
-  background: var(--c-surface-2);
-}
-th {
-  padding: 14px;
-  text-align: left;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--c-text);
-  white-space: nowrap;
-}
-td {
-  padding: 14px;
-  border-top: 1px solid var(--c-border);
-  font-size: 14px;
-  vertical-align: top;
-}
-tbody tr:hover {
-  background: var(--c-surface-2);
-}
-/* Kỳ nghỉ đã qua: vẫn phải giữ lại (là căn cứ của lịch cũ) nhưng không cần bắt mắt. */
-.row--past {
-  opacity: 0.55;
-}
-.col-range {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-.col-actions {
-  white-space: nowrap;
-}
-.name-text {
-  font-weight: 600;
-}
-.desc-text {
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--c-text-muted);
-}
-.warn-tag {
-  margin-top: 4px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: #b45309;
-}
-:root[data-theme='dark'] .warn-tag {
-  color: var(--c-amber);
-}
-
-.badge {
-  display: inline-block;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  background: var(--c-surface-2);
-  color: var(--c-text-muted);
-  white-space: nowrap;
-}
-.badge--national {
-  background: rgba(239, 68, 68, 0.12);
-  color: #b91c1c;
-}
-.badge--break {
-  background: rgba(37, 99, 235, 0.12);
-  color: #1d4ed8;
-}
-.badge--center {
-  background: rgba(249, 115, 22, 0.14);
-  color: #c2410c;
-}
-
-.scope {
-  font-size: 13px;
-  color: var(--c-text-muted);
-}
-.scope--school {
-  color: var(--c-text);
-  font-weight: 600;
-}
-
-.empty-state {
-  text-align: center;
-  color: var(--c-text-muted);
-  padding: 35px;
-  background: var(--c-surface);
-  border-radius: 14px;
-  border: 1px solid var(--c-border);
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 16px;
-  color: var(--c-text-muted);
-  font-size: 14px;
-}
-
-.msg {
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--c-surface-2);
-  font-size: 14px;
-}
-.msg--error {
-  background: rgba(239, 68, 68, 0.1);
-  color: #b91c1c;
-}
-
-/* ================= Modal ================= */
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 20, 38, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  z-index: 60;
-}
-.modal-box {
-  width: 100%;
-  max-width: 620px;
-  max-height: 90vh;
-  overflow-y: auto;
-  background: var(--c-surface);
-  border-radius: 16px;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.modal-box--sm {
-  max-width: 460px;
-}
-/* Hộp thoại "Buổi dạy" chứa cả bảng chấm công nên cần rộng hơn hộp thoại nhập liệu. */
-.modal-box--lg {
-  max-width: 860px;
-}
-.modal-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-}
-.modal-sub {
-  margin: -8px 0 0;
-  color: var(--c-text-muted);
-  font-size: 14px;
-}
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 4px;
-}
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
-}
+/* ── Hộp thoại ── */
 .check {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 14px;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
 }
-.hint {
-  margin: -6px 0 0;
-  font-size: 12.5px;
-  color: var(--c-text-muted);
-}
 .err {
   color: var(--c-danger);
-  font-size: 12.5px;
+  font-size: 0.76rem;
 }
-
-.impact-warn {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(239, 68, 68, 0.1);
-  font-size: 14px;
-  line-height: 1.55;
+.hint {
+  margin: -0.3rem 0 0.9rem;
+  font-size: 0.76rem;
+  color: var(--c-text-muted);
 }
-.impact-ok {
-  margin: 0;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(34, 197, 94, 0.12);
-  font-size: 14px;
+/* Tên kỳ nghỉ đi liền dưới tiêu đề, không để khoảng trống 1rem của h3 chen vào giữa. */
+.title-tight {
+  margin-bottom: 0.25rem;
 }
-.impact-note {
-  margin: 0;
-  font-size: 13px;
+.modal-sub {
+  margin: 0 0 1rem;
+  font-size: 0.85rem;
   color: var(--c-text-muted);
 }
 
-/* ===== Hai phần của hộp thoại "Buổi dạy" ===== */
+/* ── Hai phần của hộp thoại "Buổi dạy" ── */
 .sec-title {
-  margin: 6px 0 0;
-  padding-top: 12px;
+  margin: 1.2rem 0 0.6rem;
+  padding-top: 0.9rem;
   border-top: 1px solid var(--c-border);
-  font-size: 15px;
+  font-size: 0.95rem;
   font-weight: 700;
 }
 .sec-title:first-of-type {
-  border-top: 0;
+  margin-top: 0;
   padding-top: 0;
+  border-top: 0;
+}
+.note {
+  margin: 0 0 0.7rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  background: var(--c-surface-2);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+.note--warn {
+  background: rgba(239, 68, 68, 0.1);
+}
+.note--ok {
+  background: rgba(34, 197, 94, 0.12);
 }
 .sec-actions {
   display: flex;
@@ -1080,43 +1016,33 @@ tbody tr:hover {
 .abs-wrap {
   max-height: 260px;
   overflow-y: auto;
+  margin-bottom: 0.9rem;
   border: 1px solid var(--c-border);
   border-radius: 10px;
 }
 .abs-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
+  font-size: 0.82rem;
 }
 .abs-table th,
 .abs-table td {
-  padding: 8px 10px;
-  text-align: left;
-  border-bottom: 1px solid var(--c-border);
+  padding: 0.45rem 0.6rem;
 }
+/* Cuộn danh sách dài vẫn phải biết cột nào là cột nào. */
 .abs-table th {
   position: sticky;
   top: 0;
-  background: var(--c-surface);
-  font-weight: 600;
-}
-.abs-table tr:last-child td {
-  border-bottom: 0;
+  z-index: 1;
 }
 /* Dòng bị bỏ tick — làm mờ để thấy ngay cái gì sẽ KHÔNG bị sửa. */
 .row--off {
   opacity: 0.45;
-}
-.hint-inline {
-  font-size: 12.5px;
-  color: var(--c-text-muted);
 }
 
 @media (max-width: 700px) {
   .grid2 {
     grid-template-columns: 1fr;
   }
-  .page__head {
+  .page-head {
     flex-direction: column;
   }
 }

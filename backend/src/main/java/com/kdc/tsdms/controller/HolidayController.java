@@ -10,6 +10,7 @@ import com.kdc.tsdms.dto.HolidayResponse;
 import com.kdc.tsdms.service.HolidayService;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -88,6 +89,23 @@ public class HolidayController {
             @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = Paging.of(page, size, Sort.by("deletedAt").descending());
         return service.trash(keyword, pageable);
+    }
+
+    /**
+     * Trong các kỳ nghỉ được hỏi, kỳ nào còn việc phải xử lý ở hộp thoại "Buổi dạy" — màn hình
+     * danh sách hỏi để biết có vẽ nút đó cho từng dòng hay không. Trả về mảng id.
+     *
+     * <p>Tách khỏi {@code GET /holidays} là CỐ Ý: phép kiểm tra quét toàn bảng Schedule và
+     * Attendance (~0,4 giây trên bộ 86.865 buổi). Gộp vào danh sách thì bảng kỳ nghỉ phải chờ
+     * chừng đó mỗi lần mở trang. Để riêng thì bảng hiện ngay, nút xuất hiện sau — và lúc câu
+     * này chậm hay hỏng, người dùng vẫn đọc và sửa được lịch nghỉ.
+     *
+     * <p>Đặt TRƯỚC {@code /{id}} vì "with-issues" cũng khớp mẫu {@code {id}} nếu để sau.
+     */
+    @GetMapping("/with-issues")
+    @PreAuthorize(CAN_VIEW)
+    public List<Integer> holidaysWithIssues(@RequestParam List<Integer> ids) {
+        return service.holidaysWithIssues(ids);
     }
 
     @GetMapping("/{id}")

@@ -15,6 +15,17 @@ export const holidayApi = {
   },
 
   /**
+   * Trong các kỳ nghỉ được hỏi, kỳ nào còn việc phải xử lý ở hộp thoại "Buổi dạy" — trả về
+   * mảng id.
+   *
+   * Gọi RIÊNG sau khi bảng đã hiện, không gộp vào list(): câu này quét cả bảng buổi dạy nên
+   * mất khoảng nửa giây, gộp vào là bắt cả bảng kỳ nghỉ chờ theo.
+   */
+  withIssues(ids) {
+    return http.get('/holidays/with-issues', { params: { ids: ids.join(',') } })
+  },
+
+  /**
    * Số buổi dạy ĐÃ SINH đang rơi vào kỳ nghỉ này.
    * Generator chỉ bỏ ngày nghỉ lúc sinh buổi, nên kỳ nghỉ khai báo SAU đó không tự dọn
    * lịch cũ — màn hình phải hỏi rồi mới hủy.
